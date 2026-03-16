@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ cat.title }} – Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    body { font-family: 'Montserrat', sans-serif; }
+    .ri { border: 1px solid transparent; border-radius: 8px; }
+    .ri:hover { background: var(--surface); border-color: var(--green); }
+    .ri:hover .ri-name { color: var(--green); }
+    .cat-detail-header { border-radius: var(--r); }
+    .content-area { padding: 28px 32px; }
+    .shell { display: flex; height: 100vh; overflow: hidden; }
+.sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 220px; }
+.main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { position: sticky; top: 0; z-index: 10; }
+.content-area { flex: 1; overflow-y: auto; padding: 28px 32px; }
+/* Font fix */
+*, body { font-family: 'Montserrat', sans-serif !important; }
+
+/* Sidebar active fix — sidebar tekst clippes */
+.sidebar { overflow-x: visible; }
+.sbi { white-space: nowrap; overflow: visible; }
+
+/* Whitespace — items */
+.ri { padding: 10px 14px; margin-bottom: 2px; }
+.ri-name { font-size: 12px; font-weight: 600; }
+.section-head { padding: 0; }
+
+/* Category header spacing */
+.cat-detail-header { padding: 20px 22px; margin-bottom: 24px; }
+.cdh-title { font-size: 18px; font-weight: 700; }
+.cdh-sub { font-size: 12px; margin-top: 3px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <div class="sb-logo-text">intomedia</div>
+    </div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+      <a href="#" class="sbi">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Mine favoritter
+      </a>
+      <a href="#" class="sbi">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Seneste
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Kategorier</div>
+      {% for c in categories %}
+      <a href="/category/{{ c.id }}" class="sbi {% if c.id == cat.id %}active{% endif %}">
+        {% if c.icon == 'pulse' %}
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        {% elif c.icon == 'settings' %}
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l-.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        {% elif c.icon == 'globe' %}
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>
+        {% elif c.icon == 'activity' %}
+        <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        {% elif c.icon == 'users' %}
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        {% elif c.icon == 'briefcase' %}
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        {% endif %}
+        {{ c.title }}
+        <span class="sbi-count">{{ c.dashboard_count + c.tool_count }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      <a href="#" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Rettigheder
+      </a>
+      <a href="#" class="sbi">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l-.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Indstillinger
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ user.role | capitalize }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" onclick="openCP()" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <button class="tb-btn primary">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nyt dashboard
+        </button>
+      </div>
+    </div>
+
+    <div class="content-area">
+
+      <!-- Breadcrumb -->
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a>
+        <span class="bc-sep">/</span>
+        <span>{{ cat.title }}</span>
+      </div>
+
+      <!-- Category header -->
+      <div class="cat-detail-header">
+        <div class="cdh-icon">
+          {% if cat.icon == 'pulse' %}
+          <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          {% elif cat.icon == 'settings' %}
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l-.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          {% elif cat.icon == 'globe' %}
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>
+          {% elif cat.icon == 'activity' %}
+          <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          {% elif cat.icon == 'users' %}
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          {% elif cat.icon == 'briefcase' %}
+          <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          {% endif %}
+        </div>
+        <div>
+          <div class="cdh-title">{{ cat.title }}</div>
+          <div class="cdh-sub">{{ cat.description }}</div>
+          <div class="cdh-tags">
+            <span class="tag tag-d">{{ total_db }} dashboards</span>
+            <span class="tag tag-t">{{ total_t }} tools</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Items — grouped by subcategory -->
+      {% if cat.subcategories %}
+        {% for sub in cat.subcategories %}
+          {% set sub_items = [] %}
+          {% for item in cat['items'] %}
+            {% if item.subcategory == sub.id %}
+              {% set _ = sub_items.append(item) %}
+            {% endif %}
+          {% endfor %}
+          {% if sub_items %}
+          <div class="section-head" style="margin-top:20px">
+            <span class="section-label">{{ sub.title }}</span>
+            <span style="font-size:10px;color:var(--ink-4)">{{ sub.description }}</span>
+          </div>
+          <div class="rec-list anim-fade">
+            {% for item in sub_items %}
+            <a href="{{ item.url }}" class="ri">
+              <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
+                {% if item.type == 'dashboard' %}
+                <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                {% endif %}
+              </div>
+              <div>
+                <div class="ri-name">{{ item.title }}</div>
+              </div>
+              <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">
+                {{ item.type | capitalize }}
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% endfor %}
+
+        <!-- Items without subcategory -->
+        {% set ungrouped = [] %}
+        {% for item in cat['items'] %}
+          {% if item.subcategory is none %}
+            {% set _ = ungrouped.append(item) %}
+          {% endif %}
+        {% endfor %}
+        {% if ungrouped %}
+        <div class="section-head" style="margin-top:20px">
+          <span class="section-label">Generelt</span>
+        </div>
+        <div class="rec-list anim-fade">
+          {% for item in ungrouped %}
+          <a href="{{ item.url }}" class="ri">
+            <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
+              {% if item.type == 'dashboard' %}
+              <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              {% else %}
+              <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              {% endif %}
+            </div>
+            <div><div class="ri-name">{{ item.title }}</div></div>
+            <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">{{ item.type | capitalize }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      {% else %}
+        <!-- No subcategories — flat list -->
+        <div class="section-head" style="margin-top:8px">
+          <span class="section-label">Alle items</span>
+        </div>
+        <div class="rec-list">
+          {% for item in cat['items'] %}
+          <a href="{{ item.url }}" class="ri">
+            <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
+              {% if item.type == 'dashboard' %}
+              <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              {% else %}
+              <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              {% endif %}
+            </div>
+            <div><div class="ri-name">{{ item.title }}</div></div>
+            <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">{{ item.type | capitalize }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if not cat['items'] %}
+      <div style="padding:40px;text-align:center;color:var(--ink-4);font-size:13px">
+        Ingen items tilgængelige for din bruger i denne kategori.
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<script>
+function openCP() {}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') {} });
+</script>
+</body>
+</html>
