@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budget Upload — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:900px;margin:0 auto}
+.tab-bar{display:flex;gap:4px;margin-bottom:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px}
+.tab-btn{flex:1;padding:9px 0;border:none;border-radius:7px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .14s;background:transparent;color:var(--ink-3)}
+.tab-btn.on{background:var(--green);color:#fff}
+.tab-pane{display:none}.tab-pane.on{display:block}
+
+.mode-bar{display:flex;gap:6px;margin-bottom:20px}
+.mode-btn{padding:7px 18px;border-radius:var(--r-sm);border:1.5px solid var(--border-strong);background:var(--surface);font-family:var(--font);font-size:11px;font-weight:600;color:var(--ink-2);cursor:pointer;transition:all .13s}
+.mode-btn.on{background:var(--green-light);border-color:var(--green);color:var(--green)}
+.mode-section{display:none}.mode-section.on{display:block}
+
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:16px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.form-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.fld select,.fld input[type=text],.fld input[type=number]{font-family:var(--font);font-size:12px;padding:8px 11px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;transition:border-color .13s;width:100%}
+.fld select:focus,.fld input:focus{border-color:var(--green)}
+
+.month-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:20px}
+.month-cell{display:flex;flex-direction:column;gap:4px}
+.month-cell label{font-size:10px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:1px}
+.month-cell input{font-family:var(--font);font-size:12px;padding:7px 9px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;width:100%}
+.month-cell input:focus{border-color:var(--green)}
+.month-cell input::placeholder{color:var(--ink-4)}
+
+.section-head-sm{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:12px}
+
+.submit-btn{display:flex;align-items:center;gap:7px;padding:10px 22px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:background .13s}
+.submit-btn:hover{background:var(--green-mid)}
+.submit-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Upload zone */
+.upload-zone{border:2px dashed var(--border-strong);border-radius:var(--r);padding:40px;text-align:center;cursor:pointer;transition:all .16s;margin-bottom:16px;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:var(--green-light)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{width:40px;height:40px;border-radius:10px;background:var(--green-light);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.upload-icon svg{width:20px;height:20px;stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.upload-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.upload-sub{font-size:11px;color:var(--ink-4)}
+.file-name{font-size:12px;font-weight:600;color:var(--green);margin-top:8px}
+
+.template-link{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--green);margin-bottom:16px;cursor:pointer}
+.template-link svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.template-link:hover{text-decoration:underline}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:14px 20px;border-radius:var(--r);font-size:12px;font-weight:600;color:#fff;z-index:999;opacity:0;transform:translateY(10px);transition:all .22s;pointer-events:none;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:#1B5C4A}
+.toast.error{background:#B32E45}
+.toast-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.toast-sub{font-size:11px;opacity:.85}
+
+/* Summary bar */
+.sum-bar{display:flex;gap:1px;background:var(--border);border-radius:var(--r-sm);overflow:hidden;margin-bottom:18px;border:1px solid var(--border)}
+.sum-cell{flex:1;background:var(--bg);padding:10px 14px;text-align:center}
+.sum-n{font-size:16px;font-weight:700;color:var(--green);line-height:1}
+.sum-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-top:2px}
+
+/* Overblik tab */
+.filter-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
+.v-table-wrap{overflow-x:auto;margin-top:16px}
+.v-table{width:100%;border-collapse:collapse;font-size:11px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:nowrap}
+.v-table tr:hover td{background:var(--green-light)}
+.v-table .num{text-align:right;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.chart-title{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px}
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:120px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%}
+.bar-col-inner{flex:1;display:flex;flex-direction:column;justify-content:flex-end;width:100%}
+.bar{background:var(--green);border-radius:3px 3px 0 0;transition:height .3s ease;min-height:2px;width:100%}
+.bar:hover{background:var(--green-mid)}
+.bar-label{font-size:8px;font-weight:700;color:var(--ink-4);text-align:center;white-space:nowrap}
+.bar-val{font-size:8px;font-weight:700;color:var(--green);text-align:center;min-height:12px}
+.overblik-total{display:flex;gap:1px;background:var(--border);border-radius:var(--r-sm);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)}
+.ot-cell{flex:1;background:var(--bg);padding:12px 16px;text-align:center}
+.ot-n{font-size:18px;font-weight:700;color:var(--green);line-height:1}
+.ot-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-top:3px}
+.load-btn{display:flex;align-items:center;gap:7px;padding:9px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:background .13s}
+.load-btn:hover{background:var(--green-mid)}
+.load-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Hub</a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget" class="sbi active">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget Upload
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">CE</div>
+      <div><div class="sb-user-name">Carl-Emil</div><div class="sb-user-role">Admin</div></div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/sales-operations" class="tb-btn">← Sales Operations</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/sales-operations" class="bc-link">Sales Operations</a><span class="bc-sep">/</span>
+          <span>Budget Upload</span>
+        </div>
+        <h1 class="page-title" style="margin-bottom:4px">Budget Upload</h1>
+        <p class="page-sub">Upload eller indtast budgetter for medie og sælger direkte til SQL Server</p>
+
+        <!-- TABS -->
+        <div class="tab-bar">
+          <button class="tab-btn on" onclick="switchTab('medie',this)">
+            Medie Budget
+          </button>
+          <button class="tab-btn" onclick="switchTab('saelger',this)">
+            Sælger Budget
+          </button>
+          <button class="tab-btn" onclick="switchTab('overblik',this)">
+            Se budgetter
+          </button>
+        </div>
+
+        <!-- ── MEDIE TAB ─────────────────────────────────── -->
+        <div class="tab-pane on" id="tab-medie">
+
+          <div class="mode-bar">
+            <button class="mode-btn on" onclick="switchMode('medie','manuel',this)">Manuel indtastning</button>
+            <button class="mode-btn" onclick="switchMode('medie','excel',this)">Upload Excel / CSV</button>
+          </div>
+
+          <!-- Manuel -->
+          <div class="mode-section on" id="medie-manuel">
+            <div class="form-card">
+              <div class="form-grid">
+                <div class="fld">
+                  <label>Site</label>
+                  <select id="m-site">
+                    <option value="">— Vælg site —</option>
+                    {% for s in sites %}<option>{{ s }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>Brand</label>
+                  <select id="m-brand">
+                    <option value="">— Vælg brand —</option>
+                    {% for b in brands %}<option>{{ b }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>Deal Type</label>
+                  <select id="m-dealtype">
+                    <option value="">— Vælg type —</option>
+                    {% for d in deal_types %}<option>{{ d }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>Sales Type</label>
+                  <select id="m-salestype">
+                    <option value="">— Vælg salgstype —</option>
+                    {% for st in salestypes %}<option>{{ st }}</option>{% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="fld" style="max-width:160px;margin-bottom:18px">
+                <label>År</label>
+                <select id="m-year">
+                  {% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+                </select>
+              </div>
+
+              <div class="section-head-sm">Månedlige budgetbeløb (kr.)</div>
+              <div class="sum-bar" id="m-sumbar">
+                <div class="sum-cell"><div class="sum-n" id="m-total">0</div><div class="sum-l">Årsbudget</div></div>
+                <div class="sum-cell"><div class="sum-n" id="m-avg">0</div><div class="sum-l">Snit/måned</div></div>
+                <div class="sum-cell"><div class="sum-n" id="m-filled">0/12</div><div class="sum-l">Måneder udfyldt</div></div>
+              </div>
+              <div class="month-grid">
+                {% for num, name in months %}
+                <div class="month-cell">
+                  <label>{{ name }}</label>
+                  <input type="number" id="m-month-{{ num }}" placeholder="0" min="0" step="1000" onchange="updateMedieSummary()">
+                </div>
+                {% endfor %}
+              </div>
+              <button class="submit-btn" onclick="submitMedie()">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Gem til database
+              </button>
+            </div>
+          </div>
+
+          <!-- Excel upload -->
+          <div class="mode-section" id="medie-excel">
+            <div class="form-card">
+              <a class="template-link" href="/tools/budget/medie/template">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Excel-skabelon
+              </a>
+              <div class="upload-zone" id="m-dropzone">
+                <input type="file" id="m-file" accept=".xlsx,.xls,.csv" onchange="handleMedieFile(this)">
+                <div class="upload-icon">
+                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="upload-title">Træk fil hertil eller klik for at vælge</div>
+                <div class="upload-sub">.xlsx, .xls eller .csv · Kolonner: DealType, Site, BudgetDate, BudgetAmount, Brand, Salestype</div>
+                <div class="file-name" id="m-file-name"></div>
+              </div>
+              <button class="submit-btn" id="m-upload-btn" onclick="uploadMedie()" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload til database
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SÆLGER TAB ─────────────────────────────────── -->
+        <div class="tab-pane" id="tab-saelger">
+
+          <div class="mode-bar">
+            <button class="mode-btn on" onclick="switchMode('saelger','manuel',this)">Manuel indtastning</button>
+            <button class="mode-btn" onclick="switchMode('saelger','excel',this)">Upload Excel / CSV</button>
+          </div>
+
+          <!-- Manuel -->
+          <div class="mode-section on" id="saelger-manuel">
+            <div class="form-card">
+              <div class="form-grid-3">
+                <div class="fld">
+                  <label>Sælger</label>
+                  <select id="s-person">
+                    <option value="">— Vælg sælger —</option>
+                    {% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>Site</label>
+                  <select id="s-site">
+                    <option value="">— Vælg site —</option>
+                    {% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="fld">
+                  <label>Team</label>
+                  <select id="s-team">
+                    <option value="">— Vælg team —</option>
+                    {% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="fld" style="max-width:160px;margin-bottom:18px">
+                <label>År</label>
+                <select id="s-year">
+                  {% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+                </select>
+              </div>
+
+              <div class="section-head-sm">Månedlige budgetbeløb (kr.)</div>
+              <div class="sum-bar">
+                <div class="sum-cell"><div class="sum-n" id="s-total">0</div><div class="sum-l">Årsbudget</div></div>
+                <div class="sum-cell"><div class="sum-n" id="s-avg">0</div><div class="sum-l">Snit/måned</div></div>
+                <div class="sum-cell"><div class="sum-n" id="s-filled">0/12</div><div class="sum-l">Måneder udfyldt</div></div>
+              </div>
+              <div class="month-grid">
+                {% for num, name in months %}
+                <div class="month-cell">
+                  <label>{{ name }}</label>
+                  <input type="number" id="s-month-{{ num }}" placeholder="0" min="0" step="1000" onchange="updateSaelgerSummary()">
+                </div>
+                {% endfor %}
+              </div>
+              <button class="submit-btn" onclick="submitSaelger()">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Gem til database
+              </button>
+            </div>
+          </div>
+
+          <!-- Excel upload -->
+          <div class="mode-section" id="saelger-excel">
+            <div class="form-card">
+              <a class="template-link" href="/tools/budget/saelger/template">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Excel-skabelon
+              </a>
+              <div class="upload-zone" id="s-dropzone">
+                <input type="file" id="s-file" accept=".xlsx,.xls,.csv" onchange="handleSaelgerFile(this)">
+                <div class="upload-icon">
+                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="upload-title">Træk fil hertil eller klik for at vælge</div>
+                <div class="upload-sub">.xlsx, .xls eller .csv · Kolonner: SalesPersonName, Site, BudgetDate, BudgetAmount, Team</div>
+                <div class="file-name" id="s-file-name"></div>
+              </div>
+              <button class="submit-btn" id="s-upload-btn" onclick="uploadSaelger()" disabled>
+                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload til database
+              </button>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ── OVERBLIK TAB ──────────────────────────────────── -->
+        <div class="tab-pane" id="tab-overblik">
+
+          <!-- Sub-tabs: Medie / Sælger -->
+          <div class="mode-bar" style="margin-bottom:20px">
+            <button class="mode-btn on" id="ov-medie-btn" onclick="switchOvTab('medie',this)">Medie Budget</button>
+            <button class="mode-btn" id="ov-saelger-btn" onclick="switchOvTab('saelger',this)">Sælger Budget</button>
+          </div>
+
+          <!-- ── MEDIE OVERBLIK ── -->
+          <div id="ov-medie">
+            <div class="filter-bar">
+              <div class="fld">
+                <label>År</label>
+                <select id="ov-m-year">
+                  <option value="">Alle år</option>
+                  {% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Måned</label>
+                <select id="ov-m-month">
+                  <option value="">Alle måneder</option>
+                  {% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Site</label>
+                <select id="ov-m-site">
+                  <option value="">Alle sites</option>
+                  {% for s in sites %}<option>{{ s }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Brand</label>
+                <select id="ov-m-brand">
+                  <option value="">Alle brands</option>
+                  {% for b in brands %}<option>{{ b }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld" style="justify-content:flex-end;padding-top:18px">
+                <button class="load-btn" onclick="loadMedieData()">
+                  <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+                  Hent data
+                </button>
+              </div>
+            </div>
+
+            <!-- Totals -->
+            <div class="overblik-total" id="ov-m-totals" style="display:none">
+              <div class="ot-cell"><div class="ot-n" id="ov-m-total-kr">—</div><div class="ot-l">Samlet budget</div></div>
+              <div class="ot-cell"><div class="ot-n" id="ov-m-total-rows">—</div><div class="ot-l">Rækker</div></div>
+              <div class="ot-cell"><div class="ot-n" id="ov-m-avg-month">—</div><div class="ot-l">Snit pr. måned</div></div>
+            </div>
+
+            <!-- Bar chart -->
+            <div class="chart-wrap" id="ov-m-chart-wrap" style="display:none">
+              <div class="chart-title">Månedligt medie-budget</div>
+              <div class="bar-chart" id="ov-m-barchart"></div>
+            </div>
+
+            <!-- Table -->
+            <div class="v-table-wrap" id="ov-m-table-wrap" style="display:none">
+              <table class="v-table" id="ov-m-table">
+                <thead>
+                  <tr>
+                    <th>År</th><th>Måned</th><th>Site</th><th>Brand</th>
+                    <th>DealType</th><th>Salestype</th><th class="num">Budget (kr.)</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-m-tbody"></tbody>
+              </table>
+            </div>
+            <div id="ov-m-empty" style="display:none;text-align:center;padding:48px;color:var(--ink-4);font-size:13px">
+              Ingen data — klik "Hent data" for at søge
+            </div>
+          </div>
+
+          <!-- ── SÆLGER OVERBLIK ── -->
+          <div id="ov-saelger" style="display:none">
+            <div class="filter-bar">
+              <div class="fld">
+                <label>År</label>
+                <select id="ov-s-year">
+                  <option value="">Alle år</option>
+                  {% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Måned</label>
+                <select id="ov-s-month">
+                  <option value="">Alle måneder</option>
+                  {% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Site</label>
+                <select id="ov-s-site">
+                  <option value="">Alle sites</option>
+                  {% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Team</label>
+                <select id="ov-s-team">
+                  <option value="">Alle teams</option>
+                  {% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label>Sælger</label>
+                <select id="ov-s-person">
+                  <option value="">Alle sælgere</option>
+                  {% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom:20px">
+              <button class="load-btn" onclick="loadSaelgerData()">
+                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+                Hent data
+              </button>
+            </div>
+
+            <!-- Totals -->
+            <div class="overblik-total" id="ov-s-totals" style="display:none">
+              <div class="ot-cell"><div class="ot-n" id="ov-s-total-kr">—</div><div class="ot-l">Samlet budget</div></div>
+              <div class="ot-cell"><div class="ot-n" id="ov-s-total-rows">—</div><div class="ot-l">Rækker</div></div>
+              <div class="ot-cell"><div class="ot-n" id="ov-s-avg-month">—</div><div class="ot-l">Snit pr. måned</div></div>
+            </div>
+
+            <!-- Bar chart -->
+            <div class="chart-wrap" id="ov-s-chart-wrap" style="display:none">
+              <div class="chart-title">Månedligt sælger-budget</div>
+              <div class="bar-chart" id="ov-s-barchart"></div>
+            </div>
+
+            <!-- Table -->
+            <div class="v-table-wrap" id="ov-s-table-wrap" style="display:none">
+              <table class="v-table" id="ov-s-table">
+                <thead>
+                  <tr>
+                    <th>År</th><th>Måned</th><th>Sælger</th><th>Site</th>
+                    <th>Team</th><th class="num">Budget (kr.)</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-s-tbody"></tbody>
+              </table>
+            </div>
+            <div id="ov-s-empty" style="display:none;text-align:center;padding:48px;color:var(--ink-4);font-size:13px">
+              Ingen data — klik "Hent data" for at søge
+            </div>
+          </div>
+
+        </div><!-- /tab-overblik -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <div class="toast-title" id="toast-title"></div>
+  <div class="toast-sub" id="toast-sub"></div>
+</div>
+
+<script>
+// ── Tab + mode switching ─────────────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('tab-' + id).classList.add('on');
+  el.classList.add('on');
+}
+function switchMode(tab, mode, el) {
+  el.closest('.tab-pane').querySelectorAll('.mode-btn').forEach(b => b.classList.remove('on'));
+  el.closest('.tab-pane').querySelectorAll('.mode-section').forEach(s => s.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById(tab + '-' + mode).classList.add('on');
+}
+
+// ── Summary bars ─────────────────────────────────────────────────
+function calcSummary(prefix) {
+  let total = 0, filled = 0;
+  for (let m = 1; m <= 12; m++) {
+    const val = parseFloat(document.getElementById(prefix + '-month-' + m)?.value) || 0;
+    total += val;
+    if (val > 0) filled++;
+  }
+  const fmt = v => v >= 1000000 ? (v/1000000).toFixed(1)+' mio' : v >= 1000 ? Math.round(v/1000)+'k' : Math.round(v).toString();
+  document.getElementById(prefix + '-total').textContent = fmt(total);
+  document.getElementById(prefix + '-avg').textContent  = fmt(filled ? total/filled : 0);
+  document.getElementById(prefix + '-filled').textContent = filled + '/12';
+}
+function updateMedieSummary()  { calcSummary('m'); }
+function updateSaelgerSummary(){ calcSummary('s'); }
+
+// ── Toast ────────────────────────────────────────────────────────
+function showToast(title, sub, type='success') {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-title').textContent = title;
+  document.getElementById('toast-sub').textContent   = sub || '';
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 4500);
+}
+
+// ── Collect month data ───────────────────────────────────────────
+function collectMonths(prefix) {
+  const data = {};
+  for (let m = 1; m <= 12; m++) {
+    const val = document.getElementById(prefix + '-month-' + m)?.value;
+    if (val) data[m] = val;
+  }
+  return data;
+}
+
+// ── MEDIE: Manuel submit ─────────────────────────────────────────
+async function submitMedie() {
+  const site      = document.getElementById('m-site').value;
+  const brand     = document.getElementById('m-brand').value;
+  const dealtype  = document.getElementById('m-dealtype').value;
+  const salestype = document.getElementById('m-salestype').value;
+  const year      = document.getElementById('m-year').value;
+  if (!site || !brand || !dealtype || !salestype) {
+    showToast('Manglende felter', 'Udfyld alle dropdowns', 'error'); return;
+  }
+  const months_data = collectMonths('m');
+  if (!Object.keys(months_data).length) {
+    showToast('Ingen beløb', 'Indtast mindst ét månedligt beløb', 'error'); return;
+  }
+  const fd = new FormData();
+  fd.append('site', site); fd.append('brand', brand);
+  fd.append('deal_type', dealtype); fd.append('salestype', salestype);
+  fd.append('year', year); fd.append('months_data', JSON.stringify(months_data));
+  try {
+    const r = await fetch('/tools/budget/medie/insert', { method:'POST', body:fd });
+    const d = await r.json();
+    if (r.ok) showToast('Gemt!', d.inserted + ' måneder gemt til BudgetsIntoMedia');
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// ── MEDIE: File handling ─────────────────────────────────────────
+function handleMedieFile(input) {
+  const name = input.files[0]?.name || '';
+  document.getElementById('m-file-name').textContent = name;
+  document.getElementById('m-upload-btn').disabled = !name;
+}
+async function uploadMedie() {
+  const file = document.getElementById('m-file').files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  document.getElementById('m-upload-btn').disabled = true;
+  try {
+    const r = await fetch('/tools/budget/medie/upload', { method:'POST', body:fd });
+    const d = await r.json();
+    if (r.ok) {
+      const msg = d.errors ? ` · ${d.errors} fejl` : '';
+      showToast('Upload færdig', d.inserted + ' rækker gemt' + msg, d.errors ? 'error' : 'success');
+    } else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+  document.getElementById('m-upload-btn').disabled = false;
+}
+
+// ── SÆLGER: Manuel submit ────────────────────────────────────────
+async function submitSaelger() {
+  const person = document.getElementById('s-person').value;
+  const site   = document.getElementById('s-site').value;
+  const team   = document.getElementById('s-team').value;
+  const year   = document.getElementById('s-year').value;
+  if (!person || !site || !team) {
+    showToast('Manglende felter', 'Udfyld sælger, site og team', 'error'); return;
+  }
+  const months_data = collectMonths('s');
+  if (!Object.keys(months_data).length) {
+    showToast('Ingen beløb', 'Indtast mindst ét månedligt beløb', 'error'); return;
+  }
+  const fd = new FormData();
+  fd.append('salesperson', person); fd.append('site', site);
+  fd.append('team', team); fd.append('year', year);
+  fd.append('months_data', JSON.stringify(months_data));
+  try {
+    const r = await fetch('/tools/budget/saelger/insert', { method:'POST', body:fd });
+    const d = await r.json();
+    if (r.ok) showToast('Gemt!', d.inserted + ' måneder gemt til SalesPersonBudget');
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// ── SÆLGER: File handling ────────────────────────────────────────
+function handleSaelgerFile(input) {
+  const name = input.files[0]?.name || '';
+  document.getElementById('s-file-name').textContent = name;
+  document.getElementById('s-upload-btn').disabled = !name;
+}
+async function uploadSaelger() {
+  const file = document.getElementById('s-file').files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  document.getElementById('s-upload-btn').disabled = true;
+  try {
+    const r = await fetch('/tools/budget/saelger/upload', { method:'POST', body:fd });
+    const d = await r.json();
+    if (r.ok) {
+      const msg = d.errors ? ` · ${d.errors} fejl` : '';
+      showToast('Upload færdig', d.inserted + ' rækker gemt' + msg, d.errors ? 'error' : 'success');
+    } else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+  document.getElementById('s-upload-btn').disabled = false;
+}
+
+// ── Drag & drop ──────────────────────────────────────────────────
+['m-dropzone','s-dropzone'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag'); });
+});
+
+
+// ── Overblik tab sub-switching ───────────────────────────────────
+function switchOvTab(id, el) {
+  document.getElementById('ov-medie').style.display   = id === 'medie'   ? '' : 'none';
+  document.getElementById('ov-saelger').style.display = id === 'saelger' ? '' : 'none';
+  document.querySelectorAll('#tab-overblik .mode-btn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+// ── Number formatter ─────────────────────────────────────────────
+function fmtKr(v) {
+  if (v >= 1000000) return (v/1000000).toFixed(2).replace('.',',') + ' mio';
+  if (v >= 1000)    return Math.round(v/1000) + 'k';
+  return Math.round(v).toLocaleString('da-DK');
+}
+function fmtFull(v) {
+  return Math.round(v).toLocaleString('da-DK') + ' kr.';
+}
+
+const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+
+// ── Bar chart renderer ───────────────────────────────────────────
+function renderBarChart(containerId, chartData) {
+  const el = document.getElementById(containerId);
+  const max = Math.max(...chartData.map(d => d.budget), 1);
+  el.innerHTML = chartData.map(d => {
+    const pct = Math.round((d.budget / max) * 100);
+    return `<div class="bar-col">
+      <div class="bar-col-inner">
+        <div class="bar-val">${d.budget > 0 ? fmtKr(d.budget) : ''}</div>
+        <div class="bar" style="height:${Math.max(pct,0)}%" title="${MONTH_NAMES[d.måned]}: ${fmtFull(d.budget)}"></div>
+      </div>
+      <div class="bar-label">${MONTH_NAMES[d.måned]}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Load medie data ──────────────────────────────────────────────
+async function loadMedieData() {
+  const year  = document.getElementById('ov-m-year').value;
+  const month = document.getElementById('ov-m-month').value;
+  const site  = document.getElementById('ov-m-site').value;
+  const brand = document.getElementById('ov-m-brand').value;
+  const params = new URLSearchParams();
+  if (year)  params.set('year',  year);
+  if (month) params.set('month', month);
+  if (site)  params.set('site',  site);
+  if (brand) params.set('brand', brand);
+  try {
+    const r = await fetch('/tools/budget/medie/data?' + params);
+    if (!r.ok) { showToast('Fejl', (await r.json()).detail, 'error'); return; }
+    const d = await r.json();
+    const rows = d.rows;
+    const tbody = document.getElementById('ov-m-tbody');
+
+    // totals
+    const nonEmpty = d.chart.filter(c => c.budget > 0);
+    document.getElementById('ov-m-total-kr').textContent   = fmtKr(d.total);
+    document.getElementById('ov-m-total-rows').textContent  = rows.length;
+    document.getElementById('ov-m-avg-month').textContent   = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
+    document.getElementById('ov-m-totals').style.display = '';
+
+    // chart
+    renderBarChart('ov-m-barchart', d.chart);
+    document.getElementById('ov-m-chart-wrap').style.display = '';
+
+    // table
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen resultater for det valgte filter</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(r => `<tr>
+        <td>${r['År']}</td>
+        <td>${MONTH_NAMES[r['Måned']]}</td>
+        <td>${r.Site || ''}</td>
+        <td>${r.Brand || ''}</td>
+        <td>${r.DealType || ''}</td>
+        <td>${r.Salestype || ''}</td>
+        <td class="num">${Math.round(r.BudgetAmount || 0).toLocaleString('da-DK')}</td>
+      </tr>`).join('');
+    }
+    document.getElementById('ov-m-table-wrap').style.display = '';
+    document.getElementById('ov-m-empty').style.display = 'none';
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// ── Load sælger data ─────────────────────────────────────────────
+async function loadSaelgerData() {
+  const year   = document.getElementById('ov-s-year').value;
+  const month  = document.getElementById('ov-s-month').value;
+  const site   = document.getElementById('ov-s-site').value;
+  const team   = document.getElementById('ov-s-team').value;
+  const person = document.getElementById('ov-s-person').value;
+  const params = new URLSearchParams();
+  if (year)   params.set('year',        year);
+  if (month)  params.set('month',       month);
+  if (site)   params.set('site',        site);
+  if (team)   params.set('team',        team);
+  if (person) params.set('salesperson', person);
+  try {
+    const r = await fetch('/tools/budget/saelger/data?' + params);
+    if (!r.ok) { showToast('Fejl', (await r.json()).detail, 'error'); return; }
+    const d = await r.json();
+    const rows = d.rows;
+    const tbody = document.getElementById('ov-s-tbody');
+
+    const nonEmpty = d.chart.filter(c => c.budget > 0);
+    document.getElementById('ov-s-total-kr').textContent   = fmtKr(d.total);
+    document.getElementById('ov-s-total-rows').textContent  = rows.length;
+    document.getElementById('ov-s-avg-month').textContent   = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
+    document.getElementById('ov-s-totals').style.display = '';
+
+    renderBarChart('ov-s-barchart', d.chart);
+    document.getElementById('ov-s-chart-wrap').style.display = '';
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen resultater for det valgte filter</td></tr>';
+    } else {
+      tbody.innerHTML = rows.map(r => `<tr>
+        <td>${r['År']}</td>
+        <td>${MONTH_NAMES[r['Måned']]}</td>
+        <td>${r.SalesPersonName || ''}</td>
+        <td>${r.Site || ''}</td>
+        <td>${r.Team || ''}</td>
+        <td class="num">${Math.round(r.BudgetAmount || 0).toLocaleString('da-DK')}</td>
+      </tr>`).join('');
+    }
+    document.getElementById('ov-s-table-wrap').style.display = '';
+    document.getElementById('ov-s-empty').style.display = 'none';
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+</script>
+</body>
+</html>
