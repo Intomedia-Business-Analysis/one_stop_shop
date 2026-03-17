@@ -39,7 +39,6 @@
 .submit-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .submit-btn:disabled{opacity:.5;cursor:not-allowed}
 
-/* Upload zone */
 .upload-zone{border:2px dashed var(--border-strong);border-radius:var(--r);padding:40px;text-align:center;cursor:pointer;transition:all .16s;margin-bottom:16px;position:relative}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--green);background:var(--green-light)}
 .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
@@ -53,7 +52,6 @@
 .template-link svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .template-link:hover{text-decoration:underline}
 
-/* Toast */
 .toast{position:fixed;bottom:24px;right:24px;padding:14px 20px;border-radius:var(--r);font-size:12px;font-weight:600;color:#fff;z-index:999;opacity:0;transform:translateY(10px);transition:all .22s;pointer-events:none;max-width:360px}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast.success{background:#1B5C4A}
@@ -61,14 +59,12 @@
 .toast-title{font-size:13px;font-weight:700;margin-bottom:3px}
 .toast-sub{font-size:11px;opacity:.85}
 
-/* Summary bar */
 .sum-bar{display:flex;gap:1px;background:var(--border);border-radius:var(--r-sm);overflow:hidden;margin-bottom:18px;border:1px solid var(--border)}
 .sum-cell{flex:1;background:var(--bg);padding:10px 14px;text-align:center}
 .sum-n{font-size:16px;font-weight:700;color:var(--green);line-height:1}
 .sum-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-top:2px}
 
-/* Overblik tab */
-.filter-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
+.filter-bar{display:grid;gap:10px;margin-bottom:20px}
 .v-table-wrap{overflow-x:auto;margin-top:16px}
 .v-table{width:100%;border-collapse:collapse;font-size:11px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
@@ -92,6 +88,21 @@
 .load-btn{display:flex;align-items:center;gap:7px;padding:9px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:background .13s}
 .load-btn:hover{background:var(--green-mid)}
 .load-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Action knapper i tabel */
+.btn-edit{padding:3px 10px;border-radius:var(--r-sm);border:1.5px solid var(--green);background:transparent;color:var(--green);font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;margin-right:4px;transition:all .13s}
+.btn-edit:hover{background:var(--green);color:#fff}
+.btn-delete{padding:3px 10px;border-radius:var(--r-sm);border:1.5px solid #B32E45;background:transparent;color:#B32E45;font-family:var(--font);font-size:10px;font-weight:700;cursor:pointer;transition:all .13s}
+.btn-delete:hover{background:#B32E45;color:#fff}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--bg);border-radius:var(--r);padding:28px;width:440px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.modal-title{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:20px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+.btn-cancel{padding:8px 18px;border-radius:var(--r-sm);border:1.5px solid var(--border-strong);background:var(--surface);font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink-2);cursor:pointer}
+.btn-cancel:hover{border-color:var(--ink-3)}
 </style>
 </head>
 <body>
@@ -145,65 +156,37 @@
 
         <!-- TABS -->
         <div class="tab-bar">
-          <button class="tab-btn on" onclick="switchTab('medie',this)">
-            Medie Budget
-          </button>
-          <button class="tab-btn" onclick="switchTab('saelger',this)">
-            Sælger Budget
-          </button>
-          <button class="tab-btn" onclick="switchTab('overblik',this)">
-            Se budgetter
-          </button>
+          <button class="tab-btn on" onclick="switchTab('medie',this)">Medie Budget</button>
+          <button class="tab-btn" onclick="switchTab('saelger',this)">Sælger Budget</button>
+          <button class="tab-btn" onclick="switchTab('overblik',this)">Se budgetter</button>
         </div>
 
         <!-- ── MEDIE TAB ─────────────────────────────────── -->
         <div class="tab-pane on" id="tab-medie">
-
           <div class="mode-bar">
             <button class="mode-btn on" onclick="switchMode('medie','manuel',this)">Manuel indtastning</button>
             <button class="mode-btn" onclick="switchMode('medie','excel',this)">Upload Excel / CSV</button>
           </div>
-
-          <!-- Manuel -->
           <div class="mode-section on" id="medie-manuel">
             <div class="form-card">
               <div class="form-grid">
-                <div class="fld">
-                  <label>Site</label>
-                  <select id="m-site">
-                    <option value="">— Vælg site —</option>
-                    {% for s in sites %}<option>{{ s }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Site</label>
+                  <select id="m-site"><option value="">— Vælg site —</option>{% for s in sites %}<option>{{ s }}</option>{% endfor %}</select>
                 </div>
-                <div class="fld">
-                  <label>Brand</label>
-                  <select id="m-brand">
-                    <option value="">— Vælg brand —</option>
-                    {% for b in brands %}<option>{{ b }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Brand</label>
+                  <select id="m-brand"><option value="">— Vælg brand —</option>{% for b in brands %}<option>{{ b }}</option>{% endfor %}</select>
                 </div>
-                <div class="fld">
-                  <label>Deal Type</label>
-                  <select id="m-dealtype">
-                    <option value="">— Vælg type —</option>
-                    {% for d in deal_types %}<option>{{ d }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Deal Type</label>
+                  <select id="m-dealtype"><option value="">— Vælg type —</option>{% for d in deal_types %}<option>{{ d }}</option>{% endfor %}</select>
                 </div>
-                <div class="fld">
-                  <label>Sales Type</label>
-                  <select id="m-salestype">
-                    <option value="">— Vælg salgstype —</option>
-                    {% for st in salestypes %}<option>{{ st }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Sales Type</label>
+                  <select id="m-salestype"><option value="">— Vælg salgstype —</option>{% for st in salestypes %}<option>{{ st }}</option>{% endfor %}</select>
                 </div>
               </div>
               <div class="fld" style="max-width:160px;margin-bottom:18px">
                 <label>År</label>
-                <select id="m-year">
-                  {% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
-                </select>
+                <select id="m-year">{% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
               </div>
-
               <div class="section-head-sm">Månedlige budgetbeløb (kr.)</div>
               <div class="sum-bar" id="m-sumbar">
                 <div class="sum-cell"><div class="sum-n" id="m-total">0</div><div class="sum-l">Årsbudget</div></div>
@@ -219,13 +202,10 @@
                 {% endfor %}
               </div>
               <button class="submit-btn" onclick="submitMedie()">
-                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Gem til database
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Gem til database
               </button>
             </div>
           </div>
-
-          <!-- Excel upload -->
           <div class="mode-section" id="medie-excel">
             <div class="form-card">
               <a class="template-link" href="/tools/budget/medie/template">
@@ -234,16 +214,13 @@
               </a>
               <div class="upload-zone" id="m-dropzone">
                 <input type="file" id="m-file" accept=".xlsx,.xls,.csv" onchange="handleMedieFile(this)">
-                <div class="upload-icon">
-                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                </div>
+                <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
                 <div class="upload-title">Træk fil hertil eller klik for at vælge</div>
                 <div class="upload-sub">.xlsx, .xls eller .csv · Kolonner: DealType, Site, BudgetDate, BudgetAmount, Brand, Salestype</div>
                 <div class="file-name" id="m-file-name"></div>
               </div>
               <button class="submit-btn" id="m-upload-btn" onclick="uploadMedie()" disabled>
-                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload til database
+                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload til database
               </button>
             </div>
           </div>
@@ -251,45 +228,27 @@
 
         <!-- ── SÆLGER TAB ─────────────────────────────────── -->
         <div class="tab-pane" id="tab-saelger">
-
           <div class="mode-bar">
             <button class="mode-btn on" onclick="switchMode('saelger','manuel',this)">Manuel indtastning</button>
             <button class="mode-btn" onclick="switchMode('saelger','excel',this)">Upload Excel / CSV</button>
           </div>
-
-          <!-- Manuel -->
           <div class="mode-section on" id="saelger-manuel">
             <div class="form-card">
               <div class="form-grid-3">
-                <div class="fld">
-                  <label>Sælger</label>
-                  <select id="s-person">
-                    <option value="">— Vælg sælger —</option>
-                    {% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Sælger</label>
+                  <select id="s-person"><option value="">— Vælg sælger —</option>{% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}</select>
                 </div>
-                <div class="fld">
-                  <label>Site</label>
-                  <select id="s-site">
-                    <option value="">— Vælg site —</option>
-                    {% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Site</label>
+                  <select id="s-site"><option value="">— Vælg site —</option>{% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}</select>
                 </div>
-                <div class="fld">
-                  <label>Team</label>
-                  <select id="s-team">
-                    <option value="">— Vælg team —</option>
-                    {% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}
-                  </select>
+                <div class="fld"><label>Team</label>
+                  <select id="s-team"><option value="">— Vælg team —</option>{% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}</select>
                 </div>
               </div>
               <div class="fld" style="max-width:160px;margin-bottom:18px">
                 <label>År</label>
-                <select id="s-year">
-                  {% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}
-                </select>
+                <select id="s-year">{% for y in years %}<option {% if y == current_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
               </div>
-
               <div class="section-head-sm">Månedlige budgetbeløb (kr.)</div>
               <div class="sum-bar">
                 <div class="sum-cell"><div class="sum-n" id="s-total">0</div><div class="sum-l">Årsbudget</div></div>
@@ -305,13 +264,10 @@
                 {% endfor %}
               </div>
               <button class="submit-btn" onclick="submitSaelger()">
-                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Gem til database
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Gem til database
               </button>
             </div>
           </div>
-
-          <!-- Excel upload -->
           <div class="mode-section" id="saelger-excel">
             <div class="form-card">
               <a class="template-link" href="/tools/budget/saelger/template">
@@ -320,26 +276,20 @@
               </a>
               <div class="upload-zone" id="s-dropzone">
                 <input type="file" id="s-file" accept=".xlsx,.xls,.csv" onchange="handleSaelgerFile(this)">
-                <div class="upload-icon">
-                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                </div>
+                <div class="upload-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
                 <div class="upload-title">Træk fil hertil eller klik for at vælge</div>
                 <div class="upload-sub">.xlsx, .xls eller .csv · Kolonner: SalesPersonName, Site, BudgetDate, BudgetAmount, Team</div>
                 <div class="file-name" id="s-file-name"></div>
               </div>
               <button class="submit-btn" id="s-upload-btn" onclick="uploadSaelger()" disabled>
-                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Upload til database
+                <svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload til database
               </button>
             </div>
           </div>
         </div>
 
-
         <!-- ── OVERBLIK TAB ──────────────────────────────────── -->
         <div class="tab-pane" id="tab-overblik">
-
-          <!-- Sub-tabs: Medie / Sælger -->
           <div class="mode-bar" style="margin-bottom:20px">
             <button class="mode-btn on" id="ov-medie-btn" onclick="switchOvTab('medie',this)">Medie Budget</button>
             <button class="mode-btn" id="ov-saelger-btn" onclick="switchOvTab('saelger',this)">Sælger Budget</button>
@@ -347,63 +297,47 @@
 
           <!-- ── MEDIE OVERBLIK ── -->
           <div id="ov-medie">
-            <div class="filter-bar">
-              <div class="fld">
-                <label>År</label>
-                <select id="ov-m-year">
-                  <option value="">Alle år</option>
-                  {% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}
-                </select>
+            <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+              <div class="fld"><label>År</label>
+                <select id="ov-m-year"><option value="">Alle år</option>{% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Måned</label>
-                <select id="ov-m-month">
-                  <option value="">Alle måneder</option>
-                  {% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Måned</label>
+                <select id="ov-m-month"><option value="">Alle måneder</option>{% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Site</label>
-                <select id="ov-m-site">
-                  <option value="">Alle sites</option>
-                  {% for s in sites %}<option>{{ s }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Site</label>
+                <select id="ov-m-site"><option value="">Alle sites</option>{% for s in sites %}<option>{{ s }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Brand</label>
-                <select id="ov-m-brand">
-                  <option value="">Alle brands</option>
-                  {% for b in brands %}<option>{{ b }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Brand</label>
+                <select id="ov-m-brand"><option value="">Alle brands</option>{% for b in brands %}<option>{{ b }}</option>{% endfor %}</select>
+              </div>
+              <div class="fld"><label>Deal Type</label>
+                <select id="ov-m-dealtype"><option value="">Alle deal types</option>{% for d in deal_types %}<option>{{ d }}</option>{% endfor %}</select>
+              </div>
+              <div class="fld"><label>Sales Type</label>
+                <select id="ov-m-salestype"><option value="">Alle salgstyper</option>{% for st in salestypes %}<option>{{ st }}</option>{% endfor %}</select>
               </div>
               <div class="fld" style="justify-content:flex-end;padding-top:18px">
                 <button class="load-btn" onclick="loadMedieData()">
-                  <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-                  Hent data
+                  <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>Hent data
                 </button>
               </div>
             </div>
-
-            <!-- Totals -->
             <div class="overblik-total" id="ov-m-totals" style="display:none">
               <div class="ot-cell"><div class="ot-n" id="ov-m-total-kr">—</div><div class="ot-l">Samlet budget</div></div>
               <div class="ot-cell"><div class="ot-n" id="ov-m-total-rows">—</div><div class="ot-l">Rækker</div></div>
               <div class="ot-cell"><div class="ot-n" id="ov-m-avg-month">—</div><div class="ot-l">Snit pr. måned</div></div>
             </div>
-
-            <!-- Bar chart -->
             <div class="chart-wrap" id="ov-m-chart-wrap" style="display:none">
               <div class="chart-title">Månedligt medie-budget</div>
               <div class="bar-chart" id="ov-m-barchart"></div>
             </div>
-
-            <!-- Table -->
             <div class="v-table-wrap" id="ov-m-table-wrap" style="display:none">
               <table class="v-table" id="ov-m-table">
                 <thead>
                   <tr>
                     <th>År</th><th>Måned</th><th>Site</th><th>Brand</th>
                     <th>DealType</th><th>Salestype</th><th class="num">Budget (kr.)</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="ov-m-tbody"></tbody>
@@ -416,64 +350,37 @@
 
           <!-- ── SÆLGER OVERBLIK ── -->
           <div id="ov-saelger" style="display:none">
-            <div class="filter-bar">
-              <div class="fld">
-                <label>År</label>
-                <select id="ov-s-year">
-                  <option value="">Alle år</option>
-                  {% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}
-                </select>
+            <div class="filter-bar" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+              <div class="fld"><label>År</label>
+                <select id="ov-s-year"><option value="">Alle år</option>{% for y in years %}<option {% if y == current_year %}selected{% endif %} value="{{ y }}">{{ y }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Måned</label>
-                <select id="ov-s-month">
-                  <option value="">Alle måneder</option>
-                  {% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Måned</label>
+                <select id="ov-s-month"><option value="">Alle måneder</option>{% for num, name in months %}<option value="{{ num }}">{{ name }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Site</label>
-                <select id="ov-s-site">
-                  <option value="">Alle sites</option>
-                  {% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Site</label>
+                <select id="ov-s-site"><option value="">Alle sites</option>{% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Team</label>
-                <select id="ov-s-team">
-                  <option value="">Alle teams</option>
-                  {% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Team</label>
+                <select id="ov-s-team"><option value="">Alle teams</option>{% for t in sp_teams %}<option>{{ t }}</option>{% endfor %}</select>
               </div>
-              <div class="fld">
-                <label>Sælger</label>
-                <select id="ov-s-person">
-                  <option value="">Alle sælgere</option>
-                  {% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}
-                </select>
+              <div class="fld"><label>Sælger</label>
+                <select id="ov-s-person"><option value="">Alle sælgere</option>{% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}</select>
               </div>
             </div>
             <div style="margin-bottom:20px">
               <button class="load-btn" onclick="loadSaelgerData()">
-                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-                Hent data
+                <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>Hent data
               </button>
             </div>
-
-            <!-- Totals -->
             <div class="overblik-total" id="ov-s-totals" style="display:none">
               <div class="ot-cell"><div class="ot-n" id="ov-s-total-kr">—</div><div class="ot-l">Samlet budget</div></div>
               <div class="ot-cell"><div class="ot-n" id="ov-s-total-rows">—</div><div class="ot-l">Rækker</div></div>
               <div class="ot-cell"><div class="ot-n" id="ov-s-avg-month">—</div><div class="ot-l">Snit pr. måned</div></div>
             </div>
-
-            <!-- Bar chart -->
             <div class="chart-wrap" id="ov-s-chart-wrap" style="display:none">
               <div class="chart-title">Månedligt sælger-budget</div>
               <div class="bar-chart" id="ov-s-barchart"></div>
             </div>
-
-            <!-- Table -->
             <div class="v-table-wrap" id="ov-s-table-wrap" style="display:none">
               <table class="v-table" id="ov-s-table">
                 <thead>
@@ -500,6 +407,28 @@
 <div class="toast" id="toast">
   <div class="toast-title" id="toast-title"></div>
   <div class="toast-sub" id="toast-sub"></div>
+</div>
+
+<!-- ── REDIGÉR MODAL ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal-box">
+    <div class="modal-title">Redigér budgetrække</div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fld"><label>Site</label><input id="edit-site" type="text"></div>
+      <div class="fld"><label>Brand</label><input id="edit-brand" type="text"></div>
+      <div class="fld"><label>Deal Type</label><input id="edit-dealtype" type="text"></div>
+      <div class="fld"><label>Sales Type</label><input id="edit-salestype" type="text"></div>
+      <div class="fld"><label>År</label><input id="edit-year" type="number"></div>
+      <div class="fld"><label>Måned (1-12)</label><input id="edit-month" type="number" min="1" max="12"></div>
+    </div>
+    <div class="fld"><label>Beløb (kr.)</label><input id="edit-amount" type="number" min="0"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEdit()">Annuller</button>
+      <button class="submit-btn" onclick="saveEdit()">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Gem ændringer
+      </button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -658,7 +587,6 @@ async function uploadSaelger() {
   el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag'); });
 });
 
-
 // ── Overblik tab sub-switching ───────────────────────────────────
 function switchOvTab(id, el) {
   document.getElementById('ov-medie').style.display   = id === 'medie'   ? '' : 'none';
@@ -673,9 +601,7 @@ function fmtKr(v) {
   if (v >= 1000)    return Math.round(v/1000) + 'k';
   return Math.round(v).toLocaleString('da-DK');
 }
-function fmtFull(v) {
-  return Math.round(v).toLocaleString('da-DK') + ' kr.';
-}
+function fmtFull(v) { return Math.round(v).toLocaleString('da-DK') + ' kr.'; }
 
 const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
 
@@ -697,36 +623,38 @@ function renderBarChart(containerId, chartData) {
 
 // ── Load medie data ──────────────────────────────────────────────
 async function loadMedieData() {
-  const year  = document.getElementById('ov-m-year').value;
-  const month = document.getElementById('ov-m-month').value;
-  const site  = document.getElementById('ov-m-site').value;
-  const brand = document.getElementById('ov-m-brand').value;
+  const year      = document.getElementById('ov-m-year').value;
+  const month     = document.getElementById('ov-m-month').value;
+  const site      = document.getElementById('ov-m-site').value;
+  const brand     = document.getElementById('ov-m-brand').value;
+  const dealtype  = document.getElementById('ov-m-dealtype').value;
+  const salestype = document.getElementById('ov-m-salestype').value;
   const params = new URLSearchParams();
-  if (year)  params.set('year',  year);
-  if (month) params.set('month', month);
-  if (site)  params.set('site',  site);
-  if (brand) params.set('brand', brand);
+  if (year)      params.set('year',      year);
+  if (month)     params.set('month',     month);
+  if (site)      params.set('site',      site);
+  if (brand)     params.set('brand',     brand);
+  if (dealtype)  params.set('dealtype',  dealtype);
+  if (salestype) params.set('salestype', salestype);
   try {
     const r = await fetch('/tools/budget/medie/data?' + params);
     if (!r.ok) { showToast('Fejl', (await r.json()).detail, 'error'); return; }
     const d = await r.json();
     const rows = d.rows;
+    console.log(rows[0]);
     const tbody = document.getElementById('ov-m-tbody');
 
-    // totals
     const nonEmpty = d.chart.filter(c => c.budget > 0);
-    document.getElementById('ov-m-total-kr').textContent   = fmtKr(d.total);
-    document.getElementById('ov-m-total-rows').textContent  = rows.length;
-    document.getElementById('ov-m-avg-month').textContent   = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
+    document.getElementById('ov-m-total-kr').textContent  = fmtKr(d.total);
+    document.getElementById('ov-m-total-rows').textContent = rows.length;
+    document.getElementById('ov-m-avg-month').textContent  = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
     document.getElementById('ov-m-totals').style.display = '';
 
-    // chart
     renderBarChart('ov-m-barchart', d.chart);
     document.getElementById('ov-m-chart-wrap').style.display = '';
 
-    // table
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen resultater for det valgte filter</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">Ingen resultater for det valgte filter</td></tr>';
     } else {
       tbody.innerHTML = rows.map(r => `<tr>
         <td>${r['År']}</td>
@@ -736,6 +664,10 @@ async function loadMedieData() {
         <td>${r.DealType || ''}</td>
         <td>${r.Salestype || ''}</td>
         <td class="num">${Math.round(r.BudgetAmount || 0).toLocaleString('da-DK')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn-edit" onclick="openEdit(${r.ID},'${(r.Site||'').replace(/'/g,"\\'")}','${(r.Brand||'').replace(/'/g,"\\'")}','${(r.DealType||'').replace(/'/g,"\\'")}','${(r.Salestype||'').replace(/'/g,"\\'")}',${r['År']},${r['Måned']},${r.BudgetAmount||0})">Redigér</button>
+          <button class="btn-delete" onclick="deleteRow(${r.ID})">Slet</button>
+        </td>
       </tr>`).join('');
     }
     document.getElementById('ov-m-table-wrap').style.display = '';
@@ -764,9 +696,9 @@ async function loadSaelgerData() {
     const tbody = document.getElementById('ov-s-tbody');
 
     const nonEmpty = d.chart.filter(c => c.budget > 0);
-    document.getElementById('ov-s-total-kr').textContent   = fmtKr(d.total);
-    document.getElementById('ov-s-total-rows').textContent  = rows.length;
-    document.getElementById('ov-s-avg-month').textContent   = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
+    document.getElementById('ov-s-total-kr').textContent  = fmtKr(d.total);
+    document.getElementById('ov-s-total-rows').textContent = rows.length;
+    document.getElementById('ov-s-avg-month').textContent  = nonEmpty.length ? fmtKr(d.total / nonEmpty.length) : '—';
     document.getElementById('ov-s-totals').style.display = '';
 
     renderBarChart('ov-s-barchart', d.chart);
@@ -789,6 +721,58 @@ async function loadSaelgerData() {
   } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
 }
 
+// ── Redigér modal ────────────────────────────────────────────────
+let editId = null;
+
+function openEdit(id, site, brand, dealtype, salestype, year, month, amount) {
+  editId = id;
+  document.getElementById('edit-site').value      = site;
+  document.getElementById('edit-brand').value     = brand;
+  document.getElementById('edit-dealtype').value  = dealtype;
+  document.getElementById('edit-salestype').value = salestype;
+  document.getElementById('edit-year').value      = year;
+  document.getElementById('edit-month').value     = month;
+  document.getElementById('edit-amount').value    = amount;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function closeEdit() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editId = null;
+}
+
+async function saveEdit() {
+  const fd = new FormData();
+  fd.append('site',      document.getElementById('edit-site').value);
+  fd.append('brand',     document.getElementById('edit-brand').value);
+  fd.append('dealtype',  document.getElementById('edit-dealtype').value);
+  fd.append('salestype', document.getElementById('edit-salestype').value);
+  fd.append('year',      document.getElementById('edit-year').value);
+  fd.append('month',     document.getElementById('edit-month').value);
+  fd.append('amount',    document.getElementById('edit-amount').value);
+  try {
+    const r = await fetch(`/tools/budget/medie/update/${editId}`, { method:'PUT', body:fd });
+    const d = await r.json();
+    if (r.ok) { showToast('Gemt!', 'Rækken er opdateret'); closeEdit(); loadMedieData(); }
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// ── Slet række ───────────────────────────────────────────────────
+async function deleteRow(id) {
+  if (!confirm('Er du sikker på at du vil slette denne række?')) return;
+  try {
+    const r = await fetch(`/tools/budget/medie/delete/${id}`, { method:'DELETE' });
+    const d = await r.json();
+    if (r.ok) { showToast('Slettet', 'Rækken er fjernet fra databasen'); loadMedieData(); }
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// Luk modal ved klik udenfor
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEdit();
+});
 </script>
 </body>
 </html>
