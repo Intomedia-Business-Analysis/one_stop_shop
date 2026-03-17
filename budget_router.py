@@ -1,3 +1,4 @@
+import traceback
 from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -82,22 +83,24 @@ async def medie_insert(
         conn = get_conn()
         cur = conn.cursor()
         for month_str, amount_str in rows.items():
-            amount = float(amount_str) if amount_str else 0.0
+            amount = round(float(amount_str), 2) if amount_str else 0.0
             budget_date = date(year, int(month_str), 1)
             # Upsert: delete existing + insert
             cur.execute("""
                 DELETE FROM [dbo].[BudgetsIntoMedia]
-                WHERE [Site]=? AND [Brand]=? AND [DealType]=? AND [Salestype]=? AND [BudgetDate]=?
-            """, site, brand, deal_type, salestype, budget_date)
+                WHERE [Site]=%s AND [Brand]=%s AND [DealType]=%s AND [Salestype]=%s AND [BudgetDate]=%s
+            """, (site, brand, deal_type, salestype, budget_date))
+
             cur.execute("""
                 INSERT INTO [dbo].[BudgetsIntoMedia] ([DealType],[Site],[BudgetDate],[BudgetAmount],[Brand],[Salestype])
-                VALUES (?,?,?,?,?,?)
-            """, deal_type, site, budget_date, amount, brand, salestype)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (deal_type, site, budget_date, amount, brand, salestype))
             inserted += 1
         conn.commit()
         conn.close()
         return JSONResponse({"status": "ok", "inserted": inserted})
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # ── MEDIE: Excel upload ──────────────────────────────────────────
@@ -180,6 +183,7 @@ async def saelger_insert(
         conn.close()
         return JSONResponse({"status": "ok", "inserted": inserted})
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # ── SÆLGER: Excel upload ─────────────────────────────────────────
@@ -239,7 +243,14 @@ async def medie_data(
     month:     int = None,
     site:      str = None,
     brand:     str = None,
+    dealtype:  str = None,
+    salestype: str = None,
 ):
+    def serialize(v):
+        if type(v).__name__ == 'Decimal':
+            return float(v)
+        return v
+
     try:
         conn = get_conn()
         cur  = conn.cursor()
@@ -257,8 +268,15 @@ async def medie_data(
         if brand:
             where.append("[Brand] = %s")
             params.append(brand)
+        if dealtype:
+            where.append("[Dealtype] = %s")
+            params.append(dealtype)
+        if salestype:
+            where.append("[Salestype] = %s")
+            params.append(salestype)
+
         sql = f"""
-            SELECT [Site],[Brand],[DealType],[Salestype],
+            SELECT [ID],[Site],[Brand],[DealType],[Salestype],
                    YEAR([BudgetDate]) AS År,
                    MONTH([BudgetDate]) AS Måned,
                    [BudgetAmount]
@@ -268,70 +286,62 @@ async def medie_data(
         """
         cur.execute(sql, params)
         cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        # Build monthly chart series: group by month, sum amount
+        rows = [dict(zip(cols, [serialize(v) for v in r])) for r in cur.fetchall()]
         monthly = {}
         for r in rows:
             m = int(r["Måned"])
             monthly[m] = monthly.get(m, 0) + float(r["BudgetAmount"] or 0)
-        chart = [{"måned": m, "budget": round(monthly.get(m, 0)) } for m in range(1, 13)]
+        chart = [{"måned": m, "budget": round(monthly.get(m, 0))} for m in range(1, 13)]
         conn.close()
         return JSONResponse({"rows": rows, "chart": chart, "total": sum(monthly.values())})
     except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+# ---- Medie Slet knap--------------------------------------
+@router.delete("/medie/delete/{row_id}")
+async def medie_delete(row_id: int):
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        cur.execute(
+            "DELETE FROM [dbo].[BudgetsIntoMedia] WHERE [ID] = %s",
+            (row_id,)
+        )
+        conn.commit()
+        conn.close()
+        return JSONResponse({"status": "ok"})
+    except Exception as e:
+        traceback.print_exc()
         raise HTTPException(500, str(e))
 
-
-# ── OVERBLIK: Sælger budget query ────────────────────────────────
-@router.get("/saelger/data")
-async def saelger_data(
-    year:       int = None,
-    month:      int = None,
-    site:       str = None,
-    team:       str = None,
-    salesperson: str = None,
+#--------------Medie Rediger knap------------------------------------
+@router.put("/medie/update/{row_id}")
+async def medie_update(
+    row_id:    int,
+    site:      str   = Form(...),
+    brand:     str   = Form(...),
+    dealtype:  str   = Form(...),
+    salestype: str   = Form(...),
+    year:      int   = Form(...),
+    month:     int   = Form(...),
+    amount:    float = Form(...),
 ):
     try:
         conn = get_conn()
         cur  = conn.cursor()
-        where = ["1=1"]
-        params = []
-        if year:
-            where.append("YEAR([BudgetDate]) = %s")
-            params.append(year)
-        if month:
-            where.append("MONTH([BudgetDate]) = %s")
-            params.append(month)
-        if site:
-            where.append("[Site] = %s")
-            params.append(site)
-        if team:
-            where.append("[Team] = %s")
-            params.append(team)
-        if salesperson:
-            where.append("[SalesPersonName] = %s")
-            params.append(salesperson)
-        sql = f"""
-            SELECT [SalesPersonName],[Site],[Team],
-                   YEAR([BudgetDate]) AS År,
-                   MONTH([BudgetDate]) AS Måned,
-                   [BudgetAmount]
-            FROM [dbo].[SalesPersonBudget]
-            WHERE {" AND ".join(where)}
-            ORDER BY [BudgetDate],[SalesPersonName]
-        """
-        cur.execute(sql, params)
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        monthly = {}
-        for r in rows:
-            m = int(r["Måned"])
-            monthly[m] = monthly.get(m, 0) + float(r["BudgetAmount"] or 0)
-        chart = [{"måned": m, "budget": round(monthly.get(m, 0)) } for m in range(1, 13)]
+        budget_date = date(year, month, 1)
+        cur.execute("""
+            UPDATE [dbo].[BudgetsIntoMedia]
+            SET [Site]=%s, [Brand]=%s, [DealType]=%s, [Salestype]=%s,
+                [BudgetDate]=%s, [BudgetAmount]=%s
+            WHERE [ID]=%s
+        """, (site, brand, dealtype, salestype, budget_date, amount, row_id))
+        conn.commit()
         conn.close()
-        return JSONResponse({"rows": rows, "chart": chart, "total": sum(monthly.values())})
+        return JSONResponse({"status": "ok"})
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(500, str(e))
-
 # ── Excel template download ──────────────────────────────────────
 @router.get("/medie/template")
 async def medie_template():
