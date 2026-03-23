@@ -87,11 +87,13 @@
     <div class="sb-divider"></div>
     <div class="sb-nav">
       <div class="sb-section-label">Administration</div>
-      <a href="#" class="sbi">
+      {% if user.role == 'admin' %}
+      <a href="/admin/users" class="sbi">
         <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Rettigheder
+        Brugerstyring
       </a>
-      <a href="#" class="sbi">
+      {% endif %}
+      <a href="/settings" class="sbi">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l-.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         Indstillinger
       </a>
@@ -100,9 +102,15 @@
       <div class="sb-avatar">{{ user.initials }}</div>
       <div>
         <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ user.role | capitalize }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
       </div>
     </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
   </nav>
 
   <!-- MAIN -->
