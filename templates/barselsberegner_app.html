@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barselsplanlægger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F4F3EF; --surface:#FFFFFF; --border:#DDD9D0;
+  --navy:#1A3650; --blue:#2563A8; --blue-l:#D6E6F7; --blue-xl:#EEF5FC;
+  --red:#8C1A1A; --red-m:#C0392B; --red-l:#FDECEA; --red-xl:#FFF5F5;
+  --green:#1A5C38; --green-l:#D4EDDF;
+  --amber:#C47A15; --amber-l:#FEF3DC; --amber-xl:#FFFBF2;
+  --gray:#6B7280; --text:#1C1C1E; --text-s:#4B5563;
+  --radius:10px; --shadow:0 2px 12px rgba(0,0,0,.07);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:80px}
+
+header{background:var(--navy);padding:26px 40px 22px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+header h1{font-family:'DM Serif Display',serif;font-size:27px;color:#fff}
+header h1 span{color:#7EB8F0}
+header p{color:#9BB8D4;font-size:12.5px;margin-top:3px;font-weight:300}
+.header-actions{display:flex;gap:10px;flex-shrink:0}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:var(--radius);font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--blue);color:#fff}.btn-primary:hover{background:#1a4f8a}
+.btn-secondary{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)}.btn-secondary:hover{background:rgba(255,255,255,.2)}
+.btn-danger{background:var(--red);color:#fff;padding:5px 10px;font-size:11px}.btn-danger:hover{background:#6e1515}
+.btn-outline{background:transparent;color:var(--blue);border:1.5px solid var(--blue);padding:8px 16px;font-size:13px}.btn-outline:hover{background:var(--blue-xl)}
+
+main{max-width:1800px;margin:0 auto;padding:32px 40px 0}
+
+/* SETTINGS */
+.settings-wrap{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:28px}
+.settings-header{display:flex;align-items:center;justify-content:space-between;padding:15px 24px;background:var(--navy);cursor:pointer;user-select:none}
+.settings-header h2{color:#fff;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.settings-header .chevron{color:#9BB8D4;font-size:18px;transition:transform .25s}
+.settings-header.collapsed .chevron{transform:rotate(-90deg)}
+.settings-body{padding:24px}.settings-body.hidden{display:none}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:22px}
+.setting-card{background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius);padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.setting-card label{font-size:12.5px;color:var(--text-s);line-height:1.4}
+.setting-card label strong{display:block;color:var(--text);font-weight:600;margin-bottom:2px;font-size:13px}
+.setting-num{width:64px;height:42px;border:2px solid var(--blue);border-radius:8px;text-align:center;font-family:'Outfit',sans-serif;font-size:20px;font-weight:700;color:var(--blue);background:var(--amber-xl);flex-shrink:0}
+.setting-num:focus{outline:none;border-color:var(--amber)}
+.total-pills{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+.total-pill{display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:30px;font-size:13px;font-weight:500}
+.total-pill.blue{background:var(--blue-l);color:var(--navy)}
+.total-pill.red{background:var(--red-l);color:var(--red)}
+.total-pill strong{font-size:17px;font-weight:700}
+
+.ref-section h3{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.ref-table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+.ref-table{width:100%;border-collapse:collapse;font-size:12px;min-width:700px}
+.ref-table th{background:var(--navy);color:#fff;padding:8px 14px;font-weight:500;text-align:center;white-space:nowrap}
+.ref-table th:first-child{text-align:left}
+.ref-table td{padding:7px 14px;border-bottom:1px solid var(--border);text-align:center;color:var(--text-s);white-space:nowrap}
+.ref-table td:first-child{text-align:left;color:var(--text);font-weight:500}
+.ref-table tr:last-child td{border-bottom:none}
+.ref-table tr:nth-child(even) td{background:var(--bg)}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.toolbar-left{display:flex;align-items:center;gap:12px}
+.toolbar h2{font-size:16px;font-weight:600;color:var(--navy)}
+.count-badge{background:var(--blue-l);color:var(--blue);font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px}
+
+/* TABLE */
+.table-wrap{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1600px}
+.th-section{padding:9px 12px;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#fff;text-align:center;border-right:2px solid rgba(255,255,255,.25)}
+.th-section.sec-base{background:var(--navy)}
+.th-section.sec-mor{background:var(--blue)}
+.th-section.sec-mor-hl{background:var(--green)}
+.th-section.sec-faed{background:#7A4A10}
+.th-section.sec-forl{background:var(--red)}
+.th-section.sec-far{background:#5A0A0A;border-right:none}
+thead .col-head th{padding:9px 11px;font-weight:600;font-size:11px;line-height:1.35;text-align:center;border-bottom:2px solid var(--border);white-space:nowrap}
+thead .col-head th.th-base{background:var(--blue-xl);color:var(--navy);border-right:1px solid var(--border)}
+thead .col-head th.th-mor{background:var(--blue-l);color:var(--blue);border-right:1px solid #b8d4ef}
+thead .col-head th.th-mor-hl{background:var(--green-l);color:var(--green);border-right:2px solid #a0d0b0}
+thead .col-head th.th-faed{background:#FFF3E0;color:#7A4A10;border-right:1px solid #e8c88a}
+thead .col-head th.th-forl{background:var(--red-l);color:var(--red);border-right:1px solid #f5b9b9}
+thead .col-head th.th-far{background:#F9E6E6;color:#5A0A0A;border-right:none}
+
+tbody tr{border-bottom:1px solid var(--border)}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover td{filter:brightness(.97)}
+tbody td{padding:9px 11px;vertical-align:middle;border-right:1px solid var(--border)}
+tbody td:last-child{border-right:none}
+
+.td-base{background:#FAFAF9}
+.td-mor{background:var(--blue-xl)}
+.td-mor-hl{background:var(--green-l)}
+.td-faed{background:var(--amber-xl)}
+.td-forl{background:var(--red-xl)}
+.td-far-hl{background:var(--red-l)}
+
+.cell-input{width:100%;min-width:90px;border:1.5px solid transparent;background:transparent;font-family:'Outfit',sans-serif;font-size:12.5px;color:var(--text);padding:5px 8px;border-radius:6px;transition:all .15s}
+.cell-input:hover{border-color:var(--border);background:rgba(255,255,255,.8)}
+.cell-input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,168,.12)}
+.cell-input.date-input{min-width:110px}
+.cell-input.amber{border-color:var(--amber);background:var(--amber-xl);color:#874E0A;font-weight:600}
+.cell-input.amber:focus{border-color:#d4880a}
+select.cell-input{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px}
+
+/* Toggle switch for "ansat her" */
+.ansat-toggle{display:flex;align-items:center;gap:6px;font-size:11.5px;white-space:nowrap}
+.ansat-toggle input[type=checkbox]{width:32px;height:18px;appearance:none;background:#ccc;border-radius:9px;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+.ansat-toggle input[type=checkbox]:checked{background:var(--green)}
+.ansat-toggle input[type=checkbox]::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;top:2px;left:2px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.ansat-toggle input[type=checkbox]:checked::after{transform:translateX(14px)}
+.ansat-label{color:var(--text-s);line-height:1.2}
+.ansat-label strong{display:block;color:var(--text);font-size:12px;font-weight:600}
+
+.computed{font-weight:500;font-size:12.5px;color:var(--text-s);text-align:center;padding:5px 6px}
+.computed.date{color:var(--text)}
+.computed.highlight-mor{color:var(--green);font-weight:700;font-size:14px}
+.computed.highlight-far{color:var(--red);font-weight:700;font-size:14px}
+.computed.weeks{color:var(--blue);font-weight:600}
+.computed.weeks-far{color:var(--red-m);font-weight:600}
+.badge-tvil{display:inline-block;background:#EDE7F6;color:#4527A0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:12px;margin-top:3px}
+
+.empty-row td{text-align:center;padding:60px 20px;color:var(--gray);font-size:15px;background:var(--bg)}
+.empty-row td span{display:block;font-size:36px;margin-bottom:12px}
+
+@media print{
+  header .header-actions,.toolbar .btn,.btn-danger,.settings-wrap,.toolbar{display:none!important}
+  body{background:#fff}.table-wrap{box-shadow:none;border:1px solid #ccc}
+  table{min-width:unset;font-size:10px}
+  tbody td{padding:5px 7px}
+}
+
+#toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:11px 22px;border-radius:30px;font-size:13px;opacity:0;transition:all .3s;pointer-events:none;z-index:100}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.table-wrap::-webkit-scrollbar{height:8px}
+.table-wrap::-webkit-scrollbar-track{background:var(--bg)}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🍼 Barsels<span>planlægger</span></h1>
+    <p>Dansk barselsberegner 2025 · Far: fædreorlov ved fødsel + forældreorlov efter mor</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-secondary" onclick="exportCSV()">⬇ Eksportér CSV</button>
+    <button class="btn btn-secondary" onclick="window.print()">🖨 Print</button>
+  </div>
+</header>
+
+<main>
+
+<!-- SETTINGS -->
+<div class="settings-wrap">
+  <div class="settings-header" id="settingsToggle" onclick="toggleSettings()">
+    <h2>⚙ Virksomhedens barselsindstillinger</h2>
+    <span class="chevron">▾</span>
+  </div>
+  <div class="settings-body" id="settingsBody">
+
+    <div class="settings-grid">
+      <div class="setting-card">
+        <label><strong>Graviditetsorlov – mor</strong>Uger FØR terminsdato</label>
+        <input type="number" class="setting-num" id="s_gravUger" value="8" min="1" max="12" oninput="recalcAll();saveSettings()">
+      </div>
+      <div class="setting-card">
+        <label><strong>Betalt orlov – mor</strong>Uger EFTER fødsel inkl. foraldreorlov</label>
+        <input type="number" class="setting-num" id="s_morUger" value="26" min="1" max="52" oninput="recalcAll();saveSettings()">
+      </div>
+      <div class="setting-card">
+        <label><strong>Fædreorlov – far (1. periode)</strong>Uger VED terminsdato</label>
+        <input type="number" class="setting-num" id="s_faedUger" value="2" min="0" max="10" oninput="recalcAll();saveSettings()">
+      </div>
+      <div class="setting-card">
+        <label><strong>Foraldreorlov – far (2. periode)</strong>Uger EFTER morens tilbagekomst</label>
+        <input type="number" class="setting-num" id="s_forlUger" value="17" min="0" max="52" oninput="recalcAll();saveSettings()">
+      </div>
+      <div class="setting-card">
+        <label><strong>Tvillingetillæg</strong>Ekstra uger per forælder (§21a, fra maj 2024)</label>
+        <input type="number" class="setting-num" id="s_tvilUger" value="13" min="0" max="26" oninput="recalcAll();saveSettings()">
+      </div>
+    </div>
+
+    <div class="total-pills">
+      <div class="total-pill blue">👩 Mor total betalt orlov: <strong id="pill_mor">—</strong> uger</div>
+      <div class="total-pill red">👨 Far total betalt orlov: <strong id="pill_far">—</strong> uger <span style="font-size:11px;opacity:.7">(fædreorl. + forældreorl.)</span></div>
+    </div>
+
+    <div class="ref-section">
+      <h3>Sektor-reference — standardtal for dansk arbejdsmarked 2025</h3>
+      <div class="ref-table-wrap">
+      <table class="ref-table">
+        <thead>
+          <tr>
+            <th>Sektor (for part IKKE ansat i virksomheden)</th>
+            <th>Grav. orlov mor</th><th>Barsel mor</th>
+            <th>Fædreorlov</th><th>Foraldreorlov far</th><th>Far total</th><th>Tvillingetillæg</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Privat (ingen overenskomst)</td><td>4 uger</td><td>14 uger</td><td>2 uger</td><td>0 uger</td><td>2 uger</td><td>+13 uger</td></tr>
+          <tr><td>Privat m. overenskomst</td><td>4 uger</td><td>23 uger</td><td>2 uger</td><td>10 uger</td><td>12 uger</td><td>+13 uger</td></tr>
+          <tr><td>Kommune / Region</td><td>8 uger</td><td>26 uger</td><td>2 uger</td><td>16 uger</td><td>18 uger</td><td>+13 uger</td></tr>
+          <tr><td>Stat</td><td>6 uger</td><td>26 uger</td><td>2 uger</td><td>16 uger</td><td>18 uger</td><td>+13 uger</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <div class="toolbar-left">
+    <h2>Medarbejderoversigt</h2>
+    <span class="count-badge" id="rowCount">0 sager</span>
+  </div>
+  <button class="btn btn-outline" onclick="addRow()">＋ Tilføj medarbejder</button>
+</div>
+
+<!-- TABLE -->
+<div class="table-wrap">
+  <table id="mainTable">
+    <thead>
+      <tr id="sectionRow">
+        <th colspan="7" class="th-section sec-base">GRUNDOPLYSNINGER</th>
+        <th colspan="3" class="th-section sec-mor">👩 MOR / 1. FORÆLDER</th>
+        <th colspan="1" class="th-section sec-mor-hl">🟢 MOR</th>
+        <th colspan="3" class="th-section sec-faed">👨 FÆDREORLOV — ved fødsel</th>
+        <th colspan="3" class="th-section sec-forl">👨 FORALDREORLOV — efter mor</th>
+        <th colspan="1" class="th-section sec-far">🟣 FAR</th>
+        <th colspan="1" class="th-section sec-base" style="border-right:none"></th>
+      </tr>
+      <tr class="col-head">
+        <th class="th-base">Mor<br>navn</th>
+        <th class="th-base">Mor<br>ansat her?</th>
+        <th class="th-base">Far / medmor<br>navn</th>
+        <th class="th-base">Far<br>ansat her?</th>
+        <th class="th-base">Terminsdato</th>
+        <th class="th-base" style="background:#FFF9F0;color:#7A4A10">Faktisk<br>fødselsdato<br><small style="font-weight:400;color:#aaa">valgfri</small></th>
+        <th class="th-base">Fødsel</th>
+        <th class="th-mor">Barselsstart</th>
+        <th class="th-mor">Betalte<br>uger</th>
+        <th class="th-mor">Barsel<br>slutter</th>
+        <th class="th-mor-hl">Tilbagekomst</th>
+        <th class="th-faed">Start<br><small style="font-weight:400">(justerbar)</small></th>
+        <th class="th-faed">Uger</th>
+        <th class="th-faed">Slutter</th>
+        <th class="th-forl">Start<br><small style="font-weight:400">← fra mor kol.</small></th>
+        <th class="th-forl">Uger</th>
+        <th class="th-forl">Slutter</th>
+        <th class="th-far">Tilbagekomst</th>
+        <th class="th-base" style="width:46px"></th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr class="empty-row" id="emptyRow">
+        <td colspan="19"><span>👶</span>Ingen sager endnu — klik "Tilføj medarbejder" for at starte</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+</main>
+<div id="toast"></div>
+
+<script>
+// ── STATE ────────────────────────────────────────────
+let rows = [];
+let nextId = 1;
+
+// Sektor → foraldreorlov weeks for the EXTERNAL party (not at our company)
+const EXTERN_FORL = {
+  'Kommune': 16, 'Region': 16, 'Stat': 16,
+  'Privat m. overenskomst': 10, 'Privat': 0
+};
+const EXTERN_FAED = {
+  'Kommune': 2, 'Region': 2, 'Stat': 2,
+  'Privat m. overenskomst': 2, 'Privat': 2
+};
+const EXTERN_GRAV = {
+  'Kommune': 8, 'Region': 8, 'Stat': 6,
+  'Privat m. overenskomst': 4, 'Privat': 4
+};
+const EXTERN_MOR = {
+  'Kommune': 26, 'Region': 26, 'Stat': 26,
+  'Privat m. overenskomst': 23, 'Privat': 14
+};
+
+function S(k){ return +document.getElementById('s_'+k).value || 0; }
+
+function parseDate(str){
+  if(!str) return null;
+  let m=str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1]);
+  m=str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+  return null;
+}
+function fmt(d){
+  if(!d) return '';
+  return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear();
+}
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function nextWorkday(d){
+  const r=new Date(d); r.setDate(r.getDate()+1);
+  while(r.getDay()===0||r.getDay()===6) r.setDate(r.getDate()+1);
+  return r;
+}
+
+function calcRow(row){
+  const termin=parseDate(row.termin);
+  if(!termin) return {};
+
+  // Actual birth date overrides terminsdato for all post-birth calculations
+  // Barselsstart (graviditetsorlov) is always based on terminsdato
+  const foedsel = parseDate(row.foedselDato) || termin;
+
+  const tvil=(row.foedsel==='Tvillinger');
+  const tExtra=tvil?S('tvilUger'):0;
+
+  // Determine week counts based on who is employed here
+  // MOR
+  const morAnsat = row.morAnsat !== false; // default true
+  const gravUger  = morAnsat ? S('gravUger') : (EXTERN_GRAV[row.morSektor]??4);
+  const morUger   = morAnsat ? S('morUger')  : (EXTERN_MOR[row.morSektor]??14);
+
+  // FAR
+  const farAnsat  = row.farAnsat !== false; // default true
+  const faedUger  = farAnsat ? S('faedUger')  : (EXTERN_FAED[row.farSektor]??2);
+  const forlUger  = farAnsat ? S('forlUger')  : (EXTERN_FORL[row.farSektor]??0);
+
+  const morUgerTotal = morUger + tExtra;
+  const forlUgerTotal = forlUger + tExtra;
+
+  // MOR dates
+  // Barselsstart = terminsdato minus graviditetsorlov (NOT affected by actual birth date)
+  const morStart = addDays(termin, -gravUger*7);
+  // Post-birth orlov counts from actual birth date (foedsel)
+  const morSlut  = addDays(foedsel, morUgerTotal*7);
+  const morTilb  = nextWorkday(morSlut);
+
+  // FÆDREORLOV (default: actual birth date, manual override allowed)
+  const faedStart = row.faedStart ? parseDate(row.faedStart) : foedsel;
+  const faedSlut  = addDays(faedStart, faedUger*7);
+
+  // FORALDREORLOV (default: morTilb, manual override)
+  const forlStart = row.forlStart ? parseDate(row.forlStart) : morTilb;
+  const forlSlut  = forlUgerTotal>0 ? addDays(forlStart, forlUgerTotal*7) : null;
+  const farTilb   = nextWorkday(forlSlut || faedSlut);
+
+  return {morStart,morUger:morUgerTotal,morSlut,morTilb,
+          faedStart,faedUger,faedSlut,
+          forlStart,forlUger:forlUgerTotal,forlSlut,farTilb};
+}
+
+function updatePills(){
+  const tExtra=0; // pills show base (no tvillinger)
+  document.getElementById('pill_mor').textContent = S('gravUger')+S('morUger');
+  document.getElementById('pill_far').textContent = S('faedUger')+'+'+S('forlUger')+'='+(S('faedUger')+S('forlUger'));
+}
+
+function recalcAll(){ updatePills(); renderTable(); }
+
+// ── RENDER ───────────────────────────────────────────
+const SEKTORER=['Kommune','Region','Stat','Privat m. overenskomst','Privat'];
+
+function sektorSelect(id, field, val, extraClass=''){
+  const opts=SEKTORER.map(s=>`<option value="${s}"${val===s?' selected':''}>${s}</option>`).join('');
+  return `<select class="cell-input ${extraClass}" style="min-width:130px" onchange="updateRow(${id},'${field}',this.value)">${opts}</select>`;
+}
+
+function esc(v){ return (v||'').replace(/"/g,'&quot;'); }
+
+function renderTable(){
+  updatePills();
+  const tbody=document.getElementById('tbody');
+  const empty=document.getElementById('emptyRow');
+  [...tbody.querySelectorAll('tr[data-id]')].forEach(r=>r.remove());
+  if(!rows.length){ empty.style.display=''; document.getElementById('rowCount').textContent='0 sager'; return; }
+  empty.style.display='none';
+  document.getElementById('rowCount').textContent=rows.length+(rows.length===1?' sag':' sager');
+
+  rows.forEach(row=>{
+    const cv=calcRow(row);
+    const tvil=row.foedsel==='Tvillinger';
+    const morAnsat=row.morAnsat!==false;
+    const farAnsat=row.farAnsat!==false;
+    const tr=document.createElement('tr');
+    tr.setAttribute('data-id',row.id);
+
+    tr.innerHTML=`
+      <!-- Mor navn -->
+      <td class="td-base"><input class="cell-input" placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)" style="min-width:130px"></td>
+
+      <!-- Mor ansat -->
+      <td class="td-base" style="text-align:center">
+        <label class="ansat-toggle">
+          <input type="checkbox" ${morAnsat?'checked':''} onchange="updateRow(${row.id},'morAnsat',this.checked)">
+          <span class="ansat-label"><strong>${morAnsat?'Ansat her':'Ekstern'}</strong>${morAnsat?'':'<br>'+sektorSelect(row.id,'morSektor',row.morSektor||'Kommune')}</span>
+        </label>
+      </td>
+
+      <!-- Far navn -->
+      <td class="td-base"><input class="cell-input" placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)" style="min-width:130px"></td>
+
+      <!-- Far ansat -->
+      <td class="td-base" style="text-align:center">
+        <label class="ansat-toggle">
+          <input type="checkbox" ${farAnsat?'checked':''} onchange="updateRow(${row.id},'farAnsat',this.checked)">
+          <span class="ansat-label"><strong>${farAnsat?'Ansat her':'Ekstern'}</strong>${farAnsat?'':'<br>'+sektorSelect(row.id,'farSektor',row.farSektor||'Kommune')}</span>
+        </label>
+      </td>
+
+      <!-- Terminsdato -->
+      <td class="td-base"><input class="cell-input date-input" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)"></td>
+
+      <!-- Faktisk fødselsdato -->
+      <td class="td-base" style="background:#FFF9F0">
+        <input class="cell-input date-input" style="border-color:${row.foedselDato?'#C47A15':'transparent'};background:${row.foedselDato?'#FFFBF2':'transparent'}" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på en anden dato end terminsdatoen. Orlovsperioder beregnes fra denne dato.">
+        ${row.foedselDato ? '<div style="font-size:10px;color:#C47A15;margin-top:2px">Overskriver termin</div>' : '<div style="font-size:10px;color:#bbb;margin-top:2px">Blank = brug termin</div>'}
+      </td>
+
+      <!-- Fødsel -->
+      <td class="td-base">
+        <select class="cell-input" onchange="updateRow(${row.id},'foedsel',this.value)">
+          <option value="Enkeltbarn" ${row.foedsel!=='Tvillinger'?'selected':''}>👶 Enkeltbarn</option>
+          <option value="Tvillinger" ${tvil?'selected':''}>👶👶 Tvillinger</option>
+        </select>
+        ${tvil?'<div class="badge-tvil">+'+S('tvilUger')+' uger/forælder</div>':''}
+      </td>
+
+      <!-- MOR computed -->
+      <td class="td-mor"><div class="computed date">${fmt(cv.morStart)}</div></td>
+      <td class="td-mor"><div class="computed weeks">${cv.morUger!=null?cv.morUger+' uger':''}</div></td>
+      <td class="td-mor"><div class="computed date">${fmt(cv.morSlut)}</div></td>
+      <td class="td-mor-hl"><div class="computed highlight-mor">${fmt(cv.morTilb)}</div></td>
+
+      <!-- FÆDREORLOV -->
+      <td class="td-faed"><input class="cell-input date-input amber" placeholder="${fmt(cv.faedStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.faedStart)}" onchange="updateRow(${row.id},'faedStart',this.value)" title="Blank = starter ved terminsdato"></td>
+      <td class="td-faed"><div class="computed" style="color:#7A4A10;font-weight:600">${cv.faedUger!=null?cv.faedUger+' uger':''}</div></td>
+      <td class="td-faed"><div class="computed date">${fmt(cv.faedSlut)}</div></td>
+
+      <!-- FORALDREORLOV -->
+      <td class="td-forl"><input class="cell-input date-input amber" placeholder="${fmt(cv.forlStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.forlStart)}" onchange="updateRow(${row.id},'forlStart',this.value)" title="Blank = starter morens tilbagekomstdag"></td>
+      <td class="td-forl"><div class="computed weeks-far">${cv.forlUger!=null?cv.forlUger+' uger':''}</div></td>
+      <td class="td-forl"><div class="computed date">${fmt(cv.forlSlut)}</div></td>
+
+      <!-- FAR tilbagekomst -->
+      <td class="td-far-hl"><div class="computed highlight-far">${fmt(cv.farTilb)}</div></td>
+
+      <!-- DELETE -->
+      <td class="td-base" style="text-align:center"><button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── ROW MANAGEMENT ───────────────────────────────────
+function addRow(){
+  rows.push({id:nextId++,morNavn:'',farNavn:'',morAnsat:true,farAnsat:true,
+    morSektor:'Kommune',farSektor:'Kommune',termin:'',foedselDato:'',foedsel:'Enkeltbarn',
+    faedStart:'',forlStart:''});
+  saveData(); renderTable();
+  setTimeout(()=>{
+    const r=document.querySelector(`tr[data-id="${nextId-1}"]`);
+    if(r) r.querySelector('input')?.focus();
+  },50);
+}
+function deleteRow(id){ rows=rows.filter(r=>r.id!==id); saveData(); renderTable(); showToast('Sag slettet'); }
+function updateRow(id,field,value){
+  const row=rows.find(r=>r.id===id);
+  if(!row) return;
+  // Boolean coercion for checkbox values
+  row[field]=(value===true||value===false)?value:value;
+  saveData(); renderTable();
+}
+
+// ── PERSIST ──────────────────────────────────────────
+function saveData(){
+  try{localStorage.setItem('barselv5_rows',JSON.stringify(rows));localStorage.setItem('barselv5_nid',nextId);}catch(e){}
+}
+function saveSettings(){
+  try{
+    const s={};['gravUger','morUger','faedUger','forlUger','tvilUger'].forEach(k=>s[k]=document.getElementById('s_'+k).value);
+    localStorage.setItem('barselv5_settings',JSON.stringify(s));
+  }catch(e){}
+}
+function loadData(){
+  try{
+    const s=localStorage.getItem('barselv5_settings');
+    if(s){ const obj=JSON.parse(s); Object.entries(obj).forEach(([k,v])=>{ const el=document.getElementById('s_'+k); if(el) el.value=v; }); }
+    const r=localStorage.getItem('barselv5_rows');
+    if(r) rows=JSON.parse(r);
+    const n=localStorage.getItem('barselv5_nid');
+    if(n) nextId=+n;
+  }catch(e){}
+}
+
+function toggleSettings(){
+  document.getElementById('settingsBody').classList.toggle('hidden');
+  document.getElementById('settingsToggle').classList.toggle('collapsed');
+}
+
+// ── EXPORT ───────────────────────────────────────────
+function exportCSV(){
+  const h=['Mor navn','Mor ansat her','Far navn','Far ansat her','Terminsdato','Faktisk fødselsdato','Fødsel',
+    'Mor barselsstart','Mor uger','Mor barsel slutter','Mor tilbagekomst',
+    'Fædreorlov start','Fædreorlov uger','Fædreorlov slutter',
+    'Foraldreorlov start','Foraldreorlov uger','Foraldreorlov slutter','Far tilbagekomst'];
+  const lines=[h.join(';')];
+  rows.forEach(row=>{
+    const cv=calcRow(row);
+    lines.push([row.morNavn,row.morAnsat?'Ja':'Nej ('+row.morSektor+')',
+      row.farNavn,row.farAnsat?'Ja':'Nej ('+row.farSektor+')',
+      row.termin,row.foedselDato||'',row.foedsel,
+      fmt(cv.morStart),cv.morUger,fmt(cv.morSlut),fmt(cv.morTilb),
+      fmt(cv.faedStart),cv.faedUger,fmt(cv.faedSlut),
+      fmt(cv.forlStart),cv.forlUger,fmt(cv.forlSlut),fmt(cv.farTilb)
+    ].map(v=>`"${v??''}"`).join(';'));
+  });
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='barselsplan.csv';a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV eksporteret ✓');
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+window.addEventListener('DOMContentLoaded',()=>{ loadData(); renderTable(); updatePills(); });
+</script>
+</body>
+</html>

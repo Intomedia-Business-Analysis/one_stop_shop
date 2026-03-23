@@ -1,5 +1,5 @@
 import traceback
-from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 import pymssql
@@ -9,10 +9,13 @@ import os
 from datetime import date
 from dotenv import load_dotenv
 
+from auth import ROLE_LABELS, get_current_user
+
 load_dotenv()
 
 router = APIRouter(prefix="/tools/budget", tags=["Budget"])
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
 
 # ── DB connection ────────────────────────────────────────────────
 def get_conn():
@@ -40,16 +43,17 @@ def get_distinct(table: str, column: str) -> list[str]:
 
 # ── PAGES ────────────────────────────────────────────────────────
 @router.get("/", response_class=HTMLResponse)
-async def budget_tool(request: Request):
+async def budget_tool(request: Request, user=Depends(get_current_user)):
     sites       = get_distinct("BudgetsIntoMedia", "Site")
     brands      = get_distinct("BudgetsIntoMedia", "Brand")
     deal_types  = get_distinct("BudgetsIntoMedia", "DealType")
     salestypes  = get_distinct("BudgetsIntoMedia", "Salestype")
-    sp_sites    = get_distinct("SalesPersonBudget", "Site")
-    sp_teams    = get_distinct("SalesPersonBudget", "Team")
-    sp_persons  = get_distinct("SalesPersonBudget", "SalesPersonName")
+    sp_sites    = get_distinct("SalespersonBudget", "Brand")
+    sp_teams    = get_distinct("SalespersonBudget", "Team")
+    sp_persons  = get_distinct("SalespersonBudget", "Owner")
     return templates.TemplateResponse("budget_tool.html", {
         "request":    request,
+        "user":       user,
         "sites":      sites,
         "brands":     brands,
         "deal_types": deal_types,
@@ -135,12 +139,12 @@ async def medie_upload(file: UploadFile = File(...)):
                 amount = float(row["BudgetAmount"])
                 cur.execute("""
                     DELETE FROM [dbo].[BudgetsIntoMedia]
-                    WHERE [Site]=? AND [Brand]=? AND [DealType]=? AND [Salestype]=? AND [BudgetDate]=?
-                """, str(row["Site"]), str(row["Brand"]), str(row["DealType"]), str(row["Salestype"]), budget_date)
+                    WHERE [Site]=%s AND [Brand]=%s AND [DealType]=%s AND [Salestype]=%s AND [BudgetDate]=%s
+                """, (str(row["Site"]), str(row["Brand"]), str(row["DealType"]), str(row["Salestype"]), budget_date))
                 cur.execute("""
                     INSERT INTO [dbo].[BudgetsIntoMedia] ([DealType],[Site],[BudgetDate],[BudgetAmount],[Brand],[Salestype])
-                    VALUES (?,?,?,?,?,?)
-                """, str(row["DealType"]), str(row["Site"]), budget_date, amount, str(row["Brand"]), str(row["Salestype"]))
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (str(row["DealType"]), str(row["Site"]), budget_date, amount, str(row["Brand"]), str(row["Salestype"])))
                 inserted += 1
             except Exception as e:
                 errors += 1
@@ -171,13 +175,13 @@ async def saelger_insert(
             amount = float(amount_str) if amount_str else 0.0
             budget_date = date(year, int(month_str), 1)
             cur.execute("""
-                DELETE FROM [dbo].[SalesPersonBudget]
-                WHERE [SalesPersonName]=? AND [Site]=? AND [Team]=? AND [BudgetDate]=?
-            """, salesperson, site, team, budget_date)
+                DELETE FROM [dbo].[SalespersonBudget]
+                WHERE [Owner]=%s AND [Brand]=%s AND [Team]=%s AND [BudgetDate]=%s
+            """, (salesperson, site, team, budget_date))
             cur.execute("""
-                INSERT INTO [dbo].[SalesPersonBudget] ([SalesPersonName],[Site],[BudgetDate],[BudgetAmount],[Team])
-                VALUES (?,?,?,?,?)
-            """, salesperson, site, budget_date, amount, team)
+                INSERT INTO [dbo].[SalespersonBudget] ([Owner],[Brand],[BudgetDate],[BudgetAmount],[Team])
+                VALUES (%s,%s,%s,%s,%s)
+            """, (salesperson, site, budget_date, amount, team))
             inserted += 1
         conn.commit()
         conn.close()
@@ -200,7 +204,7 @@ async def saelger_upload(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, f"Kunne ikke læse filen: {e}")
 
-    required = {"SalesPersonName", "Site", "Team", "BudgetDate", "BudgetAmount"}
+    required = {"Owner", "Brand", "Team", "BudgetDate", "BudgetAmount"}
     missing = required - set(df.columns)
     if missing:
         raise HTTPException(400, f"Mangler kolonner: {', '.join(missing)}")
@@ -216,13 +220,13 @@ async def saelger_upload(file: UploadFile = File(...)):
                 budget_date = budget_date.replace(day=1)
                 amount = float(row["BudgetAmount"])
                 cur.execute("""
-                    DELETE FROM [dbo].[SalesPersonBudget]
-                    WHERE [SalesPersonName]=? AND [Site]=? AND [Team]=? AND [BudgetDate]=?
-                """, str(row["SalesPersonName"]), str(row["Site"]), str(row["Team"]), budget_date)
+                    DELETE FROM [dbo].[SalespersonBudget]
+                    WHERE [Owner]=%s AND [Brand]=%s AND [Team]=%s AND [BudgetDate]=%s
+                """, (str(row["Owner"]), str(row["Brand"]), str(row["Team"]), budget_date))
                 cur.execute("""
-                    INSERT INTO [dbo].[SalesPersonBudget] ([SalesPersonName],[Site],[BudgetDate],[BudgetAmount],[Team])
-                    VALUES (?,?,?,?,?)
-                """, str(row["SalesPersonName"]), str(row["Site"]), budget_date, amount, str(row["Team"]))
+                    INSERT INTO [dbo].[SalespersonBudget] ([Owner],[Brand],[BudgetDate],[BudgetAmount],[Team])
+                    VALUES (%s,%s,%s,%s,%s)
+                """, (str(row["Owner"]), str(row["Brand"]), budget_date, amount, str(row["Team"])))
                 inserted += 1
             except Exception as e:
                 errors += 1
@@ -269,7 +273,7 @@ async def medie_data(
             where.append("[Brand] = %s")
             params.append(brand)
         if dealtype:
-            where.append("[Dealtype] = %s")
+            where.append("[DealType] = %s")
             params.append(dealtype)
         if salestype:
             where.append("[Salestype] = %s")
@@ -297,6 +301,64 @@ async def medie_data(
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
+# ── OVERBLIK: Sælger budget query ────────────────────────────────
+@router.get("/saelger/data")
+async def saelger_data(
+    year:       int = None,
+    month:      int = None,
+    site:       str = None,
+    team:       str = None,
+    salesperson: str = None,
+):
+    def serialize(v):
+        if type(v).__name__ == 'Decimal':
+            return float(v)
+        return v
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        where  = ["1=1"]
+        params = []
+        if year:
+            where.append("YEAR([BudgetDate]) = %s")
+            params.append(year)
+        if month:
+            where.append("MONTH([BudgetDate]) = %s")
+            params.append(month)
+        if site:
+            where.append("[Brand] = %s")
+            params.append(site)
+        if team:
+            where.append("[Team] = %s")
+            params.append(team)
+        if salesperson:
+            where.append("[Owner] = %s")
+            params.append(salesperson)
+
+        sql = f"""
+            SELECT [Owner] AS SalesPersonName,[Brand] AS Site,[Team],
+                   YEAR([BudgetDate]) AS År,
+                   MONTH([BudgetDate]) AS Måned,
+                   [BudgetAmount]
+            FROM [dbo].[SalespersonBudget]
+            WHERE {" AND ".join(where)}
+            ORDER BY [BudgetDate],[Owner]
+        """
+        cur.execute(sql, params)
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, [serialize(v) for v in r])) for r in cur.fetchall()]
+        monthly = {}
+        for r in rows:
+            m = int(r["Måned"])
+            monthly[m] = monthly.get(m, 0) + float(r["BudgetAmount"] or 0)
+        chart = [{"måned": m, "budget": round(monthly.get(m, 0))} for m in range(1, 13)]
+        conn.close()
+        return JSONResponse({"rows": rows, "chart": chart, "total": sum(monthly.values())})
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
 # ---- Medie Slet knap--------------------------------------
 @router.delete("/medie/delete/{row_id}")
 async def medie_delete(row_id: int):
@@ -357,8 +419,8 @@ async def medie_template():
 @router.get("/saelger/template")
 async def saelger_template():
     from fastapi.responses import StreamingResponse
-    df = pd.DataFrame(columns=["SalesPersonName","Site","BudgetDate","BudgetAmount","Team"])
-    df.loc[0] = ["Michael Toft","FINANS DK","2025-01-01","31000","Team FINANS Int"]
+    df = pd.DataFrame(columns=["Owner","Brand","Team","BudgetDate","BudgetAmount"])
+    df.loc[0] = ["Michael Toft","FINANS DK","Team FINANS Int","2025-01-01","31000"]
     buf = io.BytesIO()
     df.to_excel(buf, index=False)
     buf.seek(0)

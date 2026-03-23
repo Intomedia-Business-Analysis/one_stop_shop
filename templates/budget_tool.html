@@ -118,14 +118,26 @@
     <div class="sb-divider"></div>
     <div class="sb-nav">
       <div class="sb-section-label">Sales Operations</div>
-      <a href="/tools/budget" class="sbi active">
+      <a href="/tools/budget/" class="sbi active">
         <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Budget Upload
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Performance
       </a>
     </div>
     <div class="sb-user">
-      <div class="sb-avatar">CE</div>
-      <div><div class="sb-user-name">Carl-Emil</div><div class="sb-user-role">Admin</div></div>
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div><div class="sb-user-name">{{ user.name }}</div><div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div></div>
     </div>
   </nav>
 
