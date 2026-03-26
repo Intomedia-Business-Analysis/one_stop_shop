@@ -53,8 +53,8 @@
     <nav class="sb-nav">
       <div class="sb-section-label">Administration</div>
       {% if user.role == 'admin' %}
-      <a href="/admin/roles" class="sbi">
-        {% include "icons/lock.svg" %} Rettigheder
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
       </a>
       {% endif %}
       <a href="/settings" class="sbi">
@@ -66,9 +66,15 @@
       <div class="sb-avatar">{{ user.initials }}</div>
       <div>
         <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ user.role | capitalize }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
       </div>
     </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
   </aside>
 
   <!-- ── MAIN ──────────────────────────────────────────────────────── -->

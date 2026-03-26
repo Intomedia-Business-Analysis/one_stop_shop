@@ -1,176 +1,116 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+import json
+import os
+
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 from typing import Optional
-import json
 
+from auth import (
+    ROLE_LABELS,
+    ROLE_RANK,
+    RequiresLoginException,
+    authenticate_user,
+    get_current_user,
+    has_access,
+    resolve_resource_access,
+    init_db,
+)
 from budget_router import router as budget_router
+from admin_router import router as admin_router
+from forecast_router import router as forecast_router
+from perf_router import router as perf_router
+
+load_dotenv()
+
+if os.getenv("DEV_MODE") == "1":
+    print("[DEV] DEV_MODE=1 — login og SQL-forbindelse er bypassed")
 
 app = FastAPI(title="Intomedia Hub")
+init_db()   # Opret tabeller ved opstart (idempotent)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SECRET_KEY", "skift-denne-noegle"),
+)
 app.include_router(budget_router)
+app.include_router(admin_router)
+app.include_router(forecast_router)
+app.include_router(perf_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
 
 # ---------------------------------------------------------------------------
-# RBAC — Roles
+# Exception handlers
 # ---------------------------------------------------------------------------
-# Roles (lav til høj adgang):
-#   "team"       → Ser kun eget brand-team
-#   "management" → Ser alt på tværs, ingen redigering
-#   "admin"      → Fuld adgang + brugerstyring
+
+@app.exception_handler(RequiresLoginException)
+async def requires_login_handler(request: Request, exc: RequiresLoginException):
+    return RedirectResponse(url="/login", status_code=302)
+
 
 # ---------------------------------------------------------------------------
 # Tool & Dashboard Registry
 # ---------------------------------------------------------------------------
+
 CATEGORIES = [
-    {
-        "id": "abonnement",
-        "title": "Abonnement",
-        "description": "Pipeline og revenue — Watch DK, INT, NO, DE, FINANS, MarketWire, Monitor",
-        "icon": "pulse",
-        "color": "green",
-        "min_role": "team",
-        "subcategories": [
-            {"id": "watch-dk",     "title": "Watch DK",    "description": "Dansk pipeline og omsætning",            "brand": "watch_dk",    "min_role": "team"},
-            {"id": "watch-int",    "title": "Watch INT",   "description": "Internationale abonnementer",             "brand": "watch_int",   "min_role": "team"},
-            {"id": "watch-no",     "title": "Watch NO",    "description": "Norsk pipeline og revenue",               "brand": "watch_no",    "min_role": "team"},
-            {"id": "watch-de",     "title": "Watch DE",    "description": "Tysk pipeline og revenue",                "brand": "watch_de",    "min_role": "management"},
-            {"id": "finans",       "title": "FINANS",      "description": "FINANS abonnement og pipeline",           "brand": "finans",      "min_role": "team"},
-            {"id": "marketwire",   "title": "MarketWire",  "description": "MarketWire omsætning og abonnementer",    "brand": "marketwire",  "min_role": "team"},
-            {"id": "monitor",      "title": "Monitor",     "description": "Monitor abonnement og pipeline",          "brand": "monitor",     "min_role": "team"},
-            {"id": "samlet",       "title": "Samlet",      "description": "Tværgående overblik — alle brands",       "brand": None,          "min_role": "management"},
-        ],
-        "items": [
-            {"id": "abo-watch-dk-pipeline",  "title": "Watch DK Pipeline",      "type": "dashboard", "subcategory": "watch-dk",   "brand": "watch_dk",  "min_role": "team",       "url": "/dashboard/abo-watch-dk-pipeline"},
-            {"id": "abo-watch-dk-revenue",   "title": "Watch DK Revenue",        "type": "dashboard", "subcategory": "watch-dk",   "brand": "watch_dk",  "min_role": "team",       "url": "/dashboard/abo-watch-dk-revenue"},
-            {"id": "abo-finans-pipeline",    "title": "FINANS Pipeline",          "type": "dashboard", "subcategory": "finans",     "brand": "finans",    "min_role": "team",       "url": "/dashboard/abo-finans-pipeline"},
-            {"id": "abo-finans-revenue",     "title": "FINANS Revenue",           "type": "dashboard", "subcategory": "finans",     "brand": "finans",    "min_role": "team",       "url": "/dashboard/abo-finans-revenue"},
-            {"id": "abo-samlet",             "title": "Samlet Abonnement",        "type": "dashboard", "subcategory": "samlet",     "brand": None,        "min_role": "management", "url": "/dashboard/abo-samlet"},
-            {"id": "abo-samlet-mgmt",        "title": "Samlet Management View",   "type": "dashboard", "subcategory": "samlet",     "brand": None,        "min_role": "management", "url": "/dashboard/abo-samlet-mgmt"},
-        ],
-    },
     {
         "id": "sales-operations",
         "title": "Sales Operations",
-        "description": "Retention, budget, portefølje-afstemning og rapportering",
+        "description": "Budget og forecast",
         "icon": "settings",
         "color": "amber",
-        "min_role": "team",
+        "min_role": "sales_manager",
         "subcategories": [
-            {"id": "retention",            "title": "Retention",             "description": "Churn og fastholdelse",           "brand": None, "min_role": "team"},
-            {"id": "budget",               "title": "Budget",                "description": "Budget upload og dashboard",      "brand": None, "min_role": "team"},
-            {"id": "portfolio-afstemning", "title": "Portefølje Afstemning", "description": "Afstemning af portefølje",        "brand": None, "min_role": "team"},
-            {"id": "rapportering",         "title": "Rapportering",          "description": "Interne salgsrapporter",          "brand": None, "min_role": "team"},
+            {"id": "budget",   "title": "Budget",   "description": "Budget upload og dashboard", "brand": None, "min_role": "sales_operations"},
+            {"id": "forecast", "title": "Forecast", "description": "Salgsprognoser",             "brand": None, "min_role": "sales_manager"},
         ],
         "items": [
-            {"id": "budget-dashboard",     "title": "Budget Dashboard 2025",     "type": "dashboard", "subcategory": "budget",               "brand": None, "min_role": "team",       "url": "/dashboard/budget"},
-            {"id": "budget-upload-tool",   "title": "Budget Upload Tool",        "type": "tool",      "subcategory": "budget",               "brand": None, "min_role": "team",       "url": "/tools/budget/"},
-            {"id": "portfolio-tool",       "title": "Portefølje Afstemning",     "type": "tool",      "subcategory": "portfolio-afstemning", "brand": None, "min_role": "team",       "url": "/tool/portfolio"},
-            {"id": "retention-dashboard",  "title": "Retention Dashboard",       "type": "dashboard", "subcategory": "retention",            "brand": None, "min_role": "team",       "url": "/dashboard/retention"},
-            {"id": "rapportering-tool",    "title": "Rapporteringsværktøj",      "type": "tool",      "subcategory": "rapportering",         "brand": None, "min_role": "management", "url": "/tool/rapportering"},
+            {"id": "budget-upload-tool", "title": "Budget",   "type": "tool", "subcategory": "budget",   "brand": None, "min_role": "sales_operations", "url": "/tools/budget/"},
+            {"id": "forecast-tool",      "title": "Forecast", "type": "tool", "subcategory": "forecast", "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
         ],
     },
     {
-        "id": "annonce",
-        "title": "Annonce",
-        "description": "Banner, job og samlet annonceoverblik på tværs af medier",
-        "icon": "globe",
-        "color": "green",
-        "min_role": "team",
-        "subcategories": [
-            {"id": "banner", "title": "Banner", "description": "Banner-annoncering",  "brand": None, "min_role": "team"},
-            {"id": "job",    "title": "Job",    "description": "Jobannoncer",          "brand": None, "min_role": "team"},
-            {"id": "samlet", "title": "Samlet", "description": "Samlet annonceoverblik", "brand": None, "min_role": "management"},
-        ],
-        "items": [
-            {"id": "banner-dashboard", "title": "Banner Dashboard",  "type": "dashboard", "subcategory": "banner", "brand": None, "min_role": "team",       "url": "/dashboard/banner"},
-            {"id": "job-dashboard",    "title": "Job Dashboard",     "type": "dashboard", "subcategory": "job",    "brand": None, "min_role": "team",       "url": "/dashboard/job"},
-            {"id": "annonce-samlet",   "title": "Annonce Samlet",    "type": "dashboard", "subcategory": "samlet", "brand": None, "min_role": "management", "url": "/dashboard/annonce-samlet"},
-        ],
-    },
-    {
-        "id": "marketing",
-        "title": "Marketing",
-        "description": "Kampagneanalyse, lead tracking og digital performance",
+        "id": "subscription-sales",
+        "title": "Subscription Sales",
+        "description": "Abonnements-performance og analyser",
         "icon": "activity",
-        "color": "amber",
-        "min_role": "team",
+        "color": "green",
+        "min_role": "salesperson",
         "subcategories": [],
         "items": [
-            {"id": "marketing-dashboard",  "title": "Marketing Dashboard",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "team", "url": "/dashboard/marketing"},
-            {"id": "leads-dashboard",      "title": "Leads Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "team", "url": "/dashboard/leads"},
-            {"id": "kampagne-tool",        "title": "Kampagne Planlægning",  "type": "tool",      "subcategory": None, "brand": None, "min_role": "team", "url": "/tool/kampagne"},
+            {"id": "perf-dashboard", "title": "Performance",    "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",    "url": "/tools/performance/"},
+            {"id": "perf-overview",  "title": "Sales Overblik", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/performance/overview"},
         ],
     },
     {
         "id": "hr",
         "title": "HR",
-        "description": "Medarbejderoverblik, onboarding flow og HR-rapporter",
+        "description": "HR-værktøjer",
         "icon": "users",
         "color": "green",
         "min_role": "management",
         "subcategories": [],
         "items": [
-            {"id": "hr-medarbejdere",  "title": "Medarbejderoversigt", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management", "url": "/dashboard/hr-medarbejdere"},
-            {"id": "hr-onboarding",   "title": "Onboarding Flow",     "type": "tool",      "subcategory": None, "brand": None, "min_role": "management", "url": "/tool/onboarding"},
-        ],
-    },
-    {
-        "id": "management",
-        "title": "Management",
-        "description": "Ledelsesrapporter og tværgående overblik på alle brands",
-        "icon": "briefcase",
-        "color": "green",
-        "min_role": "management",
-        "subcategories": [],
-        "items": [
-            {"id": "mgmt-overblik",  "title": "Management Overblik",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management", "url": "/dashboard/mgmt-overblik"},
-            {"id": "mgmt-rapport",   "title": "Ledelses Rapport",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management", "url": "/dashboard/mgmt-rapport"},
+            {"id": "barselsberegner", "title": "Barselsplanlægger", "type": "tool", "subcategory": None, "brand": None, "min_role": "management", "url": "/tool/barselsberegner"},
         ],
     },
 ]
 
-# ---------------------------------------------------------------------------
-# Mock session — erstat med rigtig auth (JWT / OAuth / AD) i produktion
-# ---------------------------------------------------------------------------
-MOCK_USERS = {
-    "ce": {"name": "Carl-Emil", "initials": "CE", "role": "admin",      "brand": None},
-    "anna": {"name": "Anna",      "initials": "AN", "role": "team",       "brand": "finans"},
-    "mads": {"name": "Mads",      "initials": "MA", "role": "team",       "brand": "watch_dk"},
-    "lars": {"name": "Lars",      "initials": "LA", "role": "management", "brand": None},
-}
-
-ROLE_RANK = {"team": 1, "management": 2, "admin": 3}
-
-def get_current_user(request: Request):
-    """
-    Simpel mock-session. Brug ?user=anna / ?user=mads til at teste roller.
-    Erstat med rigtig session/JWT i produktion.
-    """
-    uid = request.query_params.get("user", "ce")
-    return MOCK_USERS.get(uid, MOCK_USERS["ce"])
-
-def has_access(user: dict, min_role: str, brand: Optional[str] = None) -> bool:
-    user_rank = ROLE_RANK.get(user["role"], 0)
-    req_rank  = ROLE_RANK.get(min_role, 99)
-    if user_rank < req_rank:
-        return False
-    # Team-brugere ser kun eget brand (hvis brand er sat på ressourcen)
-    if user["role"] == "team" and brand and user["brand"] != brand:
-        return False
-    return True
 
 def filter_categories(categories: list, user: dict) -> list:
-    """Filtrér kategorier og items baseret på brugerens rolle og brand."""
     result = []
     for cat in categories:
         if not has_access(user, cat["min_role"]):
             continue
-        visible_items = [
-            item for item in cat["items"]
-            if has_access(user, item["min_role"], item.get("brand"))
-        ]
+        visible_items = []
+        for item in cat["items"]:
+            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"))
+            if access != "none":
+                visible_items.append({**item, "access": access})
         visible_subs = [
             sub for sub in cat.get("subcategories", [])
             if has_access(user, sub["min_role"], sub.get("brand"))
@@ -179,16 +119,100 @@ def filter_categories(categories: list, user: dict) -> list:
         tool_count      = sum(1 for i in visible_items if i["type"] == "tool")
         result.append({
             **cat,
-            "items":         visible_items,
-            "subcategories": visible_subs,
+            "items":           visible_items,
+            "subcategories":   visible_subs,
             "dashboard_count": dashboard_count,
             "tool_count":      tool_count,
         })
     return result
 
+
+# ---------------------------------------------------------------------------
+# Login / Logout
+# ---------------------------------------------------------------------------
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if os.getenv("DEV_MODE") == "1":
+        return RedirectResponse("/", status_code=302)
+    user_id = request.session.get("user_id")
+    if user_id:
+        from auth import get_user_by_id
+        if get_user_by_id(user_id):
+            return RedirectResponse("/", status_code=302)
+        # Forældet session (DB nede eller bruger slettet) — ryd op
+        request.session.clear()
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_post(request: Request):
+    form = await request.form()
+    username = form.get("username", "").strip()
+    password = form.get("password", "")
+    user = authenticate_user(username, password)
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Forkert brugernavn eller adgangskode",
+        })
+    request.session["user_id"] = user["id"]
+    return RedirectResponse("/", status_code=302)
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=302)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.get("/intomedia")
+async def intomedia_redirect():
+    return RedirectResponse("/", status_code=301)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, user=Depends(get_current_user)):
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "user":    user,
+    })
+
+
+@app.post("/settings/change-password")
+async def settings_change_password(request: Request, user=Depends(get_current_user)):
+    from auth import get_conn as auth_get_conn, verify_password, hash_password
+    form            = await request.form()
+    current_pw      = form.get("current_password", "")
+    new_pw          = form.get("new_password", "").strip()
+    confirm_pw      = form.get("confirm_password", "").strip()
+
+    if not all([current_pw, new_pw, confirm_pw]):
+        return RedirectResponse("/settings?error=missing_fields", status_code=302)
+    if new_pw != confirm_pw:
+        return RedirectResponse("/settings?error=pw_mismatch", status_code=302)
+    if not verify_password(current_pw, user["password_hash"]):
+        return RedirectResponse("/settings?error=pw_wrong", status_code=302)
+
+    try:
+        conn = auth_get_conn()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE HubUsers SET password_hash=%s WHERE id=%s",
+            (hash_password(new_pw), user["id"]),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+
+    return RedirectResponse("/settings?success=pw_changed", status_code=302)
+
 
 @app.get("/dashboard/budget", response_class=HTMLResponse)
 async def budget_dashboard(request: Request, user=Depends(get_current_user)):
@@ -197,12 +221,12 @@ async def budget_dashboard(request: Request, user=Depends(get_current_user)):
         "user": user,
     })
 
+
 @app.get("/", response_class=HTMLResponse)
 async def hub(request: Request, user=Depends(get_current_user)):
     categories   = filter_categories(CATEGORIES, user)
     total_dash   = sum(c["dashboard_count"] for c in categories)
     total_tools  = sum(c["tool_count"]      for c in categories)
-    # Byg søgeindex til command palette (flad liste)
     search_index = []
     for cat in categories:
         for item in cat["items"]:
@@ -223,42 +247,56 @@ async def hub(request: Request, user=Depends(get_current_user)):
         "search_index": json.dumps(search_index),
     })
 
+
 @app.get("/category/{cat_id}", response_class=HTMLResponse)
 async def category_detail(cat_id: str, request: Request, user=Depends(get_current_user)):
-    all_cats   = filter_categories(CATEGORIES, user)
-    categories = all_cats
-    cat        = next((c for c in all_cats if c["id"] == cat_id), None)
+    all_cats = filter_categories(CATEGORIES, user)
+    cat = next((c for c in all_cats if c["id"] == cat_id), None)
     if not cat:
         raise HTTPException(status_code=404, detail="Kategori ikke fundet eller ingen adgang")
-
-    # Items er allerede filtreret af filter_categories
     subs = {}
     for item in cat["items"]:
         key = item["subcategory"] or "Generelt"
         subs.setdefault(key, []).append(item)
-
     return templates.TemplateResponse("category.html", {
         "request":    request,
         "user":       user,
-        "categories": categories,
+        "categories": all_cats,
         "cat":        cat,
         "subs":       subs,
         "total_db":   sum(1 for i in cat["items"] if i["type"] == "dashboard"),
         "total_t":    sum(1 for i in cat["items"] if i["type"] == "tool"),
     })
 
+
 @app.get("/dashboard/{dashboard_id}", response_class=HTMLResponse)
 async def dashboard_view(dashboard_id: str, request: Request, user=Depends(get_current_user)):
-    # Placeholder — erstat med rigtig dashboard-rendering
     return HTMLResponse(f"<h2>Dashboard: {dashboard_id}</h2><p>Bruger: {user['name']} ({user['role']})</p><a href='/'>← Hub</a>")
+
+
+@app.get("/tool/barselsberegner", response_class=HTMLResponse)
+async def barselsberegner_view(request: Request, user=Depends(get_current_user)):
+    categories = filter_categories(CATEGORIES, user)
+    return templates.TemplateResponse("tool_barselsberegner.html", {
+        "request":    request,
+        "user":       user,
+        "categories": categories,
+    })
+
+
+@app.get("/tool/barselsberegner/app", response_class=HTMLResponse)
+async def barselsberegner_app(request: Request, user=Depends(get_current_user)):
+    """Serverer selve beregner-appen i en iframe (kræver login)."""
+    return templates.TemplateResponse("barselsberegner_app.html", {"request": request})
+
 
 @app.get("/tool/{tool_id}", response_class=HTMLResponse)
 async def tool_view(tool_id: str, request: Request, user=Depends(get_current_user)):
     return HTMLResponse(f"<h2>Tool: {tool_id}</h2><p>Bruger: {user['name']} ({user['role']})</p><a href='/'>← Hub</a>")
 
+
 @app.get("/api/search")
 async def search_api(q: str, user=Depends(get_current_user)):
-    """Søge-endpoint til fremtidig live-søgning."""
     results = []
     for cat in filter_categories(CATEGORIES, user):
         for item in cat["items"]:
@@ -266,6 +304,7 @@ async def search_api(q: str, user=Depends(get_current_user)):
                 results.append({**item, "category": cat["title"]})
     return {"results": results[:10]}
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
