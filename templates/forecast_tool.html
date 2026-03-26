@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forecast — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1360px;margin:0 auto}
+
+.tab-bar{display:flex;gap:4px;margin-bottom:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px}
+.tab-btn{flex:1;padding:9px 0;border:none;border-radius:7px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .14s;background:transparent;color:var(--ink-3)}
+.tab-btn.on{background:var(--green);color:#fff}
+.tab-pane{display:none}.tab-pane.on{display:block}
+
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:20px}
+.fld{display:flex;flex-direction:column;gap:5px}
+.fld label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.fld select,.fld input[type=number]{font-family:var(--font);font-size:12px;padding:8px 11px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;transition:border-color .13s;width:100%}
+.fld select:focus,.fld input:focus{border-color:var(--green)}
+
+.ctrl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;align-items:flex-end}
+
+.load-btn{display:flex;align-items:center;gap:7px;padding:10px 22px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:background .13s;margin-top:16px}
+.load-btn:hover{background:var(--green-mid)}
+.load-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.submit-btn{display:flex;align-items:center;gap:7px;padding:10px 22px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:background .13s}
+.submit-btn:hover{background:var(--green-mid)}
+.submit-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.summary-bar{display:flex;gap:1px;background:var(--border);border-radius:var(--r-sm);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)}
+.sb-cell{flex:1;background:var(--bg);padding:12px 16px;text-align:center}
+.sb-n{font-size:18px;font-weight:700;color:var(--green);line-height:1}
+.sb-n.neg{color:#B32E45}
+.sb-l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-top:3px}
+
+.v-table-wrap{overflow-x:auto;margin-top:4px}
+.v-table{width:100%;border-collapse:collapse;font-size:11px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:nowrap}
+.v-table tr:hover td{background:var(--green-light)}
+.v-table .num{text-align:right;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.v-table th.hist{background:#2d6a56}
+
+.fc-input{font-family:var(--font);font-size:12px;padding:5px 8px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;width:80px;text-align:right;transition:border-color .13s}
+.fc-input:focus{border-color:var(--green)}
+.fc-pct-wrap{display:flex;align-items:center;gap:3px;justify-content:flex-end}
+.fc-pct-wrap .fc-input{width:64px}
+.fc-pct-wrap span{font-size:11px;color:var(--ink-4)}
+
+.forecast-total{font-weight:700;color:var(--green);text-align:right;font-variant-numeric:tabular-nums}
+.forecast-neg{font-weight:700;color:#B32E45;text-align:right;font-variant-numeric:tabular-nums}
+.diff-pos{color:var(--green);font-weight:600;text-align:right}
+.diff-neg{color:#B32E45;font-weight:600;text-align:right}
+.diff-neu{color:var(--ink-3);font-weight:600;text-align:right}
+.activation-cell{color:#7b5ea7;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+
+.hist-pos{color:var(--green);font-weight:600;text-align:right}
+.hist-neg{color:#B32E45;font-weight:600;text-align:right}
+.hist-neu{color:var(--ink-3);font-weight:400;text-align:right}
+
+.info-badge{display:inline-block;background:var(--green-light);color:var(--green);font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px;margin-left:6px}
+
+.toast{position:fixed;bottom:24px;right:24px;padding:14px 20px;border-radius:var(--r);font-size:12px;font-weight:600;color:#fff;z-index:999;opacity:0;transform:translateY(10px);transition:all .22s;pointer-events:none;max-width:360px}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:#1B5C4A}
+.toast.error{background:#B32E45}
+.toast-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.toast-sub{font-size:11px;opacity:.85}
+
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi active">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/sales-operations" class="tb-btn">← Sales Operations</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/sales-operations" class="bc-link">Sales Operations</a><span class="bc-sep">/</span>
+          <span>Forecast</span>
+        </div>
+        <h1 class="page-title" style="margin-bottom:4px">Forecast Tool</h1>
+        <p class="page-sub">Salgsprognoser baseret på historisk tilvækst (SAD) og åben pipeline — pr. medie, sælger eller team</p>
+
+        <!-- CONTROLS -->
+        <div class="form-card">
+          <div class="ctrl-grid">
+            <div class="fld">
+              <label>År</label>
+              <select id="fc-year">
+                {% for y in years %}
+                <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fld">
+              <label>Måned</label>
+              <select id="fc-month">
+                {% for num, name in months %}
+                <option value="{{ num }}" {% if num == current_month %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="fld">
+              <label>Team <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(valgfrit)</span></label>
+              <select id="fc-team" onchange="onTeamChange()">
+                <option value="" data-brand="">Alle teams</option>
+              </select>
+            </div>
+            <div class="fld">
+              <label>Visningsniveau</label>
+              <select id="fc-level" onchange="onLevelChange(this.value)">
+                <option value="team">Team-overblik</option>
+                <option value="medie">Medie</option>
+                <option value="saelger">Sælger</option>
+              </select>
+            </div>
+          </div>
+          <button class="load-btn" id="load-btn" onclick="loadForecast()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Hent prognosedata
+          </button>
+        </div>
+
+        <!-- TABS -->
+        <div class="tab-bar" id="fc-tabbar" style="display:none">
+          <button class="tab-btn on"  id="tab-btn-team"    onclick="switchTab('team',this)">Team-overblik</button>
+          <button class="tab-btn"     id="tab-btn-medie"   onclick="switchTab('medie',this)">Medie</button>
+          <button class="tab-btn"     id="tab-btn-saelger" onclick="switchTab('saelger',this)">Sælger</button>
+        </div>
+
+        <!-- TAB: TEAM -->
+        <div class="tab-pane on" id="tab-team">
+          <div class="summary-bar">
+            <div class="sb-cell"><div class="sb-n" id="fc-t-total-activation">—</div><div class="sb-l">Realiseret tilvækst</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-t-total-forecast">—</div><div class="sb-l">Forecast total</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-t-total-budget">—</div><div class="sb-l">Budget</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-t-total-diff">—</div><div class="sb-l">Afv. forecast vs. budget</div></div>
+          </div>
+          <div class="v-table-wrap">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th class="num hist" id="th-t-year-m2">2024</th>
+                  <th class="num hist" id="th-t-year-m1">2025</th>
+                  <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
+                  <th class="num">Åben pipeline</th>
+                  <th class="num">Pipeline %</th>
+                  <th class="num">Justering %</th>
+                  <th class="num">Forecast total</th>
+                  <th class="num">Budget</th>
+                  <th class="num">Afv. vs. budget</th>
+                </tr>
+              </thead>
+              <tbody id="fc-t-tbody">
+                <tr><td colspan="10" class="empty">Vælg år, måned og klik "Hent prognosedata"</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:20px;display:flex;justify-content:flex-end">
+            <button class="submit-btn" id="fc-t-save-btn" onclick="saveForecast('team')" style="display:none">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Gem prognose
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB: MEDIE -->
+        <div class="tab-pane" id="tab-medie">
+          <div class="summary-bar">
+            <div class="sb-cell"><div class="sb-n" id="fc-m-total-activation">—</div><div class="sb-l">Realiseret tilvækst</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-m-total-forecast">—</div><div class="sb-l">Forecast total</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-m-total-budget">—</div><div class="sb-l">Budget</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-m-total-diff">—</div><div class="sb-l">Afv. forecast vs. budget</div></div>
+          </div>
+          <div class="v-table-wrap">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Medie</th>
+                  <th class="num hist" id="th-m-year-m2">2024</th>
+                  <th class="num hist" id="th-m-year-m1">2025</th>
+                  <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
+                  <th class="num">Åben pipeline</th>
+                  <th class="num">Pipeline %</th>
+                  <th class="num">Justering %</th>
+                  <th class="num">Forecast total</th>
+                  <th class="num">Budget</th>
+                  <th class="num">Afv. vs. budget</th>
+                </tr>
+              </thead>
+              <tbody id="fc-m-tbody">
+                <tr><td colspan="10" class="empty">Vælg år, måned og klik "Hent prognosedata"</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:20px;display:flex;justify-content:flex-end">
+            <button class="submit-btn" id="fc-m-save-btn" onclick="saveForecast('medie')" style="display:none">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Gem prognose
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB: SÆLGER -->
+        <div class="tab-pane" id="tab-saelger">
+          <div class="summary-bar">
+            <div class="sb-cell"><div class="sb-n" id="fc-s-total-activation">—</div><div class="sb-l">Realiseret tilvækst</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-s-total-forecast">—</div><div class="sb-l">Forecast total</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-s-total-budget">—</div><div class="sb-l">Budget</div></div>
+            <div class="sb-cell"><div class="sb-n" id="fc-s-total-diff">—</div><div class="sb-l">Afv. forecast vs. budget</div></div>
+          </div>
+          <div class="v-table-wrap">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Sælger</th>
+                  <th class="num hist" id="th-s-year-m2">2024</th>
+                  <th class="num hist" id="th-s-year-m1">2025</th>
+                  <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
+                  <th class="num">Åben pipeline</th>
+                  <th class="num">Pipeline %</th>
+                  <th class="num">Justering %</th>
+                  <th class="num">Forecast total</th>
+                  <th class="num">Budget</th>
+                  <th class="num">Afv. vs. budget</th>
+                </tr>
+              </thead>
+              <tbody id="fc-s-tbody">
+                <tr><td colspan="10" class="empty">Vælg år, måned og klik "Hent prognosedata"</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:20px;display:flex;justify-content:flex-end">
+            <button class="submit-btn" id="fc-s-save-btn" onclick="saveForecast('saelger')" style="display:none">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Gem prognose
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-title" id="toast-title"></div>
+  <div class="toast-sub"   id="toast-sub"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Team state — gemmer name og brand separat
+// ---------------------------------------------------------------------------
+let _currentTeamName  = '';
+let _currentTeamBrand = '';
+
+function onTeamChange() {
+  const sel = document.getElementById('fc-team');
+  const opt = sel.options[sel.selectedIndex];
+  _currentTeamName  = opt.value;
+  _currentTeamBrand = opt.dataset.brand || '';
+}
+
+// ---------------------------------------------------------------------------
+// Init: hent teams
+// ---------------------------------------------------------------------------
+(async function initTeams() {
+  try {
+    const r = await fetch('/tools/forecast/teams');
+    if (!r.ok) {
+      console.error('Teams API fejl:', r.status, r.statusText, await r.text());
+      return;
+    }
+    const d = await r.json();
+    const sel = document.getElementById('fc-team');
+    (d.teams || []).filter(t => t.name).forEach(t => {
+      const o = document.createElement('option');
+      o.value         = t.name;
+      o.textContent   = t.name;
+      o.dataset.brand = t.brand || '';
+      sel.appendChild(o);
+    });
+    if (!d.teams || !d.teams.length) {
+      console.warn('Teams API returnerede tom liste — tilføj teams i admin-panelet');
+    }
+  } catch(e) {
+    console.error('initTeams fejl:', e);
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Tab switching
+// ---------------------------------------------------------------------------
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('tab-' + id).classList.add('on');
+}
+
+function onLevelChange(level) {
+  const btn = document.getElementById('tab-btn-' + level);
+  if (btn) switchTab(level, btn);
+}
+
+// ---------------------------------------------------------------------------
+// Load forecast data
+// ---------------------------------------------------------------------------
+let _lastData = null;
+
+async function loadForecast() {
+  const year  = document.getElementById('fc-year').value;
+  const month = document.getElementById('fc-month').value;
+  const level = document.getElementById('fc-level').value;
+  const btn   = document.getElementById('load-btn');
+
+  let url = `/tools/forecast/data?year=${year}&month=${month}&level=${level}`;
+  if (_currentTeamName && _currentTeamName !== 'undefined')
+    url += `&team=${encodeURIComponent(_currentTeamName)}`;
+  if (_currentTeamBrand && _currentTeamBrand !== 'undefined')
+    url += `&team_brand=${encodeURIComponent(_currentTeamBrand)}`;
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Indlæser…';
+
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!r.ok) { showToast('Fejl', d.detail, 'error'); return; }
+
+    _lastData = d;
+    document.getElementById('fc-tabbar').style.display = '';
+
+    // Opdater kolonneoverskrifter
+    ['t','m','s'].forEach(sfx => {
+      const m2el = document.getElementById(`th-${sfx}-year-m2`);
+      const m1el = document.getElementById(`th-${sfx}-year-m1`);
+      if (m2el) m2el.textContent = d.year_m2;
+      if (m1el) m1el.textContent = d.year_m1;
+    });
+
+    const btn2 = document.getElementById('tab-btn-' + level);
+    if (btn2) switchTab(level, btn2);
+
+    renderTable(level, d.rows);
+
+  } catch(e) {
+    showToast('Netværksfejl', e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg> Hent prognosedata';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Render table
+// ---------------------------------------------------------------------------
+function renderTable(level, rows) {
+  const sfxMap  = { team: 't', medie: 'm', saelger: 's' };
+  const suffix  = sfxMap[level] || level;
+  const tbody   = document.getElementById(`fc-${suffix}-tbody`);
+  const saveBtn = document.getElementById(`fc-${suffix}-save-btn`);
+
+  if (!rows || !rows.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">Ingen data fundet for den valgte periode og det valgte team</td></tr>';
+    if (saveBtn) saveBtn.style.display = 'none';
+    updateTotals(level, []);
+    return;
+  }
+
+  tbody.innerHTML = rows.map((row, i) => {
+    const diff      = row.forecast_total - row.budget;
+    const diffClass = diff > 0 ? 'diff-pos' : diff < 0 ? 'diff-neg' : 'diff-neu';
+    const diffTxt   = (diff >= 0 ? '+' : '') + fmtFull(diff);
+    const fcClass   = row.forecast_total >= 0 ? 'forecast-total' : 'forecast-neg';
+    const label     = escHtml(row.display_label || row.dimension_key);
+
+    // Historisk tilvækst farvelagt: grøn = positiv, rød = negativ, grå = ingen data
+    const histCell = (v) => {
+      if (v === 0) return `<td class="hist-neu">—</td>`;
+      const cls = v > 0 ? 'hist-pos' : 'hist-neg';
+      return `<td class="${cls}">${fmtFull(v)}</td>`;
+    };
+
+    return `<tr>
+      <td><strong>${label}</strong></td>
+      ${histCell(row.hist_year_m2)}
+      ${histCell(row.hist_year_m1)}
+      <td class="activation-cell">${fmtFull(row.activation)}</td>
+      <td class="num">${row.open_pipeline !== 0 ? fmtFull(row.open_pipeline) : '—'}</td>
+      <td>
+        <div class="fc-pct-wrap">
+          <input class="fc-input" type="number" min="0" max="100" step="1"
+                 value="${row.pipeline_pct}"
+                 id="pct-${level}-${i}"
+                 data-hist="${row.historical_avg}"
+                 data-pipe="${row.open_pipeline}"
+                 data-adj="${row.adjustment_pct}"
+                 data-man="${row.manual_amount}"
+                 onchange="recalcRow('${level}',${i})">
+          <span>%</span>
+        </div>
+      </td>
+      <td>
+        <div class="fc-pct-wrap">
+          <input class="fc-input" type="number" min="-100" max="500" step="1"
+                 value="${row.adjustment_pct}"
+                 id="adj-${level}-${i}"
+                 placeholder="0"
+                 title="Juster den historiske gennemsnit op/ned i % (0 = ingen justering)"
+                 onchange="recalcRow('${level}',${i})">
+          <span>%</span>
+        </div>
+      </td>
+      <td class="${fcClass}" id="ftotal-${level}-${i}">${fmtFull(row.forecast_total)}</td>
+      <td class="num" data-raw="${row.budget}">${row.budget !== 0 ? fmtFull(row.budget) : '—'}</td>
+      <td class="${row.budget !== 0 ? diffClass : 'diff-neu'}" id="fdiff-${level}-${i}">${row.budget !== 0 ? diffTxt : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  if (saveBtn) saveBtn.style.display = '';
+  updateTotals(level, rows);
+}
+
+// ---------------------------------------------------------------------------
+// Recalculate a single row when inputs change
+// ---------------------------------------------------------------------------
+function recalcRow(level, i) {
+  const pctEl = document.getElementById(`pct-${level}-${i}`);
+  const adjEl = document.getElementById(`adj-${level}-${i}`);
+  const totEl = document.getElementById(`ftotal-${level}-${i}`);
+  const difEl = document.getElementById(`fdiff-${level}-${i}`);
+
+  const hist    = parseFloat(pctEl.dataset.hist) || 0;
+  const pipe    = parseFloat(pctEl.dataset.pipe) || 0;
+  const man     = parseFloat(pctEl.dataset.man)  || 0;
+  const pct     = parseFloat(pctEl.value)         || 0;
+  const adj     = parseFloat(adjEl.value)          || 0;
+
+  const adjFactor  = 1.0 + adj / 100.0;
+  const adjHist    = hist * adjFactor;
+  const total      = adjHist + (pipe * pct / 100) + man;
+
+  const budgetCell = pctEl.closest('tr').querySelectorAll('td')[8];
+  const budget     = parseFloat(budgetCell.dataset.raw) || 0;
+  const diff       = total - budget;
+
+  const fcClass  = total >= 0 ? 'forecast-total' : 'forecast-neg';
+  totEl.textContent = fmtFull(total);
+  totEl.className   = fcClass;
+
+  if (budget !== 0) {
+    const diffClass = diff > 0 ? 'diff-pos' : diff < 0 ? 'diff-neg' : 'diff-neu';
+    difEl.textContent = (diff >= 0 ? '+' : '') + fmtFull(diff);
+    difEl.className   = diffClass;
+  }
+
+  recalcTotals(level);
+}
+
+// ---------------------------------------------------------------------------
+// Recalculate totals bar from current table state
+// ---------------------------------------------------------------------------
+function recalcTotals(level) {
+  const sfxMap = { team: 't', medie: 'm', saelger: 's' };
+  const suffix  = sfxMap[level] || level;
+  const tbody   = document.getElementById(`fc-${suffix}-tbody`);
+  let totalForecast = 0, totalBudget = 0, totalActivation = 0;
+
+  tbody.querySelectorAll('tr').forEach((tr, i) => {
+    const totEl   = document.getElementById(`ftotal-${level}-${i}`);
+    const budCell = tr.querySelectorAll('td')[8];
+    const actCell = tr.querySelectorAll('td')[3];
+    if (!totEl) return;
+    totalForecast  += parseFull(totEl.textContent);
+    totalBudget    += parseFloat(budCell?.dataset.raw || 0);
+    totalActivation+= parseFull(actCell?.textContent || '0');
+  });
+
+  setSummaryBar(suffix, totalActivation, totalForecast, totalBudget);
+}
+
+function updateTotals(level, rows) {
+  const sfxMap = { team: 't', medie: 'm', saelger: 's' };
+  const suffix = sfxMap[level] || level;
+  if (!rows.length) {
+    ['activation','forecast','budget','diff'].forEach(k => {
+      const el = document.getElementById(`fc-${suffix}-total-${k}`);
+      if (el) { el.textContent = '—'; el.className = 'sb-n'; }
+    });
+    return;
+  }
+  const totalForecast   = rows.reduce((s, r) => s + r.forecast_total, 0);
+  const totalActivation = rows.reduce((s, r) => s + r.activation,     0);
+  const totalBudget     = rows.reduce((s, r) => s + r.budget,         0);
+  setSummaryBar(suffix, totalActivation, totalForecast, totalBudget);
+}
+
+function setSummaryBar(suffix, activation, forecast, budget) {
+  const actEl  = document.getElementById(`fc-${suffix}-total-activation`);
+  const fcEl   = document.getElementById(`fc-${suffix}-total-forecast`);
+  const budEl  = document.getElementById(`fc-${suffix}-total-budget`);
+  const diffEl = document.getElementById(`fc-${suffix}-total-diff`);
+  if (!actEl) return;
+
+  actEl.textContent  = fmtKr(activation);
+  actEl.className    = 'sb-n' + (activation < 0 ? ' neg' : '');
+  fcEl.textContent   = fmtKr(forecast);
+  fcEl.className     = 'sb-n' + (forecast < 0 ? ' neg' : '');
+  budEl.textContent  = fmtKr(budget);
+  budEl.className    = 'sb-n';
+
+  const diff = forecast - budget;
+  diffEl.textContent = (diff >= 0 ? '+' : '') + fmtKr(diff);
+  diffEl.className   = 'sb-n' + (diff < 0 ? ' neg' : '');
+  diffEl.style.color = diff >= 0 ? 'var(--green)' : '#B32E45';
+}
+
+// ---------------------------------------------------------------------------
+// Save forecast
+// ---------------------------------------------------------------------------
+async function saveForecast(level) {
+  if (!_lastData) { showToast('Ingen data', 'Hent data først', 'error'); return; }
+
+  const year   = parseInt(document.getElementById('fc-year').value);
+  const month  = parseInt(document.getElementById('fc-month').value);
+  const sfxMap = { team: 't', medie: 'm', saelger: 's' };
+  const suffix  = sfxMap[level] || level;
+  const tbody   = document.getElementById(`fc-${suffix}-tbody`);
+
+  const rows = [];
+  tbody.querySelectorAll('tr').forEach((tr, i) => {
+    const pctEl = document.getElementById(`pct-${level}-${i}`);
+    const adjEl = document.getElementById(`adj-${level}-${i}`);
+    const totEl = document.getElementById(`ftotal-${level}-${i}`);
+    if (!pctEl) return;
+    const dimKey = tr.querySelectorAll('td')[0].textContent.trim();
+    // For team level, map display label back to dimension key from _lastData
+    const dataRow = _lastData.rows.find(r =>
+      (r.display_label || r.dimension_key) === dimKey || r.dimension_key === dimKey
+    );
+    const realKey = dataRow ? dataRow.dimension_key : dimKey;
+    rows.push({
+      dimension_key:  realKey,
+      pipeline_pct:   parseFloat(pctEl.value)  || 30,
+      adjustment_pct: parseFloat(adjEl?.value) || 0,
+      manual_amount:  parseFloat(pctEl.dataset.man) || 0,
+      forecast_total: parseFull(totEl.textContent),
+    });
+  });
+
+  if (!rows.length) { showToast('Ingen data', 'Hent data først', 'error'); return; }
+
+  try {
+    const r = await fetch('/tools/forecast/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({year, month, level, rows}),
+    });
+    const d = await r.json();
+    if (r.ok) showToast('Gemt!', `${d.saved} rækker gemt`);
+    else       showToast('Fejl', d.detail, 'error');
+  } catch(e) {
+    showToast('Netværksfejl', e.message, 'error');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
+function fmtKr(v) {
+  if (v === null || v === undefined) return '—';
+  const abs  = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs / 1000000).toFixed(2).replace('.', ',') + ' mio';
+  if (abs >= 1000)    return sign + Math.round(abs / 1000) + 'k';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+function fmtFull(v) {
+  if (v === null || v === undefined) return '—';
+  const n = typeof v === 'string' ? parseFull(v) : v;
+  return Math.round(n).toLocaleString('da-DK') + ' kr.';
+}
+function parseFull(s) {
+  if (!s || s === '—') return 0;
+  return parseFloat((s || '0').replace(/\./g,'').replace(',','.').replace(/ kr\./,'').replace(/\s/g,'')) || 0;
+}
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---------------------------------------------------------------------------
+// Toast
+// ---------------------------------------------------------------------------
+function showToast(title, sub, type = 'success') {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-title').textContent = title;
+  document.getElementById('toast-sub').textContent   = sub || '';
+  t.className = `toast ${type}`;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
