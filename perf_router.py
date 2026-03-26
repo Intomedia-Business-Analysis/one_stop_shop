@@ -260,8 +260,9 @@ async def perf_filters(user=Depends(get_current_user)):
                     FROM [dbo].[PipedriveDeals]
                     WHERE {col} IS NOT NULL AND {col} <> ''
                       AND [status] = 'won'
+                      AND [sites] IN {BRANDS_PLACEHOLDER}
                     ORDER BY val
-                """)
+                """, tuple(SUBSCRIPTION_BRANDS))
                 raw = [r["val"] for r in cur.fetchall()]
                 if key == "deal_types":
                     # Fold 'Subscription' into 'Abonnement' so they appear as one entry
@@ -362,7 +363,7 @@ async def perf_data(
         except Exception:
             cancel_rows = []
 
-        # Q3: Won (ikke cancellations), samme periode sidste år (YoY)
+        # Q3: Won (ikke cancellations), samme periode sidste år
         where_ly, params_ly = _build_where(
             date_field, ly_from, ly_to, include_web_sale, deal_type, sales_type,
             owner_filter, exclude_cancellations=True, brand_list=brand_list,
@@ -376,6 +377,24 @@ async def perf_data(
             GROUP BY [sites], [owner_name]
         """, tuple(params_ly))
         last_year_rows = cur.fetchall()
+
+        # Q3b: Opsigelser, samme periode sidste år (til tilvækst-YoY)
+        where_lyc, params_lyc = _build_where(
+            date_field, ly_from, ly_to, include_web_sale, deal_type, sales_type,
+            owner_filter, cancellations_only=True, brand_list=brand_list,
+        )
+        try:
+            cur.execute(f"""
+                SELECT COALESCE([sites], 'Ukendt') AS brand,
+                       COALESCE([owner_name], 'Ukendt') AS owner_name,
+                       ABS(SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2)))) AS cancel_amount
+                FROM [dbo].[PipedriveDeals]
+                {where_lyc}
+                GROUP BY [sites], [owner_name]
+            """, tuple(params_lyc))
+            last_year_cancel_rows = cur.fetchall()
+        except Exception:
+            last_year_cancel_rows = []
 
         # Q4: Brand budget — dækker alle måneder inden for den valgte periode
         try:
@@ -391,16 +410,33 @@ async def perf_data(
             brand_budget_rows = []
 
         # Q5: Saelger budget — dækker alle måneder inden for den valgte periode
+        # Hvis en brand-gruppe er valgt, filtreres på SalesPersonBudget.Brand
+        # så sælgerens budget kun vises for den relevante brand (ikke tværgående total).
         saelger_budget_rows = []
         if is_manager:
             try:
-                cur.execute("""
-                    SELECT [Owner] AS dimension_key,
-                           SUM([BudgetAmount]) AS budget
-                    FROM [dbo].[SalesPersonBudget]
-                    WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
-                    GROUP BY [Owner]
-                """, (budget_from.isoformat(), budget_to_excl.isoformat()))
+                brand_keys = (
+                    [k.strip() for k in brand_groups.split(",") if k.strip() in BRAND_GROUPS]
+                    if brand_groups else []
+                )
+                if brand_keys:
+                    bk_ph = "(" + ",".join(["%s"] * len(brand_keys)) + ")"
+                    cur.execute(f"""
+                        SELECT [Owner] AS dimension_key,
+                               SUM([BudgetAmount]) AS budget
+                        FROM [dbo].[SalesPersonBudget]
+                        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+                          AND [Brand] IN {bk_ph}
+                        GROUP BY [Owner]
+                    """, (budget_from.isoformat(), budget_to_excl.isoformat(), *brand_keys))
+                else:
+                    cur.execute("""
+                        SELECT [Owner] AS dimension_key,
+                               SUM([BudgetAmount]) AS budget
+                        FROM [dbo].[SalesPersonBudget]
+                        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+                        GROUP BY [Owner]
+                    """, (budget_from.isoformat(), budget_to_excl.isoformat()))
                 saelger_budget_rows = cur.fetchall()
             except Exception:
                 saelger_budget_rows = []
@@ -446,32 +482,41 @@ async def perf_data(
             k = (r["brand"], r["owner_name"])
             cancel_map[k] = {"cancel_amount": float(r["cancel_amount"] or 0), "cancel_count": int(r["cancel_count"] or 0)}
 
-        ly_map = {}
+        # last_year_net = last year won - last year cancel (tilvækst samme periode i fjor)
+        ly_won_map = {}
         for r in last_year_rows:
             k = (r["brand"], r["owner_name"])
-            ly_map[k] = float(r["won_amount"] or 0)
+            ly_won_map[k] = float(r["won_amount"] or 0)
+
+        ly_cancel_map = {}
+        for r in last_year_cancel_rows:
+            k = (r["brand"], r["owner_name"])
+            ly_cancel_map[k] = float(r["cancel_amount"] or 0)
 
         brand_budget_map   = {r["dimension_key"]: float(r["budget"] or 0) for r in brand_budget_rows}
         saelger_budget_map = {r["dimension_key"]: float(r["budget"] or 0) for r in saelger_budget_rows}
         brand_fc_map       = {r["dimension_key"]: float(r["forecast_total"] or 0) for r in brand_forecast_rows}
         saelger_fc_map     = {r["dimension_key"]: float(r["forecast_total"] or 0) for r in saelger_forecast_rows}
 
-        all_keys = sorted(set(list(won_map.keys()) + list(cancel_map.keys()) + list(ly_map.keys())))
+        all_keys = sorted(set(
+            list(won_map.keys()) + list(cancel_map.keys()) +
+            list(ly_won_map.keys()) + list(ly_cancel_map.keys())
+        ))
 
         brand_data = {}
         saelger_data = {}
 
         for (brand, owner) in all_keys:
-            w  = won_map.get((brand, owner), {"won_amount": 0, "won_count": 0})
-            c  = cancel_map.get((brand, owner), {"cancel_amount": 0, "cancel_count": 0})
-            ly = ly_map.get((brand, owner), 0.0)
-            net = w["won_amount"] - c["cancel_amount"]
+            w       = won_map.get((brand, owner), {"won_amount": 0, "won_count": 0})
+            c       = cancel_map.get((brand, owner), {"cancel_amount": 0, "cancel_count": 0})
+            ly_net  = ly_won_map.get((brand, owner), 0.0) - ly_cancel_map.get((brand, owner), 0.0)
+            net     = w["won_amount"] - c["cancel_amount"]
 
             if brand not in brand_data:
                 brand_data[brand] = {
                     "brand": brand, "won_amount": 0, "won_count": 0,
                     "cancel_amount": 0, "cancel_count": 0,
-                    "net_amount": 0, "last_year_won": 0,
+                    "net_amount": 0, "last_year_net": 0,
                     "budget": brand_budget_map.get(brand, 0.0),
                     "forecast": brand_fc_map.get(brand, 0.0),
                 }
@@ -481,14 +526,14 @@ async def perf_data(
             bd["cancel_amount"] += c["cancel_amount"]
             bd["cancel_count"]  += c["cancel_count"]
             bd["net_amount"]    += net
-            bd["last_year_won"] += ly
+            bd["last_year_net"] += ly_net
 
             if is_manager:
                 if owner not in saelger_data:
                     saelger_data[owner] = {
                         "owner_name": owner, "won_amount": 0, "won_count": 0,
                         "cancel_amount": 0, "cancel_count": 0,
-                        "net_amount": 0, "last_year_won": 0,
+                        "net_amount": 0, "last_year_net": 0,
                         "budget": saelger_budget_map.get(owner, 0.0),
                         "forecast": saelger_fc_map.get(owner, 0.0),
                     }
@@ -498,20 +543,20 @@ async def perf_data(
                 sd["cancel_amount"] += c["cancel_amount"]
                 sd["cancel_count"]  += c["cancel_count"]
                 sd["net_amount"]    += net
-                sd["last_year_won"] += ly
+                sd["last_year_net"] += ly_net
 
         def finalize_row(row):
-            ly   = row["last_year_won"]
-            won  = row["won_amount"]
-            net  = row["net_amount"]
-            bud  = row["budget"]
-            fc   = row["forecast"]
-            row["yoy_pct"]        = round((won - ly) / ly * 100, 1) if ly else None
+            ly_net = row["last_year_net"]
+            net    = row["net_amount"]
+            bud    = row["budget"]
+            fc     = row["forecast"]
+            # YoY sammenligner tilvækst (netto) mod tilvækst samme periode i fjor
+            row["yoy_pct"]        = round((net - ly_net) / abs(ly_net) * 100, 1) if ly_net else None
             row["vs_budget"]      = round(net - bud, 2) if bud else None
             row["vs_budget_pct"]  = round((net - bud) / bud * 100, 1) if bud else None
             row["vs_forecast"]    = round(net - fc, 2) if fc else None
             row["vs_forecast_pct"]= round((net - fc) / fc * 100, 1) if fc else None
-            for k in ("won_amount", "cancel_amount", "net_amount", "last_year_won", "budget", "forecast"):
+            for k in ("won_amount", "cancel_amount", "net_amount", "last_year_net", "budget", "forecast"):
                 row[k] = round(row[k], 2)
             return row
 
@@ -527,16 +572,15 @@ async def perf_data(
             "cancel_amount": round(sum(r["cancel_amount"] for r in by_brand), 2),
             "cancel_count":  sum(r["cancel_count"]  for r in by_brand),
             "net_amount":    round(sum(r["net_amount"]    for r in by_brand), 2),
-            "last_year_won": round(sum(r["last_year_won"] for r in by_brand), 2),
+            "last_year_net": round(sum(r["last_year_net"] for r in by_brand), 2),
             "budget":        round(sum(r["budget"]        for r in by_brand), 2),
             "forecast":      round(sum(r["forecast"]      for r in by_brand), 2),
         }
-        ly_t  = totals["last_year_won"]
-        won_t = totals["won_amount"]
+        ly_t  = totals["last_year_net"]
         net_t = totals["net_amount"]
         bud_t = totals["budget"]
         fc_t  = totals["forecast"]
-        totals["yoy_pct"]         = round((won_t - ly_t) / ly_t * 100, 1) if ly_t else None
+        totals["yoy_pct"]         = round((net_t - ly_t) / abs(ly_t) * 100, 1) if ly_t else None
         totals["vs_budget"]       = round(net_t - bud_t, 2) if bud_t else None
         totals["vs_budget_pct"]   = round((net_t - bud_t) / bud_t * 100, 1) if bud_t else None
         totals["vs_forecast"]     = round(net_t - fc_t, 2) if fc_t else None
@@ -637,29 +681,47 @@ async def perf_breakdown(
         """, tuple(params_ly))
         last_year_rows = cur.fetchall()
 
+        # Opsigelser, samme periode sidste år (til tilvækst-YoY)
+        where_lyc, params_lyc = _build_where(
+            date_field, ly_from, ly_to, include_web_sale, deal_type, sales_type, owner_filter,
+            cancellations_only=True, brand_list=brand_list,
+        )
+        try:
+            cur.execute(f"""
+                SELECT COALESCE({col}, '(Ukendt)') AS dim,
+                       ABS(SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2)))) AS cancel_amount
+                FROM [dbo].[PipedriveDeals]
+                {where_lyc}
+                GROUP BY {col}
+            """, tuple(params_lyc))
+            last_year_cancel_rows = cur.fetchall()
+        except Exception:
+            last_year_cancel_rows = []
+
         conn.close()
 
-        won_map    = {r["dim"]: {"won_amount": float(r["won_amount"] or 0), "won_count": int(r["won_count"] or 0)} for r in won_rows}
-        cancel_map = {r["dim"]: {"cancel_amount": float(r["cancel_amount"] or 0), "cancel_count": int(r["cancel_count"] or 0)} for r in cancel_rows}
-        ly_map     = {r["dim"]: float(r["won_amount"] or 0) for r in last_year_rows}
+        won_map       = {r["dim"]: {"won_amount": float(r["won_amount"] or 0), "won_count": int(r["won_count"] or 0)} for r in won_rows}
+        cancel_map    = {r["dim"]: {"cancel_amount": float(r["cancel_amount"] or 0), "cancel_count": int(r["cancel_count"] or 0)} for r in cancel_rows}
+        ly_won_map    = {r["dim"]: float(r["won_amount"] or 0) for r in last_year_rows}
+        ly_cancel_map = {r["dim"]: float(r["cancel_amount"] or 0) for r in last_year_cancel_rows}
 
-        all_dims = sorted(set(list(won_map.keys()) + list(cancel_map.keys()) + list(ly_map.keys())))
+        all_dims = sorted(set(list(won_map.keys()) + list(cancel_map.keys()) + list(ly_won_map.keys()) + list(ly_cancel_map.keys())))
         rows = []
         for dim in all_dims:
-            w  = won_map.get(dim,    {"won_amount": 0, "won_count": 0})
-            c  = cancel_map.get(dim, {"cancel_amount": 0, "cancel_count": 0})
-            ly = ly_map.get(dim, 0.0)
-            net = w["won_amount"] - c["cancel_amount"]
-            yoy = round((w["won_amount"] - ly) / ly * 100, 1) if ly else None
+            w      = won_map.get(dim,    {"won_amount": 0, "won_count": 0})
+            c      = cancel_map.get(dim, {"cancel_amount": 0, "cancel_count": 0})
+            ly_net = ly_won_map.get(dim, 0.0) - ly_cancel_map.get(dim, 0.0)
+            net    = w["won_amount"] - c["cancel_amount"]
+            yoy    = round((net - ly_net) / abs(ly_net) * 100, 1) if ly_net else None
             rows.append({
-                "dim":           dim,
-                "won_amount":    round(w["won_amount"], 2),
-                "won_count":     w["won_count"],
-                "cancel_amount": round(c["cancel_amount"], 2),
-                "cancel_count":  c["cancel_count"],
-                "net_amount":    round(net, 2),
-                "last_year_won": round(ly, 2),
-                "yoy_pct":       yoy,
+                "dim":            dim,
+                "won_amount":     round(w["won_amount"], 2),
+                "won_count":      w["won_count"],
+                "cancel_amount":  round(c["cancel_amount"], 2),
+                "cancel_count":   c["cancel_count"],
+                "net_amount":     round(net, 2),
+                "last_year_net":  round(ly_net, 2),
+                "yoy_pct":        yoy,
             })
 
         rows.sort(key=lambda r: -r["won_amount"])
@@ -687,6 +749,7 @@ async def perf_deals(
     source: str = None,
     basis: str = None,
     cancellations_only: bool = False,
+    exclude_cancellations: bool = False,
     brand_groups: str = None,
     user=Depends(get_current_user),
 ):
@@ -705,6 +768,7 @@ async def perf_deals(
     where, params = _build_where(
         date_field, date_from, date_to, include_web_sale, deal_type, sales_type,
         owner_name, cancellations_only=cancellations_only,
+        exclude_cancellations=exclude_cancellations,
         source=source, basis=basis, brand_list=deal_brand_list,
     )
 
@@ -725,7 +789,7 @@ async def perf_deals(
                 [deal_type],
                 [sales_type],
                 [pipeline_name],
-                CASE WHEN [cancellation] IS NOT NULL AND [cancellation] <> ''
+                CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
                      THEN 1 ELSE 0 END AS is_cancellation
             FROM [dbo].[PipedriveDeals]
             {where}
@@ -851,19 +915,23 @@ async def perf_overview_data(user=Depends(get_current_user)):
             # Brug Hub's TeamMemberships → Teams til team-attribution.
             # For sælgere i flere teams: match site-brand til team-brand via OUTER APPLY.
             # Tilvækst baseret på service_activation_date (fallback: won_time).
+            # PersonTeams inkluderer ALLE historiske memberships (ikke filtreret på GETDATE()),
+            # så deals matches mod det hold sælgeren var i PÅ DEALENS DATO.
             cur.execute(f"""
                 WITH PersonTeams AS (
                     SELECT u.name AS owner_name,
                            t.name AS team_name,
-                           t.brand AS team_brand
+                           t.brand AS team_brand,
+                           tm.start_date AS mem_start,
+                           tm.end_date   AS mem_end
                     FROM HubUsers u
                     JOIN TeamMemberships tm ON tm.user_id = u.id
-                        AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
                     JOIN Teams t ON t.id = tm.team_id
                 ),
                 SiteTagged AS (
                     SELECT
                         pd.owner_name, pd.value, pd.cancellation,
+                        COALESCE(pd.service_activation_date, pd.won_time) AS deal_date,
                         CASE
                             WHEN pd.sites LIKE '%onitor%'    THEN 'monitor'
                             WHEN pd.sites = 'FINANS DK'      THEN 'finans'
@@ -891,31 +959,46 @@ async def perf_overview_data(user=Depends(get_current_user)):
                     SELECT
                         st.value, st.cancellation,
                         COALESCE(
-                            pt_match.team_name,   -- 1. Præcis brand-match (f.eks. watch_dk)
-                            pt_catch.team_name,   -- 2. Tværgående hold uden brand (f.eks. Banner, Job)
-                            pt_any.team_name      -- 3. Fallback: alfabetisk første hold
+                            pt_match.team_name,   -- 1. Præcis brand-match (f.eks. watch_dk) på dealens dato
+                            pt_catch.team_name,   -- 2. Tværgående hold uden brand på dealens dato
+                            pt_any.team_name      -- 3. Fallback: kategori-match, så alfabetisk
                         ) AS team
                     FROM SiteTagged st
                     OUTER APPLY (
-                        -- Præcis match: sælgerens hold-brand = site-brand
+                        -- Præcis match: sælgerens hold-brand = site-brand, aktivt på dealens dato
                         SELECT TOP 1 pt.team_name
                         FROM PersonTeams pt
                         WHERE pt.owner_name = st.owner_name
                           AND pt.team_brand = st.site_brand
+                          AND (pt.mem_start IS NULL OR pt.mem_start <= st.deal_date)
+                          AND (pt.mem_end   IS NULL OR pt.mem_end   >= st.deal_date)
                     ) pt_match
                     OUTER APPLY (
-                        -- Catch-all: hold uden brand (tværgående hold som Banner, Job)
+                        -- Catch-all: hold uden brand (tværgående hold), aktivt på dealens dato
                         SELECT TOP 1 pt2.team_name
                         FROM PersonTeams pt2
                         WHERE pt2.owner_name = st.owner_name
                           AND (pt2.team_brand IS NULL OR pt2.team_brand = '')
+                          AND (pt2.mem_start IS NULL OR pt2.mem_start <= st.deal_date)
+                          AND (pt2.mem_end   IS NULL OR pt2.mem_end   >= st.deal_date)
                     ) pt_catch
                     OUTER APPLY (
-                        -- Fallback: første hold alfabetisk
+                        -- Fallback: hold aktivt på dealens dato — foretrækker kategori-match
+                        -- (Watch-hold for Watch-sites, Finans-hold for Finans-sites) frem for alfabetisk
                         SELECT TOP 1 pt3.team_name
                         FROM PersonTeams pt3
                         WHERE pt3.owner_name = st.owner_name
-                        ORDER BY pt3.team_name
+                          AND (pt3.mem_start IS NULL OR pt3.mem_start <= st.deal_date)
+                          AND (pt3.mem_end   IS NULL OR pt3.mem_end   >= st.deal_date)
+                        ORDER BY
+                            CASE
+                                WHEN st.site_brand LIKE 'watch%'   AND pt3.team_name LIKE '%Watch%'  THEN 0
+                                WHEN st.site_brand LIKE 'finans%'  AND pt3.team_name LIKE '%Finans%' THEN 0
+                                WHEN st.site_brand = 'monitor'     AND pt3.team_name LIKE '%Monitor%' THEN 0
+                                WHEN st.site_brand = 'marketwire'  AND pt3.team_name LIKE '%Market%'  THEN 0
+                                ELSE 1
+                            END,
+                            pt3.team_name
                     ) pt_any
                 )
                 SELECT
@@ -997,14 +1080,26 @@ async def perf_overview_data(user=Depends(get_current_user)):
                     CAST(pd.value AS DECIMAL(18,2)) AS deal_value,
                     CONVERT(NVARCHAR(19), pd.won_time, 120) AS won_dt
                 FROM [dbo].[PipedriveDeals] pd
-                LEFT JOIN (
-                    SELECT u.name AS owner_name, MIN(t.name) AS team_name
+                OUTER APPLY (
+                    -- Vælg det hold sælgeren var i PÅ won_time-datoen.
+                    -- Foretrækker kategori-match (Watch-hold for Watch-sites) frem for alfabetisk.
+                    SELECT TOP 1 t.name AS team_name
                     FROM HubUsers u
                     JOIN TeamMemberships tm ON tm.user_id = u.id
-                        AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+                        AND (tm.start_date IS NULL OR tm.start_date <= pd.won_time)
+                        AND (tm.end_date   IS NULL OR tm.end_date   >= pd.won_time)
                     JOIN Teams t ON t.id = tm.team_id
-                    GROUP BY u.name
-                ) ot ON ot.owner_name = pd.owner_name
+                    WHERE u.name = pd.owner_name
+                    ORDER BY
+                        CASE
+                            WHEN pd.sites LIKE '%Watch%'   AND t.name LIKE '%Watch%'  THEN 0
+                            WHEN pd.sites LIKE '%FINANS%'  AND t.name LIKE '%Finans%' THEN 0
+                            WHEN pd.sites LIKE '%Finans%'  AND t.name LIKE '%Finans%' THEN 0
+                            WHEN pd.sites LIKE '%onitor%'  AND t.name LIKE '%Monitor%' THEN 0
+                            ELSE 1
+                        END,
+                        t.name
+                ) ot
                 WHERE pd.status='won' AND pd.pipeline_name<>'Web Sale'
                   AND (pd.cancellation IS NULL OR pd.cancellation='')
                   AND pd.sites IN {brands_ph}
