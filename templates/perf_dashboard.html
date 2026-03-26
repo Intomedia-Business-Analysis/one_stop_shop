@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Performance — Intomedia Hub</title>
+<title>Subscription Dashboard — Intomedia Hub</title>
 <link rel="stylesheet" href="/static/hub.css">
 <style>
 .tool-wrap{max-width:1280px;margin:0 auto}
@@ -156,6 +156,22 @@
 .spin-wrap{text-align:center;padding:50px;color:var(--ink-4);font-size:12px}
 .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Sortable table headers */
+.v-table th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:20px}
+.v-table th.sortable:hover{background:var(--green-mid,#155c45)}
+.v-table th.sortable::after{content:'⇅';position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;opacity:.5}
+.v-table th.sort-asc::after{content:'↑';opacity:1}
+.v-table th.sort-desc::after{content:'↓';opacity:1}
+
+/* Seneste deals vundet section */
+.latest-deals-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-top:20px}
+.latest-deals-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface)}
+.latest-deals-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4)}
+.latest-deals-body{overflow-x:auto}
+
+/* Deal panel — wider for comfortable reading */
+.deal-panel{position:fixed;top:0;right:0;bottom:0;width:min(1000px,100vw)!important}
 </style>
 </head>
 <body data-manager="{{ 'true' if is_manager else 'false' }}">
@@ -188,8 +204,14 @@
       <div class="sb-section-label">Subscription Sales</div>
       <a href="/tools/performance/" class="sbi active">
         <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Performance
+        Subscription Dashboard
       </a>
+      {% if is_manager %}
+      <a href="/tools/performance/overview" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Overblik
+      </a>
+      {% endif %}
     </div>
     <div class="sb-user">
       <div class="sb-avatar">{{ user.initials }}</div>
@@ -221,13 +243,13 @@
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
           <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
-          <span>Performance</span>
+          <span>Subscription Dashboard</span>
         </div>
-        <h1 class="page-title" style="margin-bottom:4px">Abonnements-performance</h1>
-        <p class="page-sub">Won deals fordelt på brands og sælgere — med year-over-year sammenligning, budget og forecast</p>
+        <h1 class="page-title" style="margin-bottom:4px">Subscription Dashboard</h1>
+        <p class="page-sub">Abonnementsomsætning fordelt på brands og sælgere — med year-over-year sammenligning, budget og forecast</p>
 
         <!-- CONTROLS -->
-        <div class="form-card" style="position:sticky;top:0;z-index:50;">
+        <div class="form-card" style="position:sticky;top:0;z-index:50;background:var(--surface);box-shadow:0 4px 12px rgba(0,0,0,.08)">
           <!-- Period selector -->
           <div class="fld" style="margin-bottom:10px">
             <label>Tidsperiode</label>
@@ -262,7 +284,7 @@
               <label>Datofelt</label>
               <select id="p-datefield">
                 <option value="won_time">Vundet dato</option>
-                <option value="service_activation_date">Service aktivering</option>
+                <option value="service_activation_date" selected>Service aktivering</option>
               </select>
             </div>
             <div class="fld">
@@ -311,19 +333,19 @@
             <div class="kpi-sub" id="kpi-cancel-count-sub"></div>
           </div>
           <div class="kpi-card" id="kpi-card-net">
-            <div class="kpi-l">Tilvækst (netto)</div>
+            <div class="kpi-l">Tilvækst</div>
             <div class="kpi-n" id="kpi-net">—</div>
             <div class="kpi-sub" id="kpi-cancel-sub"></div>
           </div>
           <div class="kpi-card" id="kpi-card-budget">
-            <div class="kpi-l">Afvigelse vs. budget</div>
-            <div class="kpi-n" id="kpi-vs-budget">—</div>
+            <div class="kpi-l">Budget (periode)</div>
+            <div class="kpi-n" id="kpi-budget-amount">—</div>
             <div class="kpi-sub" id="kpi-budget-sub"></div>
             <div class="kpi-bar-track"><div class="kpi-bar-fill" id="kpi-bar-budget" style="width:0%"></div></div>
           </div>
           <div class="kpi-card" id="kpi-card-forecast">
-            <div class="kpi-l">Afvigelse vs. forecast</div>
-            <div class="kpi-n" id="kpi-vs-forecast">—</div>
+            <div class="kpi-l">Forecast (periode)</div>
+            <div class="kpi-n" id="kpi-forecast-amount">—</div>
             <div class="kpi-sub" id="kpi-forecast-sub"></div>
             <div class="kpi-bar-track"><div class="kpi-bar-fill" id="kpi-bar-forecast" style="width:0%"></div></div>
           </div>
@@ -346,18 +368,18 @@
         <!-- TAB: BRANDS -->
         <div class="tab-pane on" id="tab-brands">
           <div class="v-table-wrap">
-            <table class="v-table">
+            <table class="v-table" id="brands-table">
               <thead>
                 <tr>
                   <th>Brand</th>
-                  <th class="num">Won</th>
+                  <th class="num sortable" onclick="sortTable('brands','won_amount',this)">Won</th>
                   <th class="num">Afmeldinger</th>
-                  <th class="num">Netto</th>
+                  <th class="num sortable" onclick="sortTable('brands','net_amount',this)">Tilvækst</th>
                   <th class="num" style="min-width:160px">Vs. budget</th>
                   <th class="num" style="min-width:160px">Vs. forecast</th>
-                  <th class="num">Deals</th>
-                  <th class="num">Sidste år</th>
-                  <th class="num">YoY %</th>
+                  <th class="num sortable" onclick="sortTable('brands','won_count',this)">Deals</th>
+                  <th class="num">Tilvækst LY</th>
+                  <th class="num sortable" onclick="sortTable('brands','yoy_pct',this)">YoY %</th>
                 </tr>
               </thead>
               <tbody id="brands-tbody">
@@ -394,18 +416,18 @@
           <!-- Table (hidden by default) -->
           <div id="saelger-table-wrap" style="display:none">
             <div class="v-table-wrap">
-              <table class="v-table">
+              <table class="v-table" id="saelgere-table">
                 <thead>
                   <tr>
                     <th>Sælger</th>
-                    <th class="num">Won</th>
+                    <th class="num sortable" onclick="sortTable('saelgere','won_amount',this)">Won</th>
                     <th class="num">Afmeldinger</th>
-                    <th class="num">Netto</th>
+                    <th class="num sortable" onclick="sortTable('saelgere','net_amount',this)">Tilvækst</th>
                     <th class="num" style="min-width:160px">Vs. budget</th>
                     <th class="num" style="min-width:160px">Vs. forecast</th>
-                    <th class="num">Deals</th>
-                    <th class="num">Sidste år</th>
-                    <th class="num">YoY %</th>
+                    <th class="num sortable" onclick="sortTable('saelgere','won_count',this)">Deals</th>
+                    <th class="num">Tilvækst LY</th>
+                    <th class="num sortable" onclick="sortTable('saelgere','yoy_pct',this)">YoY %</th>
                   </tr>
                 </thead>
                 <tbody id="saelgere-tbody">
@@ -452,9 +474,9 @@
                     <th id="t-dim-header">Dimension</th>
                     <th class="num">Won</th>
                     <th class="num">Afmeldinger</th>
-                    <th class="num">Netto</th>
+                    <th class="num">Tilvækst</th>
                     <th class="num">Deals</th>
-                    <th class="num">Sidste år</th>
+                    <th class="num">Tilvækst LY</th>
                     <th class="num">YoY %</th>
                   </tr>
                 </thead>
@@ -474,6 +496,31 @@
                 </tfoot>
               </table>
             </div>
+          </div>
+        </div>
+
+        <!-- SENESTE DEALS VUNDET -->
+        <div class="latest-deals-wrap" id="latest-deals-wrap" style="display:none">
+          <div class="latest-deals-header">
+            <span class="latest-deals-title">Seneste deals vundet</span>
+            <span id="latest-deals-meta" style="font-size:11px;color:var(--ink-4)"></span>
+          </div>
+          <div class="latest-deals-body">
+            <table class="v-table" id="latest-deals-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  {% if is_manager %}<th>Sælger</th>{% endif %}
+                  <th>Brand</th>
+                  <th class="num">Beløb</th>
+                  <th>Dato</th>
+                  <th>Deal Type</th>
+                </tr>
+              </thead>
+              <tbody id="latest-deals-tbody">
+                <tr><td colspan="6" class="empty">Ingen data</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -538,8 +585,10 @@ function getSelectedBrandGroups() {
     const dt = document.getElementById('p-dealtype');
     const st = document.getElementById('p-salestype');
     d.deal_types.forEach(v => dt.add(new Option(v, v)));
+    if (d.deal_types.includes('Abonnement')) dt.value = 'Abonnement';
     d.sales_types.forEach(v => st.add(new Option(v, v)));
-    // Build brand group pills
+    // Build brand group pills — pre-select DK brands by default
+    const DEFAULT_BRANDS = new Set(['watch_dk', 'finans']);
     const pillContainer = document.getElementById('brand-group-pills');
     (d.brand_groups || []).forEach(g => {
       const btn = document.createElement('button');
@@ -548,6 +597,10 @@ function getSelectedBrandGroups() {
       btn.dataset.val = g.value;
       btn.type = 'button';
       btn.onclick = () => toggleBrandGroup(g.value, btn);
+      if (DEFAULT_BRANDS.has(g.value)) {
+        _activeBrandGroups.add(g.value);
+        btn.classList.add('on');
+      }
       pillContainer.appendChild(btn);
     });
   } catch(e) { /* filters optional */ }
@@ -564,7 +617,8 @@ function getSelectedBrandGroups() {
 // Date utilities
 // ---------------------------------------------------------------------------
 function isoDate(d) {
-  return d.toISOString().split('T')[0];
+  // Brug lokal tid — toISOString() returnerer UTC og giver forkert dato i CET/CEST
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function getMonday(d) {
@@ -720,6 +774,8 @@ async function loadData() {
     if (document.getElementById('tab-tendenser')?.classList.contains('on')) {
       loadTendenser();
     }
+    // Load "Seneste deals vundet" section
+    loadLatestDeals();
 
   } catch(e) {
     showToast('Netværksfejl', e.message, 'error');
@@ -749,46 +805,46 @@ function renderKpi(t) {
   document.getElementById('kpi-card-net').className = 'kpi-card' + (t.net_amount < 0 ? ' neg' : '');
   document.getElementById('kpi-cancel-sub').textContent = `${fmtKr(t.won_amount)} − ${fmtKr(t.cancel_amount)} opsigelser`;
 
-  // vs Budget with progress bar
-  const vsBudEl  = document.getElementById('kpi-vs-budget');
+  // Budget card — show budget amount as primary, delta as sub
+  const budAmtEl = document.getElementById('kpi-budget-amount');
   const budSubEl = document.getElementById('kpi-budget-sub');
   const budBar   = document.getElementById('kpi-bar-budget');
   const budCard  = document.getElementById('kpi-card-budget');
-  if (t.vs_budget != null) {
-    const sign = t.vs_budget >= 0 ? '+' : '';
-    vsBudEl.textContent = sign + fmtKr(t.vs_budget);
-    const pctAchieved = t.budget > 0 ? Math.min((t.net_amount / t.budget) * 100, 100) : 0;
+  if (t.budget > 0) {
+    const pctAchieved = Math.min((t.net_amount / t.budget) * 100, 100);
     const barClass = pctAchieved >= 100 ? '' : pctAchieved >= 70 ? ' warn' : ' neg';
-    budBar.style.width = pctAchieved + '%';
-    budBar.className   = 'kpi-bar-fill' + barClass;
-    budCard.className  = 'kpi-card' + (t.vs_budget >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
-    vsBudEl.className  = 'kpi-n' + (t.vs_budget >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
-    budSubEl.textContent = `Budget: ${fmtKr(t.budget)} · ${Math.round(pctAchieved)}% opnået`;
+    const sign = t.vs_budget >= 0 ? '+' : '';
+    budAmtEl.textContent = fmtKr(t.budget);
+    budAmtEl.className   = 'kpi-n';
+    budBar.style.width   = pctAchieved + '%';
+    budBar.className     = 'kpi-bar-fill' + barClass;
+    budCard.className    = 'kpi-card' + (t.vs_budget >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
+    budSubEl.textContent = `Netto: ${fmtKr(t.net_amount)} · ${Math.round(pctAchieved)}% opnået · Afv: ${sign}${fmtKr(t.vs_budget)}`;
   } else {
-    vsBudEl.textContent  = '—';
-    vsBudEl.className    = 'kpi-n neu';
+    budAmtEl.textContent = '—';
+    budAmtEl.className   = 'kpi-n neu';
     budBar.style.width   = '0%';
     budSubEl.textContent = 'Ingen budget gemt';
   }
 
-  // vs Forecast with progress bar
-  const vsFcEl  = document.getElementById('kpi-vs-forecast');
-  const fcSubEl = document.getElementById('kpi-forecast-sub');
-  const fcBar   = document.getElementById('kpi-bar-forecast');
-  const fcCard  = document.getElementById('kpi-card-forecast');
-  if (t.vs_forecast != null) {
-    const sign = t.vs_forecast >= 0 ? '+' : '';
-    vsFcEl.textContent = sign + fmtKr(t.vs_forecast);
-    const pctAchieved = t.forecast > 0 ? Math.min((t.net_amount / t.forecast) * 100, 100) : 0;
+  // Forecast card — show forecast amount as primary, delta as sub
+  const fcAmtEl  = document.getElementById('kpi-forecast-amount');
+  const fcSubEl  = document.getElementById('kpi-forecast-sub');
+  const fcBar    = document.getElementById('kpi-bar-forecast');
+  const fcCard   = document.getElementById('kpi-card-forecast');
+  if (t.forecast > 0) {
+    const pctAchieved = Math.min((t.net_amount / t.forecast) * 100, 100);
     const barClass = pctAchieved >= 100 ? '' : pctAchieved >= 70 ? ' warn' : ' neg';
-    fcBar.style.width = pctAchieved + '%';
-    fcBar.className   = 'kpi-bar-fill' + barClass;
-    fcCard.className  = 'kpi-card' + (t.vs_forecast >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
-    vsFcEl.className  = 'kpi-n' + (t.vs_forecast >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
-    fcSubEl.textContent = `Forecast: ${fmtKr(t.forecast)} · ${Math.round(pctAchieved)}% opnået`;
+    const sign = t.vs_forecast >= 0 ? '+' : '';
+    fcAmtEl.textContent = fmtKr(t.forecast);
+    fcAmtEl.className   = 'kpi-n';
+    fcBar.style.width   = pctAchieved + '%';
+    fcBar.className     = 'kpi-bar-fill' + barClass;
+    fcCard.className    = 'kpi-card' + (t.vs_forecast >= 0 ? '' : pctAchieved >= 70 ? ' warn' : ' neg');
+    fcSubEl.textContent = `Netto: ${fmtKr(t.net_amount)} · ${Math.round(pctAchieved)}% opnået · Afv: ${sign}${fmtKr(t.vs_forecast)}`;
   } else {
-    vsFcEl.textContent  = '—';
-    vsFcEl.className    = 'kpi-n neu';
+    fcAmtEl.textContent = '—';
+    fcAmtEl.className   = 'kpi-n neu';
     fcBar.style.width   = '0%';
     fcSubEl.textContent = 'Ingen forecast gemt';
   }
@@ -802,7 +858,7 @@ function renderKpi(t) {
     yoyEl.textContent = sign + t.yoy_pct.toFixed(1).replace('.', ',') + '%';
     yoyEl.className   = 'kpi-n' + (t.yoy_pct >= 0 ? '' : ' neg');
     yoyCard.className = 'kpi-card' + (t.yoy_pct >= 0 ? '' : ' neg');
-    yoySub.textContent = `Samme periode sidste år: ${fmtKr(t.last_year_won)}`;
+    yoySub.textContent = `Tilvækst samme periode i fjor: ${fmtKr(t.last_year_net)}`;
   } else {
     yoyEl.textContent  = 'Ingen data';
     yoyEl.className    = 'kpi-n neu';
@@ -842,11 +898,11 @@ function buildPerfRow(dimCell, r, dimType, dimVal) {
     <td class="num clickable" onclick="openPanel('${dimType}','${escAttr(dimVal)}',false)">${fmtFull(r.won_amount)}</td>
     <td class="${r.cancel_amount > 0 ? 'cancel-cell' : 'cancel-zero num'}"
         ${r.cancel_amount > 0 ? `onclick="openPanel('${dimType}','${escAttr(dimVal)}',true)"` : ''}>${fmtFull(r.cancel_amount)}</td>
-    <td class="num">${fmtFull(r.net_amount)}</td>
+    <td class="num clickable" onclick="openPanel('${dimType}','${escAttr(dimVal)}',false)">${fmtFull(r.net_amount)}</td>
     ${miniBarCell(r.net_amount, r.budget)}
     ${miniBarCell(r.net_amount, r.forecast)}
-    <td class="num">${r.won_count}</td>
-    <td class="num">${fmtFull(r.last_year_won)}</td>
+    <td class="num clickable" onclick="openPanel('${dimType}','${escAttr(dimVal)}',false)">${r.won_count}</td>
+    <td class="num">${fmtFull(r.last_year_net)}</td>
     <td class="${yoyClass(r.yoy_pct)}">${fmtYoy(r.yoy_pct)}</td>
   </tr>`;
 }
@@ -858,8 +914,8 @@ function setFooter(prefix, rows) {
   const totBud    = rows.reduce((s,r) => s + r.budget, 0);
   const totFc     = rows.reduce((s,r) => s + r.forecast, 0);
   const totCount  = rows.reduce((s,r) => s + r.won_count, 0);
-  const totLy     = rows.reduce((s,r) => s + r.last_year_won, 0);
-  const yoyTot    = totLy ? (totWon - totLy) / totLy * 100 : null;
+  const totLy     = rows.reduce((s,r) => s + r.last_year_net, 0);
+  const yoyTot    = totLy ? (totNet - totLy) / Math.abs(totLy) * 100 : null;
 
   const vsBudDiff = totBud ? totNet - totBud : null;
   const vsFcDiff  = totFc  ? totNet - totFc  : null;
@@ -889,7 +945,8 @@ function setFooter(prefix, rows) {
 // ---------------------------------------------------------------------------
 // Render brands table
 // ---------------------------------------------------------------------------
-function renderBrandsTable(rows) {
+function renderBrandsTable(rows, cacheRows = true) {
+  if (cacheRows) _lastBrandRows = rows;
   const tbody = document.getElementById('brands-tbody');
   const tfoot = document.getElementById('brands-tfoot');
   if (!rows.length) {
@@ -958,7 +1015,8 @@ function renderSaelgerCards(rows) {
 // ---------------------------------------------------------------------------
 // Render sælgere table
 // ---------------------------------------------------------------------------
-function renderSaelgereTable(rows) {
+function renderSaelgereTable(rows, cacheRows = true) {
+  if (cacheRows) _lastSaelgerRowsCopy = rows;
   const tbody = document.getElementById('saelgere-tbody');
   const tfoot = document.getElementById('saelgere-tfoot');
   if (!tbody) return;
@@ -1016,7 +1074,7 @@ async function loadTendenser() {
           ${r.cancel_amount > 0 ? `onclick="openPanelDim('${escAttr(groupBy)}','${escAttr(r.dim)}',true)"` : ''}>${fmtFull(r.cancel_amount)}</td>
       <td class="num">${fmtFull(r.net_amount)}</td>
       <td class="num">${r.won_count}</td>
-      <td class="num">${fmtFull(r.last_year_won)}</td>
+      <td class="num">${fmtFull(r.last_year_net)}</td>
       <td class="${yoyClass(r.yoy_pct)}">${fmtYoy(r.yoy_pct)}</td>
     </tr>`).join('');
 
@@ -1025,8 +1083,8 @@ async function loadTendenser() {
     const totCancel = d.rows.reduce((s,r) => s + r.cancel_amount, 0);
     const totNet    = d.rows.reduce((s,r) => s + r.net_amount, 0);
     const totCount  = d.rows.reduce((s,r) => s + r.won_count, 0);
-    const totLy     = d.rows.reduce((s,r) => s + r.last_year_won, 0);
-    const yoyTot    = totLy ? (totWon - totLy) / totLy * 100 : null;
+    const totLy     = d.rows.reduce((s,r) => s + r.last_year_net, 0);
+    const yoyTot    = totLy ? (totNet - totLy) / Math.abs(totLy) * 100 : null;
 
     document.getElementById('tf-won').textContent    = fmtFull(totWon);
     document.getElementById('tf-cancel').textContent = fmtFull(totCancel);
@@ -1065,7 +1123,8 @@ async function openPanelDim(groupBy, dimValue, cancellationsOnly) {
   if (p.deal_type)        qs += `&deal_type=${encodeURIComponent(p.deal_type)}`;
   if (p.brand_groups)     qs += `&brand_groups=${encodeURIComponent(p.brand_groups)}`;
   if (p.include_web_sale) qs += `&include_web_sale=true`;
-  if (cancellationsOnly)  qs += `&cancellations_only=true`;
+  if (cancellationsOnly) qs += `&cancellations_only=true`;
+  else                   qs += `&exclude_cancellations=true`;
   // Override the dimension filter
   if (groupBy === 'sales_type') qs += `&sales_type=${encodeURIComponent(dimValue)}`;
   else                          qs += `&${paramKey}=${encodeURIComponent(dimValue)}`;
@@ -1074,41 +1133,59 @@ async function openPanelDim(groupBy, dimValue, cancellationsOnly) {
     const r = await fetch(`/tools/performance/deals?${qs}`);
     const d = await r.json();
     if (!r.ok) { bodyEl.innerHTML = `<div class="dp-loading" style="color:#B32E45">Fejl: ${escHtml(d.detail)}</div>`; return; }
-    metaEl.textContent = `${d.count} deals — Total: ${fmtFull(d.total)}`;
+    const total = d.deals.reduce((s,x) => s+x.value, 0);
+    metaEl.textContent = `${d.count} ${cancellationsOnly ? 'opsigelse' : 'deal'}${d.count !== 1 ? 'r' : ''} · Total: ${fmtFull(Math.abs(total))}`;
     if (!d.deals.length) { bodyEl.innerHTML = '<div class="dp-loading">Ingen deals fundet</div>'; return; }
-    bodyEl.innerHTML = `<table class="dp-table">
-      <thead><tr>
-        <th>Titel</th>
-        ${IS_MANAGER ? '<th>Sælger</th>' : ''}
-        <th>Brand</th>
-        <th class="num">Beløb</th>
-        <th>Dato</th>
-        <th>Deal Type</th>
-      </tr></thead>
-      <tbody>${d.deals.map(deal => `<tr>
-        <td class="dp-title-cell">${escHtml(deal.title)}${deal.is_cancellation ? ' <span class="dp-cancel-badge">Afmeldt</span>' : ''}</td>
-        ${IS_MANAGER ? `<td>${escHtml(deal.owner_name)}</td>` : ''}
-        <td>${escHtml(deal.brand)}</td>
-        <td class="num">${fmtFull(deal.value)}</td>
-        <td>${escHtml(deal.date || '—')}</td>
-        <td>${escHtml(deal.deal_type || '—')}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+    bodyEl.innerHTML = _buildDealTable(d.deals, IS_MANAGER);
   } catch(e) {
     bodyEl.innerHTML = `<div class="dp-loading" style="color:#B32E45">Netværksfejl: ${escHtml(e.message)}</div>`;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Deal drill-down panel
+// Deal drill-down panel — viser kun vundne deals (ikke opsigelser)
 // ---------------------------------------------------------------------------
-async function openPanel(dimType, dimValue, cancellationsOnly) {
+function _buildDealTable(deals, showOwner) {
+  const totalVal = deals.reduce((s, d) => s + d.value, 0);
+  const cols = 1 + (showOwner ? 1 : 0) + 4; // title + owner? + brand + beløb + dato + deal type
+
+  const header = `<tr>
+    <th>Titel</th>
+    ${showOwner ? '<th>Sælger</th>' : ''}
+    <th>Brand</th>
+    <th class="num">Beløb</th>
+    <th>Dato</th>
+    <th>Deal Type</th>
+  </tr>`;
+
+  const rowsHtml = deals.map(deal => `<tr>
+    <td class="dp-title-cell">${escHtml(deal.title)}</td>
+    ${showOwner ? `<td>${escHtml(deal.owner_name)}</td>` : ''}
+    <td>${escHtml(deal.brand)}</td>
+    <td class="num">${fmtFull(deal.value)}</td>
+    <td>${escHtml(deal.date || '—')}</td>
+    <td>${escHtml(deal.deal_type || '—')}</td>
+  </tr>`).join('');
+
+  const totalRow = `<tr style="font-weight:700;background:var(--surface);border-top:2px solid var(--border-strong)">
+    <td colspan="${showOwner ? 3 : 2}" style="font-weight:700">Total</td>
+    <td class="num" style="font-weight:700">${fmtFull(totalVal)}</td>
+    <td colspan="2"></td>
+  </tr>`;
+
+  return `<table class="dp-table"><thead>${header}</thead><tbody>
+    ${deals.length ? rowsHtml + totalRow : `<tr><td colspan="${cols}" style="padding:20px;color:var(--ink-4);font-style:italic;text-align:center">Ingen deals fundet</td></tr>`}
+  </tbody></table>`;
+}
+
+// Open panel for WON deals only (positive omsætning)
+async function openPanel(dimType, dimValue, cancelsOnly = false) {
   const overlay = document.getElementById('deal-overlay');
   const titleEl = document.getElementById('dp-title');
   const metaEl  = document.getElementById('dp-meta');
   const bodyEl  = document.getElementById('dp-body');
 
-  titleEl.textContent = cancellationsOnly ? `Afmeldinger — ${dimValue}` : `Deals — ${dimValue}`;
+  titleEl.textContent = cancelsOnly ? `Opsigelser — ${dimValue}` : `Deals vundet — ${dimValue}`;
   metaEl.textContent  = '';
   bodyEl.innerHTML    = '<div class="dp-loading"><div class="spinner"></div><br>Indlæser deals…</div>';
   overlay.classList.add('open');
@@ -1119,40 +1196,26 @@ async function openPanel(dimType, dimValue, cancellationsOnly) {
   if (p.sales_type)       qs += `&sales_type=${encodeURIComponent(p.sales_type)}`;
   if (p.brand_groups)     qs += `&brand_groups=${encodeURIComponent(p.brand_groups)}`;
   if (p.include_web_sale) qs += `&include_web_sale=true`;
-  if (cancellationsOnly)  qs += `&cancellations_only=true`;
   if (dimType === 'brand')   qs += `&brand=${encodeURIComponent(dimValue)}`;
   if (dimType === 'saelger') qs += `&owner_name=${encodeURIComponent(dimValue)}`;
+  if (cancelsOnly) {
+    qs += `&cancellations_only=true`;
+  } else {
+    qs += `&exclude_cancellations=true`;
+  }
 
   try {
     const r = await fetch(`/tools/performance/deals?${qs}`);
     const d = await r.json();
     if (!r.ok) { bodyEl.innerHTML = `<div class="dp-loading" style="color:#B32E45">Fejl: ${escHtml(d.detail)}</div>`; return; }
 
-    metaEl.textContent = `${d.count} deals — Total: ${fmtFull(d.total)}`;
+    const total = d.deals.reduce((s,x) => s+x.value, 0);
+    metaEl.textContent = `${d.deals.length} ${cancelsOnly ? 'opsigelse' : 'deal'}${d.deals.length !== 1 ? 'r' : ''} · Total: ${fmtFull(Math.abs(total))}`;
 
     if (!d.deals.length) { bodyEl.innerHTML = '<div class="dp-loading">Ingen deals fundet</div>'; return; }
 
     const showOwner = IS_MANAGER && dimType !== 'saelger';
-    bodyEl.innerHTML = `<table class="dp-table">
-      <thead><tr>
-        <th>Titel</th>
-        ${showOwner ? '<th>Sælger</th>' : ''}
-        <th>Brand</th>
-        <th class="num">Beløb</th>
-        <th>Dato</th>
-        <th>Deal Type</th>
-        <th>Pipeline</th>
-      </tr></thead>
-      <tbody>${d.deals.map(deal => `<tr>
-        <td>${escHtml(deal.title)}${deal.is_cancellation ? ' <span class="dp-cancel-badge">Afmeldt</span>' : ''}</td>
-        ${showOwner ? `<td>${escHtml(deal.owner_name)}</td>` : ''}
-        <td>${escHtml(deal.brand)}</td>
-        <td class="num">${fmtFull(deal.value)}</td>
-        <td>${escHtml(deal.date || '—')}</td>
-        <td>${escHtml(deal.deal_type || '—')}</td>
-        <td>${escHtml(deal.pipeline_name || '—')}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+    bodyEl.innerHTML = _buildDealTable(d.deals, showOwner);
   } catch(e) {
     bodyEl.innerHTML = `<div class="dp-loading" style="color:#B32E45">Netværksfejl: ${escHtml(e.message)}</div>`;
   }
@@ -1161,6 +1224,85 @@ async function openPanel(dimType, dimValue, cancellationsOnly) {
 function closePanel() { document.getElementById('deal-overlay').classList.remove('open'); }
 function closePanelOnOverlay(e) { if (e.target === document.getElementById('deal-overlay')) closePanel(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
+
+// ---------------------------------------------------------------------------
+// Sortable tables
+// ---------------------------------------------------------------------------
+const _sortState = { brands: { col: 'won_amount', asc: false }, saelgere: { col: 'won_amount', asc: false } };
+let _lastBrandRows = [], _lastSaelgerRowsCopy = [];
+
+function sortTable(tableKey, col, thEl) {
+  const state = _sortState[tableKey];
+  if (state.col === col) state.asc = !state.asc;
+  else { state.col = col; state.asc = false; }
+
+  // Reset all sortable headers for this table
+  const tableId = tableKey === 'brands' ? 'brands-table' : 'saelgere-table';
+  document.querySelectorAll(`#${tableId} th.sortable`).forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+  });
+  if (thEl) thEl.classList.add(state.asc ? 'sort-asc' : 'sort-desc');
+
+  if (tableKey === 'brands') {
+    const sorted = [..._lastBrandRows].sort((a, b) => {
+      const va = a[col] ?? (state.asc ? Infinity : -Infinity);
+      const vb = b[col] ?? (state.asc ? Infinity : -Infinity);
+      return state.asc ? va - vb : vb - va;
+    });
+    renderBrandsTable(sorted, false);  // false = don't reset sort state
+  } else {
+    const sorted = [..._lastSaelgerRowsCopy].sort((a, b) => {
+      const va = a[col] ?? (state.asc ? Infinity : -Infinity);
+      const vb = b[col] ?? (state.asc ? Infinity : -Infinity);
+      return state.asc ? va - vb : vb - va;
+    });
+    renderSaelgereTable(sorted, false);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seneste deals vundet — statisk sektion under tabs
+// ---------------------------------------------------------------------------
+async function loadLatestDeals() {
+  const p = lastParams;
+  if (!p.date_from) return;
+  const wrap  = document.getElementById('latest-deals-wrap');
+  const tbody = document.getElementById('latest-deals-tbody');
+  const meta  = document.getElementById('latest-deals-meta');
+  wrap.style.display = '';
+  const ldCols = IS_MANAGER ? 6 : 5;
+  tbody.innerHTML = `<tr><td colspan="${ldCols}" class="empty"><div class="spinner" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:6px"></div> Indlæser…</td></tr>`;
+
+  let qs = `date_from=${p.date_from}&date_to=${p.date_to}&date_field=${p.date_field}&exclude_cancellations=true`;
+  if (p.deal_type)        qs += `&deal_type=${encodeURIComponent(p.deal_type)}`;
+  if (p.sales_type)       qs += `&sales_type=${encodeURIComponent(p.sales_type)}`;
+  if (p.brand_groups)     qs += `&brand_groups=${encodeURIComponent(p.brand_groups)}`;
+  if (p.include_web_sale) qs += `&include_web_sale=true`;
+
+  try {
+    const r = await fetch(`/tools/performance/deals?${qs}`);
+    const d = await r.json();
+    if (!r.ok) { tbody.innerHTML = `<tr><td colspan="${ldCols}" class="empty" style="color:#B32E45">Fejl: ${escHtml(d.detail)}</td></tr>`; return; }
+
+    meta.textContent = `${d.count} deals · ${fmtFull(d.total)}`;
+
+    if (!d.deals.length) {
+      tbody.innerHTML = `<tr><td colspan="${ldCols}" class="empty">Ingen deals vundet i perioden</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = d.deals.map(deal => `<tr>
+      <td style="white-space:normal;max-width:260px">${escHtml(deal.title)}</td>
+      ${IS_MANAGER ? `<td>${escHtml(deal.owner_name)}</td>` : ''}
+      <td>${escHtml(deal.brand)}</td>
+      <td class="num" style="font-weight:600">${fmtFull(deal.value)}</td>
+      <td>${escHtml(deal.date || '—')}</td>
+      <td>${escHtml(deal.deal_type || '—')}</td>
+    </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="${ldCols}" class="empty" style="color:#B32E45">Netværksfejl: ${escHtml(e.message)}</td></tr>`;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Formatters
