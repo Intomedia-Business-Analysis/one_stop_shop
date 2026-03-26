@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indstillinger — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .page-header {
+      margin-bottom: 2rem;
+    }
+    .page-header h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 .25rem;
+    }
+    .page-header p {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .settings-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 1.25rem;
+    }
+    .settings-card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-card-header h2 {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+    }
+    .settings-card-header p {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      margin: .25rem 0 0;
+    }
+    .settings-card-body {
+      padding: 1.25rem;
+    }
+
+    .profile-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .profile-avatar {
+      width: 52px;
+      height: 52px;
+      background: var(--green);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.125rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .profile-info strong {
+      display: block;
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .profile-info span {
+      font-size: .8125rem;
+      color: var(--text-muted);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+    .info-field label {
+      display: block;
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text-muted);
+      margin-bottom: .3rem;
+    }
+    .info-field .value {
+      font-size: .875rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .65rem;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+      background: #f0f9ff;
+      color: #0369a1;
+    }
+
+    .change-pw-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      align-items: end;
+    }
+    .field { display: flex; flex-direction: column; gap: .375rem; }
+    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
+    .field input {
+      padding: .5rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus { border-color: var(--green); }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .5625rem 1.125rem;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+      white-space: nowrap;
+      align-self: flex-end;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    .notif {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .75rem 1rem;
+      border-radius: var(--r-sm);
+      font-size: .8125rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      {% if user.role == 'admin' %}
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      <a href="/admin/teams" class="sbi">
+        {% include "icons/users.svg" %} Hold
+      </a>
+      {% endif %}
+      <a href="/settings" class="sbi on">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div style="padding: 2rem; max-width: 860px;">
+
+      <div class="page-header">
+        <h1>Indstillinger</h1>
+        <p>Din profil og kontoadministration</p>
+      </div>
+
+      {% if request.query_params.get('success') == 'pw_changed' %}
+      <div class="notif notif-success">✓ Adgangskode opdateret</div>
+      {% elif request.query_params.get('error') == 'pw_mismatch' %}
+      <div class="notif notif-error">Adgangskoderne stemmer ikke overens</div>
+      {% elif request.query_params.get('error') == 'pw_wrong' %}
+      <div class="notif notif-error">Nuværende adgangskode er forkert</div>
+      {% elif request.query_params.get('error') == 'missing_fields' %}
+      <div class="notif notif-error">Udfyld alle felter</div>
+      {% endif %}
+
+      <!-- Profilkort -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h2>Min profil</h2>
+          <p>Dine kontooplysninger</p>
+        </div>
+        <div class="settings-card-body">
+          <div class="profile-row">
+            <div class="profile-avatar">{{ user.initials }}</div>
+            <div class="profile-info">
+              <strong>{{ user.name }}</strong>
+              <span>{{ user.username }}</span>
+            </div>
+          </div>
+          <div class="info-grid">
+            <div class="info-field">
+              <label>Initialer</label>
+              <div class="value">{{ user.initials }}</div>
+            </div>
+            <div class="info-field">
+              <label>Rolle</label>
+              <div class="value">
+                <span class="role-badge">{{ ROLE_LABELS.get(user.role, user.role) }}</span>
+              </div>
+            </div>
+            {% if user.brand %}
+            <div class="info-field">
+              <label>Brand</label>
+              <div class="value">{{ user.brand }}</div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Skift adgangskode -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h2>Skift adgangskode</h2>
+          <p>Vælg en ny adgangskode til din konto</p>
+        </div>
+        <div class="settings-card-body">
+          <form method="post" action="/settings/change-password">
+            <div class="change-pw-form">
+              <div class="field">
+                <label for="current_password">Nuværende adgangskode</label>
+                <input type="password" id="current_password" name="current_password" autocomplete="current-password" required>
+              </div>
+              <div class="field">
+                <label for="new_password">Ny adgangskode</label>
+                <input type="password" id="new_password" name="new_password" autocomplete="new-password" required>
+              </div>
+              <div class="field">
+                <label for="confirm_password">Bekræft ny adgangskode</label>
+                <input type="password" id="confirm_password" name="confirm_password" autocomplete="new-password" required>
+              </div>
+              <button type="submit" class="btn-primary">Gem adgangskode</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
