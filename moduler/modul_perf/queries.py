@@ -707,3 +707,195 @@ def db_overview_data(today: date):
         "saelger_created": saelger_created,
         "recent_deals":    recent_deals,
     }
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+#                                           DET NYE DASHBOARD
+#-----------------------------------------------------------------------------------------------------------------------
+
+def db_manager_data(today: date, team: str | None = None):
+    month_from = date(today.year, today.month, 1)
+    next_month = today.month % 12 + 1
+    next_year  = today.year + (1 if today.month == 12 else 0)
+    month_to   = date(next_year, next_month, 1)
+
+    week_start = today - timedelta(days=today.weekday())
+    week_end   = week_start + timedelta(days=7)
+
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
+    # Team-filter klausul
+    if team:
+        team_clause = """
+            AND [owner_name] IN (
+                SELECT u.name
+                FROM HubUsers u
+                JOIN TeamMemberships tm ON tm.user_id = u.id
+                JOIN Teams t ON t.id = tm.team_id
+                WHERE t.name = %s
+                  AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+            )
+        """
+        team_params = (team,)
+    else:
+        team_clause = ""
+        team_params = ()
+
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    # Q1: Salg i dag
+    cur.execute(f"""
+        SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [won_time] >= %s AND [won_time] < %s
+          AND [sites] IN {brands_ph}
+          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+          {team_clause}
+    """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
+
+    # Q2: Sparkline — salg per dag denne uge
+    cur.execute(f"""
+        SELECT CAST([won_time] AS DATE) AS dag,
+               ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [won_time] >= %s AND [won_time] < %s
+          AND [sites] IN {brands_ph}
+          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+          {team_clause}
+        GROUP BY CAST([won_time] AS DATE)
+        ORDER BY dag
+    """, (week_start.isoformat(), week_end.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    sparkline_raw = {str(r["dag"]): float(r["total"] or 0) for r in cur.fetchall()}
+    sparkline = []
+    for i in range(7):
+        d = week_start + timedelta(days=i)
+        sparkline.append({"dag": d.isoformat(), "total": sparkline_raw.get(d.isoformat(), 0)})
+
+    # Q3: Konverteringsrate denne måned
+    cur.execute(f"""
+        SELECT
+            COUNT(CASE WHEN [status]='won'
+                AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN 1 END) AS won_count,
+            COUNT(CASE WHEN [status]='lost' THEN 1 END) AS lost_count
+        FROM [dbo].[PipedriveDeals]
+        WHERE ([status]='won' OR [status]='lost')
+          AND [pipeline_name]<>'Web Sale'
+          AND [won_time] >= %s AND [won_time] < %s
+          AND [sites] IN {brands_ph}
+          {team_clause}
+    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    conv_row   = cur.fetchone() or {}
+    won_count  = int(conv_row.get("won_count", 0) or 0)
+    lost_count = int(conv_row.get("lost_count", 0) or 0)
+    total_deals = won_count + lost_count
+    conv_rate  = round((won_count / total_deals * 100), 1) if total_deals > 0 else 0.0
+
+    # Q4: Hent alle aktive teammedlemmer
+    if team:
+        cur.execute("""
+                    SELECT DISTINCT u.name AS owner_name
+                    FROM HubUsers u
+                             JOIN TeamMemberships tm ON tm.user_id = u.id
+                             JOIN Teams t ON t.id = tm.team_id
+                    WHERE t.name = %s
+                      AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+                      AND u.is_active = 1
+                    ORDER BY u.name
+                    """, (team,))
+    else:
+        cur.execute("""
+                    SELECT DISTINCT u.name AS owner_name
+                    FROM HubUsers u
+                             JOIN TeamMemberships tm ON tm.user_id = u.id
+                    WHERE (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+                      AND u.is_active = 1
+                    ORDER BY u.name
+                    """)
+    all_members = [r["owner_name"] for r in cur.fetchall()]
+
+    # Q5: Deals denne måned
+    cur.execute(f"""
+        SELECT
+            COALESCE([owner_name], 'Ukendt') AS owner_name,
+            ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won_amount,
+            COUNT(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN 1 END) AS won_count,
+            ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS cancel_amount
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [won_time] >= %s AND [won_time] < %s
+          AND [sites] IN {brands_ph}
+          {team_clause}
+        GROUP BY [owner_name]
+    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    deals_map = {r["owner_name"]: r for r in cur.fetchall()}
+
+    # Merge — alle medlemmer vises, også dem med 0 deals
+    leaderboard = []
+    for name in all_members:
+        r = deals_map.get(name, {"won_amount": 0, "won_count": 0, "cancel_amount": 0})
+        leaderboard.append({
+            "owner_name": name,
+            "won_amount": float(r["won_amount"] or 0),
+            "won_count": int(r["won_count"] or 0),
+            "cancel_amount": abs(float(r["cancel_amount"] or 0)),
+        })
+
+    # Sorter efter won_amount — højeste øverst
+    leaderboard.sort(key=lambda x: -x["won_amount"])
+    for i, row in enumerate(leaderboard):
+        row["rank"] = i + 1
+
+    # Q5: Budget denne måned pr. sælger
+    if team:
+        cur.execute("""
+            SELECT [Owner] AS owner_name, SUM([BudgetAmount]) AS budget
+            FROM [dbo].[SalespersonBudget]
+            WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+              AND [Team] = %s
+            GROUP BY [Owner]
+        """, (month_from.isoformat(), month_to.isoformat(), team))
+    else:
+        cur.execute("""
+            SELECT [Owner] AS owner_name, SUM([BudgetAmount]) AS budget
+            FROM [dbo].[SalespersonBudget]
+            WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+            GROUP BY [Owner]
+        """, (month_from.isoformat(), month_to.isoformat()))
+    budget_map = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
+
+    for row in leaderboard:
+        row["budget"] = budget_map.get(row["owner_name"], 0.0)
+        row["vs_budget_pct"] = round(row["won_amount"] / row["budget"] * 100, 1) if row["budget"] > 0 else None
+
+    # Q6: Hent alle tilgængelige teams til dropdown
+    cur.execute("""
+        SELECT DISTINCT t.name
+        FROM Teams t
+        JOIN TeamMemberships tm ON tm.team_id = t.id
+        WHERE t.name IS NOT NULL
+          AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+        ORDER BY t.name
+    """)
+    teams = [r["name"] for r in cur.fetchall()]
+
+    conn.close()
+    return {
+        "salg_dag":    round(salg_dag, 2),
+        "sparkline":   sparkline,
+        "conv_rate":   conv_rate,
+        "won_count":   won_count,
+        "lost_count":  lost_count,
+        "leaderboard": leaderboard,
+        "teams":       teams,
+        "active_team": team,
+        "month_label": f"{['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'][today.month-1]} {today.year}",
+        "today":       today.isoformat(),
+    }
