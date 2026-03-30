@@ -19,10 +19,10 @@ from auth import (
     resolve_resource_access,
     init_db,
 )
-from budget_router import router as budget_router
-from admin_router import router as admin_router
-from forecast_router import router as forecast_router
-from perf_router import router as perf_router
+from moduler.modul_budget.router import router as budget_router
+from moduler.modul_admin.router import router as admin_router
+from moduler.modul_forcast.router import router as forecast_router
+from moduler.modul_perf.router import router as perf_router
 
 load_dotenv()
 
