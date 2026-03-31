@@ -166,18 +166,18 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
     <div class="settings-grid">
       <div class="setting-card">
         <label><strong>Graviditetsorlov – mor</strong>Uger FØR terminsdato</label>
-        <input type="number" class="setting-num" id="s_gravUger" value="8" min="1" max="12" oninput="recalcAll();saveSettings()">
+        <input type="number" class="setting-num" id="s_gravUger" value="4" min="1" max="12" oninput="recalcAll();saveSettings()">
       </div>
       <div class="setting-card">
-        <label><strong>Betalt orlov – mor</strong>Uger EFTER fødsel inkl. foraldreorlov</label>
+        <label><strong>Betalt barsel – mor</strong>Uger EFTER fødsel (standardværdi per sag)</label>
         <input type="number" class="setting-num" id="s_morUger" value="26" min="1" max="52" oninput="recalcAll();saveSettings()">
       </div>
       <div class="setting-card">
-        <label><strong>Fædreorlov – far (1. periode)</strong>Uger VED terminsdato</label>
+        <label><strong>Fædreorlov – far</strong>Uger VED fødsel (standardværdi per sag)</label>
         <input type="number" class="setting-num" id="s_faedUger" value="2" min="0" max="10" oninput="recalcAll();saveSettings()">
       </div>
       <div class="setting-card">
-        <label><strong>Foraldreorlov – far (2. periode)</strong>Uger EFTER morens tilbagekomst</label>
+        <label><strong>Betalt foraldreorlov – far</strong>Uger, kan afholdes frit (standardværdi per sag)</label>
         <input type="number" class="setting-num" id="s_forlUger" value="17" min="0" max="52" oninput="recalcAll();saveSettings()">
       </div>
       <div class="setting-card">
@@ -187,29 +187,8 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
     </div>
 
     <div class="total-pills">
-      <div class="total-pill blue">👩 Mor total betalt orlov: <strong id="pill_mor">—</strong> uger</div>
-      <div class="total-pill red">👨 Far total betalt orlov: <strong id="pill_far">—</strong> uger <span style="font-size:11px;opacity:.7">(fædreorl. + forældreorl.)</span></div>
-    </div>
-
-    <div class="ref-section">
-      <h3>Sektor-reference — standardtal for dansk arbejdsmarked 2025</h3>
-      <div class="ref-table-wrap">
-      <table class="ref-table">
-        <thead>
-          <tr>
-            <th>Sektor (for part IKKE ansat i virksomheden)</th>
-            <th>Grav. orlov mor</th><th>Barsel mor</th>
-            <th>Fædreorlov</th><th>Foraldreorlov far</th><th>Far total</th><th>Tvillingetillæg</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td>Privat (ingen overenskomst)</td><td>4 uger</td><td>14 uger</td><td>2 uger</td><td>0 uger</td><td>2 uger</td><td>+13 uger</td></tr>
-          <tr><td>Privat m. overenskomst</td><td>4 uger</td><td>23 uger</td><td>2 uger</td><td>10 uger</td><td>12 uger</td><td>+13 uger</td></tr>
-          <tr><td>Kommune / Region</td><td>8 uger</td><td>26 uger</td><td>2 uger</td><td>16 uger</td><td>18 uger</td><td>+13 uger</td></tr>
-          <tr><td>Stat</td><td>6 uger</td><td>26 uger</td><td>2 uger</td><td>16 uger</td><td>18 uger</td><td>+13 uger</td></tr>
-        </tbody>
-      </table>
-      </div>
+      <div class="total-pill blue">👩 Mor: <strong id="pill_mor">—</strong> uger betalt barsel + graviditetsorlov</div>
+      <div class="total-pill red">👨 Far: <strong id="pill_far">—</strong> uger betalt orlov <span style="font-size:11px;opacity:.7">(fædreorl. + forældreorl.)</span></div>
     </div>
   </div>
 </div>
@@ -228,32 +207,32 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
   <table id="mainTable">
     <thead>
       <tr id="sectionRow">
-        <th colspan="7" class="th-section sec-base">GRUNDOPLYSNINGER</th>
-        <th colspan="3" class="th-section sec-mor">👩 MOR / 1. FORÆLDER</th>
-        <th colspan="1" class="th-section sec-mor-hl">🟢 MOR</th>
+        <th colspan="5" class="th-section sec-base">GRUNDOPLYSNINGER</th>
+        <th colspan="4" class="th-section sec-mor">👩 MOR / 1. FORÆLDER</th>
+        <th colspan="1" class="th-section sec-mor-hl">🟢 MOR TILBAGEKOMST</th>
         <th colspan="3" class="th-section sec-faed">👨 FÆDREORLOV — ved fødsel</th>
-        <th colspan="3" class="th-section sec-forl">👨 FORALDREORLOV — efter mor</th>
-        <th colspan="1" class="th-section sec-far">🟣 FAR</th>
+        <th colspan="4" class="th-section sec-forl">👨 FORALDREORLOV — efter mor</th>
+        <th colspan="1" class="th-section sec-far">🟣 FAR TILBAGEKOMST</th>
         <th colspan="1" class="th-section sec-base" style="border-right:none"></th>
       </tr>
       <tr class="col-head">
         <th class="th-base">Mor<br>navn</th>
-        <th class="th-base">Mor<br>ansat her?</th>
         <th class="th-base">Far / medmor<br>navn</th>
-        <th class="th-base">Far<br>ansat her?</th>
         <th class="th-base">Terminsdato</th>
         <th class="th-base" style="background:#FFF9F0;color:#7A4A10">Faktisk<br>fødselsdato<br><small style="font-weight:400;color:#aaa">valgfri</small></th>
         <th class="th-base">Fødsel</th>
         <th class="th-mor">Barselsstart</th>
-        <th class="th-mor">Betalte<br>uger</th>
+        <th class="th-mor">Betalte uger<br><small style="font-weight:400">(redigerbar)</small></th>
         <th class="th-mor">Barsel<br>slutter</th>
+        <th class="th-mor">Ferie<br>uger</th>
         <th class="th-mor-hl">Tilbagekomst</th>
         <th class="th-faed">Start<br><small style="font-weight:400">(justerbar)</small></th>
-        <th class="th-faed">Uger</th>
+        <th class="th-faed">Uger<br><small style="font-weight:400">(redigerbar)</small></th>
         <th class="th-faed">Slutter</th>
-        <th class="th-forl">Start<br><small style="font-weight:400">← fra mor kol.</small></th>
-        <th class="th-forl">Uger</th>
+        <th class="th-forl">Start<br><small style="font-weight:400">← fra mor</small></th>
+        <th class="th-forl">Uger<br><small style="font-weight:400">(redigerbar)</small></th>
         <th class="th-forl">Slutter</th>
+        <th class="th-forl">Ferie<br>uger</th>
         <th class="th-far">Tilbagekomst</th>
         <th class="th-base" style="width:46px"></th>
       </tr>
@@ -271,26 +250,10 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
 
 <script>
 // ── STATE ────────────────────────────────────────────
+// SEE_ALL: admin-brugere ser alle sager; andre ser kun egne
+const SEE_ALL = {{ (see_all | default(false)) | tojson }};
 let rows = [];
-let nextId = 1;
 
-// Sektor → foraldreorlov weeks for the EXTERNAL party (not at our company)
-const EXTERN_FORL = {
-  'Kommune': 16, 'Region': 16, 'Stat': 16,
-  'Privat m. overenskomst': 10, 'Privat': 0
-};
-const EXTERN_FAED = {
-  'Kommune': 2, 'Region': 2, 'Stat': 2,
-  'Privat m. overenskomst': 2, 'Privat': 2
-};
-const EXTERN_GRAV = {
-  'Kommune': 8, 'Region': 8, 'Stat': 6,
-  'Privat m. overenskomst': 4, 'Privat': 4
-};
-const EXTERN_MOR = {
-  'Kommune': 26, 'Region': 26, 'Stat': 26,
-  'Privat m. overenskomst': 23, 'Privat': 14
-};
 
 function S(k){ return +document.getElementById('s_'+k).value || 0; }
 
@@ -317,50 +280,48 @@ function calcRow(row){
   const termin=parseDate(row.termin);
   if(!termin) return {};
 
-  // Actual birth date overrides terminsdato for all post-birth calculations
-  // Barselsstart (graviditetsorlov) is always based on terminsdato
+  // Faktisk fødselsdato overskriver terminsdato for beregninger efter fødsel.
+  // Barselsstart (graviditetsorlov) er altid baseret på terminsdatoen.
   const foedsel = parseDate(row.foedselDato) || termin;
 
   const tvil=(row.foedsel==='Tvillinger');
   const tExtra=tvil?S('tvilUger'):0;
 
-  // Determine week counts based on who is employed here
-  // MOR
-  const morAnsat = row.morAnsat !== false; // default true
-  const gravUger  = morAnsat ? S('gravUger') : (EXTERN_GRAV[row.morSektor]??4);
-  const morUger   = morAnsat ? S('morUger')  : (EXTERN_MOR[row.morSektor]??14);
+  // Brug row-specifikke uger hvis sat, ellers company-indstillinger
+  const gravUger  = S('gravUger');
+  const morUger   = (row.morUger!=null && row.morUger!=='') ? +row.morUger  : S('morUger');
+  const faedUger  = (row.faedUger!=null && row.faedUger!=='') ? +row.faedUger : S('faedUger');
+  const forlUger  = (row.forlUger!=null && row.forlUger!=='') ? +row.forlUger : S('forlUger');
+  const morFerie  = +(row.morFerie||0);
+  const farFerie  = +(row.farFerie||0);
 
-  // FAR
-  const farAnsat  = row.farAnsat !== false; // default true
-  const faedUger  = farAnsat ? S('faedUger')  : (EXTERN_FAED[row.farSektor]??2);
-  const forlUger  = farAnsat ? S('forlUger')  : (EXTERN_FORL[row.farSektor]??0);
-
-  const morUgerTotal = morUger + tExtra;
+  const morUgerTotal  = morUger + tExtra;
   const forlUgerTotal = forlUger + tExtra;
 
-  // MOR dates
-  // Barselsstart = terminsdato minus graviditetsorlov (NOT affected by actual birth date)
-  const morStart = addDays(termin, -gravUger*7);
-  // Post-birth orlov counts from actual birth date (foedsel)
-  const morSlut  = addDays(foedsel, morUgerTotal*7);
-  const morTilb  = nextWorkday(morSlut);
+  // MOR datoer
+  const morStart     = addDays(termin, -gravUger*7);
+  const morSlut      = addDays(foedsel, morUgerTotal*7);
+  // Ferie i forlængelse af barsel
+  const morFerieSlut = morFerie>0 ? addDays(morSlut, morFerie*7) : null;
+  const morTilb      = nextWorkday(morFerieSlut || morSlut);
 
-  // FÆDREORLOV (default: actual birth date, manual override allowed)
+  // FÆDREORLOV (standard: faktisk fødselsdato; kan justeres manuelt)
   const faedStart = row.faedStart ? parseDate(row.faedStart) : foedsel;
   const faedSlut  = addDays(faedStart, faedUger*7);
 
-  // FORALDREORLOV (default: morTilb, manual override)
+  // FORALDREORLOV (standard: morens tilbagekomst; kan justeres manuelt)
   const forlStart = row.forlStart ? parseDate(row.forlStart) : morTilb;
   const forlSlut  = forlUgerTotal>0 ? addDays(forlStart, forlUgerTotal*7) : null;
-  const farTilb   = nextWorkday(forlSlut || faedSlut);
+  // Ferie i forlængelse af foraldreorlov
+  const farFerieSlut = farFerie>0 ? addDays(forlSlut||faedSlut, farFerie*7) : null;
+  const farTilb      = nextWorkday(farFerieSlut || forlSlut || faedSlut);
 
-  return {morStart,morUger:morUgerTotal,morSlut,morTilb,
+  return {morStart,morUger:morUgerTotal,morSlut,morFerie,morFerieSlut,morTilb,
           faedStart,faedUger,faedSlut,
-          forlStart,forlUger:forlUgerTotal,forlSlut,farTilb};
+          forlStart,forlUger:forlUgerTotal,forlSlut,farFerie,farFerieSlut,farTilb};
 }
 
 function updatePills(){
-  const tExtra=0; // pills show base (no tvillinger)
   document.getElementById('pill_mor').textContent = S('gravUger')+S('morUger');
   document.getElementById('pill_far').textContent = S('faedUger')+'+'+S('forlUger')+'='+(S('faedUger')+S('forlUger'));
 }
@@ -375,7 +336,7 @@ function sektorSelect(id, field, val, extraClass=''){
   return `<select class="cell-input ${extraClass}" style="min-width:130px" onchange="updateRow(${id},'${field}',this.value)">${opts}</select>`;
 }
 
-function esc(v){ return (v||'').replace(/"/g,'&quot;'); }
+function esc(v){ return (v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 function renderTable(){
   updatePills();
@@ -389,40 +350,26 @@ function renderTable(){
   rows.forEach(row=>{
     const cv=calcRow(row);
     const tvil=row.foedsel==='Tvillinger';
-    const morAnsat=row.morAnsat!==false;
-    const farAnsat=row.farAnsat!==false;
     const tr=document.createElement('tr');
     tr.setAttribute('data-id',row.id);
+
+    const rowMorUger  = (row.morUger!=null&&row.morUger!=='') ? row.morUger  : S('morUger');
+    const rowFaedUger = (row.faedUger!=null&&row.faedUger!=='') ? row.faedUger : S('faedUger');
+    const rowForlUger = (row.forlUger!=null&&row.forlUger!=='') ? row.forlUger : S('forlUger');
 
     tr.innerHTML=`
       <!-- Mor navn -->
       <td class="td-base"><input class="cell-input" placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)" style="min-width:130px"></td>
 
-      <!-- Mor ansat -->
-      <td class="td-base" style="text-align:center">
-        <label class="ansat-toggle">
-          <input type="checkbox" ${morAnsat?'checked':''} onchange="updateRow(${row.id},'morAnsat',this.checked)">
-          <span class="ansat-label"><strong>${morAnsat?'Ansat her':'Ekstern'}</strong>${morAnsat?'':'<br>'+sektorSelect(row.id,'morSektor',row.morSektor||'Kommune')}</span>
-        </label>
-      </td>
-
       <!-- Far navn -->
       <td class="td-base"><input class="cell-input" placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)" style="min-width:130px"></td>
-
-      <!-- Far ansat -->
-      <td class="td-base" style="text-align:center">
-        <label class="ansat-toggle">
-          <input type="checkbox" ${farAnsat?'checked':''} onchange="updateRow(${row.id},'farAnsat',this.checked)">
-          <span class="ansat-label"><strong>${farAnsat?'Ansat her':'Ekstern'}</strong>${farAnsat?'':'<br>'+sektorSelect(row.id,'farSektor',row.farSektor||'Kommune')}</span>
-        </label>
-      </td>
 
       <!-- Terminsdato -->
       <td class="td-base"><input class="cell-input date-input" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)"></td>
 
       <!-- Faktisk fødselsdato -->
       <td class="td-base" style="background:#FFF9F0">
-        <input class="cell-input date-input" style="border-color:${row.foedselDato?'#C47A15':'transparent'};background:${row.foedselDato?'#FFFBF2':'transparent'}" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på en anden dato end terminsdatoen. Orlovsperioder beregnes fra denne dato.">
+        <input class="cell-input date-input" style="border-color:${row.foedselDato?'#C47A15':'transparent'};background:${row.foedselDato?'#FFFBF2':'transparent'}" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på en anden dato end terminsdatoen.">
         ${row.foedselDato ? '<div style="font-size:10px;color:#C47A15;margin-top:2px">Overskriver termin</div>' : '<div style="font-size:10px;color:#bbb;margin-top:2px">Blank = brug termin</div>'}
       </td>
 
@@ -435,71 +382,138 @@ function renderTable(){
         ${tvil?'<div class="badge-tvil">+'+S('tvilUger')+' uger/forælder</div>':''}
       </td>
 
-      <!-- MOR computed -->
+      <!-- MOR: barselsstart, uger (editable), slutter, ferie -->
       <td class="td-mor"><div class="computed date">${fmt(cv.morStart)}</div></td>
-      <td class="td-mor"><div class="computed weeks">${cv.morUger!=null?cv.morUger+' uger':''}</div></td>
+      <td class="td-mor"><input class="cell-input" type="number" min="0" max="99" style="width:60px;text-align:center;font-weight:600;color:var(--blue)" value="${rowMorUger}" onchange="updateRow(${row.id},'morUger',this.value)" title="Antal betalte barselsuger for mor"></td>
       <td class="td-mor"><div class="computed date">${fmt(cv.morSlut)}</div></td>
+      <td class="td-mor"><input class="cell-input" type="number" min="0" max="52" style="width:60px;text-align:center;font-weight:600;color:var(--green)" value="${row.morFerie||0}" onchange="updateRow(${row.id},'morFerie',this.value)" title="Feriedage i forlængelse af barslen (uger)"></td>
+
+      <!-- MOR tilbagekomst -->
       <td class="td-mor-hl"><div class="computed highlight-mor">${fmt(cv.morTilb)}</div></td>
 
-      <!-- FÆDREORLOV -->
-      <td class="td-faed"><input class="cell-input date-input amber" placeholder="${fmt(cv.faedStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.faedStart)}" onchange="updateRow(${row.id},'faedStart',this.value)" title="Blank = starter ved terminsdato"></td>
-      <td class="td-faed"><div class="computed" style="color:#7A4A10;font-weight:600">${cv.faedUger!=null?cv.faedUger+' uger':''}</div></td>
+      <!-- FÆDREORLOV: start (justerbar), uger (editable), slutter -->
+      <td class="td-faed"><input class="cell-input date-input amber" placeholder="${fmt(cv.faedStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.faedStart)}" onchange="updateRow(${row.id},'faedStart',this.value)" title="Blank = starter ved fødsel"></td>
+      <td class="td-faed"><input class="cell-input" type="number" min="0" max="52" style="width:60px;text-align:center;font-weight:600;color:#7A4A10" value="${rowFaedUger}" onchange="updateRow(${row.id},'faedUger',this.value)" title="Antal fædreorllovsuger"></td>
       <td class="td-faed"><div class="computed date">${fmt(cv.faedSlut)}</div></td>
 
-      <!-- FORALDREORLOV -->
+      <!-- FORALDREORLOV: start (justerbar), uger (editable), slutter, ferie -->
       <td class="td-forl"><input class="cell-input date-input amber" placeholder="${fmt(cv.forlStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.forlStart)}" onchange="updateRow(${row.id},'forlStart',this.value)" title="Blank = starter morens tilbagekomstdag"></td>
-      <td class="td-forl"><div class="computed weeks-far">${cv.forlUger!=null?cv.forlUger+' uger':''}</div></td>
+      <td class="td-forl"><input class="cell-input" type="number" min="0" max="99" style="width:60px;text-align:center;font-weight:600;color:var(--red)" value="${rowForlUger}" onchange="updateRow(${row.id},'forlUger',this.value)" title="Antal foraldreorlovsuger for far"></td>
       <td class="td-forl"><div class="computed date">${fmt(cv.forlSlut)}</div></td>
+      <td class="td-forl"><input class="cell-input" type="number" min="0" max="52" style="width:60px;text-align:center;font-weight:600;color:var(--red-m)" value="${row.farFerie||0}" onchange="updateRow(${row.id},'farFerie',this.value)" title="Feriedage i forlængelse af foraldreorlov (uger)"></td>
 
       <!-- FAR tilbagekomst -->
       <td class="td-far-hl"><div class="computed highlight-far">${fmt(cv.farTilb)}</div></td>
 
-      <!-- DELETE -->
-      <td class="td-base" style="text-align:center"><button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button></td>
+      <!-- SLET -->
+      <td class="td-base" style="text-align:center">
+        ${SEE_ALL && row.createdByName ? `<div style="font-size:10px;color:var(--gray);margin-bottom:3px" title="Oprettet af">${esc(row.createdByName)}</div>` : ''}
+        <button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-// ── ROW MANAGEMENT ───────────────────────────────────
-function addRow(){
-  rows.push({id:nextId++,morNavn:'',farNavn:'',morAnsat:true,farAnsat:true,
-    morSektor:'Kommune',farSektor:'Kommune',termin:'',foedselDato:'',foedsel:'Enkeltbarn',
-    faedStart:'',forlStart:''});
-  saveData(); renderTable();
-  setTimeout(()=>{
-    const r=document.querySelector(`tr[data-id="${nextId-1}"]`);
-    if(r) r.querySelector('input')?.focus();
-  },50);
+// ── ROW MANAGEMENT (API-baseret) ─────────────────────
+async function addRow(){
+  const newRow={
+    morNavn:'',farNavn:'',
+    termin:'',foedselDato:'',foedsel:'Enkeltbarn',
+    morUger:null,faedUger:null,forlUger:null,
+    morFerie:0,farFerie:0,
+    faedStart:'',forlStart:'',
+  };
+  try{
+    const res=await fetch('/tools/barsel/api/cases',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(newRow),
+    });
+    if(!res.ok) throw new Error(await res.text());
+    const data=await res.json();
+    newRow.id=data.id;
+    newRow.createdByName='';
+    rows.push(newRow);
+    renderTable();
+    setTimeout(()=>{
+      const r=document.querySelector(`tr[data-id="${data.id}"]`);
+      if(r) r.querySelector('input')?.focus();
+    },50);
+  }catch(e){ console.error('Fejl ved oprettelse af sag:',e); showToast('Fejl — sag ikke oprettet'); }
 }
-function deleteRow(id){ rows=rows.filter(r=>r.id!==id); saveData(); renderTable(); showToast('Sag slettet'); }
+
+async function deleteRow(id){
+  try{
+    const res=await fetch(`/tools/barsel/api/cases/${id}`,{method:'DELETE'});
+    if(!res.ok) throw new Error(await res.text());
+    rows=rows.filter(r=>r.id!==id);
+    renderTable();
+    showToast('Sag slettet');
+  }catch(e){ console.error('Fejl ved sletning:',e); showToast('Fejl — sag ikke slettet'); }
+}
+
 function updateRow(id,field,value){
   const row=rows.find(r=>r.id===id);
   if(!row) return;
-  // Boolean coercion for checkbox values
   row[field]=(value===true||value===false)?value:value;
-  saveData(); renderTable();
+  renderTable();
+  saveRow(id);
 }
 
-// ── PERSIST ──────────────────────────────────────────
-function saveData(){
-  try{localStorage.setItem('barselv5_rows',JSON.stringify(rows));localStorage.setItem('barselv5_nid',nextId);}catch(e){}
+async function saveRow(id){
+  const row=rows.find(r=>r.id===id);
+  if(!row) return;
+  try{
+    await fetch(`/tools/barsel/api/cases/${id}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(row),
+    });
+  }catch(e){ console.error('Fejl ved gemning af sag:',e); }
 }
+
+// ── SETTINGS (API-baseret, debounced) ────────────────
+let _settingsTimer=null;
 function saveSettings(){
-  try{
-    const s={};['gravUger','morUger','faedUger','forlUger','tvilUger'].forEach(k=>s[k]=document.getElementById('s_'+k).value);
-    localStorage.setItem('barselv5_settings',JSON.stringify(s));
-  }catch(e){}
+  clearTimeout(_settingsTimer);
+  _settingsTimer=setTimeout(async()=>{
+    const s={};
+    ['gravUger','morUger','faedUger','forlUger','tvilUger'].forEach(k=>{
+      s[k]=+document.getElementById('s_'+k).value||0;
+    });
+    try{
+      await fetch('/tools/barsel/api/settings',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(s),
+      });
+    }catch(e){ console.error('Fejl ved gemning af indstillinger:',e); }
+  },800);
 }
-function loadData(){
+
+// ── INDLÆSNING FRA SERVER ────────────────────────────
+async function loadFromServer(){
   try{
-    const s=localStorage.getItem('barselv5_settings');
-    if(s){ const obj=JSON.parse(s); Object.entries(obj).forEach(([k,v])=>{ const el=document.getElementById('s_'+k); if(el) el.value=v; }); }
-    const r=localStorage.getItem('barselv5_rows');
-    if(r) rows=JSON.parse(r);
-    const n=localStorage.getItem('barselv5_nid');
-    if(n) nextId=+n;
-  }catch(e){}
+    const [settRes,casesRes]=await Promise.all([
+      fetch('/tools/barsel/api/settings'),
+      fetch('/tools/barsel/api/cases'),
+    ]);
+    if(settRes.ok){
+      const s=await settRes.json();
+      const map={gravUger:'gravUger',morUger:'morUger',faedUger:'faedUger',forlUger:'forlUger',tvilUger:'tvilUger'};
+      Object.entries(map).forEach(([k])=>{
+        const el=document.getElementById('s_'+k);
+        if(el && s[k]!=null) el.value=s[k];
+      });
+    }
+    if(casesRes.ok){
+      const data=await casesRes.json();
+      rows=data.cases||[];
+    }
+  }catch(e){ console.error('Fejl ved indlæsning fra server:',e); }
+  renderTable();
+  updatePills();
 }
 
 function toggleSettings(){
@@ -509,19 +523,18 @@ function toggleSettings(){
 
 // ── EXPORT ───────────────────────────────────────────
 function exportCSV(){
-  const h=['Mor navn','Mor ansat her','Far navn','Far ansat her','Terminsdato','Faktisk fødselsdato','Fødsel',
-    'Mor barselsstart','Mor uger','Mor barsel slutter','Mor tilbagekomst',
+  const h=['Mor navn','Far navn','Terminsdato','Faktisk fødselsdato','Fødsel',
+    'Mor barselsstart','Mor betalte uger','Mor barsel slutter','Mor ferie uger','Mor tilbagekomst',
     'Fædreorlov start','Fædreorlov uger','Fædreorlov slutter',
-    'Foraldreorlov start','Foraldreorlov uger','Foraldreorlov slutter','Far tilbagekomst'];
+    'Foraldreorlov start','Foraldreorlov uger','Foraldreorlov slutter','Far ferie uger','Far tilbagekomst'];
   const lines=[h.join(';')];
   rows.forEach(row=>{
     const cv=calcRow(row);
-    lines.push([row.morNavn,row.morAnsat?'Ja':'Nej ('+row.morSektor+')',
-      row.farNavn,row.farAnsat?'Ja':'Nej ('+row.farSektor+')',
+    lines.push([row.morNavn,row.farNavn,
       row.termin,row.foedselDato||'',row.foedsel,
-      fmt(cv.morStart),cv.morUger,fmt(cv.morSlut),fmt(cv.morTilb),
+      fmt(cv.morStart),cv.morUger,fmt(cv.morSlut),cv.morFerie||0,fmt(cv.morTilb),
       fmt(cv.faedStart),cv.faedUger,fmt(cv.faedSlut),
-      fmt(cv.forlStart),cv.forlUger,fmt(cv.forlSlut),fmt(cv.farTilb)
+      fmt(cv.forlStart),cv.forlUger,fmt(cv.forlSlut),cv.farFerie||0,fmt(cv.farTilb)
     ].map(v=>`"${v??''}"`).join(';'));
   });
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
@@ -538,7 +551,7 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'),2200);
 }
 
-window.addEventListener('DOMContentLoaded',()=>{ loadData(); renderTable(); updatePills(); });
+window.addEventListener('DOMContentLoaded',()=>{ loadFromServer(); });
 </script>
 </body>
 </html>
