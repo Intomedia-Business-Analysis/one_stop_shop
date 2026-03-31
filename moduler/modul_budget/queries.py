@@ -106,6 +106,14 @@ def db_saelger_upsert_rows(salesperson, site, team, year, rows: dict):
 def db_saelger_upload_df(df: pd.DataFrame):
     inserted = errors = 0
     error_rows = []
+
+    # Detect "day-as-month" encoding: alle datoer i januar med dag 1-12
+    # (fx 2026-01-02 = februar, 2026-01-07 = juli osv.)
+    parsed_dates = pd.to_datetime(df["BudgetDate"], errors="coerce")
+    if (parsed_dates.dt.month == 1).all() and parsed_dates.dt.day.between(1, 12).all() and (parsed_dates.dt.day > 1).any():
+        df = df.copy()
+        df["BudgetDate"] = parsed_dates.apply(lambda d: d.replace(month=int(d.day), day=1))
+
     conn = get_conn()
     cur = conn.cursor()
     for i, row in df.iterrows():
