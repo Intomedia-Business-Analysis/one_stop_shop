@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afdelingsleder Dashboard — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1280px;margin:0 auto}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.dash-grid-full{grid-column:1/-1}
+@media(max-width:900px){.dash-grid{grid-template-columns:1fr}}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card.neg::before{background:#B32E45}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.big-number{font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1;color:var(--ink)}
+.big-number.green{color:var(--green)}
+.big-number.neg{color:#B32E45}
+.big-number.amber{color:var(--amber)}
+.metric-row{display:flex;gap:24px;margin-top:16px;flex-wrap:wrap}
+.metric{display:flex;flex-direction:column;gap:3px}
+.metric-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.metric-value{font-size:14px;font-weight:700;color:var(--ink)}
+.metric-value.green{color:var(--green)}
+.metric-value.neg{color:#B32E45}
+.metric-value.amber{color:var(--amber)}
+/* Bullet graph */
+.bullet-wrap{margin-top:16px}
+.bullet-track{height:24px;background:var(--border);border-radius:4px;position:relative;overflow:hidden}
+.bullet-zone-red{position:absolute;left:0;top:0;height:100%;background:#FDE8EC}
+.bullet-zone-amber{position:absolute;top:0;height:100%;background:#FEF3DC}
+.bullet-zone-green{position:absolute;top:0;height:100%;background:#D4EDE4}
+.bullet-bar{position:absolute;left:0;top:4px;height:16px;border-radius:3px;background:var(--green);transition:width .6s ease;z-index:2}
+.bullet-bar.neg{background:#B32E45}
+.bullet-bar.amber{background:var(--amber)}
+.bullet-target{position:absolute;top:2px;bottom:2px;width:3px;background:var(--ink);border-radius:2px;z-index:3}
+.bullet-labels{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--ink-4)}
+/* Toggle */
+.toggle-pills{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;width:fit-content}
+.toggle-pill{padding:5px 14px;border-radius:5px;border:none;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;transition:all .13s;background:transparent;color:var(--ink-3)}
+.toggle-pill.on{background:var(--green);color:#fff}
+/* Bar chart */
+.bar-chart-wrap{display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:12px}
+.bc-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:100%}
+.bc-bars{flex:1;display:flex;align-items:flex-end;gap:2px;width:100%}
+.bc-bar{flex:1;border-radius:2px 2px 0 0;min-height:2px;transition:height .4s}
+.bc-bar.won{background:var(--green);opacity:.8}
+.bc-bar.cancel{background:#B32E45;opacity:.7}
+.bc-label{font-size:9px;color:var(--ink-4);white-space:nowrap}
+.bc-label.current{color:var(--green);font-weight:700}
+/* Forecast comparison */
+.forecast-compare{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap}
+.fc-item{display:flex;flex-direction:column;gap:4px}
+.fc-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.fc-value{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.5px}
+.fc-arrow{font-size:24px;color:var(--ink-3)}
+.fc-arrow.up{color:var(--green)}
+.fc-arrow.down{color:#B32E45}
+/* Spinner */
+.spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+      <a href="/tools/performance/dashboards" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        KPI Dashboards
+      </a>
+      <a href="/tools/performance/afdelingsleder" class="sbi active">
+        <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z" fill="none"/><path d="M3 9h18M9 21V9"/></svg>
+        Afdelingsleder
+      </a>
+      <a href="/tools/performance/manager" class="sbi">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager
+      </a>
+      <a href="/tools/performance/overview" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Overblik
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/tools/performance/dashboards" class="tb-btn">← KPI Dashboards</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/performance/dashboards" class="bc-link">KPI Dashboards</a><span class="bc-sep">/</span>
+          <span>Afdelingsleder</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Afdelingsleder Dashboard</h1>
+            <p class="page-sub">Helikopter-perspektiv — omsætning, budget, forecast og vækst</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)">Visning</label>
+              <div class="toggle-pills">
+                <button class="toggle-pill on" id="toggle-abo" onclick="setVisning(false,this)">Abonnementer</button>
+                <button class="toggle-pill" id="toggle-alle" onclick="setVisning(true,this)">Alle brands</button>
+              </div>
+            </div>
+            <button class="refresh-btn" onclick="loadData()" style="margin-top:18px">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Opdater
+            </button>
+          </div>
+        </div>
+
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <div id="dash-content" style="display:none">
+
+          <!-- Række 1: Revenue vs Budget + Forecast -->
+          <div class="dash-grid">
+
+            <!-- Kort 1: Revenue vs Budget -->
+            <div class="dash-card">
+              <div class="dash-card-title">
+                <span>Revenue vs. Budget</span>
+                <span id="rv-month-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+              </div>
+              <div class="big-number green" id="rv-netto">—</div>
+              <div style="font-size:11px;color:var(--ink-4);margin-top:4px">Tilvækst (netto) denne måned</div>
+              <div class="bullet-wrap">
+                <div class="bullet-track">
+                  <div class="bullet-zone-red"    style="left:0;width:70%"></div>
+                  <div class="bullet-zone-amber"  style="left:70%;width:15%"></div>
+                  <div class="bullet-zone-green"  style="left:85%;width:15%"></div>
+                  <div class="bullet-bar" id="bullet-bar" style="width:0%"></div>
+                  <div class="bullet-target" id="bullet-target" style="left:100%"></div>
+                </div>
+                <div class="bullet-labels">
+                  <span>0</span>
+                  <span id="bullet-budget-label">Budget</span>
+                </div>
+              </div>
+              <div class="metric-row">
+                <div class="metric">
+                  <span class="metric-label">Won</span>
+                  <span class="metric-value green" id="rv-won">—</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">Opsigelser</span>
+                  <span class="metric-value neg" id="rv-cancel">—</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">Budget</span>
+                  <span class="metric-value" id="rv-budget">—</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">Afv. budget</span>
+                  <span class="metric-value" id="rv-vs-budget">—</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Kort 2: Forecast -->
+            <div class="dash-card">
+              <div class="dash-card-title">Forecast vs. Nu</div>
+              <div class="forecast-compare">
+                <div class="fc-item">
+                  <span class="fc-label">Nu (netto)</span>
+                  <span class="fc-value" id="fc-nu">—</span>
+                </div>
+                <div class="fc-arrow" id="fc-arrow">→</div>
+                <div class="fc-item">
+                  <span class="fc-label">Forecast</span>
+                  <span class="fc-value" id="fc-forecast">—</span>
+                </div>
+              </div>
+              <div style="margin-top:16px">
+                <div style="font-size:11px;color:var(--ink-4);margin-bottom:6px">Forventet landing</div>
+                <div id="fc-status" style="font-size:13px;font-weight:600;color:var(--ink)">—</div>
+              </div>
+              <div class="metric-row" style="margin-top:16px">
+                <div class="metric">
+                  <span class="metric-label">Vs. samme måned LY</span>
+                  <span class="metric-value" id="fc-vs-ly">—</span>
+                </div>
+                <div class="metric">
+                  <span class="metric-label">YoY %</span>
+                  <span class="metric-value" id="fc-yoy-pct">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Række 2: Churn/Netto bar chart (fuld bredde) -->
+          <div class="dash-card dash-grid-full">
+            <div class="dash-card-title">
+              <span>Kundetilgang / Churn (Netto)</span>
+              <span id="chart-year-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+            </div>
+            <div style="display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3)">
+                <div style="width:12px;height:12px;background:var(--green);border-radius:2px;opacity:.8"></div> Won
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3)">
+                <div style="width:12px;height:12px;background:#B32E45;border-radius:2px;opacity:.7"></div> Opsigelser
+              </div>
+            </div>
+            <div class="bar-chart-wrap" id="bar-chart"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let visAlle = false;
+
+function fmtKr(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000) + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+
+function fmtFull(v) {
+  const sign = v < 0 ? '-' : '';
+  return sign + Math.abs(Math.round(v)).toLocaleString('da-DK') + ' kr.';
+}
+
+function setVisning(alle, btn) {
+  visAlle = alle;
+  document.querySelectorAll('.toggle-pill').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  loadData();
+}
+
+async function loadData() {
+  const qs = visAlle ? '?vis_alle=true' : '';
+  try {
+    const r = await fetch(`/tools/performance/afdelingsleder-data${qs}`);
+    const d = await r.json();
+    if (!r.ok) return;
+
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('dash-content').style.display  = '';
+
+    renderRevenueBudget(d);
+    renderForecast(d);
+    renderBarChart(d);
+
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function renderRevenueBudget(d) {
+  document.getElementById('rv-month-label').textContent = d.month_label;
+  document.getElementById('rv-netto').textContent  = fmtKr(d.netto_maaned);
+  document.getElementById('rv-netto').className    = 'big-number' + (d.netto_maaned >= 0 ? ' green' : ' neg');
+  document.getElementById('rv-won').textContent    = fmtKr(d.revenue_maaned);
+  document.getElementById('rv-cancel').textContent = d.cancel_maaned > 0 ? '-' + fmtKr(d.cancel_maaned) : '—';
+  document.getElementById('rv-budget').textContent = d.budget_maaned > 0 ? fmtKr(d.budget_maaned) : '—';
+
+  if (d.vs_budget !== null) {
+    const sign = d.vs_budget >= 0 ? '+' : '';
+    const pct  = d.vs_budget_pct !== null ? ` (${Math.round(d.vs_budget_pct)}%)` : '';
+    const el   = document.getElementById('rv-vs-budget');
+    el.textContent = sign + fmtFull(d.vs_budget) + pct;
+    el.className   = 'metric-value ' + (d.vs_budget >= 0 ? 'green' : 'neg');
+  } else {
+    document.getElementById('rv-vs-budget').textContent = '—';
+  }
+
+  // Bullet graph
+  if (d.budget_maaned > 0) {
+    const pct    = Math.min((d.netto_maaned / d.budget_maaned) * 100, 120);
+    const barCls = pct >= 100 ? '' : pct >= 70 ? ' amber' : ' neg';
+    document.getElementById('bullet-bar').style.width  = Math.min(pct, 100) + '%';
+    document.getElementById('bullet-bar').className    = 'bullet-bar' + barCls;
+    document.getElementById('bullet-target').style.left = '100%';
+    document.getElementById('bullet-budget-label').textContent = fmtKr(d.budget_maaned);
+  }
+}
+
+function renderForecast(d) {
+  document.getElementById('fc-nu').textContent       = fmtKr(d.netto_maaned);
+  document.getElementById('fc-forecast').textContent = d.forecast_maaned > 0 ? fmtKr(d.forecast_maaned) : '—';
+
+  const arrowEl = document.getElementById('fc-arrow');
+  if (d.forecast_maaned > 0) {
+    const diff = d.forecast_maaned - d.netto_maaned;
+    arrowEl.textContent = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+    arrowEl.className   = 'fc-arrow ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
+    document.getElementById('fc-status').textContent =
+      diff > 0
+        ? `Forventer at lande ${fmtKr(d.forecast_maaned)} — ${fmtKr(diff)} over nu`
+        : diff < 0
+        ? `Forventer at lande ${fmtKr(d.forecast_maaned)} — ${fmtKr(Math.abs(diff))} under nu`
+        : 'På sporet';
+  } else {
+    arrowEl.textContent = '→';
+    document.getElementById('fc-status').textContent = 'Ingen forecast gemt';
+  }
+
+  // YoY
+  if (d.vs_ly !== null) {
+    const sign = d.vs_ly >= 0 ? '+' : '';
+    const pct  = d.vs_ly_pct !== null ? ` (${d.vs_ly_pct > 0 ? '+' : ''}${d.vs_ly_pct.toFixed(1).replace('.',',')}%)` : '';
+    const el   = document.getElementById('fc-vs-ly');
+    el.textContent = sign + fmtFull(d.vs_ly) + pct;
+    el.className   = 'metric-value ' + (d.vs_ly >= 0 ? 'green' : 'neg');
+    const yoyEl = document.getElementById('fc-yoy-pct');
+    yoyEl.textContent = d.vs_ly_pct !== null ? (d.vs_ly_pct >= 0 ? '+' : '') + d.vs_ly_pct.toFixed(1).replace('.',',') + '%' : '—';
+    yoyEl.className   = 'metric-value ' + (d.vs_ly_pct >= 0 ? 'green' : 'neg');
+  } else {
+    document.getElementById('fc-vs-ly').textContent  = '—';
+    document.getElementById('fc-yoy-pct').textContent = '—';
+  }
+}
+
+function renderBarChart(d) {
+  document.getElementById('chart-year-label').textContent = new Date(d.today).getFullYear();
+  const chart  = d.churn_chart;
+  const today  = d.today;
+  const curMonth = parseInt(today.split('-')[1]);
+
+  const maxVal = Math.max(...chart.map(m => Math.max(m.won, m.cancel)), 1);
+  const wrap   = document.getElementById('bar-chart');
+
+  wrap.innerHTML = chart.map((m, i) => {
+    const month    = i + 1;
+    const isCur    = month === curMonth;
+    const isFuture = month > curMonth;
+    const wonH     = isFuture ? 0 : Math.max((m.won    / maxVal) * 100, 1);
+    const canH     = isFuture ? 0 : Math.max((m.cancel / maxVal) * 100, 1);
+    return `<div class="bc-col">
+      <div class="bc-bars">
+        <div class="bc-bar won"    style="height:${wonH}%;opacity:${isFuture?.3:.8}" title="${m.maaned}: Won ${fmtKr(m.won)}"></div>
+        <div class="bc-bar cancel" style="height:${canH}%;opacity:${isFuture?.2:.7}" title="${m.maaned}: Opsig. ${fmtKr(m.cancel)}"></div>
+      </div>
+      <div class="bc-label ${isCur ? 'current' : ''}">${m.maaned}</div>
+    </div>`;
+  }).join('');
+}
+
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
