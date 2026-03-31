@@ -11,6 +11,7 @@ from moduler.modul_perf.queries import (
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
     db_get_filters, db_perf_data, db_breakdown, db_deals, db_overview_data,
+    db_manager_data, db_afdelingsleder_data, db_saelger_data,
 )
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
@@ -350,3 +351,97 @@ async def perf_overview_data(user=Depends(get_current_user)):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        DET NYE DASHBOARD FOR MANAGER
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/manager", response_class=HTMLResponse)
+async def perf_manager_page(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Kun Sales Managers og derover har adgang")
+    today = date.today()
+    return templates.TemplateResponse("perf_manager.html", {
+        "request":       request,
+        "user":          user,
+        "current_year":  today.year,
+        "current_month": today.month,
+        "current_day":   today.day,
+    })
+
+@router.get("/manager-data")
+async def perf_manager_data(
+    team: str | None = None,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_manager_data(date.today(), team=team))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        DET NYE DASHBOARD FOR LEDELSE
+#----------------------------------------------------------------------------------------------------------------------
+
+@router.get("/afdelingsleder", response_class=HTMLResponse)
+async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "management"):
+        raise HTTPException(403, "Kun Management og derover har adgang")
+    today = date.today()
+    return templates.TemplateResponse("perf_afdelingsleder.html", {
+        "request":       request,
+        "user":          user,
+        "current_year":  today.year,
+        "current_month": today.month,
+        "current_day":   today.day,
+    })
+
+@router.get("/afdelingsleder-data")
+async def perf_afdelingsleder_data(
+    vis_alle: bool = False,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "management"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_afdelingsleder_data(date.today(), vis_alle=vis_alle))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        DET NYE DASHBOARD FOR SÆLGER
+#----------------------------------------------------------------------------------------------------------------------
+
+@router.get("/saelger", response_class=HTMLResponse)
+async def perf_saelger_page(request: Request, user=Depends(get_current_user)):
+    return templates.TemplateResponse("perf_saelger.html", {
+        "request": request,
+        "user":    user,
+    })
+
+@router.get("/saelger-data")
+async def perf_saelger_data(user=Depends(get_current_user)):
+    try:
+        return JSONResponse(db_saelger_data(date.today(), user["name"]))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+#-----------------------------------------------------------------------------------------------------------------------
+#                                                  DASHBOARDS VÆLGER
+#-----------------------------------------------------------------------------------------------------------------------
+
+@router.get("/dashboards", response_class=HTMLResponse)
+async def perf_dashboards_page(request: Request, user=Depends(get_current_user)):
+    return templates.TemplateResponse("perf_dashboards.html", {
+        "request":    request,
+        "user":       user,
+        "is_manager": has_access(user, "sales_manager"),
+        "is_management": has_access(user, "management"),
+    })
