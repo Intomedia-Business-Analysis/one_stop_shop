@@ -204,8 +204,13 @@ async def medie_template():
 
 @router.get("/saelger/template")
 async def saelger_template():
-    df = pd.DataFrame(columns=["Owner","Brand","Team","BudgetDate","BudgetAmount"])
-    df.loc[0] = ["Michael Toft","FINANS DK","Team FINANS Int","2025-01-01","31000"]
+    today = date.today()
+    year = today.year
+    rows = [
+        ["Michael Toft", "FINANS DK", "Team FINANS Int", f"{year}-{m:02d}-01", 31000]
+        for m in range(1, 13)
+    ]
+    df = pd.DataFrame(rows, columns=["Owner", "Brand", "Team", "BudgetDate", "BudgetAmount"])
     buf = io.BytesIO()
     df.to_excel(buf, index=False)
     buf.seek(0)
