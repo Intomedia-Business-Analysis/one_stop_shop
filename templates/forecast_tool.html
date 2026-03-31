@@ -167,14 +167,6 @@
                 <option value="" data-brand="">Alle teams</option>
               </select>
             </div>
-            <div class="fld">
-              <label>Visningsniveau</label>
-              <select id="fc-level" onchange="onLevelChange(this.value)">
-                <option value="team">Team-overblik</option>
-                <option value="medie">Medie</option>
-                <option value="saelger">Sælger</option>
-              </select>
-            </div>
           </div>
           <button class="load-btn" id="load-btn" onclick="loadForecast()">
             <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
@@ -207,7 +199,7 @@
                   <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
                   <th class="num">Åben pipeline</th>
                   <th class="num">Pipeline %</th>
-                  <th class="num">Justering %</th>
+                  <th class="num">Justering (kr.)</th>
                   <th class="num">Forecast total</th>
                   <th class="num">Budget</th>
                   <th class="num">Afv. vs. budget</th>
@@ -244,7 +236,7 @@
                   <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
                   <th class="num">Åben pipeline</th>
                   <th class="num">Pipeline %</th>
-                  <th class="num">Justering %</th>
+                  <th class="num">Justering (kr.)</th>
                   <th class="num">Forecast total</th>
                   <th class="num">Budget</th>
                   <th class="num">Afv. vs. budget</th>
@@ -281,7 +273,7 @@
                   <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
                   <th class="num">Åben pipeline</th>
                   <th class="num">Pipeline %</th>
-                  <th class="num">Justering %</th>
+                  <th class="num">Justering (kr.)</th>
                   <th class="num">Forecast total</th>
                   <th class="num">Budget</th>
                   <th class="num">Afv. vs. budget</th>
@@ -362,11 +354,6 @@ function switchTab(id, el) {
   document.getElementById('tab-' + id).classList.add('on');
 }
 
-function onLevelChange(level) {
-  const btn = document.getElementById('tab-btn-' + level);
-  if (btn) switchTab(level, btn);
-}
-
 // ---------------------------------------------------------------------------
 // Load forecast data
 // ---------------------------------------------------------------------------
@@ -375,7 +362,8 @@ let _lastData = null;
 async function loadForecast() {
   const year  = document.getElementById('fc-year').value;
   const month = document.getElementById('fc-month').value;
-  const level = document.getElementById('fc-level').value;
+  const activeTab = document.querySelector('.tab-btn.on');
+  const level = activeTab ? (activeTab.id === 'tab-btn-team' ? 'team' : activeTab.id === 'tab-btn-medie' ? 'medie' : 'saelger') : 'team';
   const btn   = document.getElementById('load-btn');
 
   let url = `/tools/forecast/data?year=${year}&month=${month}&level=${level}`;
@@ -466,15 +454,12 @@ function renderTable(level, rows) {
         </div>
       </td>
       <td>
-        <div class="fc-pct-wrap">
-          <input class="fc-input" type="number" min="-100" max="500" step="1"
-                 value="${row.adjustment_pct}"
-                 id="adj-${level}-${i}"
-                 placeholder="0"
-                 title="Juster den historiske gennemsnit op/ned i % (0 = ingen justering)"
-                 onchange="recalcRow('${level}',${i})">
-          <span>%</span>
-        </div>
+        <input class="fc-input" type="number" step="1"
+               value="${row.manual_amount || 0}"
+               id="adj-${level}-${i}"
+               placeholder="0"
+               title="Tilføj manuelt beløb i kr. til forecasted total"
+               onchange="recalcRow('${level}',${i})">
       </td>
       <td class="${fcClass}" id="ftotal-${level}-${i}">${fmtFull(row.forecast_total)}</td>
       <td class="num" data-raw="${row.budget}">${row.budget !== 0 ? fmtFull(row.budget) : '—'}</td>
@@ -497,13 +482,10 @@ function recalcRow(level, i) {
 
   const hist    = parseFloat(pctEl.dataset.hist) || 0;
   const pipe    = parseFloat(pctEl.dataset.pipe) || 0;
-  const man     = parseFloat(pctEl.dataset.man)  || 0;
   const pct     = parseFloat(pctEl.value)         || 0;
-  const adj     = parseFloat(adjEl.value)          || 0;
+  const man     = parseFloat(adjEl.value)          || 0;
 
-  const adjFactor  = 1.0 + adj / 100.0;
-  const adjHist    = hist * adjFactor;
-  const total      = adjHist + (pipe * pct / 100) + man;
+  const total      = hist + (pipe * pct / 100) + man;
 
   const budgetCell = pctEl.closest('tr').querySelectorAll('td')[8];
   const budget     = parseFloat(budgetCell.dataset.raw) || 0;
@@ -607,8 +589,8 @@ async function saveForecast(level) {
     rows.push({
       dimension_key:  realKey,
       pipeline_pct:   parseFloat(pctEl.value)  || 30,
-      adjustment_pct: parseFloat(adjEl?.value) || 0,
-      manual_amount:  parseFloat(pctEl.dataset.man) || 0,
+      adjustment_pct: 0,
+      manual_amount:  parseFloat(adjEl?.value) || 0,
       forecast_total: parseFull(totEl.textContent),
     });
   });

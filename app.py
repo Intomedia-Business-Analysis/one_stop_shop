@@ -23,6 +23,8 @@ from moduler.modul_budget.router import router as budget_router
 from moduler.modul_admin.router import router as admin_router
 from moduler.modul_forcast.router import router as forecast_router
 from moduler.modul_perf.router import router as perf_router
+from moduler.modul_barsel.router import router as barsel_router
+from moduler.modul_barsel.queries import init_barsel_db
 
 load_dotenv()
 
@@ -30,7 +32,8 @@ if os.getenv("DEV_MODE") == "1":
     print("[DEV] DEV_MODE=1 — login og SQL-forbindelse er bypassed")
 
 app = FastAPI(title="Intomedia Hub")
-init_db()   # Opret tabeller ved opstart (idempotent)
+init_db()         # Opret hub-tabeller ved opstart (idempotent)
+init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SECRET_KEY", "skift-denne-noegle"),
@@ -39,6 +42,7 @@ app.include_router(budget_router)
 app.include_router(admin_router)
 app.include_router(forecast_router)
 app.include_router(perf_router)
+app.include_router(barsel_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
@@ -287,7 +291,12 @@ async def barselsberegner_view(request: Request, user=Depends(get_current_user))
 @app.get("/tool/barselsberegner/app", response_class=HTMLResponse)
 async def barselsberegner_app(request: Request, user=Depends(get_current_user)):
     """Serverer selve beregner-appen i en iframe (kræver login)."""
-    return templates.TemplateResponse("barselsberegner_app.html", {"request": request})
+    see_all = user["role"] == "admin"
+    return templates.TemplateResponse("barselsberegner_app.html", {
+        "request": request,
+        "user":    user,
+        "see_all": see_all,
+    })
 
 
 @app.get("/tool/{tool_id}", response_class=HTMLResponse)
