@@ -225,7 +225,7 @@
               <div class="month-bars" id="month-bars"></div>
             </div>
 
-            <!-- Kort 5: Seneste deals -->
+            <!--deals historik -->
             <div class="dash-card">
               <div class="dash-card-title">Seneste deals vundet</div>
               <div style="overflow-x:auto">
@@ -236,10 +236,12 @@
                       <th>Brand</th>
                       <th class="num">Beløb</th>
                       <th>Dato</th>
+                      <th>Deal Type</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="deals-tbody">
-                    <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
+                    <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -368,15 +370,27 @@ function renderMonthBars(d) {
 function renderDeals(d) {
   const tbody = document.getElementById('deals-tbody');
   if (!d.seneste_deals.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals denne måned</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals</td></tr>';
     return;
   }
-  tbody.innerHTML = d.seneste_deals.map(deal => `<tr>
-    <td style="max-width:200px;white-space:normal">${escHtml(deal.title)}</td>
-    <td>${escHtml(deal.site)}</td>
-    <td class="num">${fmtFull(deal.value)}</td>
-    <td>${escHtml(deal.dato)}</td>
-  </tr>`).join('');
+  tbody.innerHTML = d.seneste_deals.map(deal => {
+    const isCancel = deal.is_cancel;
+    const isLost   = deal.status === 'lost';
+    const badgeCls = isCancel ? 'background:#FDE8EC;color:#B32E45'
+                   : isLost   ? 'background:#FEF3DC;color:var(--amber)'
+                               : 'background:var(--green-light);color:var(--green)';
+    const badgeTxt = isCancel ? 'Opsigelse' : isLost ? 'Tabt' : 'Vundet';
+    const valCls   = isCancel || isLost ? 'color:#B32E45' : 'color:var(--green)';
+    const sign     = isCancel ? '-' : '';
+    return `<tr>
+      <td style="max-width:200px;white-space:normal">${escHtml(deal.title)}</td>
+      <td>${escHtml(deal.site)}</td>
+      <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
+      <td>${escHtml(deal.dato)}</td>
+      <td>${escHtml(deal.deal_type)}</td>
+      <td><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;${badgeCls}">${badgeTxt}</span></td>
+    </tr>`;
+  }).join('');
 }
 
 loadData();
