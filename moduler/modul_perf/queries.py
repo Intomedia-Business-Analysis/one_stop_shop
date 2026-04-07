@@ -66,6 +66,9 @@ GROUPBY_COLUMNS = {
 CANCELLATION_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
+# Ekskluder administrative deals fra alle sælger-beregninger
+_ADM_EXCLUDE = "AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'"
+
 DEAL_TYPE_ALIASES: dict[str, list[str]] = {
     "Abonnement":   ["Abonnement", "Subscription"],
     "Subscription": ["Abonnement", "Subscription"],
@@ -390,70 +393,97 @@ def db_manager_data(today: date, team: str | None = None):
 #                                          DET NYE DASHBOARD FOR SÆLGER
 #-----------------------------------------------------------------------------------------------------------------------
 
-def db_saelger_data(today: date, owner_name: str, team: str | None = None):
-    month_from = date(today.year, today.month, 1)
-    next_month = today.month % 12 + 1
-    next_year  = today.year + (1 if today.month == 12 else 0)
+def db_saelger_data(today: date, owner_name: str, team: str | None = None,
+                     selected_year: int | None = None, selected_month: int | None = None,
+                     date_col: str = "won_time"):
+    # Reference period — brug valgte år/måned hvis angivet, ellers aktuel dato
+    ref_year  = selected_year  or today.year
+    ref_month = selected_month or today.month
+
+    month_from = date(ref_year, ref_month, 1)
+    next_month = ref_month % 12 + 1
+    next_year  = ref_year + (1 if ref_month == 12 else 0)
     month_to   = date(next_year, next_month, 1)
 
-    year_from  = date(today.year, 1, 1)
-    year_to    = date(today.year + 1, 1, 1)
+    year_from  = date(ref_year, 1, 1)
+    year_to    = date(ref_year + 1, 1, 1)
 
+    # Sparkline/salg i dag bruger altid rigtig today
     week_start = today - timedelta(days=today.weekday())
     week_end   = week_start + timedelta(days=7)
 
-    brands_ph  = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+    # Deals-tabel: vis kun valgte måned, eller hele året hvis ingen måned valgt
+    deals_from = month_from if selected_month else year_from
+    deals_to   = month_to   if selected_month else year_to
+
+    brands_ph   = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
     team_clause = "AND [team] = %s" if team else ""
     team_params = (team,) if team else ()
+    # Dato-kolonne: won_time (matcher Pipedrive) eller service_activation_date
+    _VALID_DATE_COLS = {"won_time", "service_activation_date"}
+    if date_col not in _VALID_DATE_COLS:
+        date_col = "won_time"
+    d_col = f"[{date_col}]"
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
 
+    # Q1: Won amount/count for reference-måneden
     cur.execute(f"""
         SELECT
             SUM((CASE
-                WHEN [value_dkk] IS NOT NULL THEN CAST([value_dkk] AS DECIMAL(18,2))
-                WHEN [currency] = 'EUR' THEN CAST([value] * 7.46 AS DECIMAL(18,2))
-                WHEN [currency] = 'SEK' THEN CAST([value] * 0.65 AS DECIMAL(18,2))
-                WHEN [currency] = 'NOK' THEN CAST([value] * 0.63 AS DECIMAL(18,2))
-                WHEN [currency] = 'USD' THEN CAST([value] * 6.90 AS DECIMAL(18,2))
-                ELSE CAST([value] AS DECIMAL(18,2))
+                WHEN [value_dkk] IS NOT NULL THEN ABS(CAST([value_dkk] AS DECIMAL(18,2)))
+                WHEN [currency] = 'EUR' THEN ABS(CAST([value] * 7.46 AS DECIMAL(18,2)))
+                WHEN [currency] = 'SEK' THEN ABS(CAST([value] * 0.65 AS DECIMAL(18,2)))
+                WHEN [currency] = 'NOK' THEN ABS(CAST([value] * 0.63 AS DECIMAL(18,2)))
+                WHEN [currency] = 'USD' THEN ABS(CAST([value] * 6.90 AS DECIMAL(18,2)))
+                ELSE ABS(CAST([value] AS DECIMAL(18,2)))
             END) * (CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN -1 ELSE 1 END)) AS net_amount,
             COUNT(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS won_count,
             SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END) AS cancel_amount
+                THEN ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) ELSE 0 END) AS cancel_amount
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+          {_ADM_EXCLUDE}
+          {team_clause}
+    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     res           = cur.fetchone() or {}
     won_amount    = float(res.get("net_amount", 0) or 0)
     won_count     = int(res.get("won_count", 0) or 0)
     cancel_amount = abs(float(res.get("cancel_amount", 0) or 0))
 
     cur.execute("""
-        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+        SELECT [Team], ISNULL(SUM([BudgetAmount]),0) AS budget
         FROM [dbo].[SalespersonBudget]
         WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
           AND [Owner] = %s
+        GROUP BY [Team]
+        ORDER BY [Team]
     """, (month_from.isoformat(), month_to.isoformat(), owner_name))
-    budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+    budget_rows = cur.fetchall()
+    budget_by_team_raw = {r["Team"]: float(r["budget"] or 0) for r in budget_rows if r["Team"]}
+    # Filtrér på valgt team hvis sat
+    if team:
+        budget_by_team_raw = {k: v for k, v in budget_by_team_raw.items() if k == team}
+    budget = sum(budget_by_team_raw.values())
 
     cur.execute(f"""
-        SELECT CAST([won_time] AS DATE) AS dag,
+        SELECT CAST({d_col} AS DATE) AS dag,
                ISNULL(SUM(CASE
                    WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                   THEN -CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
-                   ELSE CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
+                   THEN -ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
+                   ELSE ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
                END),0) AS total
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
-        GROUP BY CAST([won_time] AS DATE)
+          {_ADM_EXCLUDE}
+        GROUP BY CAST({d_col} AS DATE)
     """, (week_start.isoformat(), week_end.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
     spark_raw = {str(r["dag"]): float(r["total"] or 0) for r in cur.fetchall()}
     sparkline = [{"dag": (week_start + timedelta(days=i)).isoformat(),
@@ -463,14 +493,15 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
     cur.execute(f"""
         SELECT ISNULL(SUM(CASE
             WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-            THEN -CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
-            ELSE CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
+            THEN -ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
+            ELSE ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
         END),0) AS total
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
+          {_ADM_EXCLUDE}
     """, (today.isoformat(), (today + timedelta(days=1)).isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
 
@@ -483,44 +514,50 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
           AND COALESCE([value_dkk],[value]) > 0
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+          {_ADM_EXCLUDE}
+          {team_clause}
+    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     pipe_row       = cur.fetchone() or {}
     pipeline_value = float(pipe_row.get("pipeline_value", 0) or 0)
     pipeline_count = int(pipe_row.get("pipeline_count", 0) or 0)
 
-    ly_from = date(today.year - 1, today.month, 1)
-    ly_next = today.month % 12 + 1
-    ly_ny   = today.year - 1 + (1 if today.month == 12 else 0)
+    ly_from = date(ref_year - 1, ref_month, 1)
+    ly_next = ref_month % 12 + 1
+    ly_ny   = ref_year - 1 + (1 if ref_month == 12 else 0)
     ly_to   = date(ly_ny, ly_next, 1)
     cur.execute(f"""
         SELECT ISNULL(SUM(CASE
             WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-            THEN -CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
-            ELSE CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
+            THEN -ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
+            ELSE ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
         END),0) AS won
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
-    """, (ly_from.isoformat(), ly_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+          {_ADM_EXCLUDE}
+          {team_clause}
+    """, (ly_from.isoformat(), ly_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     ly_won = float((cur.fetchone() or {}).get("won", 0) or 0)
 
     cur.execute(f"""
-        SELECT MONTH([won_time]) AS maaned,
+        SELECT MONTH({d_col}) AS maaned,
                ISNULL(SUM(CASE
                    WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                   THEN -CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
-                   ELSE CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))
+                   THEN -ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
+                   ELSE ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)))
                END),0) AS won
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
-        GROUP BY MONTH([won_time])
+          {_ADM_EXCLUDE}
+          {team_clause}
+        GROUP BY MONTH({d_col})
         ORDER BY maaned
-    """, (year_from.isoformat(), year_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+    """, (year_from.isoformat(), year_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     maaned_raw = {r["maaned"]: float(r["won"] or 0) for r in cur.fetchall()}
     maaned_chart = [{"maaned": MONTH_NAMES_DA[m - 1][:3], "won": round(maaned_raw.get(m, 0), 2)}
                     for m in range(1, 13)]
@@ -533,7 +570,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           AND [sites] IN {brands_ph}
           {team_clause}
         GROUP BY [owner_name]
@@ -545,13 +582,12 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
         for r in cur.fetchall()
     ], key=lambda x: -x["won_amount"])
 
-    # Q9: Alle "Won" deals for HELE ÅRET
+    # Q9: Deals — filtreret på valgt periode + team
     cur.execute(f"""
         SELECT
             [title], [sites],
-            CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) AS value,
-            -- Vi skifter tilbage til dato-format (YYYY-MM-DD), da klokkeslæt ikke er nok for et helt år
-            CONVERT(NVARCHAR(10), [won_time], 23) AS event_date,
+            ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
+            CONVERT(NVARCHAR(10), {d_col}, 23) AS event_date,
             [deal_type],
             [status],
             [pipeline_name]
@@ -560,10 +596,11 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
           AND [pipeline_name] <> 'Web Sale'
           AND [owner_name] = %s
           AND [sites] IN {brands_ph}
-          -- Filter for hele året:
-          AND [won_time] >= %s AND [won_time] < %s
-        ORDER BY [won_time] DESC
-    """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + (year_from.isoformat(), year_to.isoformat()))
+          AND {d_col} >= %s AND {d_col} < %s
+          {_ADM_EXCLUDE}
+          {team_clause}
+        ORDER BY {d_col} DESC
+    """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + (deals_from.isoformat(), deals_to.isoformat()) + team_params)
 
     seneste_deals = [{
         "title": r["title"] or "(Uden titel)",
@@ -575,10 +612,50 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
         "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser')
     } for r in cur.fetchall()]
 
+    # Won-beløb per team (til budget-breakdown)
+    cur.execute(f"""
+        SELECT [team],
+               ISNULL(SUM((CASE
+                   WHEN [value_dkk] IS NOT NULL THEN ABS(CAST([value_dkk] AS DECIMAL(18,2)))
+                   WHEN [currency] = 'EUR' THEN ABS(CAST([value] * 7.46 AS DECIMAL(18,2)))
+                   WHEN [currency] = 'SEK' THEN ABS(CAST([value] * 0.65 AS DECIMAL(18,2)))
+                   WHEN [currency] = 'NOK' THEN ABS(CAST([value] * 0.63 AS DECIMAL(18,2)))
+                   WHEN [currency] = 'USD' THEN ABS(CAST([value] * 6.90 AS DECIMAL(18,2)))
+                   ELSE ABS(CAST([value] AS DECIMAL(18,2)))
+               END) * (CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN -1 ELSE 1 END)),0) AS won
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND {d_col} >= %s AND {d_col} < %s
+          AND [owner_name] = %s
+          AND [sites] IN {brands_ph}
+          {_ADM_EXCLUDE}
+          {team_clause}
+        GROUP BY [team]
+    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    won_by_team_raw = {r["team"]: float(r["won"] or 0) for r in cur.fetchall() if r["team"]}
+
+    # Saml alle kendte teams fra budget + salg
+    all_teams = sorted(set(list(budget_by_team_raw.keys()) + list(won_by_team_raw.keys())))
+    budget_by_team = [
+        {
+            "team":    t,
+            "budget":  round(budget_by_team_raw.get(t, 0), 2),
+            "won":     round(won_by_team_raw.get(t, 0), 2),
+            "pct":     round(won_by_team_raw.get(t, 0) / budget_by_team_raw[t] * 100, 1)
+                       if budget_by_team_raw.get(t, 0) > 0 else None,
+        }
+        for t in all_teams
+    ]
+
     conn.close()
 
     vs_budget_pct = round(won_amount / budget * 100, 1) if budget > 0 else None
     yoy_pct       = round((won_amount - ly_won) / abs(ly_won) * 100, 1) if ly_won else None
+
+    if selected_month:
+        month_label = f"{MONTH_NAMES_DA[ref_month-1]} {ref_year}"
+    else:
+        month_label = str(ref_year)
 
     return {
         "won_amount":      round(won_amount, 2),
@@ -595,10 +672,37 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None):
         "maaned_chart":    maaned_chart,
         "leaderboard":     leaderboard,
         "seneste_deals":   seneste_deals,
+        "budget_by_team":  budget_by_team,
         "owner_name":      owner_name,
-        "month_label":     f"{MONTH_NAMES_DA[today.month-1]} {today.year}",
+        "month_label":     month_label,
+        "ref_month":       ref_month,
+        "ref_year":        ref_year,
         "today":           today.isoformat(),
     }
+
+
+def db_saelger_meta(owner_name: str):
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    cur.execute("""
+        SELECT DISTINCT YEAR([won_time]) AS yr
+        FROM [dbo].[PipedriveDeals]
+        WHERE [owner_name] = %s AND [won_time] IS NOT NULL
+        ORDER BY yr DESC
+    """, (owner_name,))
+    years = [r["yr"] for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT DISTINCT [team]
+        FROM [dbo].[PipedriveDeals]
+        WHERE [owner_name] = %s AND [team] IS NOT NULL AND [team] <> ''
+        ORDER BY [team]
+    """, (owner_name,))
+    teams = [r["team"] for r in cur.fetchall()]
+
+    conn.close()
+    return {"years": years, "teams": teams}
 
 
 #-----------------------------------------------------------------------------------------------------------------------
