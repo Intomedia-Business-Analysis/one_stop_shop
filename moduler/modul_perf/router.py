@@ -10,7 +10,7 @@ from moduler.modul_perf.queries import (
     SUBSCRIPTION_BRANDS, BRAND_GROUPS, BRAND_GROUP_LABELS, GROUPBY_COLUMNS,
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
-    db_get_filters,db_manager_data, db_afdelingsleder_data, db_saelger_data,
+    db_get_filters, db_manager_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
 )
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
@@ -93,13 +93,28 @@ async def perf_saelger_page(request: Request, user=Depends(get_current_user)):
         "user":    user,
     })
 
+@router.get("/saelger-meta")
+async def perf_saelger_meta(user=Depends(get_current_user)):
+    try:
+        return JSONResponse(db_saelger_meta(user["name"]))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
 @router.get("/saelger-data")
 async def perf_saelger_data(
     team: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    date_col: str = "won_time",
     user=Depends(get_current_user)
 ):
     try:
-        return JSONResponse(db_saelger_data(date.today(), user["name"], team=team))
+        return JSONResponse(db_saelger_data(
+            date.today(), user["name"],
+            team=team, selected_year=year, selected_month=month,
+            date_col=date_col,
+        ))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))

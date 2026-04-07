@@ -58,6 +58,16 @@
 .kpi-pill-value.green{color:var(--green)}
 .kpi-pill-value.neg{color:#B32E45}
 .kpi-pill-value.amber{color:var(--amber)}
+/* Team budget breakdown */
+.team-budget-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:16px}
+.team-budget-table th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
+.team-budget-table th.num{text-align:right}
+.team-budget-table td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.team-budget-table td.num{text-align:right;font-weight:600}
+.team-budget-bar{height:4px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden}
+.team-budget-bar-fill{height:100%;border-radius:2px;background:var(--green);transition:width .5s ease}
+.team-budget-bar-fill.amber{background:var(--amber)}
+.team-budget-bar-fill.neg{background:#B32E45}
 /* Spinner */
 .spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
 .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
@@ -65,6 +75,12 @@
 .refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
 .refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 </style>
 </head>
 <body>
@@ -125,7 +141,7 @@
           <span>Mit Dashboard</span>
         </div>
 
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
           <div>
             <h1 class="page-title" style="margin-bottom:4px">Mit Dashboard</h1>
             <p class="page-sub" id="page-sub">Personlige KPI'er og performance</p>
@@ -134,6 +150,38 @@
             <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
             Opdater
           </button>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+          <select class="filter-select" id="filter-month" onchange="loadData()">
+            <option value="">Alle måneder</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <select class="filter-select" id="filter-team" onchange="loadData()" style="display:none">
+            <option value="">Alle teams</option>
+          </select>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-date-col" onchange="loadData()">
+            <option value="won_time">Vundet dato</option>
+            <option value="service_activation_date">Aktiverings dato</option>
+          </select>
         </div>
 
         <div id="loading-state" class="spin-wrap">
@@ -270,9 +318,44 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+async function loadMeta() {
+  try {
+    const r = await fetch('/tools/performance/saelger-meta');
+    const m = await r.json();
+
+    const yearSel = document.getElementById('filter-year');
+    const today   = new Date();
+    yearSel.innerHTML = m.years.map(y =>
+      `<option value="${y}"${y === today.getFullYear() ? ' selected' : ''}>${y}</option>`
+    ).join('');
+    // Sæt aktuel måned som default
+    document.getElementById('filter-month').value = String(today.getMonth() + 1);
+
+    const teamSel = document.getElementById('filter-team');
+    if (m.teams && m.teams.length > 1) {
+      teamSel.innerHTML = '<option value="">Alle teams</option>' +
+        m.teams.map(t => `<option value="${encodeURIComponent(t)}">${t}</option>`).join('');
+      teamSel.style.display = '';
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
 async function loadData() {
   try {
-    const r = await fetch('/tools/performance/saelger-data');
+    const year    = document.getElementById('filter-year').value;
+    const month   = document.getElementById('filter-month').value;
+    const team    = document.getElementById('filter-team').value;
+    const dateCol = document.getElementById('filter-date-col').value;
+
+    const params = new URLSearchParams();
+    if (year)    params.set('year',     year);
+    if (month)   params.set('month',    month);
+    if (team)    params.set('team',     decodeURIComponent(team));
+    if (dateCol) params.set('date_col', dateCol);
+
+    const r = await fetch('/tools/performance/saelger-data?' + params);
     const d = await r.json();
     if (!r.ok) return;
 
@@ -315,6 +398,40 @@ function renderRadial(d) {
   card.className = 'dash-card' + (!hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' amber' : ' neg');
 }
 
+function renderTeamBudget(d) {
+  const wrap = document.getElementById('team-budget-wrap');
+  if (!d.budget_by_team || d.budget_by_team.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+  const rows = d.budget_by_team.map(t => {
+    const pct       = t.pct !== null ? Math.min(t.pct, 150) : 0;
+    const barPct    = Math.min(pct, 100);
+    const cls       = t.pct === null ? '' : t.pct >= 100 ? '' : t.pct >= 70 ? 'amber' : 'neg';
+    const clrStyle  = cls === 'neg' ? '#B32E45' : cls === 'amber' ? 'var(--amber)' : 'var(--green)';
+    const pctTxt    = t.pct !== null ? Math.round(t.pct) + '%' : '—';
+    const hasBudget = t.budget > 0;
+    return `<tr>
+      <td>${escHtml(t.team)}</td>
+      <td class="num">${fmtKr(t.won)}</td>
+      <td class="num">${hasBudget ? fmtKr(t.budget) : '—'}</td>
+      <td class="num" style="min-width:64px">
+        <span style="font-size:10px;font-weight:700;color:${clrStyle}">${pctTxt}</span>
+        ${hasBudget ? `<div class="team-budget-bar"><div class="team-budget-bar-fill ${cls}" style="width:${barPct}%"></div></div>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table class="team-budget-table" style="margin-top:14px">
+    <thead><tr>
+      <th>Team</th>
+      <th class="num">Salg</th>
+      <th class="num">Budget</th>
+      <th class="num">%</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
 function renderPipeline(d) {
   document.getElementById('pipe-value').textContent = fmtKr(d.pipeline_value);
   document.getElementById('pipe-count').textContent = `${d.pipeline_count} åbne deal${d.pipeline_count !== 1 ? 's' : ''}`;
@@ -349,19 +466,23 @@ function renderYoy(d) {
 }
 
 function renderMonthBars(d) {
-  const today   = d.today;
-  const curMonth = parseInt(today.split('-')[1]);
+  const maxBarPx = 64; // maks søjlehøjde i pixels
+  const todayParts = d.today.split('-');
+  const curYear  = parseInt(todayParts[0]);
+  const curMonth = parseInt(todayParts[1]);
+  const refMonth = d.ref_month || curMonth;
   const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
   const wrap = document.getElementById('month-bars');
 
   wrap.innerHTML = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
-    const isCur    = month === curMonth;
-    const isFuture = month > curMonth;
-    const h = isFuture ? 0 : Math.max((m.won / max) * 100, 1);
+    const isCur    = month === refMonth;
+    // Fremtidige måneder kun relevant for indeværende år
+    const isFuture = d.ref_year >= curYear && month > curMonth;
+    const h = isFuture ? 0 : Math.max(Math.round((m.won / max) * maxBarPx), m.won > 0 ? 2 : 0);
     return `<div class="mb-col">
       <div class="mb-bar ${isCur ? 'current' : isFuture ? 'future' : ''}"
-           style="height:${h}%" title="${m.maaned}: ${fmtKr(m.won)}"></div>
+           style="height:${h}px" title="${m.maaned}: ${fmtKr(m.won)}"></div>
       <div class="mb-label ${isCur ? 'current' : ''}">${m.maaned}</div>
     </div>`;
   }).join('');
@@ -393,7 +514,7 @@ function renderDeals(d) {
   }).join('');
 }
 
-loadData();
+loadMeta().then(() => loadData());
 setInterval(loadData, 5 * 60 * 1000);
 </script>
 </body>
