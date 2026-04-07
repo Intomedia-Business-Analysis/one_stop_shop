@@ -64,8 +64,8 @@ async def forecast_data(
     user=Depends(get_current_user),
 ):
     require_forecast_access(user)
-    if level not in ("medie", "saelger", "team"):
-        raise HTTPException(400, "level skal være 'medie', 'saelger' eller 'team'")
+    if level not in ("saelger", "team"):
+        raise HTTPException(400, "level skal være 'saelger' eller 'team'")
 
     year_m1 = year - 1
     year_m2 = year - 2
@@ -139,7 +139,7 @@ async def forecast_save(request: Request, user=Depends(get_current_user)):
     level = body.get("level")
     rows  = body.get("rows", [])
 
-    if not all([year, month, level]) or level not in ("medie", "saelger", "team"):
+    if not all([year, month, level]) or level not in ("saelger", "team"):
         raise HTTPException(400, "Ugyldige parametre")
 
     try:

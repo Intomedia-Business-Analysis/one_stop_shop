@@ -63,6 +63,12 @@ BRAND_LABELS: dict[str, str] = {
 _CANCEL_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
 _CANCEL_PH = "(" + ",".join(["%s"] * len(_CANCEL_PIPELINES)) + ")"
 
+# Teams der bruger advertising-pipeline i stedet for abonnement-deals
+ADVERTISING_TEAMS: dict[str, str] = {
+    "Team Job":    "job",
+    "Team Banner": "banner",
+}
+
 
 def get_conn():
     return pymssql.connect(
@@ -171,65 +177,146 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
 
     # ── Q1: Historisk tilvækst (year-1 og year-2) ──────────────────────────
     if level == "saelger":
-        cur.execute(f"""
-            SELECT [owner_name] AS dimension_key,
-                   YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [owner_name] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-              {owner_clause}
-              AND [team] = %s
-            GROUP BY [owner_name], YEAR([service_activation_date])
-            UNION ALL
-            SELECT [owner_name] AS dimension_key,
-                   YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [owner_name] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-              {owner_clause}
-              AND [team] = %s
-            GROUP BY [owner_name], YEAR([service_activation_date])
-        """, (
-            date_m1[0], date_m1[1], *owner_params, team,
-            date_m2[0], date_m2[1], *owner_params, team,
-        ))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [owner_name] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [owner_name], YEAR([service_activation_date])
+                UNION ALL
+                SELECT [owner_name] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [owner_name], YEAR([service_activation_date])
+            """, (adv_pipeline, team, date_m1[0], date_m1[1],
+                  adv_pipeline, team, date_m2[0], date_m2[1]))
+        else:
+            cur.execute(f"""
+                SELECT [owner_name] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  {owner_clause}
+                  AND [team] = %s
+                GROUP BY [owner_name], YEAR([service_activation_date])
+                UNION ALL
+                SELECT [owner_name] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  {owner_clause}
+                  AND [team] = %s
+                GROUP BY [owner_name], YEAR([service_activation_date])
+            """, (
+                date_m1[0], date_m1[1], *owner_params, team,
+                date_m2[0], date_m2[1], *owner_params, team,
+            ))
 
     elif level == "team":
-        cur.execute("""
-            SELECT [team] AS dimension_key,
-                   YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [team] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-            GROUP BY [team], YEAR([service_activation_date])
-            UNION ALL
-            SELECT [team] AS dimension_key,
-                   YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [team] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-            GROUP BY [team], YEAR([service_activation_date])
-        """, (date_m1[0], date_m1[1], date_m2[0], date_m2[1]))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team], YEAR([service_activation_date])
+                UNION ALL
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team], YEAR([service_activation_date])
+            """, (adv_pipeline, team, date_m1[0], date_m1[1],
+                  adv_pipeline, team, date_m2[0], date_m2[1]))
+        elif team:
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team], YEAR([service_activation_date])
+                UNION ALL
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team], YEAR([service_activation_date])
+            """, (team, date_m1[0], date_m1[1], team, date_m2[0], date_m2[1]))
+        else:
+            # Alle teams: subscription-deals + advertising-deals (job/banner)
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [team] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  AND (
+                        ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
+                        OR [pipeline_name] IN ('job', 'banner')
+                      )
+                GROUP BY [team], YEAR([service_activation_date])
+                UNION ALL
+                SELECT [team] AS dimension_key,
+                       YEAR([service_activation_date]) AS data_year,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS tilvækst
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [team] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  AND (
+                        ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
+                        OR [pipeline_name] IN ('job', 'banner')
+                      )
+                GROUP BY [team], YEAR([service_activation_date])
+            """, (date_m1[0], date_m1[1], date_m2[0], date_m2[1]))
 
     else:  # medie
         cur.execute(f"""
@@ -275,34 +362,75 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
 
     # ── Q2: Service activation date (realiseret i år) ──────────────────────
     if level == "saelger":
-        cur.execute(f"""
-            SELECT [owner_name] AS dimension_key,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [owner_name] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-              {owner_clause}
-              AND [team] = %s
-            GROUP BY [owner_name]
-        """, (date_cur[0], date_cur[1], *owner_params, team))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [owner_name] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [owner_name]
+            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+        else:
+            cur.execute(f"""
+                SELECT [owner_name] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [owner_name] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  {owner_clause}
+                  AND [team] = %s
+                GROUP BY [owner_name]
+            """, (date_cur[0], date_cur[1], *owner_params, team))
 
     elif level == "team":
-        cur.execute("""
-            SELECT [team] AS dimension_key,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'won'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [team] IS NOT NULL
-              AND [service_activation_date] BETWEEN %s AND %s
-            GROUP BY [team]
-        """, (date_cur[0], date_cur[1]))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team]
+            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+        elif team:
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [team] = %s
+                  AND [service_activation_date] BETWEEN %s AND %s
+                GROUP BY [team]
+            """, (team, date_cur[0], date_cur[1]))
+        else:
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS activation_amount
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'won'
+                  AND [team] IS NOT NULL
+                  AND [service_activation_date] BETWEEN %s AND %s
+                  AND (
+                        ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
+                        OR [pipeline_name] IN ('job', 'banner')
+                      )
+                GROUP BY [team]
+            """, (date_cur[0], date_cur[1]))
 
     else:  # medie
         cur.execute(f"""
@@ -324,36 +452,80 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
 
     # ── Q3: Åben pipeline (expected close date) ────────────────────────────
     if level == "saelger":
-        cur.execute(f"""
-            SELECT [owner_name] AS dimension_key,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'open'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [owner_name] IS NOT NULL
-              AND [value_dkk] <> '0'
-              AND [expected_close_date] BETWEEN %s AND %s
-              {owner_clause}
-              AND [team] = %s
-            GROUP BY [owner_name]
-        """, (date_cur[0], date_cur[1], *owner_params, team))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [owner_name] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'open'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [owner_name] IS NOT NULL
+                  AND [value_dkk] <> '0'
+                  AND [expected_close_date] BETWEEN %s AND %s
+                GROUP BY [owner_name]
+            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+        else:
+            cur.execute(f"""
+                SELECT [owner_name] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'open'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [owner_name] IS NOT NULL
+                  AND [value_dkk] <> '0'
+                  AND [expected_close_date] BETWEEN %s AND %s
+                  {owner_clause}
+                  AND [team] = %s
+                GROUP BY [owner_name]
+            """, (date_cur[0], date_cur[1], *owner_params, team))
 
     elif level == "team":
-        cur.execute("""
-            SELECT [team] AS dimension_key,
-                   SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
-            FROM [dbo].[PipedriveDeals]
-            WHERE [status] = 'open'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
-              AND [team] IS NOT NULL
-              AND [value_dkk] <> '0'
-              AND [expected_close_date] BETWEEN %s AND %s
-            GROUP BY [team]
-        """, (date_cur[0], date_cur[1]))
+        if team and team in ADVERTISING_TEAMS:
+            adv_pipeline = ADVERTISING_TEAMS[team]
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'open'
+                  AND [pipeline_name] = %s
+                  AND [team] = %s
+                  AND [value_dkk] <> '0'
+                  AND [expected_close_date] BETWEEN %s AND %s
+                GROUP BY [team]
+            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+        elif team:
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'open'
+                  AND [pipeline_name] <> 'Web sale'
+                  AND [deal_type] IN ('Abonnement', 'Subscription')
+                  AND [administrativ] IS NULL
+                  AND [team] = %s
+                  AND [value_dkk] <> '0'
+                  AND [expected_close_date] BETWEEN %s AND %s
+                GROUP BY [team]
+            """, (team, date_cur[0], date_cur[1]))
+        else:
+            cur.execute("""
+                SELECT [team] AS dimension_key,
+                       SUM(CAST(COALESCE([value_dkk], [value]) AS DECIMAL(18,2))) AS open_pipeline
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status] = 'open'
+                  AND [team] IS NOT NULL
+                  AND [value_dkk] <> '0'
+                  AND [expected_close_date] BETWEEN %s AND %s
+                  AND (
+                        ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
+                        OR [pipeline_name] IN ('job', 'banner')
+                      )
+                GROUP BY [team]
+            """, (date_cur[0], date_cur[1]))
 
     else:  # medie
         cur.execute(f"""
