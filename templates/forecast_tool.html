@@ -140,7 +140,7 @@
           <span>Forecast</span>
         </div>
         <h1 class="page-title" style="margin-bottom:4px">Forecast Tool</h1>
-        <p class="page-sub">Salgsprognoser baseret på historisk tilvækst (SAD) og åben pipeline — pr. medie, sælger eller team</p>
+        <p class="page-sub">Salgsprognoser baseret på historisk tilvækst (SAD) og åben pipeline — pr. sælger eller team</p>
 
         <!-- CONTROLS -->
         <div class="form-card">
@@ -177,7 +177,6 @@
         <!-- TABS -->
         <div class="tab-bar" id="fc-tabbar" style="display:none">
           <button class="tab-btn on"  id="tab-btn-team"    onclick="switchTab('team',this)">Team-overblik</button>
-          <button class="tab-btn"     id="tab-btn-medie"   onclick="switchTab('medie',this)">Medie</button>
           <button class="tab-btn"     id="tab-btn-saelger" onclick="switchTab('saelger',this)">Sælger</button>
         </div>
 
@@ -212,43 +211,6 @@
           </div>
           <div style="margin-top:20px;display:flex;justify-content:flex-end">
             <button class="submit-btn" id="fc-t-save-btn" onclick="saveForecast('team')" style="display:none">
-              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-              Gem prognose
-            </button>
-          </div>
-        </div>
-
-        <!-- TAB: MEDIE -->
-        <div class="tab-pane" id="tab-medie">
-          <div class="summary-bar">
-            <div class="sb-cell"><div class="sb-n" id="fc-m-total-activation">—</div><div class="sb-l">Realiseret tilvækst</div></div>
-            <div class="sb-cell"><div class="sb-n" id="fc-m-total-forecast">—</div><div class="sb-l">Forecast total</div></div>
-            <div class="sb-cell"><div class="sb-n" id="fc-m-total-budget">—</div><div class="sb-l">Budget</div></div>
-            <div class="sb-cell"><div class="sb-n" id="fc-m-total-diff">—</div><div class="sb-l">Afv. forecast vs. budget</div></div>
-          </div>
-          <div class="v-table-wrap">
-            <table class="v-table">
-              <thead>
-                <tr>
-                  <th>Medie</th>
-                  <th class="num hist" id="th-m-year-m2">2024</th>
-                  <th class="num hist" id="th-m-year-m1">2025</th>
-                  <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
-                  <th class="num">Åben pipeline</th>
-                  <th class="num">Pipeline %</th>
-                  <th class="num">Justering (kr.)</th>
-                  <th class="num">Forecast total</th>
-                  <th class="num">Budget</th>
-                  <th class="num">Afv. vs. budget</th>
-                </tr>
-              </thead>
-              <tbody id="fc-m-tbody">
-                <tr><td colspan="10" class="empty">Vælg år, måned og klik "Hent prognosedata"</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="margin-top:20px;display:flex;justify-content:flex-end">
-            <button class="submit-btn" id="fc-m-save-btn" onclick="saveForecast('medie')" style="display:none">
               <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
               Gem prognose
             </button>
@@ -363,7 +325,7 @@ async function loadForecast() {
   const year  = document.getElementById('fc-year').value;
   const month = document.getElementById('fc-month').value;
   const activeTab = document.querySelector('.tab-btn.on');
-  const level = activeTab ? (activeTab.id === 'tab-btn-team' ? 'team' : activeTab.id === 'tab-btn-medie' ? 'medie' : 'saelger') : 'team';
+  const level = activeTab ? (activeTab.id === 'tab-btn-team' ? 'team' : 'saelger') : 'team';
   const btn   = document.getElementById('load-btn');
 
   let url = `/tools/forecast/data?year=${year}&month=${month}&level=${level}`;
