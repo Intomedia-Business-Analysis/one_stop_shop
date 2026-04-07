@@ -62,6 +62,21 @@ async def requires_login_handler(request: Request, exc: RequiresLoginException):
 
 CATEGORIES = [
     {
+        "id": "kpi-dashboards",
+        "title": "KPI'er og Dashboards",
+        "description": "Personlige og team-baserede performance dashboards",
+        "icon": "activity",
+        "color": "green",
+        "min_role": "salesperson",
+        "subcategories": [],
+        "items": [
+            {"id": "kpi-saelger",       "title": "Sælger Dashboard",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",   "url": "/tools/performance/saelger"},
+            {"id": "kpi-manager",       "title": "Manager Dashboard",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/performance/manager"},
+            {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard","type": "dashboard","subcategory": None, "brand": None, "min_role": "management",    "url": "/tools/performance/afdelingsleder"},
+    ],
+},
+
+    {
         "id": "sales-operations",
         "title": "Sales Operations",
         "description": "Budget og forecast",
@@ -77,19 +92,7 @@ CATEGORIES = [
             {"id": "forecast-tool",      "title": "Forecast", "type": "tool", "subcategory": "forecast", "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
         ],
     },
-    {
-        "id": "subscription-sales",
-        "title": "Subscription Sales",
-        "description": "Abonnements-performance og analyser",
-        "icon": "activity",
-        "color": "green",
-        "min_role": "salesperson",
-        "subcategories": [],
-        "items": [
-            {"id": "perf-dashboard", "title": "Performance",    "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",    "url": "/tools/performance/"},
-            {"id": "perf-overview",  "title": "Sales Overblik", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/performance/overview"},
-        ],
-    },
+
     {
         "id": "hr",
         "title": "HR",
