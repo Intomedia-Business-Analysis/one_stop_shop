@@ -40,12 +40,18 @@ async def perf_manager_page(request: Request, user=Depends(get_current_user)):
 @router.get("/manager-data")
 async def perf_manager_data(
     team: str | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    date_col: str = "won_time",
     user=Depends(get_current_user)
 ):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse(db_manager_data(date.today(), team=team))
+        return JSONResponse(db_manager_data(
+            date.today(), team=team,
+            selected_year=year, selected_month=month, date_col=date_col,
+        ))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))

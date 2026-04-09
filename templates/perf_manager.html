@@ -73,6 +73,12 @@
 .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -158,24 +164,48 @@
           <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
           <span>Manager Dashboard</span>
         </div>
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-  <div>
-    <h1 class="page-title" style="margin-bottom:4px">Manager Dashboard</h1>
-    <p class="page-sub">Real-time overblik over teamets performance — opdateres automatisk hvert 5. minut</p>
-  </div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <div style="display:flex;flex-direction:column;gap:4px">
-      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)">Team</label>
-      <select id="team-select" onchange="loadData()" style="font-family:var(--font);font-size:12px;padding:8px 11px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;min-width:180px">
-        <option value="">Alle teams</option>
-      </select>
-    </div>
-    <button class="refresh-btn" onclick="loadData()" style="margin-top:18px">
-      <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
-      Opdater nu
-    </button>
-  </div>
-</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Manager Dashboard</h1>
+            <p class="page-sub" id="page-sub">Real-time overblik over teamets performance</p>
+          </div>
+          <button class="refresh-btn" onclick="loadData()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Opdater nu
+          </button>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+          <select class="filter-select" id="filter-month" onchange="loadData()">
+            <option value="">Alle måneder</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <select class="filter-select" id="team-select" onchange="loadData()">
+            <option value="">Alle teams</option>
+          </select>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-date-col" onchange="loadData()">
+            <option value="won_time">Vundet dato</option>
+            <option value="service_activation_date">Aktiverings dato</option>
+          </select>
+        </div>
 
         <!-- Loading state -->
         <div id="loading-state" class="spin-wrap">
@@ -290,29 +320,56 @@ function fmtFull(v) {
   return Math.round(v).toLocaleString('da-DK') + ' kr.';
 }
 
+async function loadMeta() {
+  // Hent tilgængelige år fra saelger-meta (vi genbruger samme endpoint)
+  // og populer team-dropdown fra første data-kald
+  const today = new Date();
+  const yearSel = document.getElementById('filter-year');
+  // Byg år-dropdown: indeværende år + 3 år tilbage
+  yearSel.innerHTML = '';
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === today.getFullYear()) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  // Sæt aktuel måned som default
+  document.getElementById('filter-month').value = String(today.getMonth() + 1);
+}
+
 async function loadData() {
-  const team = document.getElementById('team-select').value;
-  const qs   = team ? `?team=${encodeURIComponent(team)}` : '';
+  const year    = document.getElementById('filter-year').value;
+  const month   = document.getElementById('filter-month').value;
+  const team    = document.getElementById('team-select').value;
+  const dateCol = document.getElementById('filter-date-col').value;
+
+  const params = new URLSearchParams();
+  if (year)    params.set('year',     year);
+  if (month)   params.set('month',    month);
+  if (team)    params.set('team',     team);
+  if (dateCol) params.set('date_col', dateCol);
 
   try {
-    const r = await fetch(`/tools/performance/manager-data${qs}`);
+    const r = await fetch(`/tools/performance/manager-data?` + params);
     const d = await r.json();
     if (!r.ok) return;
 
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
 
-    // Opdater team-dropdown med tilgængelige teams (kun første gang)
+    // Populer team-dropdown første gang
     const select = document.getElementById('team-select');
-    if (select.options.length === 1) {
+    if (select.options.length === 1 && d.teams) {
       d.teams.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t;
         opt.textContent = t;
-        if (t === d.active_team) opt.selected = true;
         select.appendChild(opt);
       });
     }
+
+    document.getElementById('page-sub').textContent = d.month_label;
 
     renderTeamTotal(d);
     renderGauge(d);
@@ -335,17 +392,18 @@ function renderTeamTotal(d) {
 
   // Månedsoversigt
   const maxBarPx = 48;
-  const curMonth = d.cur_month;
-  const todayStr = d.today;
-  const curYear  = parseInt(todayStr.split('-')[0]);
+  const curMonth  = d.cur_month;
+  const refMonth  = d.ref_month || curMonth;
+  const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
+  const curYear   = parseInt(d.today.split('-')[0]);
 
-  document.getElementById('maaned-year-label').textContent = curYear;
+  document.getElementById('maaned-year-label').textContent = refYear;
 
   const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
   document.getElementById('month-bars').innerHTML = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
-    const isCur    = month === curMonth;
-    const isFuture = month > curMonth;
+    const isCur    = month === refMonth;
+    const isFuture = refYear >= curYear && month > curMonth;
     const h = isFuture ? 0 : Math.max(Math.round((m.won / max) * maxBarPx), m.won > 0 ? 2 : 0);
     return `<div class="mb-col">
       <div class="mb-bar ${isCur ? 'current' : isFuture ? 'future' : ''}"
@@ -373,7 +431,7 @@ function renderGauge(d) {
   valEl.style.color = d.conv_rate >= 25 ? 'var(--green)' : d.conv_rate >= 15 ? 'var(--amber)' : '#B32E45';
 
   document.getElementById('gauge-sub').textContent =
-    `${d.won_count} won · ${d.lost_count} lost denne måned`;
+    `${d.won_count} won · ${d.lost_count} lost/opsagt denne måned`;
 }
 
 function renderHero(d) {
@@ -455,8 +513,8 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Start + auto-refresh hvert 5. minut
-loadData();
+// Start
+loadMeta().then(() => loadData());
 autoRefreshTimer = setInterval(loadData, 5 * 60 * 1000);
 </script>
 </body>
