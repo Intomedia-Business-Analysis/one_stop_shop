@@ -288,8 +288,8 @@ def db_manager_data(today: date, team: str | None = None,
     if is_watch_int_team:
         # Watch Int ekskluderer alle FINANS sites på alle dato-kolonner
         non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
-    elif is_watch_dk_team and date_col == "service_activation_date":
-        # Watch DK ekskluderer kun FINANS DK ved service_activation_date
+    elif is_watch_dk_team:
+        # Watch DK ekskluderer FINANS DK på alle dato-kolonner
         non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
     else:
         non_finans_exclude = ""
@@ -395,7 +395,7 @@ def db_manager_data(today: date, team: str | None = None,
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
-                {"AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'" if is_watch_int_team else ("AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_dk_team and date_col == "service_activation_date") else "")}
+                {"AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'" if is_watch_int_team else ("AND COALESCE(d.[sites],'') <> 'FINANS DK'" if is_watch_dk_team else "")}
             WHERE t.name = %s
               AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
