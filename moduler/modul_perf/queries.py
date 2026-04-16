@@ -260,6 +260,7 @@ def db_manager_data(today: date, team: str | None = None,
     # Ekskluder FINANS DK site kun for Watch DK teamet ved service_activation_date (matcher Pipedrive's logik)
     is_finans_team = team and "FINANS" in team.upper()
     is_watch_dk_team = team and "WATCH DK" in team.upper()
+    is_watch_int_team = team and "WATCH INT" in team.upper()
 
     if is_finans_team and team:
         # FINANS DK: filtrer på team-medlemmer + FINANS sites (matcher Pipedrive's owner+sites logik)
@@ -284,9 +285,14 @@ def db_manager_data(today: date, team: str | None = None,
     else:
         team_clause = ""
         team_params = ()
-    non_finans_exclude = ("AND COALESCE([sites],'') <> 'FINANS DK'"
-                          if (is_watch_dk_team and date_col == "service_activation_date")
-                          else "")
+    if is_watch_int_team:
+        # Watch Int ekskluderer alle FINANS sites på alle dato-kolonner
+        non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
+    elif is_watch_dk_team and date_col == "service_activation_date":
+        # Watch DK ekskluderer kun FINANS DK ved service_activation_date
+        non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
+    else:
+        non_finans_exclude = ""
     # Når team er valgt: tillad også NULL sites (fx Marketwire-deals har ingen site-værdi)
     sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)" if team else f"AND [sites] IN {brands_ph}"
 
@@ -389,7 +395,7 @@ def db_manager_data(today: date, team: str | None = None,
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
-                {"AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_dk_team and date_col == "service_activation_date") else ""}
+                {"AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'" if is_watch_int_team else ("AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_dk_team and date_col == "service_activation_date") else "")}
             WHERE t.name = %s
               AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
