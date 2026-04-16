@@ -273,15 +273,15 @@ def db_manager_data(today: date, team: str | None = None,
         ) AND COALESCE([sites],'') = 'FINANS DK'"""
         team_params = (team,)
     elif team:
-        # Alle andre teams: filtrer på owner_name via HubUsers (robust mod manglende team-tag i deals)
+        # Alle andre teams: filtrer på owner_name via HubUsers + team-tag skal matche eller være NULL
         team_clause = """AND [owner_name] IN (
             SELECT u2.name FROM HubUsers u2
             JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
             JOIN Teams t2 ON t2.id = tm2.team_id
             WHERE t2.name = %s
-            AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-        )"""
-        team_params = (team,)
+            AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        ) AND ([team] = %s OR [team] IS NULL)"""
+        team_params = (team, team)
     else:
         team_clause = ""
         team_params = ()
@@ -390,17 +390,17 @@ def db_manager_data(today: date, team: str | None = None,
                 AND d.[status] = 'won'
                 AND d.[pipeline_name] <> 'Web Sale'
                 AND d.{d_col} >= %s AND d.{d_col} < %s
-                {"AND COALESCE(d.[sites],'') = 'FINANS DK'" if is_finans_team else ""}
+                {"AND COALESCE(d.[sites],'') = 'FINANS DK'" if is_finans_team else "AND (d.[team] = %s OR d.[team] IS NULL)"}
                 AND (COALESCE(d.[administrativ],'') <> 'ja')
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
                 {"AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'" if is_watch_int_team else ("AND COALESCE(d.[sites],'') <> 'FINANS DK'" if is_watch_dk_team else "")}
             WHERE t.name = %s
-              AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+              AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
             ORDER BY won_amount DESC
-        """, (month_from.isoformat(), month_to.isoformat()) + (team,))
+        """, (month_from.isoformat(), month_to.isoformat()) + (() if is_finans_team else (team,)) + (team,))
     else:
         cur.execute(f"""
             SELECT
