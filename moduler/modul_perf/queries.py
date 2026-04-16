@@ -68,7 +68,7 @@ _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
 # Ekskluder administrative deals fra alle beregninger
 # Bruger dedikeret kolonne + titel-fallback
-_ADM_EXCLUDE = "AND (COALESCE([administrativ],'') <> 'ja') AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'"
+_ADM_EXCLUDE = "AND (COALESCE([administrativ],'') <> 'ja') AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %' AND COALESCE([deal_type],'') <> 'Rapport'"
 
 DEAL_TYPE_ALIASES: dict[str, list[str]] = {
     "Abonnement":   ["Abonnement", "Subscription"],
@@ -271,12 +271,24 @@ def db_manager_data(today: date, team: str | None = None,
             AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
         ) AND COALESCE([sites],'') = 'FINANS DK'"""
         team_params = (team,)
+    elif team:
+        # Alle andre teams: filtrer på owner_name via HubUsers (robust mod manglende team-tag i deals)
+        team_clause = """AND [owner_name] IN (
+            SELECT u2.name FROM HubUsers u2
+            JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
+            JOIN Teams t2 ON t2.id = tm2.team_id
+            WHERE t2.name = %s
+            AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
+        )"""
+        team_params = (team,)
     else:
-        team_clause = "AND [team] = %s" if team else ""
-        team_params = (team,) if team else ()
+        team_clause = ""
+        team_params = ()
     non_finans_exclude = ("AND COALESCE([sites],'') <> 'FINANS DK'"
                           if (is_watch_dk_team and date_col == "service_activation_date")
                           else "")
+    # Når team er valgt: tillad også NULL sites (fx Marketwire-deals har ingen site-værdi)
+    sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)" if team else f"AND [sites] IN {brands_ph}"
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
@@ -286,7 +298,7 @@ def db_manager_data(today: date, team: str | None = None,
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [won_time] >= %s AND [won_time] < %s
-          AND [sites] IN {brands_ph}
+          {sites_filter}
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           {_ADM_EXCLUDE}
           {non_finans_exclude}
@@ -300,7 +312,7 @@ def db_manager_data(today: date, team: str | None = None,
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
-          AND [sites] IN {brands_ph}
+          {sites_filter}
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           {_ADM_EXCLUDE}
           {non_finans_exclude}
@@ -317,7 +329,7 @@ def db_manager_data(today: date, team: str | None = None,
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
-          AND [sites] IN {brands_ph}
+          {sites_filter}
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           {_ADM_EXCLUDE}
           {non_finans_exclude}
@@ -342,7 +354,7 @@ def db_manager_data(today: date, team: str | None = None,
         WHERE ([status]='won' OR [status]='lost')
           AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
-          AND [sites] IN {brands_ph}
+          {sites_filter}
           {_ADM_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
@@ -372,16 +384,17 @@ def db_manager_data(today: date, team: str | None = None,
                 AND d.[status] = 'won'
                 AND d.[pipeline_name] <> 'Web Sale'
                 AND d.{d_col} >= %s AND d.{d_col} < %s
-                {"AND COALESCE(d.[sites],'') = 'FINANS DK'" if is_finans_team else "AND d.[team] = %s"}
+                {"AND COALESCE(d.[sites],'') = 'FINANS DK'" if is_finans_team else ""}
                 AND (COALESCE(d.[administrativ],'') <> 'ja')
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
+                AND COALESCE(d.[deal_type],'') <> 'Rapport'
                 {"AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_dk_team and date_col == "service_activation_date") else ""}
             WHERE t.name = %s
-              AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+              AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
             ORDER BY won_amount DESC
-        """, (month_from.isoformat(), month_to.isoformat()) + (() if is_finans_team else (team,)) + (team,))
+        """, (month_from.isoformat(), month_to.isoformat()) + (team,))
     else:
         cur.execute(f"""
             SELECT
@@ -438,7 +451,7 @@ def db_manager_data(today: date, team: str | None = None,
         FROM Teams t
         JOIN TeamMemberships tm ON tm.team_id = t.id
         WHERE t.name IS NOT NULL
-          AND (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+          AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
         ORDER BY t.name
     """)
     teams = [r["name"] for r in cur.fetchall()]
