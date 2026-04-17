@@ -925,7 +925,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     """, (fc_year, fc_month))
     forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
 
-    # Per-team netto revenue denne måned
+    # Per-team netto revenue
     cur.execute(f"""
         SELECT
             COALESCE([team], 'Øvrige') AS team,
@@ -939,18 +939,51 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
           AND COALESCE([team],'') <> ''
           {sub_filter}
         GROUP BY [team]
-        ORDER BY won DESC
     """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
-    team_chart = []
+    team_data_map = {}
     for r in cur.fetchall():
         won    = float(r["won"]    or 0)
         cancel = float(r["cancel"] or 0)
-        team_chart.append({
-            "team":   r["team"],
+        team_data_map[r["team"]] = {
             "won":    round(won,    2),
             "cancel": round(cancel, 2),
             "netto":  round(won - cancel, 2),
+        }
+
+    # Per-team budget
+    cur.execute("""
+        SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
+        FROM [dbo].[SalespersonBudget]
+        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+          AND [Team] IS NOT NULL AND [Team] <> ''
+        GROUP BY [Team]
+    """, (month_from.isoformat(), month_to.isoformat()))
+    team_budget_map = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
+
+    # Alle aktive teams (inkl. dem uden data)
+    cur.execute("""
+        SELECT DISTINCT t.name
+        FROM Teams t
+        JOIN TeamMemberships tm ON tm.team_id = t.id
+        WHERE t.name IS NOT NULL AND t.name <> ''
+          AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        ORDER BY t.name
+    """)
+    all_team_names = [r["name"] for r in cur.fetchall()]
+
+    # Sammensæt: alle teams med data + budget
+    team_chart = []
+    for name in all_team_names:
+        data = team_data_map.get(name, {"won": 0, "cancel": 0, "netto": 0})
+        team_chart.append({
+            "team":   name,
+            "won":    data["won"],
+            "cancel": data["cancel"],
+            "netto":  data["netto"],
+            "budget": team_budget_map.get(name, 0),
         })
+    # Sorter: teams med data øverst, derefter alfabetisk
+    team_chart.sort(key=lambda x: (-x["won"], x["team"]))
 
     conn.close()
 

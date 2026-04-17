@@ -20,15 +20,18 @@
 .toggle-pill{padding:5px 14px;border-radius:5px;border:none;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;transition:all .13s;background:transparent;color:var(--ink-3)}
 .toggle-pill.on{background:var(--green);color:#fff}
 /* Team chart (horisontale bars) */
-.tc-row{display:grid;grid-template-columns:88px 1fr 70px;align-items:center;gap:10px;margin-bottom:10px}
-.tc-label{font-size:11px;font-weight:600;color:var(--ink);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px}
+.tc-label{font-size:11px;font-weight:600;color:var(--ink);text-align:right;white-space:nowrap}
 .tc-track{height:14px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
 .tc-zone{position:absolute;top:0;height:100%}
-.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:var(--green);z-index:2;transition:width .5s ease}
+.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#5B9BD5;z-index:2;transition:width .5s ease}
 .tc-bar-can{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#B32E45;opacity:.75;z-index:3;transition:width .5s ease}
 .tc-vline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.25);z-index:4}
-.tc-val{font-size:11px;font-weight:700;text-align:right;white-space:nowrap}
-.tc-axis{display:flex;justify-content:space-between;font-size:8px;color:var(--ink-4);margin-top:4px;padding-left:98px;padding-right:80px}
+.tc-val{font-size:11px;font-weight:600;text-align:right;white-space:nowrap;color:var(--ink)}
+.tc-val small{font-size:10px;color:var(--ink-4);font-weight:400}
+/* Akse-række bruger samme grid som tc-row */
+.tc-axis-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;margin-top:2px}
+.tc-axis-inner{display:flex;justify-content:space-between;font-size:8px;color:var(--ink-4)}
 /* Forecast bokse */
 .fc-boxes{display:flex;align-items:center;gap:10px;margin-top:4px}
 .fc-box{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 12px;text-align:center}
@@ -187,8 +190,10 @@
                 <span id="rv-month-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
               </div>
               <div id="team-chart"><div style="color:var(--ink-4);font-size:12px">Henter…</div></div>
-              <div class="tc-axis" id="tc-axis" style="display:none">
-                <span>0%</span><span>50%</span><span>100%</span>
+              <div class="tc-axis-row" id="tc-axis" style="display:none">
+                <div></div>
+                <div class="tc-axis-inner"><span>0%</span><span>50%</span><span>100%</span></div>
+                <div></div>
               </div>
             </div>
 
@@ -291,14 +296,19 @@ async function loadData() {
   }
 }
 
+function fmtFull(v) {
+  const sign = v < 0 ? '-' : '';
+  return sign + Math.abs(Math.round(v)).toLocaleString('da-DK') + ' kr.';
+}
+
 function renderTeamChart(d) {
   document.getElementById('rv-month-label').textContent = d.month_label;
-  const teams = (d.team_chart || []).filter(t => t.won > 0 || t.cancel > 0);
+  const teams = d.team_chart || [];
   const axisEl = document.getElementById('tc-axis');
 
   if (!teams.length) {
     document.getElementById('team-chart').innerHTML =
-      '<div style="color:var(--ink-4);font-size:12px;padding:20px 0">Ingen data denne måned</div>';
+      '<div style="color:var(--ink-4);font-size:12px;padding:20px 0">Ingen data</div>';
     axisEl.style.display = 'none';
     return;
   }
@@ -309,10 +319,16 @@ function renderTeamChart(d) {
   document.getElementById('team-chart').innerHTML = teams.map(t => {
     const wonPct = Math.min((t.won    / maxVal) * 100, 100).toFixed(1);
     const canPct = Math.min((t.cancel / maxVal) * 100, 100).toFixed(1);
-    const netCol = t.netto >= 0 ? 'var(--green)' : '#B32E45';
+
+    // Højre side: netto / budget (som manager dashboard)
+    const hasBudget = t.budget > 0;
+    const valHtml = hasBudget
+      ? `${fmtFull(t.netto)} <small>/ ${fmtFull(t.budget)}</small>`
+      : fmtKr(t.netto);
+
     return `
       <div class="tc-row">
-        <div class="tc-label" title="${escHtml(t.team)}">${escHtml(t.team)}</div>
+        <div class="tc-label">${escHtml(t.team)}</div>
         <div class="tc-track">
           <div class="tc-zone" style="left:0;width:50%;background:#FDE8EC"></div>
           <div class="tc-zone" style="left:50%;width:35%;background:#FEF3DC"></div>
@@ -322,7 +338,7 @@ function renderTeamChart(d) {
           <div class="tc-vline" style="left:50%"></div>
           <div class="tc-vline" style="left:calc(100% - 1px)"></div>
         </div>
-        <div class="tc-val" style="color:${netCol}">${fmtKr(t.netto)}</div>
+        <div class="tc-val">${valHtml}</div>
       </div>`;
   }).join('');
 }
