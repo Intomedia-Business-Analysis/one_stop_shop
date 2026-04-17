@@ -965,7 +965,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             "netto":  round(won - cancel, 2),
         }
 
-    # Per-team budget
+    # Per-team budget fra SalespersonBudget (individuelle sælgere)
     cur.execute("""
         SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
         FROM [dbo].[SalespersonBudget]
@@ -974,6 +974,28 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         GROUP BY [Team]
     """, (month_from.isoformat(), month_to.isoformat()))
     team_budget_map = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
+
+    # Team Banner budget fra BudgetsIntoMedia (ingen per-person budget)
+    cur.execute("""
+        SELECT ISNULL(SUM([BudgetAmount]), 0) AS budget
+        FROM [dbo].[BudgetsIntoMedia]
+        WHERE [DealType] = 'Banner'
+          AND [BudgetDate] >= %s AND [BudgetDate] < %s
+    """, (month_from.isoformat(), month_to.isoformat()))
+    banner_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+    if banner_budget > 0:
+        team_budget_map["Team Banner"] = banner_budget
+
+    # Team Marketwire budget fra BudgetsIntoMedia
+    cur.execute("""
+        SELECT ISNULL(SUM([BudgetAmount]), 0) AS budget
+        FROM [dbo].[BudgetsIntoMedia]
+        WHERE [Brand] = 'marketwire'
+          AND [BudgetDate] >= %s AND [BudgetDate] < %s
+    """, (month_from.isoformat(), month_to.isoformat()))
+    marketwire_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+    if marketwire_budget > 0:
+        team_budget_map["Team Marketwire"] = marketwire_budget
 
     # Alle aktive teams (inkl. dem uden data)
     cur.execute("""
