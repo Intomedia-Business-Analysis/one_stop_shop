@@ -313,12 +313,15 @@ function renderTeamChart(d) {
     return;
   }
 
-  const maxVal = Math.max(...teams.map(t => t.won), 1);
+  // Reference for skalering: brug budget hvis tilgængeligt, ellers max won
+  const maxWon    = Math.max(...teams.map(t => t.won), 1);
+  const maxBudget = Math.max(...teams.map(t => t.budget), 0);
   axisEl.style.display = '';
 
   document.getElementById('team-chart').innerHTML = teams.map(t => {
-    const wonPct = Math.min((t.won    / maxVal) * 100, 100).toFixed(1);
-    const canPct = Math.min((t.cancel / maxVal) * 100, 100).toFixed(1);
+    // 100% = budget (hvis sat), ellers max won på tværs af teams
+    const ref    = t.budget > 0 ? t.budget : (maxBudget > 0 ? maxBudget : maxWon);
+    const wonPct = Math.min((t.netto / ref) * 100, 120).toFixed(1); // kan gå lidt over 100%
 
     // Højre side: netto / budget (som manager dashboard)
     const hasBudget = t.budget > 0;
