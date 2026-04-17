@@ -422,13 +422,15 @@ def db_manager_data(today: date, team: str | None = None,
         """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS))
 
     leaderboard = []
-    for i, r in enumerate(cur.fetchall()):
+    for r in cur.fetchall():
+        won    = float(r["won_amount"]    or 0)
+        cancel = abs(float(r["cancel_amount"] or 0))
         leaderboard.append({
-            "rank":          i + 1,
             "owner_name":    r["owner_name"],
-            "won_amount":    float(r["won_amount"] or 0),
+            "won_amount":    round(won,    2),
             "won_count":     int(r["won_count"] or 0),
-            "cancel_amount": abs(float(r["cancel_amount"] or 0)),
+            "cancel_amount": round(cancel, 2),
+            "netto_amount":  round(won - cancel, 2),
         })
 
     if team:
@@ -450,7 +452,12 @@ def db_manager_data(today: date, team: str | None = None,
 
     for row in leaderboard:
         row["budget"] = budget_map.get(row["owner_name"], 0.0)
-        row["vs_budget_pct"] = round(row["won_amount"] / row["budget"] * 100, 1) if row["budget"] > 0 else None
+        row["vs_budget_pct"] = round(row["netto_amount"] / row["budget"] * 100, 1) if row["budget"] > 0 else None
+
+    # Sorter og rank efter netto (won - afmeldinger)
+    leaderboard.sort(key=lambda x: -x["netto_amount"])
+    for i, row in enumerate(leaderboard):
+        row["rank"] = i + 1
 
     cur.execute("""
         SELECT DISTINCT t.name
