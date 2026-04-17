@@ -28,7 +28,7 @@
 .tc-bar-can{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#B32E45;opacity:.75;z-index:3;transition:width .5s ease}
 .tc-vline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.25);z-index:4}
 .tc-val{font-size:11px;font-weight:600;text-align:right;white-space:nowrap;color:var(--ink)}
-.tc-val small{font-size:10px;color:var(--ink-4);font-weight:400}
+.tc-val small{font-size:10px;color:var(--green);font-weight:600}
 /* Akse-række bruger samme grid som tc-row */
 .tc-axis-row{display:grid;grid-template-columns:115px 1fr 195px;gap:10px;margin-top:2px}
 .tc-axis-inner{display:flex;justify-content:space-between;font-size:8px;color:var(--ink-4)}
@@ -334,7 +334,6 @@ function renderTeamChart(d) {
           <div class="tc-zone" style="left:50%;width:35%;background:#FEF3DC"></div>
           <div class="tc-zone" style="left:85%;width:15%;background:#D4EDE4"></div>
           <div class="tc-bar-won" style="width:${wonPct}%" title="Won: ${fmtKr(t.won)}"></div>
-          ${t.cancel > 0 ? `<div class="tc-bar-can" style="width:${canPct}%" title="Opsig.: ${fmtKr(t.cancel)}"></div>` : ''}
           <div class="tc-vline" style="left:50%"></div>
           <div class="tc-vline" style="left:calc(100% - 1px)"></div>
         </div>
