@@ -26,13 +26,7 @@
 .big-number.green{color:var(--green)}
 
 /* Måneds bar chart */
-.month-bars{display:flex;align-items:flex-end;gap:4px;height:64px;margin-top:12px}
-.mb-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
-.mb-bar{width:100%;border-radius:2px 2px 0 0;background:var(--green);opacity:.7;min-height:2px;transition:height .4s}
-.mb-bar.current{opacity:1;background:var(--green)}
-.mb-bar.future{background:var(--border);opacity:.4}
-.mb-label{font-size:8px;color:var(--ink-4);white-space:nowrap}
-.mb-label.current{color:var(--green);font-weight:700}
+.month-bars{height:72px;margin-top:12px;overflow:visible}
 
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
@@ -400,17 +394,45 @@ function renderTeamTotal(d) {
   document.getElementById('maaned-year-label').textContent = refYear;
 
   const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
-  document.getElementById('month-bars').innerHTML = d.maaned_chart.map((m, i) => {
+
+  // Sparkline (punkt-diagram)
+  const spPadX = 10, spPadY = 6, spH = 44, spGap = 20;
+  const spW = spPadX * 2 + spGap * 11; // 240
+
+  const spPoints = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
     const isCur    = month === refMonth;
     const isFuture = refYear >= curYear && month > curMonth;
-    const h = isFuture ? 0 : Math.max(Math.round((m.won / max) * maxBarPx), m.won > 0 ? 2 : 0);
-    return `<div class="mb-col">
-      <div class="mb-bar ${isCur ? 'current' : isFuture ? 'future' : ''}"
-           style="height:${h}px" title="${m.maaned}: ${fmtKr(m.won)}"></div>
-      <div class="mb-label ${isCur ? 'current' : ''}">${m.maaned}</div>
-    </div>`;
+    const x = spPadX + i * spGap;
+    const y = isFuture ? null : spPadY + (1 - m.won / max) * spH;
+    return { x, y, m, isFuture, isCur };
+  });
+
+  const lineCoords = spPoints
+    .filter(p => !p.isFuture)
+    .map(p => `${p.x},${p.y.toFixed(1)}`).join(' ');
+
+  const dots = spPoints.map(p => {
+    if (p.isFuture) return '';
+    const col = p.isCur ? 'var(--green)' : '#3B7DDD';
+    const r   = p.isCur ? 4 : 2.5;
+    const fw  = p.isCur ? '700' : '400';
+    const lbl = `<text x="${p.x}" y="${spPadY + spH + 14}" font-size="7" fill="${p.isCur ? 'var(--green)' : 'var(--ink-4)'}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>`;
+    return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}">
+      <title>${p.m.maaned}: ${fmtKr(p.m.won)}</title></circle>${lbl}`;
   }).join('');
+
+  // Labels for future months (greyed)
+  const futureLabels = spPoints.filter(p => p.isFuture).map(p =>
+    `<text x="${p.x}" y="${spPadY + spH + 14}" font-size="7" fill="var(--ink-4)" opacity="0.4" text-anchor="middle">${p.m.maaned}</text>`
+  ).join('');
+
+  document.getElementById('month-bars').innerHTML =
+    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 20}" style="width:100%;overflow:visible">
+       <polyline points="${lineCoords}" fill="none" stroke="#3B7DDD" stroke-width="1.5"
+         stroke-linejoin="round" stroke-linecap="round"/>
+       ${dots}${futureLabels}
+     </svg>`;
 }
 
 function renderGauge(d) {
