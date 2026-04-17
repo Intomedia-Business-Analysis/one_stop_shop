@@ -949,7 +949,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             AND d.[status] = 'won'
             AND d.[pipeline_name] <> 'Web Sale'
             AND d.[won_time] >= %s AND d.[won_time] < %s
-            AND (d.[team] = t.name OR d.[team] IS NULL)
+            AND d.[team] = t.name
             AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
         WHERE (TRY_CAST(tm.end_date AS DATE) IS NULL
                OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
