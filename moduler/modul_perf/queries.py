@@ -897,6 +897,33 @@ def db_afdelingsleder_data(today: date, vis_alle: bool = False):
     """, (today.year, today.month))
     forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
 
+    # Per-team netto revenue denne måned
+    cur.execute(f"""
+        SELECT
+            COALESCE([team], 'Øvrige') AS team,
+            ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [won_time] >= %s AND [won_time] < %s
+          AND COALESCE([team],'') <> ''
+          {sub_filter}
+        GROUP BY [team]
+        ORDER BY won DESC
+    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
+    team_chart = []
+    for r in cur.fetchall():
+        won    = float(r["won"]    or 0)
+        cancel = float(r["cancel"] or 0)
+        team_chart.append({
+            "team":   r["team"],
+            "won":    round(won,    2),
+            "cancel": round(cancel, 2),
+            "netto":  round(won - cancel, 2),
+        })
+
     conn.close()
 
     vs_budget     = round(netto_maaned - budget_maaned, 2) if budget_maaned else None
@@ -916,6 +943,7 @@ def db_afdelingsleder_data(today: date, vis_alle: bool = False):
         "vs_ly":           vs_ly,
         "vs_ly_pct":       vs_ly_pct,
         "churn_chart":     churn_chart,
+        "team_chart":      team_chart,
         "vis_alle":        vis_alle,
         "month_label":     f"{MONTH_NAMES_DA[today.month-1]} {today.year}",
         "today":           today.isoformat(),
