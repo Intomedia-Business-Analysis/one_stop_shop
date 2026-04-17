@@ -279,7 +279,7 @@
                   <tr>
                     <th style="width:40px">#</th>
                     <th>Sælger</th>
-                    <th class="num">Salg (måned)</th>
+                    <th class="num">Netto (måned)</th>
                     <th class="num">Deals</th>
                     <th class="num">Afmeldinger</th>
                     <th class="num" style="min-width:180px">Vs. budget</th>
@@ -490,7 +490,7 @@ function renderHero(d) {
     <div class="hero-trophy">🏆</div>
     <div class="hero-avatar">${escHtml(initials)}</div>
     <div class="hero-name">${escHtml(hero.owner_name)}</div>
-    <div class="hero-amount">${fmtKr(hero.won_amount)}</div>
+    <div class="hero-amount">${fmtKr(hero.netto_amount)}</div>
     <div class="hero-sub">${d.month_label}</div>
     ${hasBudget ? `<div style="margin-top:8px;font-size:11px;font-weight:700;color:${pctColor};text-align:center">${pctTxt}</div>` : ''}
     ${hero.won_count ? `<div class="hero-sub">${hero.won_count} deals vundet</div>` : ''}
@@ -521,7 +521,7 @@ function renderLeaderboard(d) {
       ? `<div class="lb-bar-wrap">
            <div style="flex:1">
              <div style="font-size:11px;margin-bottom:3px;text-align:right">
-               ${fmtFull(r.won_amount)} / ${fmtFull(r.budget)}
+               ${fmtFull(r.netto_amount)} / ${fmtFull(r.budget)}
              </div>
              <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
            </div>
@@ -532,7 +532,7 @@ function renderLeaderboard(d) {
     return `<tr>
       <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
       <td style="font-weight:600;color:var(--ink)">${escHtml(r.owner_name)}</td>
-      <td class="num">${fmtFull(r.won_amount)}</td>
+      <td class="num">${fmtFull(r.netto_amount)}</td>
       <td class="num">${r.won_count}</td>
       <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
         ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
