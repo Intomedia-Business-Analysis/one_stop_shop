@@ -265,7 +265,7 @@ function loadMeta() {
     if (y === today.getFullYear()) opt.selected = true;
     yearSel.appendChild(opt);
   }
-  document.getElementById('filter-month').value = String(today.getMonth() + 1);
+  // Lad "Alle måneder" være default — sæt ikke en specifik måned
 }
 
 async function loadData() {
