@@ -399,6 +399,13 @@ function renderTeamTotal(d) {
   const spPadX = 10, spPadY = 6, spH = 44, spGap = 20;
   const spW = spPadX * 2 + spGap * 11; // 240
 
+  // Kompakt beløbsformat til sparkline (fx "973k", "1,1m", "0")
+  const fmtSpk = v => v >= 1e6 ? (v/1e6).toFixed(1).replace('.',',')+'m'
+                    : v >= 1000 ? Math.round(v/1000)+'k'
+                    : Math.round(v) > 0 ? Math.round(v)+'' : '0';
+
+  const orange = '#F4820A';
+
   const spPoints = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
     const isCur    = month === refMonth;
@@ -414,22 +421,26 @@ function renderTeamTotal(d) {
 
   const dots = spPoints.map(p => {
     if (p.isFuture) return '';
-    const col = p.isCur ? 'var(--green)' : '#3B7DDD';
-    const r   = p.isCur ? 4 : 2.5;
-    const fw  = p.isCur ? '700' : '400';
-    const lbl = `<text x="${p.x}" y="${spPadY + spH + 14}" font-size="7" fill="${p.isCur ? 'var(--green)' : 'var(--ink-4)'}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>`;
-    return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}">
-      <title>${p.m.maaned}: ${fmtKr(p.m.won)}</title></circle>${lbl}`;
+    const col     = p.isCur ? orange : 'var(--green)';
+    const lblCol  = p.isCur ? orange : 'var(--ink-4)';
+    const r       = p.isCur ? 4 : 2.5;
+    const fw      = p.isCur ? '700' : '400';
+    const yLbl    = spPadY + spH + 13;
+    const yAmt    = spPadY + spH + 22;
+    const lbl = `<text x="${p.x}" y="${yLbl}" font-size="7" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
+      <text x="${p.x}" y="${yAmt}" font-size="6.5" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.m.won)}</text>`;
+    return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}"/>${lbl}`;
   }).join('');
 
   // Labels for future months (greyed)
   const futureLabels = spPoints.filter(p => p.isFuture).map(p =>
-    `<text x="${p.x}" y="${spPadY + spH + 14}" font-size="7" fill="var(--ink-4)" opacity="0.4" text-anchor="middle">${p.m.maaned}</text>`
+    `<text x="${p.x}" y="${spPadY + spH + 13}" font-size="7" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">${p.m.maaned}</text>
+     <text x="${p.x}" y="${spPadY + spH + 22}" font-size="6.5" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">—</text>`
   ).join('');
 
   document.getElementById('month-bars').innerHTML =
-    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 20}" style="width:100%;overflow:visible">
-       <polyline points="${lineCoords}" fill="none" stroke="#3B7DDD" stroke-width="1.5"
+    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 28}" style="width:100%;overflow:visible">
+       <polyline points="${lineCoords}" fill="none" stroke="var(--green)" stroke-width="1.5"
          stroke-linejoin="round" stroke-linecap="round"/>
        ${dots}${futureLabels}
      </svg>`;
