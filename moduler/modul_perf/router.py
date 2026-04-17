@@ -83,11 +83,8 @@ async def perf_afdelingsleder_data(
     if not has_access(user, "management"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        today = date.today()
-        ref_year  = year  if year  else today.year
-        ref_month = month if month else today.month
-        ref_date  = date(ref_year, ref_month, 1)
-        return JSONResponse(db_afdelingsleder_data(ref_date))
+        ref_year = year if year else date.today().year
+        return JSONResponse(db_afdelingsleder_data(ref_year, month))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))

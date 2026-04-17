@@ -809,17 +809,42 @@ def db_saelger_meta(owner_name: str):
 #                                          DET NYE DASHBOARD FOR LEDER
 #-----------------------------------------------------------------------------------------------------------------------
 
-def db_afdelingsleder_data(today: date, vis_alle: bool = False):
-    month_from = date(today.year, today.month, 1)
-    next_month = today.month % 12 + 1
-    next_year  = today.year + (1 if today.month == 12 else 0)
-    month_to   = date(next_year, next_month, 1)
-    year_from  = date(today.year, 1, 1)
-    year_to    = date(today.year + 1, 1, 1)
+def db_afdelingsleder_data(year: int, month: int | None = None):
+    real_today = date.today()
+
+    # Periode: specifik måned eller hele året
+    if month:
+        month_from = date(year, month, 1)
+        next_m     = month % 12 + 1
+        next_y     = year + (1 if month == 12 else 0)
+        month_to   = date(next_y, next_m, 1)
+        month_label = f"{MONTH_NAMES_DA[month - 1]} {year}"
+        # LY: samme måned sidste år
+        ly_from = date(year - 1, month, 1)
+        ly_to   = date(year - 1 + (1 if month == 12 else 0), next_m, 1)
+        # Forecast: valgt måned
+        fc_year, fc_month = year, month
+        # Churn chart: highlight valgt måned, grey future relative til i dag
+        chart_ref_month = month
+    else:
+        month_from  = date(year, 1, 1)
+        month_to    = date(year + 1, 1, 1)
+        month_label = str(year)
+        # LY: hele det foregående år
+        ly_from = date(year - 1, 1, 1)
+        ly_to   = date(year, 1, 1)
+        # Forecast: nuværende måned i valgt år (eller december)
+        fc_month = real_today.month if year == real_today.year else 12
+        fc_year  = year
+        # Churn chart: highlight nuværende måned (eller dec hvis historisk år)
+        chart_ref_month = real_today.month if year == real_today.year else 12
+
+    year_from = date(year, 1, 1)
+    year_to   = date(year + 1, 1, 1)
 
     brands_ph  = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
-    sub_filter = f"AND [sites] IN {brands_ph}" if not vis_alle else ""
-    sub_params = tuple(SUBSCRIPTION_BRANDS) if not vis_alle else ()
+    sub_filter = f"AND [sites] IN {brands_ph}"
+    sub_params = tuple(SUBSCRIPTION_BRANDS)
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
@@ -852,10 +877,6 @@ def db_afdelingsleder_data(today: date, vis_alle: bool = False):
     """, (month_from.isoformat(), month_to.isoformat()))
     budget_maaned = float((cur.fetchone() or {}).get("budget", 0) or 0)
 
-    ly_from = date(today.year - 1, today.month, 1)
-    ly_next = today.month % 12 + 1
-    ly_ny   = today.year - 1 + (1 if today.month == 12 else 0)
-    ly_to   = date(ly_ny, ly_next, 1)
     cur.execute(f"""
         SELECT
             ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
@@ -901,7 +922,7 @@ def db_afdelingsleder_data(today: date, vis_alle: bool = False):
         SELECT ISNULL(SUM([forecast_amount]),0) AS forecast
         FROM [dbo].[HubForecasts]
         WHERE [forecast_year] = %s AND [forecast_month] = %s AND [level] = 'medie'
-    """, (today.year, today.month))
+    """, (fc_year, fc_month))
     forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
 
     # Per-team netto revenue denne måned
@@ -951,7 +972,6 @@ def db_afdelingsleder_data(today: date, vis_alle: bool = False):
         "vs_ly_pct":       vs_ly_pct,
         "churn_chart":     churn_chart,
         "team_chart":      team_chart,
-        "vis_alle":        vis_alle,
-        "month_label":     f"{MONTH_NAMES_DA[today.month-1]} {today.year}",
-        "today":           today.isoformat(),
+        "month_label":     month_label,
+        "today":           date(year, chart_ref_month, 1).isoformat(),
     }
