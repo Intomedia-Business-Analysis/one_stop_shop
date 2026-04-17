@@ -36,7 +36,7 @@
 
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
-.gauge-svg{width:200px;height:110px}
+.gauge-svg{width:200px;height:114px}
 .gauge-value{font-size:28px;font-weight:800;color:var(--ink);text-align:center;margin-top:-8px;letter-spacing:-.5px}
 .gauge-sub{font-size:11px;color:var(--ink-4);text-align:center;margin-top:4px}
 .gauge-legend{display:flex;justify-content:space-between;width:200px;margin-top:8px}
@@ -241,24 +241,24 @@
             <div class="dash-card">
               <div class="dash-card-title">Konverteringsrate (Gennemsnit)</div>
               <div class="gauge-wrap">
-                <svg class="gauge-svg" viewBox="0 0 200 110" id="gauge-svg">
+                <svg class="gauge-svg" viewBox="0 0 200 114" id="gauge-svg">
                   <!-- Baggrunds-arc -->
                   <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E8E8E4" stroke-width="16" stroke-linecap="round"/>
-                  <!-- Rød zone (0-15%) -->
-                  <path d="M 20 100 A 80 80 0 0 1 58 36" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Rød zone (0-15% af 100%) -->
+                  <path d="M 20 100 A 80 80 0 0 1 29 64" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
                   <!-- Gul zone (15-25%) -->
-                  <path d="M 58 36 A 80 80 0 0 1 127 22" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Grøn zone (25-50%) -->
-                  <path d="M 127 22 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
+                  <path d="M 29 64 A 80 80 0 0 1 43 43" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Grøn zone (25-100%) -->
+                  <path d="M 43 43 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
                   <!-- Aktiv nål -->
                   <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
                   <circle cx="100" cy="100" r="5" fill="var(--ink)"/>
-                  <!-- Labels -->
-                  <text x="16" y="112" font-size="9" fill="#888" text-anchor="middle">0</text>
-                  <text x="48" y="44" font-size="9" fill="#888" text-anchor="middle">10%</text>
-                  <text x="100" y="18" font-size="9" fill="#888" text-anchor="middle">25%</text>
-                  <text x="155" y="44" font-size="9" fill="#888" text-anchor="middle">40%</text>
-                  <text x="184" y="112" font-size="9" fill="#888" text-anchor="middle">50%</text>
+                  <!-- Labels: 0%, 25%, 50%, 75%, 100% -->
+                  <text x="16" y="112" font-size="9" fill="#888" text-anchor="middle">0%</text>
+                  <text x="36" y="46" font-size="9" fill="#888" text-anchor="middle">25%</text>
+                  <text x="100" y="15" font-size="9" fill="#888" text-anchor="middle">50%</text>
+                  <text x="164" y="46" font-size="9" fill="#888" text-anchor="middle">75%</text>
+                  <text x="184" y="112" font-size="9" fill="#888" text-anchor="middle">100%</text>
                 </svg>
                 <div class="gauge-value" id="gauge-value">—</div>
                 <div class="gauge-sub" id="gauge-sub">— won · — lost denne måned</div>
@@ -414,9 +414,9 @@ function renderTeamTotal(d) {
 }
 
 function renderGauge(d) {
-  const pct = Math.min(d.conv_rate, 50); // max 50% på gauge
-  // Konverter pct til vinkel (0% = 180°, 50% = 0°, altså 180° spænd)
-  const angle = 180 - (pct / 50) * 180;
+  const pct = Math.min(d.conv_rate, 100); // max 100% på gauge
+  // Konverter pct til vinkel (0% = 180°, 100% = 0°, altså 180° spænd)
+  const angle = 180 - (pct / 100) * 180;
   const rad   = (angle * Math.PI) / 180;
   const cx = 100, cy = 100, r = 72;
   const x2 = cx + r * Math.cos(rad);
