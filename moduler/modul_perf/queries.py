@@ -932,20 +932,28 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     """, (fc_year, fc_month))
     forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
 
-    # Per-team netto revenue
+    # Per-team netto revenue via TeamMemberships (samme logik som manager dashboard)
+    # Bruger owner_name-join så NULL-[team] deals på aktive sælgere også tælles med
     cur.execute(f"""
         SELECT
-            COALESCE([team], 'Øvrige') AS team,
-            ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
-            ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
-          AND COALESCE([team],'') <> ''
-          {sub_filter}
-        GROUP BY [team]
+            t.name AS team,
+            ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+        FROM Teams t
+        JOIN TeamMemberships tm ON tm.team_id = t.id
+        JOIN HubUsers u ON u.id = tm.user_id
+        LEFT JOIN [dbo].[PipedriveDeals] d
+            ON d.[owner_name] = u.name
+            AND d.[status] = 'won'
+            AND d.[pipeline_name] <> 'Web Sale'
+            AND d.[won_time] >= %s AND d.[won_time] < %s
+            AND (d.[team] = t.name OR d.[team] IS NULL)
+            AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
+        WHERE (TRY_CAST(tm.end_date AS DATE) IS NULL
+               OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        GROUP BY t.name
     """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
     team_data_map = {}
     for r in cur.fetchall():
