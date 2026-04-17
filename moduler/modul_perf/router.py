@@ -76,13 +76,18 @@ async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_us
 
 @router.get("/afdelingsleder-data")
 async def perf_afdelingsleder_data(
-    vis_alle: bool = False,
+    year:  int | None = None,
+    month: int | None = None,
     user=Depends(get_current_user)
 ):
     if not has_access(user, "management"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse(db_afdelingsleder_data(date.today(), vis_alle=vis_alle))
+        today = date.today()
+        ref_year  = year  if year  else today.year
+        ref_month = month if month else today.month
+        ref_date  = date(ref_year, ref_month, 1)
+        return JSONResponse(db_afdelingsleder_data(ref_date))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
