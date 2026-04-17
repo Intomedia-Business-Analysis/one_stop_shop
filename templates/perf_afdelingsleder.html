@@ -43,6 +43,12 @@
 .fc-meta-val{font-size:13px;font-weight:700;color:var(--ink)}
 .fc-meta-val.green{color:var(--green)}
 .fc-meta-val.neg{color:#B32E45}
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 /* Spinner */
 .spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
 .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
@@ -135,19 +141,35 @@
             <h1 class="page-title" style="margin-bottom:4px">Afdelingsleder Dashboard</h1>
             <p class="page-sub">Helikopter-perspektiv — omsætning, budget, forecast og vækst</p>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)">Visning</label>
-              <div class="toggle-pills">
-                <button class="toggle-pill on" id="toggle-abo" onclick="setVisning(false,this)">Abonnementer</button>
-                <button class="toggle-pill" id="toggle-alle" onclick="setVisning(true,this)">Alle brands</button>
-              </div>
-            </div>
-            <button class="refresh-btn" onclick="loadData()" style="margin-top:18px">
-              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
-              Opdater
-            </button>
-          </div>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+          <select class="filter-select" id="filter-month" onchange="loadData()">
+            <option value="">Alle måneder</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <div class="filter-sep"></div>
+          <button class="refresh-btn" onclick="loadData()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Opdater
+          </button>
         </div>
 
         <div id="loading-state" class="spin-wrap">
@@ -221,8 +243,6 @@
 </div>
 
 <script>
-let visAlle = false;
-
 function fmtKr(v) {
   const abs = Math.abs(v);
   const sign = v < 0 ? '-' : '';
@@ -235,17 +255,27 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function setVisning(alle, btn) {
-  visAlle = alle;
-  document.querySelectorAll('.toggle-pill').forEach(b => b.classList.remove('on'));
-  btn.classList.add('on');
-  loadData();
+function loadMeta() {
+  const today = new Date();
+  const yearSel = document.getElementById('filter-year');
+  yearSel.innerHTML = '';
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (y === today.getFullYear()) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  document.getElementById('filter-month').value = String(today.getMonth() + 1);
 }
 
 async function loadData() {
-  const qs = visAlle ? '?vis_alle=true' : '';
+  const year  = document.getElementById('filter-year').value;
+  const month = document.getElementById('filter-month').value;
+  const params = new URLSearchParams();
+  if (year)  params.set('year',  year);
+  if (month) params.set('month', month);
   try {
-    const r = await fetch(`/tools/performance/afdelingsleder-data${qs}`);
+    const r = await fetch(`/tools/performance/afdelingsleder-data?` + params);
     const d = await r.json();
     if (!r.ok) return;
 
@@ -371,6 +401,7 @@ function renderNetChart(d) {
      </svg>`;
 }
 
+loadMeta();
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
 </script>
