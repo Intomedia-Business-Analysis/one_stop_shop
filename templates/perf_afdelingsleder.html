@@ -377,13 +377,26 @@ function renderNetChart(d) {
   document.getElementById('chart-year-label').textContent = new Date(d.today).getFullYear();
   const chart    = d.churn_chart;
   const curMonth = parseInt(d.today.split('-')[1]);
-  const maxAbs   = Math.max(...chart.map(m => Math.abs(m.netto)), 1);
 
-  const W = 260, padX = 6, padY = 10;
-  const H = 100; // total SVG chart height
-  const midY = padY + (H - padY * 2) / 2;
+  // Brug antal kunder (netto_count), ikke beløb
+  const maxAbs = Math.max(...chart.map(m => Math.abs(m.netto_count)), 1);
+
+  const W = 260, padX = 24, padY = 8;
+  const H = 110;
+  const midY  = padY + (H - padY * 2) / 2;
   const halfH = (H - padY * 2) / 2;
   const barW  = (W - padX * 2) / 12;
+
+  // Y-akse labels (max, 0, min)
+  const yMax = Math.ceil(maxAbs);
+  const yAxisLabels = [
+    { val: yMax,  y: padY },
+    { val: 0,     y: midY },
+    { val: -yMax, y: padY + (H - padY * 2) },
+  ].map(l =>
+    `<text x="${(padX - 4).toFixed(1)}" y="${l.y.toFixed(1)}" font-size="7"
+      fill="var(--ink-4)" text-anchor="end" dominant-baseline="middle">${l.val}</text>`
+  ).join('');
 
   const items = chart.map((m, i) => {
     const month    = i + 1;
@@ -397,14 +410,15 @@ function renderNetChart(d) {
     const op     = isFuture ? 0.35 : 1;
 
     let bar = '';
-    if (!isFuture && m.netto !== 0) {
-      const pct = m.netto / maxAbs;
+    if (!isFuture && m.netto_count !== 0) {
+      const pct = m.netto_count / maxAbs;
       const bh  = Math.max(Math.abs(pct) * halfH, 2);
       const by  = pct >= 0 ? midY - bh : midY;
-      const col = m.netto >= 0 ? 'var(--green)' : '#B32E45';
+      const col = m.netto_count >= 0 ? 'var(--green)' : '#B32E45';
       bar = `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"
-        fill="${col}" opacity="${isCur ? 1 : 0.78}" rx="1.5">
-        <title>${m.maaned}: ${fmtKr(m.netto)}</title></rect>`;
+        fill="${col}" opacity="${isCur ? 1 : 0.82}" rx="1.5">
+        <title>${m.maaned}: ${m.netto_count > 0 ? '+' : ''}${m.netto_count} kunder (${m.won_count} nye, ${m.cancel_count} tabt)</title>
+      </rect>`;
     }
 
     return bar + `<text x="${cx.toFixed(1)}" y="${H + 4}" font-size="7" fill="${lblCol}"
@@ -413,6 +427,7 @@ function renderNetChart(d) {
 
   document.getElementById('net-chart').innerHTML =
     `<svg viewBox="0 0 ${W} ${H + 14}" style="width:100%;overflow:visible">
+       ${yAxisLabels}
        <line x1="${padX}" y1="${midY.toFixed(1)}" x2="${W - padX}" y2="${midY.toFixed(1)}"
          stroke="var(--border)" stroke-width="1"/>
        ${items}

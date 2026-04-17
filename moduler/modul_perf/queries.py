@@ -897,7 +897,9 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
                 THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
             ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel,
+            COUNT(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS won_count,
+            COUNT(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS cancel_count
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [won_time] >= %s AND [won_time] < %s
@@ -908,14 +910,19 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     churn_raw = {r["maaned"]: r for r in cur.fetchall()}
     churn_chart = []
     for m in range(1, 13):
-        r   = churn_raw.get(m, {"won": 0, "cancel": 0})
-        won = float(r["won"] or 0)
-        can = abs(float(r["cancel"] or 0))
+        r          = churn_raw.get(m, {"won": 0, "cancel": 0, "won_count": 0, "cancel_count": 0})
+        won        = float(r["won"] or 0)
+        can        = abs(float(r["cancel"] or 0))
+        won_cnt    = int(r["won_count"]    or 0)
+        cancel_cnt = int(r["cancel_count"] or 0)
         churn_chart.append({
-            "maaned": MONTH_NAMES_DA[m - 1][:3],
-            "won":    round(won, 2),
-            "cancel": round(can, 2),
-            "netto":  round(won - can, 2),
+            "maaned":       MONTH_NAMES_DA[m - 1][:3],
+            "won":          round(won, 2),
+            "cancel":       round(can, 2),
+            "netto":        round(won - can, 2),
+            "won_count":    won_cnt,
+            "cancel_count": cancel_cnt,
+            "netto_count":  won_cnt - cancel_cnt,
         })
 
     cur.execute("""
