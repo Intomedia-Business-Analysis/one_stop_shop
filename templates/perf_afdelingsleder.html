@@ -280,7 +280,7 @@ async function loadData() {
   if (year)  params.set('year',  year);
   if (month) params.set('month', month);
   try {
-    const r = await fetch(`/tools/performance/afdelingsleder-data?` + params);
+    const r = await fetch(`/tools/performance/afdelingsleder-data?` + params, { cache: 'no-store' });
     const d = await r.json();
     if (!r.ok) return;
 
