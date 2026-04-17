@@ -244,12 +244,12 @@
                 <svg class="gauge-svg" viewBox="0 0 200 114" id="gauge-svg">
                   <!-- Baggrunds-arc -->
                   <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E8E8E4" stroke-width="16" stroke-linecap="round"/>
-                  <!-- Rød zone (0-15% af 100%) -->
-                  <path d="M 20 100 A 80 80 0 0 1 29 64" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Gul zone (15-25%) -->
-                  <path d="M 29 64 A 80 80 0 0 1 43 43" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Grøn zone (25-100%) -->
-                  <path d="M 43 43 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Rød zone (0-25%) -->
+                  <path d="M 20 100 A 80 80 0 0 1 43 43" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Gul zone (25-75%) -->
+                  <path d="M 43 43 A 80 80 0 0 1 157 43" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Grøn zone (75-100%) -->
+                  <path d="M 157 43 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
                   <!-- Aktiv nål -->
                   <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
                   <circle cx="100" cy="100" r="5" fill="var(--ink)"/>
@@ -428,7 +428,7 @@ function renderGauge(d) {
 
   const valEl = document.getElementById('gauge-value');
   valEl.textContent = d.conv_rate.toFixed(1).replace('.', ',') + '%';
-  valEl.style.color = d.conv_rate >= 25 ? 'var(--green)' : d.conv_rate >= 15 ? 'var(--amber)' : '#B32E45';
+  valEl.style.color = d.conv_rate >= 75 ? 'var(--green)' : d.conv_rate >= 25 ? 'var(--amber)' : '#B32E45';
 
   document.getElementById('gauge-sub').textContent =
     `${d.won_count} won · ${d.lost_count} lost/opsagt denne måned`;
