@@ -932,8 +932,10 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     """, (fc_year, fc_month))
     forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
 
-    # Per-team netto revenue via TeamMemberships (samme logik som manager dashboard)
-    # Bruger owner_name-join så NULL-[team] deals på aktive sælgere også tælles med
+    # Per-team netto revenue via TeamMemberships med site-baseret disambiguering:
+    # - FINANS-teams: kun deals med FINANS sites
+    # - Team Watch Int: deals med non-FINANS subscription sites (følger Pipedrive-logik)
+    # - Andre teams: alle subscription brands + NULL sites
     cur.execute(f"""
         SELECT
             t.name AS team,
@@ -949,12 +951,24 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             AND d.[status] = 'won'
             AND d.[pipeline_name] <> 'Web Sale'
             AND d.[won_time] >= %s AND d.[won_time] < %s
-            AND d.[team] = t.name
-            AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
+            AND (
+                -- FINANS-teams: kun FINANS sites
+                (t.name LIKE '%FINANS%'
+                 AND COALESCE(d.[sites],'') LIKE '%FINANS%')
+                OR
+                -- Team Watch Int: non-FINANS subscription sites + NULL sites
+                (t.name = 'Team Watch Int'
+                 AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'
+                 AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL))
+                OR
+                -- Andre teams: alle subscription brands + NULL sites
+                (t.name NOT LIKE '%FINANS%' AND t.name <> 'Team Watch Int'
+                 AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL))
+            )
         WHERE (TRY_CAST(tm.end_date AS DATE) IS NULL
                OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
         GROUP BY t.name
-    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
+    """, (month_from.isoformat(), month_to.isoformat()) + sub_params + sub_params)
     team_data_map = {}
     for r in cur.fetchall():
         won    = float(r["won"]    or 0)
