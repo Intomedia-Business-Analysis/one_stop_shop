@@ -951,6 +951,10 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             AND d.[status] = 'won'
             AND d.[pipeline_name] <> 'Web Sale'
             AND d.[won_time] >= %s AND d.[won_time] < %s
+            AND (COALESCE(d.[administrativ],'') <> 'ja')
+            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
+            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
+            AND COALESCE(d.[deal_type],'') <> 'Rapport'
             AND (
                 -- FINANS-teams: kun FINANS sites
                 (t.name LIKE '%FINANS%'
