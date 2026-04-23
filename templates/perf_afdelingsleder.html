@@ -346,27 +346,32 @@ function renderTeamChart(d) {
 }
 
 function renderForecast(d) {
-  document.getElementById('fc-nu').textContent       = fmtKr(d.netto_maaned);
-  document.getElementById('fc-forecast').textContent = d.forecast_maaned > 0 ? fmtKr(d.forecast_maaned) : '—';
-  document.getElementById('fc-budget').textContent   = d.budget_maaned > 0 ? fmtKr(d.budget_maaned) : '—';
+  document.getElementById('fc-nu').textContent = fmtKr(d.netto_maaned);
+  document.getElementById('fc-budget').textContent = d.budget_maaned > 0 ? fmtKr(d.budget_maaned) : '—';
 
+  // FORVENTET = netto vundet + vægtet åben pipeline
+  const hasPipeline = (d.pipeline_won || 0) + (d.pipeline_cancel || 0) > 0;
+  document.getElementById('fc-forecast').textContent = hasPipeline ? fmtKr(d.forecast_netto) : fmtKr(d.netto_maaned);
+
+  // Pil baseret på om forecast er over eller under nuværende
   const arrowEl = document.getElementById('fc-arrow');
-  if (d.forecast_maaned > 0) {
-    const diff = d.forecast_maaned - d.netto_maaned;
-    arrowEl.textContent = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
-    arrowEl.className   = 'fc-big-arrow ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
+  const diff = (d.forecast_netto || d.netto_maaned) - d.netto_maaned;
+  if (hasPipeline && diff !== 0) {
+    arrowEl.textContent = diff > 0 ? '↑' : '↓';
+    arrowEl.className   = 'fc-big-arrow ' + (diff > 0 ? 'up' : 'down');
   } else {
     arrowEl.textContent = '→';
     arrowEl.className   = 'fc-big-arrow';
   }
 
-  if (d.vs_ly !== null) {
+  // VS. LY og YOY%
+  if (d.vs_ly !== null && d.vs_ly !== undefined) {
     const sign = d.vs_ly >= 0 ? '+' : '';
     const el   = document.getElementById('fc-vs-ly');
     el.textContent = sign + fmtKr(d.vs_ly);
     el.className   = 'fc-meta-val ' + (d.vs_ly >= 0 ? 'green' : 'neg');
   }
-  if (d.vs_ly_pct !== null) {
+  if (d.vs_ly_pct !== null && d.vs_ly_pct !== undefined) {
     const yoyEl = document.getElementById('fc-yoy-pct');
     yoyEl.textContent = (d.vs_ly_pct >= 0 ? '+' : '') + d.vs_ly_pct.toFixed(1).replace('.',',') + '%';
     yoyEl.className   = 'fc-meta-val ' + (d.vs_ly_pct >= 0 ? 'green' : 'neg');
