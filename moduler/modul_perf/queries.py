@@ -830,12 +830,16 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         month_from  = date(year, 1, 1)
         month_to    = date(year + 1, 1, 1)
         month_label = str(year)
-        # LY: hele det foregående år
-        ly_from = date(year - 1, 1, 1)
-        ly_to   = date(year, 1, 1)
-        # Forecast: nuværende måned i valgt år (eller december)
-        fc_month = real_today.month if year == real_today.year else 12
-        fc_year  = year
+        # LY: for indeværende år → YTD-sammenligning (Jan → nuværende måned)
+        # For historiske år → sammenlign fuldt år med fuldt foregående år
+        if year == real_today.year:
+            ly_from   = date(year - 1, 1, 1)
+            ly_next_m = real_today.month % 12 + 1
+            ly_next_y = year - 1 + (1 if real_today.month == 12 else 0)
+            ly_to     = date(ly_next_y, ly_next_m, 1)
+        else:
+            ly_from = date(year - 1, 1, 1)
+            ly_to   = date(year, 1, 1)
         # Churn chart: highlight nuværende måned (eller dec hvis historisk år)
         chart_ref_month = real_today.month if year == real_today.year else 12
 
@@ -925,12 +929,32 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             "netto_count":  won_cnt - cancel_cnt,
         })
 
-    cur.execute("""
-        SELECT ISNULL(SUM([forecast_amount]),0) AS forecast
-        FROM [dbo].[HubForecasts]
-        WHERE [forecast_year] = %s AND [forecast_month] = %s AND [level] = 'medie'
-    """, (fc_year, fc_month))
-    forecast_maaned = float((cur.fetchone() or {}).get("forecast", 0) or 0)
+    # Automatisk forecast: vundet netto + vægtet åben pipeline for perioden.
+    # weighted_value = Pipedrive's eget sandsynlighedsvægtede felt (value × stage-probability).
+    # Vi inkluderer kun deals med positiv value og ekskluderer Rapport og Web Sale.
+    cur.execute(f"""
+        SELECT
+            ISNULL(SUM(CASE
+                WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                 AND CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2)) > 0
+                THEN CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2))
+                ELSE 0 END), 0) AS pipeline_won,
+            ISNULL(SUM(CASE
+                WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                 AND ABS(CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2))) > 0
+                THEN ABS(CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2)))
+                ELSE 0 END), 0) AS pipeline_cancel
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status] = 'open'
+          AND [pipeline_name] <> 'Web Sale'
+          AND COALESCE([deal_type],'') <> 'Rapport'
+          AND [expected_close_date] >= %s AND [expected_close_date] < %s
+          {sub_filter}
+    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
+    pipe_row       = cur.fetchone() or {}
+    pipeline_won    = float(pipe_row.get("pipeline_won",    0) or 0)
+    pipeline_cancel = float(pipe_row.get("pipeline_cancel", 0) or 0)
+    forecast_netto  = round(netto_maaned + pipeline_won - pipeline_cancel, 2)
 
     # Per-team netto revenue via TeamMemberships med site-baseret disambiguering:
     # - FINANS-teams: kun deals med FINANS sites
@@ -1052,7 +1076,9 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         "cancel_maaned":   round(cancel_maaned, 2),
         "netto_maaned":    round(netto_maaned, 2),
         "budget_maaned":   round(budget_maaned, 2),
-        "forecast_maaned": round(forecast_maaned, 2),
+        "forecast_netto":   forecast_netto,
+        "pipeline_won":    round(pipeline_won, 2),
+        "pipeline_cancel": round(pipeline_cancel, 2),
         "ly_netto":        round(ly_netto, 2),
         "vs_budget":       vs_budget,
         "vs_budget_pct":   vs_budget_pct,
