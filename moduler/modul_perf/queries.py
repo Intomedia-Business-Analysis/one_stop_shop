@@ -859,6 +859,10 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           AND [won_time] >= %s AND [won_time] < %s
+          AND COALESCE([administrativ],'') <> 'ja'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
+          AND COALESCE([deal_type],'') <> 'Rapport'
           {sub_filter}
     """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
     revenue_maaned = float((cur.fetchone() or {}).get("revenue", 0) or 0)
@@ -869,6 +873,9 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
           AND [won_time] >= %s AND [won_time] < %s
+          AND COALESCE([administrativ],'') <> 'ja'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
           {sub_filter}
     """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
     cancel_maaned = abs(float((cur.fetchone() or {}).get("cancel", 0) or 0))
@@ -890,6 +897,10 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [won_time] >= %s AND [won_time] < %s
+          AND COALESCE([administrativ],'') <> 'ja'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
+          AND COALESCE([deal_type],'') <> 'Rapport'
           {sub_filter}
     """, (ly_from.isoformat(), ly_to.isoformat()) + sub_params)
     ly_row   = cur.fetchone() or {}
@@ -907,6 +918,10 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [won_time] >= %s AND [won_time] < %s
+          AND COALESCE([administrativ],'') <> 'ja'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
+          AND COALESCE([deal_type],'') <> 'Rapport'
           {sub_filter}
         GROUP BY MONTH([won_time])
         ORDER BY maaned
@@ -947,6 +962,9 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         FROM [dbo].[PipedriveDeals]
         WHERE [status] = 'open'
           AND [pipeline_name] <> 'Web Sale'
+          AND COALESCE([administrativ],'') <> 'ja'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
           AND COALESCE([deal_type],'') <> 'Rapport'
           AND [expected_close_date] >= %s AND [expected_close_date] < %s
           {sub_filter}
