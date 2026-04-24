@@ -8,33 +8,37 @@
 <style>
 .tool-wrap { max-width: 1280px; margin: 0 auto }
 
-/* Dashboard grid */
-.dash-grid   { display:grid; grid-template-columns:1fr 1fr;     gap:20px; margin-bottom:20px }
-.dash-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:20px }
-.dash-grid-full { grid-column: 1 / -1 }
-@media(max-width:1024px){ .dash-grid-3 { grid-template-columns:1fr 1fr } }
-@media(max-width:900px) { .dash-grid, .dash-grid-3 { grid-template-columns:1fr } }
-
-/* Dashboard kort */
-.dash-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:24px; position:relative; overflow:hidden }
-.dash-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0 }
-.dash-card-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:2px; color:var(--ink-4); margin-bottom:16px; display:flex; align-items:center; justify-content:space-between }
-
 /* Placeholder */
-.placeholder-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:64px 24px; color:var(--ink-4); gap:12px }
-.placeholder-wrap svg { width:40px; height:40px; opacity:.3 }
+.placeholder-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 24px; color:var(--ink-4); gap:12px }
+.placeholder-wrap svg { width:40px; height:40px; opacity:.25 }
 .placeholder-wrap p { font-size:13px; margin:0 }
 </style>
 </head>
 <body>
-<div class="app-layout">
+<div class="shell">
 
   <!-- SIDEBAR -->
   <nav class="sidebar">
-    <a href="/" class="sb-logo">
-      <img src="/static/intomedia-logo.svg" alt="Intomedia" onerror="this.style.display='none'">
-      <span>intomedia</span>
-    </a>
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
     <div class="sb-divider"></div>
     <div class="sb-nav">
       <div class="sb-section-label">KPI'er og Dashboards</div>
@@ -53,18 +57,6 @@
       <a href="/tools/banner/" class="sbi active">
         <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Banner Specifik
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Sales Operations</div>
-      <a href="/tools/budget/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Budget
-      </a>
-      <a href="/tools/forecast/" class="sbi">
-        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-        Forecast
       </a>
     </div>
     <div class="sb-user">
@@ -93,18 +85,14 @@
 
     <div class="content-area">
       <div class="tool-wrap">
-
-        <!-- Breadcrumb -->
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
           <a href="/category/kpi-dashboards" class="bc-link">KPI'er og Dashboards</a><span class="bc-sep">/</span>
           <span>Banner Specifik</span>
         </div>
-
-        <!-- Overskrift -->
-        <div class="page-header">
-          <h1 class="page-title">Banner Specifik</h1>
-          <p class="page-desc">Dashboard med Banner-specifikke KPI'er og analyser</p>
+        <div style="margin-bottom:24px">
+          <h1 class="page-title" style="margin-bottom:4px">Banner Specifik</h1>
+          <p class="page-sub">Dashboard med Banner-specifikke KPI'er og analyser</p>
         </div>
 
         <!-- Dashboard indhold -->
