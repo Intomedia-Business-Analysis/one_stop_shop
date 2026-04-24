@@ -316,7 +316,7 @@ def db_manager_data(today: date, team: str | None = None,
         SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           {_ADM_EXCLUDE}
