@@ -25,7 +25,7 @@ from moduler.modul_forcast.router import router as forecast_router
 from moduler.modul_perf.router import router as perf_router
 from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
-from moduler.Modul_banner_specifik.router import router as banner_router
+from moduler.modul_banner_specifik.router import router as banner_router
 
 load_dotenv()
 
