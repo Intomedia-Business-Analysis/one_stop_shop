@@ -974,12 +974,9 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     pipeline_cancel = float(pipe_row.get("pipeline_cancel", 0) or 0)
     forecast_netto  = round(netto_maaned + pipeline_won - pipeline_cancel, 2)
 
-    # Per-team netto revenue via TeamMemberships — matcher db_manager_data-logikken:
-    # - FINANS-teams: kun deals med sites = 'FINANS DK' (exact match)
-    # - Team Watch Int: non-FINANS subscription sites + team-tag match
-    # - Watch DK: ekskluderer FINANS DK site + team-tag match
-    # - Andre teams: alle subscription brands + NULL sites + team-tag match
-    cur.execute(f"""
+    # Per-team netto revenue — joiner direkte på d.[team] for at matche Pipedrive præcist.
+    # Deals uden team-tag (NULL) tæller ikke med under noget team.
+    cur.execute("""
         SELECT
             t.name AS team,
             ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
@@ -987,43 +984,18 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
                 THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
         FROM Teams t
-        JOIN TeamMemberships tm ON tm.team_id = t.id
-        JOIN HubUsers u ON u.id = tm.user_id
         LEFT JOIN [dbo].[PipedriveDeals] d
-            ON d.[owner_name] = u.name
+            ON d.[team] = t.name
             AND d.[status] = 'won'
             AND d.[pipeline_name] <> 'Web Sale'
             AND d.[won_time] >= %s AND d.[won_time] < %s
-            AND (COALESCE(d.[administrativ],'') <> 'ja')
+            AND COALESCE(d.[administrativ],'') <> 'ja'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
             AND COALESCE(d.[deal_type],'') <> 'Rapport'
-            AND (
-                -- FINANS-teams: kun FINANS DK site (exact match)
-                (UPPER(t.name) LIKE '%FINANS%'
-                 AND COALESCE(d.[sites],'') = 'FINANS DK')
-                OR
-                -- Team Watch Int: non-FINANS subscription sites + team-tag match
-                (t.name = 'Team Watch Int'
-                 AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'
-                 AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
-                 AND (d.[team] = t.name OR d.[team] IS NULL))
-                OR
-                -- Watch DK: ekskluder FINANS DK site + team-tag match
-                (UPPER(t.name) LIKE '%WATCH DK%'
-                 AND COALESCE(d.[sites],'') <> 'FINANS DK'
-                 AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
-                 AND (d.[team] = t.name OR d.[team] IS NULL))
-                OR
-                -- Andre teams: alle subscription brands + NULL sites + team-tag match
-                (UPPER(t.name) NOT LIKE '%FINANS%' AND t.name <> 'Team Watch Int' AND UPPER(t.name) NOT LIKE '%WATCH DK%'
-                 AND (d.[sites] IN {brands_ph} OR d.[sites] IS NULL)
-                 AND (d.[team] = t.name OR d.[team] IS NULL))
-            )
-        WHERE (TRY_CAST(tm.end_date AS DATE) IS NULL
-               OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        WHERE t.name IS NOT NULL AND t.name <> ''
         GROUP BY t.name
-    """, (month_from.isoformat(), month_to.isoformat()) + sub_params + sub_params + sub_params)
+    """, (month_from.isoformat(), month_to.isoformat()))
     team_data_map = {}
     for r in cur.fetchall():
         won    = float(r["won"]    or 0)
@@ -1066,14 +1038,12 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
     if marketwire_budget > 0:
         team_budget_map["Team Marketwire"] = marketwire_budget
 
-    # Alle aktive teams (inkl. dem uden data)
+    # Alle teams (inkl. dem uden data i perioden)
     cur.execute("""
-        SELECT DISTINCT t.name
-        FROM Teams t
-        JOIN TeamMemberships tm ON tm.team_id = t.id
-        WHERE t.name IS NOT NULL AND t.name <> ''
-          AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-        ORDER BY t.name
+        SELECT name
+        FROM Teams
+        WHERE name IS NOT NULL AND name <> ''
+        ORDER BY name
     """)
     all_team_names = [r["name"] for r in cur.fetchall()]
 
