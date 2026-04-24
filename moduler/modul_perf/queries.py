@@ -858,7 +858,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-          AND [won_time] >= %s AND [won_time] < %s
+          AND [service_activation_date] >= %s AND [service_activation_date] < %s
           AND COALESCE([administrativ],'') <> 'ja'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
@@ -872,7 +872,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-          AND [won_time] >= %s AND [won_time] < %s
+          AND [service_activation_date] >= %s AND [service_activation_date] < %s
           AND COALESCE([administrativ],'') <> 'ja'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
@@ -896,7 +896,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
                 THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND [service_activation_date] >= %s AND [service_activation_date] < %s
           AND COALESCE([administrativ],'') <> 'ja'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
@@ -908,7 +908,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
 
     cur.execute(f"""
         SELECT
-            MONTH([won_time]) AS maaned,
+            MONTH([service_activation_date]) AS maaned,
             ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
                 THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
             ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
@@ -917,13 +917,13 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             COUNT(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS cancel_count
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND [service_activation_date] >= %s AND [service_activation_date] < %s
           AND COALESCE([administrativ],'') <> 'ja'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
           AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
           AND COALESCE([deal_type],'') <> 'Rapport'
           {sub_filter}
-        GROUP BY MONTH([won_time])
+        GROUP BY MONTH([service_activation_date])
         ORDER BY maaned
     """, (year_from.isoformat(), year_to.isoformat()) + sub_params)
     churn_raw = {r["maaned"]: r for r in cur.fetchall()}
@@ -988,7 +988,7 @@ def db_afdelingsleder_data(year: int, month: int | None = None):
             ON d.[team] = t.name
             AND d.[status] = 'won'
             AND d.[pipeline_name] <> 'Web Sale'
-            AND d.[won_time] >= %s AND d.[won_time] < %s
+            AND d.[service_activation_date] >= %s AND d.[service_activation_date] < %s
             AND COALESCE(d.[administrativ],'') <> 'ja'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
