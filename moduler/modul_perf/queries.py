@@ -560,30 +560,24 @@ def db_manager_data(today: date, team: str | None = None,
             "vs_pct":      round(netto / w_bud * 100, 1) if w_bud > 0 else None,
         })
 
-    # Sælger ugeomsætning
+    # Sælger ugeomsætning — bruger d.[team] direkte (inkluderer teamledere)
     if team:
         cur.execute(f"""
-            SELECT u.name AS owner_name,
-                ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                    THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
-                ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                    THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
-            FROM HubUsers u
-            JOIN TeamMemberships tm2 ON tm2.user_id = u.id
-            JOIN Teams t2 ON t2.id = tm2.team_id
-            LEFT JOIN [dbo].[PipedriveDeals] d
-                ON d.[owner_name] = u.name
-                AND d.[status] = 'won' AND d.[pipeline_name] <> 'Web Sale'
-                AND d.{d_col} >= %s AND d.{d_col} < %s
-                AND (d.[team] = %s OR d.[team] IS NULL)
-                AND COALESCE(d.[administrativ],'') <> 'ja'
-                AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
-                AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
-                AND COALESCE(d.[deal_type],'') <> 'Rapport'
-            WHERE t2.name = %s
-              AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-            GROUP BY u.name ORDER BY won DESC
-        """, (week_start.isoformat(), week_end.isoformat(), team, team))
+            SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
+                ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+                ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND {d_col} >= %s AND {d_col} < %s
+              AND [team] = %s
+              AND COALESCE([administrativ],'') <> 'ja'
+              AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
+              AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
+              AND COALESCE([deal_type],'') <> 'Rapport'
+            GROUP BY [owner_name] ORDER BY won DESC
+        """, (week_start.isoformat(), week_end.isoformat(), team))
     else:
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
