@@ -41,7 +41,7 @@ async def perf_manager_page(request: Request, user=Depends(get_current_user)):
 async def perf_manager_data(
     team: str | None = None,
     year: int | None = None,
-    month: int | None = None,
+    month: str | None = None,
     date_col: str = "won_time",
     user=Depends(get_current_user)
 ):
