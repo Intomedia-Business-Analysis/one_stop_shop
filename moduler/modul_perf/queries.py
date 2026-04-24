@@ -240,15 +240,28 @@ def db_get_filters():
 #-----------------------------------------------------------------------------------------------------------------------
 
 def db_manager_data(today: date, team: str | None = None,
-                     selected_year: int | None = None, selected_month: int | None = None,
+                     selected_year: int | None = None, selected_month: str | None = None,
                      date_col: str = "won_time"):
-    ref_year  = selected_year  or today.year
-    ref_month = selected_month or today.month
+    ref_year = selected_year or today.year
 
-    month_from = date(ref_year, ref_month, 1)
-    next_m     = ref_month % 12 + 1
-    next_y     = ref_year + (1 if ref_month == 12 else 0)
-    month_to   = date(next_y, next_m, 1)
+    if selected_month in ("Q1", "Q2", "Q3", "Q4"):
+        q          = int(selected_month[1])
+        month_from = date(ref_year, (q - 1) * 3 + 1, 1)
+        month_to   = date(ref_year + (1 if q == 4 else 0), (q * 3 % 12) + 1, 1)
+        ref_month  = None
+        month_label = f"{selected_month} {ref_year}"
+    elif selected_month:  # Enkelt måned (1-12)
+        ref_month  = int(selected_month)
+        month_from = date(ref_year, ref_month, 1)
+        next_m     = ref_month % 12 + 1
+        next_y     = ref_year + (1 if ref_month == 12 else 0)
+        month_to   = date(next_y, next_m, 1)
+        month_label = f"{MONTH_NAMES_DA[ref_month - 1]} {ref_year}"
+    else:  # Hele Året
+        month_from  = date(ref_year, 1, 1)
+        month_to    = date(ref_year + 1, 1, 1)
+        ref_month   = None
+        month_label = f"Hele Året {ref_year}"
 
     brands_ph   = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
@@ -481,7 +494,7 @@ def db_manager_data(today: date, team: str | None = None,
         "leaderboard":  leaderboard,
         "teams":        teams,
         "active_team":  team,
-        "month_label":  f"{MONTH_NAMES_DA[ref_month-1]} {ref_year}",
+        "month_label":  month_label,
         "today":        today.isoformat(),
         "cur_month":    today.month,
         "ref_month":    ref_month,
