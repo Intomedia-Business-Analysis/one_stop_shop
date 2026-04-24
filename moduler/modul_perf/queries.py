@@ -1,3 +1,4 @@
+import calendar
 import os
 import traceback
 from datetime import date, timedelta
@@ -482,6 +483,154 @@ def db_manager_data(today: date, team: str | None = None,
     """)
     teams = [r["name"] for r in cur.fetchall()]
 
+    # ── Ugentlig rapport ────────────────────────────────────────────────────
+    week_start    = today - timedelta(days=today.weekday())   # Mandag
+    week_end      = week_start + timedelta(days=7)             # Næste mandag (eksklusiv)
+    week_num      = today.isocalendar()[1]
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+    week_factor   = 7 / days_in_month
+    cur_m_start   = date(today.year, today.month, 1)
+    cur_m_end     = date(today.year + (1 if today.month == 12 else 0), today.month % 12 + 1, 1)
+
+    _MO = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"]
+    we  = week_end - timedelta(days=1)
+    week_label_str = (f"Uge {week_num} "
+                      f"({week_start.day}. {_MO[week_start.month-1]} "
+                      f"– {we.day}. {_MO[we.month-1]})")
+
+    # Team ugeomsætning (d.[team]-baseret)
+    cur.execute(f"""
+        SELECT
+            t.name AS team,
+            ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+        FROM Teams t
+        LEFT JOIN [dbo].[PipedriveDeals] d
+            ON d.[team] = t.name
+            AND d.[status] = 'won'
+            AND d.[pipeline_name] <> 'Web Sale'
+            AND d.{d_col} >= %s AND d.{d_col} < %s
+            AND COALESCE(d.[administrativ],'') <> 'ja'
+            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
+            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
+            AND COALESCE(d.[deal_type],'') <> 'Rapport'
+        WHERE t.name IS NOT NULL AND t.name <> ''
+        GROUP BY t.name
+    """, (week_start.isoformat(), week_end.isoformat()))
+    week_team_sales = {}
+    for r in cur.fetchall():
+        won    = float(r["won"]    or 0)
+        cancel = float(r["cancel"] or 0)
+        week_team_sales[r["team"]] = round(won - cancel, 2)
+
+    # Team månedbudget (til proration) — samme logik som afdelingsleder
+    cur.execute("""
+        SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
+        FROM [dbo].[SalespersonBudget]
+        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+          AND [Team] IS NOT NULL AND [Team] <> ''
+        GROUP BY [Team]
+    """, (cur_m_start.isoformat(), cur_m_end.isoformat()))
+    team_m_budget = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
+
+    cur.execute("""
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+        WHERE [DealType]='Banner' AND [BudgetDate] >= %s AND [BudgetDate] < %s
+    """, (cur_m_start.isoformat(), cur_m_end.isoformat()))
+    b = float((cur.fetchone() or {}).get("budget", 0) or 0)
+    if b: team_m_budget["Team Banner"] = b
+
+    cur.execute("""
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+        WHERE [Brand]='marketwire' AND [BudgetDate] >= %s AND [BudgetDate] < %s
+    """, (cur_m_start.isoformat(), cur_m_end.isoformat()))
+    b = float((cur.fetchone() or {}).get("budget", 0) or 0)
+    if b: team_m_budget["Team Marketwire"] = b
+
+    week_teams = []
+    for tname, netto in sorted(week_team_sales.items(), key=lambda x: -x[1]):
+        m_bud   = team_m_budget.get(tname, 0)
+        w_bud   = round(m_bud * week_factor, 2) if m_bud else 0
+        week_teams.append({
+            "team":        tname,
+            "netto":       netto,
+            "budget_week": w_bud,
+            "vs_pct":      round(netto / w_bud * 100, 1) if w_bud > 0 else None,
+        })
+
+    # Sælger ugeomsætning
+    if team:
+        cur.execute(f"""
+            SELECT u.name AS owner_name,
+                ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+                ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+            FROM HubUsers u
+            JOIN TeamMemberships tm2 ON tm2.user_id = u.id
+            JOIN Teams t2 ON t2.id = tm2.team_id
+            LEFT JOIN [dbo].[PipedriveDeals] d
+                ON d.[owner_name] = u.name
+                AND d.[status] = 'won' AND d.[pipeline_name] <> 'Web Sale'
+                AND d.{d_col} >= %s AND d.{d_col} < %s
+                AND (d.[team] = %s OR d.[team] IS NULL)
+                AND COALESCE(d.[administrativ],'') <> 'ja'
+                AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
+                AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
+                AND COALESCE(d.[deal_type],'') <> 'Rapport'
+            WHERE t2.name = %s
+              AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+            GROUP BY u.name ORDER BY won DESC
+        """, (week_start.isoformat(), week_end.isoformat(), team, team))
+    else:
+        cur.execute(f"""
+            SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
+                ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+                ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND {d_col} >= %s AND {d_col} < %s
+              AND [sites] IN {brands_ph}
+              {_ADM_EXCLUDE}
+            GROUP BY [owner_name] ORDER BY won DESC
+        """, (week_start.isoformat(), week_end.isoformat()) + tuple(SUBSCRIPTION_BRANDS))
+    week_saelger_rows = cur.fetchall()
+
+    # Sælger månedbudget
+    if team:
+        cur.execute("""
+            SELECT [Owner] AS owner_name, SUM([BudgetAmount]) AS budget
+            FROM [dbo].[SalespersonBudget]
+            WHERE [BudgetDate] >= %s AND [BudgetDate] < %s AND [Team] = %s
+            GROUP BY [Owner]
+        """, (cur_m_start.isoformat(), cur_m_end.isoformat(), team))
+    else:
+        cur.execute("""
+            SELECT [Owner] AS owner_name, SUM([BudgetAmount]) AS budget
+            FROM [dbo].[SalespersonBudget]
+            WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+            GROUP BY [Owner]
+        """, (cur_m_start.isoformat(), cur_m_end.isoformat()))
+    saelger_m_budget = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
+
+    week_saelgere = []
+    for r in week_saelger_rows:
+        won    = float(r["won"]    or 0)
+        cancel = float(r["cancel"] or 0)
+        netto  = round(won - cancel, 2)
+        m_bud  = saelger_m_budget.get(r["owner_name"], 0)
+        w_bud  = round(m_bud * week_factor, 2) if m_bud else 0
+        week_saelgere.append({
+            "owner_name":  r["owner_name"],
+            "netto":       netto,
+            "budget_week": w_bud,
+            "vs_pct":      round(netto / w_bud * 100, 1) if w_bud > 0 else None,
+        })
+
     conn.close()
     return {
         "salg_dag":     round(salg_dag, 2),
@@ -493,12 +642,15 @@ def db_manager_data(today: date, team: str | None = None,
         "lost_count":   lost_count,
         "leaderboard":  leaderboard,
         "teams":        teams,
-        "active_team":  team,
-        "month_label":  month_label,
-        "today":        today.isoformat(),
-        "cur_month":    today.month,
-        "ref_month":    ref_month,
-        "ref_year":     ref_year,
+        "active_team":    team,
+        "month_label":    month_label,
+        "today":          today.isoformat(),
+        "cur_month":      today.month,
+        "ref_month":      ref_month,
+        "ref_year":       ref_year,
+        "week_label":     week_label_str,
+        "week_teams":     week_teams,
+        "week_saelgere":  week_saelgere,
     }
 
 

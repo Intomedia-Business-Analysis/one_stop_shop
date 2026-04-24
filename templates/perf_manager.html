@@ -274,6 +274,26 @@
           </div>
 
           <!-- Række 2: Leaderboard (fuld bredde) -->
+          <div class="dash-card dash-grid-full" id="card-weekly">
+            <div class="dash-card-title">
+              <span>Ugentlig Rapport</span>
+              <span id="week-label" style="font-size:10px;font-weight:400;color:var(--ink-4)"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+              <!-- Afdelinger -->
+              <div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-bottom:10px">Afdelinger</div>
+                <div id="week-teams-content"><span style="color:var(--ink-4);font-size:12px">Indlæser…</span></div>
+              </div>
+              <!-- Sælgere -->
+              <div>
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);margin-bottom:10px">Sælgere</div>
+                <div id="week-saelgere-content"><span style="color:var(--ink-4);font-size:12px">Indlæser…</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leaderboard (fuld bredde) -->
           <div class="dash-card dash-grid-full">
             <div class="dash-card-title">
               <span>Leaderboard</span>
@@ -374,6 +394,7 @@ async function loadData() {
     renderTeamTotal(d);
     renderGauge(d);
     renderHero(d);
+    renderWeeklyReport(d);
     renderLeaderboard(d);
 
     const now = new Date();
@@ -550,6 +571,56 @@ function renderLeaderboard(d) {
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderWeeklyReport(d) {
+  document.getElementById('week-label').textContent = d.week_label || '';
+
+  function weekRow(name, netto, budgetWeek, vsPct) {
+    const hasBudget = budgetWeek > 0;
+    const pct       = hasBudget ? Math.min(vsPct ?? 0, 150) : 0;
+    const pctLabel  = hasBudget ? `${Math.round(vsPct ?? 0)}%` : '';
+    const barColor  = (vsPct ?? 0) >= 100 ? 'var(--green)' : (vsPct ?? 0) >= 70 ? '#F59E0B' : 'var(--red,#EF4444)';
+    const budgetTxt = hasBudget
+      ? `<span style="color:var(--ink-4);font-size:10px">${fmtKr(netto)} / ${fmtKr(budgetWeek)}</span>`
+      : `<span style="color:var(--ink-4);font-size:10px">Intet budget</span>`;
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+          <span style="font-size:12px;font-weight:600;color:var(--ink)">${escHtml(name)}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--ink)">${fmtKr(netto)}
+            ${hasBudget ? `<span style="font-weight:400;font-size:10px;color:${barColor}"> ${pctLabel}</span>` : ''}
+          </span>
+        </div>
+        ${hasBudget ? `
+        <div style="background:var(--border);border-radius:4px;height:5px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;transition:width .4s"></div>
+        </div>` : ''}
+        <div style="margin-top:2px">${budgetTxt}</div>
+      </div>`;
+  }
+
+  // Teams
+  const teamsEl = document.getElementById('week-teams-content');
+  if (!d.week_teams || !d.week_teams.length) {
+    teamsEl.innerHTML = '<span style="color:var(--ink-4);font-size:12px">Ingen data</span>';
+  } else {
+    teamsEl.innerHTML = d.week_teams
+      .filter(r => r.netto !== 0 || r.budget_week > 0)
+      .map(r => weekRow(r.team, r.netto, r.budget_week, r.vs_pct))
+      .join('');
+  }
+
+  // Sælgere
+  const saelgereEl = document.getElementById('week-saelgere-content');
+  if (!d.week_saelgere || !d.week_saelgere.length) {
+    saelgereEl.innerHTML = '<span style="color:var(--ink-4);font-size:12px">Ingen data</span>';
+  } else {
+    saelgereEl.innerHTML = d.week_saelgere
+      .filter(r => r.netto !== 0 || r.budget_week > 0)
+      .map(r => weekRow(r.owner_name, r.netto, r.budget_week, r.vs_pct))
+      .join('');
+  }
 }
 
 // Start
