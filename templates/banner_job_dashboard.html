@@ -592,7 +592,7 @@ function drawHeatmap() {
   const visible = (hmShowAll || query) ? filtered : filtered.slice(0, HM_DEFAULT_LIMIT);
 
   tbody.innerHTML = visible.map(r => `
-    <tr onclick="window.location.href='/tools/banner-job/kunde?pipeline='+encodeURIComponent(activePipeline)+'&org_id='+encodeURIComponent(r.org_id)">
+    <tr onclick="goToKunde(${JSON.stringify(r.org_id)})" style="cursor:pointer">
       <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
       <td class="num">${hmCell(r.antal_2023)}</td>
       <td class="num">${hmCell(r.antal_2024)}</td>
@@ -616,6 +616,10 @@ function drawHeatmap() {
     btn.style.display = hasMore ? '' : 'none';
     btn.textContent = hmShowAll ? 'Vis færre' : 'Vis alle';
   }
+}
+
+function goToKunde(orgId) {
+  window.location.href = '/tools/banner-job/kunde?pipeline=' + encodeURIComponent(activePipeline) + '&org_id=' + encodeURIComponent(orgId);
 }
 
 async function openCustomerModal(orgId) {
