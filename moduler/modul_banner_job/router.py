@@ -105,6 +105,26 @@ async def banner_job_heatmap(
         raise HTTPException(500, str(e))
 
 
+@router.get("/kunde", response_class=HTMLResponse)
+async def banner_job_kunde_page(
+    request: Request,
+    pipeline: str = "banner",
+    org_id: str = "",
+    user=Depends(get_current_user),
+):
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang")
+    _check_pipeline(pipeline)
+    if not org_id:
+        raise HTTPException(400, "org_id påkrævet")
+    return templates.TemplateResponse("banner_job_kunde.html", {
+        "request":  request,
+        "user":     user,
+        "pipeline": pipeline,
+        "org_id":   org_id,
+    })
+
+
 @router.get("/customer-history")
 async def banner_job_customer_history(
     pipeline: str = "banner",

@@ -341,7 +341,8 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
                 CONVERT(NVARCHAR(10), service_activation_date, 23) AS dato,
                 CAST(value_dkk AS INT) AS value,
                 owner_name,
-                YEAR(service_activation_date) AS aar
+                YEAR(service_activation_date) AS aar,
+                COALESCE([sites], '') AS sites
             FROM [dbo].[PipedriveDeals]
             WHERE org_id = %s
               AND account = 'jppol_advertising'
@@ -358,6 +359,7 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
                 "value":      int(r["value"] or 0),
                 "owner_name": r["owner_name"] or "—",
                 "aar":        int(r["aar"]),
+                "sites":      r["sites"] or "—",
             }
             for r in cur.fetchall()
         ]
