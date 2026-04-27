@@ -139,6 +139,7 @@
           <!-- Omsætning pr. år -->
           <div class="dash-card">
             <div class="dash-card-title">Omsætning pr. År</div>
+            <div id="year-barchart" style="margin-bottom:20px"></div>
             <div class="year-chips" id="year-chips"></div>
           </div>
 
@@ -253,6 +254,22 @@ async function loadKunde() {
         <div class="kpi-sub">${escHtml(latestDeal?.owner_name || '—')}</div>
       </div>
     `;
+
+    // Year bar chart
+    const maxVal = Math.max(...years.map(y => y.total_value), 1);
+    const barHtml = years.map(y => {
+      const pct = Math.max((y.total_value / maxVal) * 100, y.total_value > 0 ? 2 : 0);
+      return `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <div style="width:40px;font-size:11px;font-weight:700;color:var(--ink-3);text-align:right;flex-shrink:0">${y.aar}</div>
+          <div style="flex:1;height:28px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative">
+            <div style="width:${pct}%;height:100%;background:var(--green);border-radius:4px;transition:width .4s;min-width:${y.total_value > 0 ? 2 : 0}px"></div>
+          </div>
+          <div style="min-width:90px;font-size:11px;font-weight:700;color:var(--ink-3);text-align:right;white-space:nowrap">${fmtKr(y.total_value)}</div>
+          <div style="min-width:60px;font-size:10px;color:var(--ink-4);text-align:right;white-space:nowrap">${y.antal_deals} deal${y.antal_deals !== 1 ? 's' : ''}</div>
+        </div>`;
+    }).join('');
+    document.getElementById('year-barchart').innerHTML = barHtml || '';
 
     // Year chips
     const chipsHtml = years.map(y => `
