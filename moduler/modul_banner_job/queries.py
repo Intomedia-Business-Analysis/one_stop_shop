@@ -132,18 +132,35 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         avg_deal = round(total_value / total_deals) if total_deals > 0 else 0
         avg_per_customer = round(total_value / active_customers) if active_customers > 0 else 0
 
-        # Tilbagevendende kunder (købt i mere end ét år)
-        cur.execute(f"""
-            SELECT COUNT(*) AS returning_customers
-            FROM (
-                SELECT org_id
-                FROM [dbo].[PipedriveDeals]
-                WHERE {_BASE_WHERE}
-                  AND status = 'won'
-                GROUP BY org_id
-                HAVING COUNT(DISTINCT YEAR(service_activation_date)) > 1
-            ) t
-        """, (pipeline,))
+        # Tilbagevendende kunder:
+        # Hvis år valgt: købt i det valgte år OG mindst ét andet år
+        # Hvis intet år: købt i mindst 2 forskellige år
+        if year:
+            cur.execute(f"""
+                SELECT COUNT(*) AS returning_customers
+                FROM (
+                    SELECT org_id
+                    FROM [dbo].[PipedriveDeals]
+                    WHERE {_BASE_WHERE}
+                      AND status = 'won'
+                    GROUP BY org_id
+                    HAVING
+                        SUM(CASE WHEN YEAR(service_activation_date) = %s THEN 1 ELSE 0 END) > 0
+                        AND COUNT(DISTINCT YEAR(service_activation_date)) > 1
+                ) t
+            """, (pipeline, year))
+        else:
+            cur.execute(f"""
+                SELECT COUNT(*) AS returning_customers
+                FROM (
+                    SELECT org_id
+                    FROM [dbo].[PipedriveDeals]
+                    WHERE {_BASE_WHERE}
+                      AND status = 'won'
+                    GROUP BY org_id
+                    HAVING COUNT(DISTINCT YEAR(service_activation_date)) > 1
+                ) t
+            """, (pipeline,))
         returning_customers = int((cur.fetchone() or {}).get("returning_customers", 0) or 0)
 
         conn.close()
