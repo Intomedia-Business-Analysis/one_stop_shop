@@ -46,12 +46,13 @@ async def banner_job_owners(pipeline: str = "banner", user=Depends(get_current_u
 async def banner_job_kpi(
     pipeline: str = "banner",
     year: int | None = None,
+    month: str | None = None,
     owner: str | None = None,
     user=Depends(get_current_user),
 ):
     _check_pipeline(pipeline)
     try:
-        return JSONResponse(db_kpi_data(pipeline, year, owner))
+        return JSONResponse(db_kpi_data(pipeline, year, month, owner))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -61,12 +62,13 @@ async def banner_job_kpi(
 async def banner_job_top_customers(
     pipeline: str = "banner",
     year: int | None = None,
+    month: str | None = None,
     owner: str | None = None,
     user=Depends(get_current_user),
 ):
     _check_pipeline(pipeline)
     try:
-        return JSONResponse({"rows": db_top_customers(pipeline, year, owner)})
+        return JSONResponse({"rows": db_top_customers(pipeline, year, month, owner)})
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -76,13 +78,14 @@ async def banner_job_top_customers(
 async def banner_job_salesperson(
     pipeline: str = "banner",
     year: int | None = None,
+    month: str | None = None,
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Kun Sales Managers og derover har adgang")
     _check_pipeline(pipeline)
     try:
-        return JSONResponse({"rows": db_salesperson_performance(pipeline, year)})
+        return JSONResponse({"rows": db_salesperson_performance(pipeline, year, month)})
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
