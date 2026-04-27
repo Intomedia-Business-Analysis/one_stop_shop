@@ -602,18 +602,19 @@ function drawHeatmap() {
       <td class="num">${fmtFull(r.total_value)}</td>
     </tr>`).join('');
 
-  // Footer — kun vis hvis der er mere end grænsen og ingen aktiv søgning
-  if (!query && filtered.length > HM_DEFAULT_LIMIT) {
-    footer.style.display = 'block';
-    count.textContent = hmShowAll
+  // Footer
+  const hasMore = !query && filtered.length > HM_DEFAULT_LIMIT;
+  footer.style.display = filtered.length ? 'block' : 'none';
+
+  if (query) {
+    count.textContent = `${filtered.length} resultat${filtered.length !== 1 ? 'er' : ''}`;
+    btn.style.display = 'none';
+  } else {
+    count.textContent = hmShowAll || filtered.length <= HM_DEFAULT_LIMIT
       ? `Viser alle ${filtered.length} kunder`
       : `Viser top ${HM_DEFAULT_LIMIT} af ${filtered.length} kunder`;
+    btn.style.display = hasMore ? '' : 'none';
     btn.textContent = hmShowAll ? 'Vis færre' : 'Vis alle';
-  } else {
-    footer.style.display = query && filtered.length ? 'block' : 'none';
-    count.textContent = query ? `${filtered.length} resultat${filtered.length !== 1 ? 'er' : ''}` : '';
-    btn.style.display = 'none';
-    if (!query) btn.style.display = '';
   }
 }
 
