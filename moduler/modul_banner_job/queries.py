@@ -29,6 +29,27 @@ def get_conn():
     )
 
 
+def _period_clause(year: int | None, month: str | None) -> tuple[str, list]:
+    if not year:
+        return "", []
+    if not month:
+        return "AND YEAR(service_activation_date) = %s", [year]
+    if month in ("Q1", "Q2", "Q3", "Q4"):
+        q = int(month[1])
+        m_from = (q - 1) * 3 + 1
+        m_to   = q * 3
+        return (
+            "AND YEAR(service_activation_date) = %s"
+            " AND MONTH(service_activation_date) BETWEEN %s AND %s",
+            [year, m_from, m_to],
+        )
+    return (
+        "AND YEAR(service_activation_date) = %s"
+        " AND MONTH(service_activation_date) = %s",
+        [year, int(month)],
+    )
+
+
 def _year_clause(year: int | None) -> tuple[str, list]:
     if year:
         return "AND YEAR(service_activation_date) = %s", [year]
@@ -79,8 +100,8 @@ def db_owners(pipeline: str) -> list[str]:
         return []
 
 
-def db_kpi_data(pipeline: str, year: int | None = None, owner_name: str | None = None) -> dict:
-    yc, yp = _year_clause(year)
+def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> dict:
+    yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
     params = (pipeline,) + tuple(yp) + tuple(op)
     try:
@@ -137,8 +158,8 @@ def db_kpi_data(pipeline: str, year: int | None = None, owner_name: str | None =
         return {"active_customers": 0, "total_value": 0, "avg_deal": 0, "total_deals": 0, "returning_customers": 0}
 
 
-def db_top_customers(pipeline: str, year: int | None = None, owner_name: str | None = None) -> list[dict]:
-    yc, yp = _year_clause(year)
+def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> list[dict]:
+    yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
     params = (pipeline,) + tuple(yp) + tuple(op)
     try:
@@ -166,8 +187,8 @@ def db_top_customers(pipeline: str, year: int | None = None, owner_name: str | N
         return []
 
 
-def db_salesperson_performance(pipeline: str, year: int | None = None) -> list[dict]:
-    yc, yp = _year_clause(year)
+def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None) -> list[dict]:
+    yc, yp = _period_clause(year, month)
     params = (pipeline,) + tuple(yp)
     try:
         conn = get_conn()

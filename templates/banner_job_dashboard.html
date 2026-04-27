@@ -167,9 +167,30 @@
         <div class="filter-bar">
           <span class="filter-label">Filter</span>
           <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-year" onchange="loadAll()">
+          <select class="filter-select" id="filter-year" onchange="onYearChange()">
             <option value="">Alle år (2023–)</option>
           </select>
+          <select class="filter-select" id="filter-month" onchange="loadAll()" disabled>
+            <option value="">Hele Året</option>
+            <option value="Q1">Q1 (Jan–Mar)</option>
+            <option value="Q2">Q2 (Apr–Jun)</option>
+            <option value="Q3">Q3 (Jul–Sep)</option>
+            <option value="Q4">Q4 (Okt–Dec)</option>
+            <option disabled>──────────</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <div class="filter-sep"></div>
           <select class="filter-select" id="filter-owner" onchange="loadAll()">
             <option value="">Alle sælgere</option>
           </select>
@@ -329,6 +350,7 @@ function getFilters() {
   return {
     pipeline: activePipeline,
     year:     document.getElementById('filter-year').value,
+    month:    document.getElementById('filter-month').value,
     owner:    document.getElementById('filter-owner').value,
   };
 }
@@ -337,9 +359,18 @@ function buildParams(extra = {}) {
   const f = getFilters();
   const p = new URLSearchParams({ pipeline: f.pipeline });
   if (f.year)  p.set('year', f.year);
+  if (f.month) p.set('month', f.month);
   if (f.owner) p.set('owner', f.owner);
   Object.entries(extra).forEach(([k,v]) => p.set(k, v));
   return p;
+}
+
+function onYearChange() {
+  const year = document.getElementById('filter-year').value;
+  const monthSel = document.getElementById('filter-month');
+  monthSel.disabled = !year;
+  if (!year) monthSel.value = '';
+  loadAll();
 }
 
 function setPipeline(p) {
@@ -383,9 +414,14 @@ async function loadAll() {
   document.getElementById('dash-content').classList.add('hidden');
 
   const f = getFilters();
-  const labelYear = f.year || '2023–';
-  document.getElementById('top-label').textContent = labelYear;
-  document.getElementById('perf-label').textContent = f.year ? f.year : 'Alle år';
+  const MAANEDER = ['','Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+  const KVARTALER = {Q1:'Q1 (Jan–Mar)',Q2:'Q2 (Apr–Jun)',Q3:'Q3 (Jul–Sep)',Q4:'Q4 (Okt–Dec)'};
+  let periodLabel = f.year || '2023–';
+  if (f.year && f.month) {
+    periodLabel = (KVARTALER[f.month] || MAANEDER[parseInt(f.month)]) + ' ' + f.year;
+  }
+  document.getElementById('top-label').textContent = periodLabel;
+  document.getElementById('perf-label').textContent = periodLabel;
 
   try {
     const [kpiRes, topRes, hmRes] = await Promise.all([
