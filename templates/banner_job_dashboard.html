@@ -507,7 +507,7 @@ function renderTopCustomers(rows) {
     return;
   }
   const max = Math.max(...rows.map(r => r.total_value), 1);
-  const fillClass = activePipeline === 'job' ? ' job' : '';
+  const fillClass = '';
   el.innerHTML = rows.map(r => {
     const pct = Math.round(r.total_value / max * 100);
     return `<div class="bar-chart-row">
