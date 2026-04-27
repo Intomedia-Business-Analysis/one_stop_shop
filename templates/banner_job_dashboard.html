@@ -286,16 +286,30 @@
               <span>Kunde-aktivitet pr. År (Heatmap)</span>
               <span style="font-weight:400;font-size:9px;color:var(--ink-4)">Kun kunder med 2+ køb · klik for kundehistorik</span>
             </div>
-            <div style="font-size:10px;color:var(--ink-4);margin-bottom:12px;display:flex;gap:16px;align-items:center">
-              <span>Aktivitet:&nbsp;
-                <span class="hm-cell hm-high" style="width:auto;padding:0 6px">3+</span>&nbsp;Høj&nbsp;
-                <span class="hm-cell hm-mid" style="width:auto;padding:0 6px">2</span>&nbsp;Middel&nbsp;
-                <span class="hm-cell hm-low" style="width:auto;padding:0 6px">1</span>&nbsp;Lav&nbsp;
-                <span class="hm-cell hm-none" style="width:auto;padding:0 6px">—</span>&nbsp;Ingen
-              </span>
+
+            <!-- Søgefelt + legende -->
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+              <div style="font-size:10px;color:var(--ink-4);display:flex;gap:16px;align-items:center">
+                <span>Aktivitet:&nbsp;
+                  <span class="hm-cell hm-high" style="width:auto;padding:0 6px">3+</span>&nbsp;Høj&nbsp;
+                  <span class="hm-cell hm-mid" style="width:auto;padding:0 6px">2</span>&nbsp;Middel&nbsp;
+                  <span class="hm-cell hm-low" style="width:auto;padding:0 6px">1</span>&nbsp;Lav&nbsp;
+                  <span class="hm-cell hm-none" style="width:auto;padding:0 6px">—</span>&nbsp;Ingen
+                </span>
+              </div>
+              <input
+                type="text"
+                id="heatmap-search"
+                placeholder="Søg kunde…"
+                oninput="filterHeatmap()"
+                style="font-family:var(--font);font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;width:200px;transition:border-color .13s"
+                onfocus="this.style.borderColor='var(--green)'"
+                onblur="this.style.borderColor='var(--border)'"
+              >
             </div>
+
             <div style="overflow-x:auto">
-              <table class="v-table" id="heatmap-table">
+              <table class="v-table">
                 <thead>
                   <tr>
                     <th>Kunde</th>
@@ -311,6 +325,15 @@
                   <tr><td colspan="7" class="empty">Indlæser…</td></tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Vis alle / Vis færre -->
+            <div id="heatmap-footer" style="text-align:center;margin-top:14px;display:none">
+              <span id="heatmap-count" style="font-size:11px;color:var(--ink-4);margin-right:12px"></span>
+              <button id="heatmap-toggle-btn" onclick="toggleHeatmapAll()"
+                style="font-family:var(--font);font-size:11px;font-weight:700;color:var(--green);background:none;border:1px solid var(--green);border-radius:var(--r-sm);padding:5px 14px;cursor:pointer">
+                Vis alle
+              </button>
             </div>
           </div>
 
@@ -522,20 +545,53 @@ function renderPerformance(rows) {
   }).join('');
 }
 
+const HM_DEFAULT_LIMIT = 50;
+let hmAllRows = [];
+let hmShowAll = false;
+
+function hmCell(antal) {
+  if (!antal) return `<span class="hm-cell hm-none">—</span>`;
+  const cls = antal >= 3 ? 'hm-high' : antal === 2 ? 'hm-mid' : 'hm-low';
+  return `<span class="hm-cell ${cls}">${antal}</span>`;
+}
+
 function renderHeatmap(rows) {
-  const tbody = document.getElementById('heatmap-tbody');
-  if (!rows.length) {
+  hmAllRows = rows;
+  hmShowAll = false;
+  document.getElementById('heatmap-search').value = '';
+  drawHeatmap();
+}
+
+function filterHeatmap() {
+  hmShowAll = false;
+  drawHeatmap();
+}
+
+function toggleHeatmapAll() {
+  hmShowAll = !hmShowAll;
+  drawHeatmap();
+}
+
+function drawHeatmap() {
+  const tbody  = document.getElementById('heatmap-tbody');
+  const footer = document.getElementById('heatmap-footer');
+  const btn    = document.getElementById('heatmap-toggle-btn');
+  const count  = document.getElementById('heatmap-count');
+  const query  = document.getElementById('heatmap-search').value.toLowerCase().trim();
+
+  if (!hmAllRows.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen tilbagevendende kunder fundet</td></tr>';
+    footer.style.display = 'none';
     return;
   }
 
-  function hmCell(antal) {
-    if (!antal) return `<span class="hm-cell hm-none">—</span>`;
-    const cls = antal >= 3 ? 'hm-high' : antal === 2 ? 'hm-mid' : 'hm-low';
-    return `<span class="hm-cell ${cls}">${antal}</span>`;
-  }
+  const filtered = query
+    ? hmAllRows.filter(r => r.org_name.toLowerCase().includes(query))
+    : hmAllRows;
 
-  tbody.innerHTML = rows.map(r => `
+  const visible = (hmShowAll || query) ? filtered : filtered.slice(0, HM_DEFAULT_LIMIT);
+
+  tbody.innerHTML = visible.map(r => `
     <tr onclick="openCustomerModal(${JSON.stringify(escHtml(r.org_id))})">
       <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
       <td class="num">${hmCell(r.antal_2023)}</td>
@@ -545,6 +601,20 @@ function renderHeatmap(rows) {
       <td class="num">${r.antal_total}</td>
       <td class="num">${fmtFull(r.total_value)}</td>
     </tr>`).join('');
+
+  // Footer — kun vis hvis der er mere end grænsen og ingen aktiv søgning
+  if (!query && filtered.length > HM_DEFAULT_LIMIT) {
+    footer.style.display = 'block';
+    count.textContent = hmShowAll
+      ? `Viser alle ${filtered.length} kunder`
+      : `Viser top ${HM_DEFAULT_LIMIT} af ${filtered.length} kunder`;
+    btn.textContent = hmShowAll ? 'Vis færre' : 'Vis alle';
+  } else {
+    footer.style.display = query && filtered.length ? 'block' : 'none';
+    count.textContent = query ? `${filtered.length} resultat${filtered.length !== 1 ? 'er' : ''}` : '';
+    btn.style.display = 'none';
+    if (!query) btn.style.display = '';
+  }
 }
 
 async function openCustomerModal(orgId) {
