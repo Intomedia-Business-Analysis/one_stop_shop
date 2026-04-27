@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banner &amp; Job Dashboard — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1400px;margin:0 auto}
+
+/* Grid layouts */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.dash-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:20px}
+.dash-grid-full{grid-column:1/-1}
+@media(max-width:1100px){.dash-grid-4{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.dash-grid,.dash-grid-4{grid-template-columns:1fr}}
+
+/* Dashboard cards */
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+/* KPI cards */
+.kpi-value{font-size:32px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.kpi-value.green{color:var(--green)}
+.kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
+.kpi-icon{font-size:22px;margin-bottom:8px}
+
+/* Pipeline toggle */
+.pipeline-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:3px}
+.pipeline-btn{flex:1;padding:6px 16px;border:none;border-radius:4px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:var(--ink-3)}
+.pipeline-btn.active{background:var(--green);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+
+/* Filter bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Spinner */
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Tables */
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table tr:hover td{background:var(--green-light,#f0f8f4);cursor:pointer}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+/* Heatmap cells */
+.hm-cell{display:inline-block;width:28px;height:28px;border-radius:4px;font-size:10px;font-weight:700;line-height:28px;text-align:center}
+.hm-high{background:#C8E6D8;color:#0F5132}
+.hm-mid{background:#FDF3D0;color:#856404}
+.hm-low{background:#F0F0EE;color:#666}
+.hm-none{background:transparent;color:var(--ink-4)}
+
+/* Horizontal bar chart */
+.bar-chart-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-chart-label{font-size:11px;font-weight:600;color:var(--ink);min-width:160px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.bar-chart-track{flex:1;height:20px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative}
+.bar-chart-fill{height:100%;background:var(--green);border-radius:4px;transition:width .4s;min-width:2px}
+.bar-chart-fill.job{background:#5B9BD5}
+.bar-chart-val{font-size:10px;font-weight:700;color:var(--ink-3);min-width:72px;text-align:right;white-space:nowrap}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal-box{background:var(--surface);border-radius:var(--r);max-width:700px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-title{font-size:16px;font-weight:800;color:var(--ink)}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:20px;line-height:1;padding:4px}
+.modal-body{padding:24px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Banner &amp; Job</div>
+      <a href="/tools/banner-job/" class="sbi active">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+        Kunde Dashboard
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/manager" class="sbi">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager Dashboard
+      </a>
+      <a href="/tools/performance/saelger" class="sbi">
+        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Sælger Dashboard
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/kpi-dashboards" class="tb-btn">← Dashboards</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <span>Banner &amp; Job Dashboard</span>
+        </div>
+
+        <!-- Titel + pipeline toggle -->
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px" id="page-title">Banner Kunde Dashboard</h1>
+            <p class="page-sub" id="page-sub">Overblik over kundebase og omsætning</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="pipeline-toggle">
+              <button class="pipeline-btn active" id="btn-banner" onclick="setPipeline('banner')">Banner</button>
+              <button class="pipeline-btn" id="btn-job" onclick="setPipeline('job')">Job</button>
+            </div>
+            <button class="refresh-btn" onclick="loadAll()">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Opdater
+            </button>
+          </div>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadAll()">
+            <option value="">Alle år (2023–)</option>
+          </select>
+          <select class="filter-select" id="filter-owner" onchange="loadAll()">
+            <option value="">Alle sælgere</option>
+          </select>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dash-content" class="hidden">
+
+          <!-- KPI Cards -->
+          <div class="dash-grid-4">
+            <div class="dash-card">
+              <div class="kpi-icon">🏢</div>
+              <div class="dash-card-title">Aktive Kunder</div>
+              <div class="kpi-value green" id="kpi-active">—</div>
+              <div class="kpi-sub">Unikke organisationer</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">💰</div>
+              <div class="dash-card-title">Total Omsætning</div>
+              <div class="kpi-value" id="kpi-revenue">—</div>
+              <div class="kpi-sub" id="kpi-revenue-sub">Vundne deals</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">📊</div>
+              <div class="dash-card-title">Gns. Deal-størrelse</div>
+              <div class="kpi-value" id="kpi-avg">—</div>
+              <div class="kpi-sub" id="kpi-deals-sub">— deals i alt</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">🔄</div>
+              <div class="dash-card-title">Tilbagevendende</div>
+              <div class="kpi-value green" id="kpi-returning">—</div>
+              <div class="kpi-sub">Kunder med køb i 2+ år</div>
+            </div>
+          </div>
+
+          <!-- Række 2: Top kunder + Sælger-performance -->
+          <div class="dash-grid" style="margin-bottom:20px">
+
+            <!-- Top 10 kunder -->
+            <div class="dash-card">
+              <div class="dash-card-title">
+                <span>Top 10 Kunder — Omsætning</span>
+                <span id="top-label" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+              </div>
+              <div id="top-customers-chart">
+                <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+              </div>
+            </div>
+
+            <!-- Sælger-performance -->
+            <div class="dash-card">
+              <div class="dash-card-title">
+                <span>Sælger Performance</span>
+                <span id="perf-label" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="v-table">
+                  <thead>
+                    <tr>
+                      <th>Sælger</th>
+                      <th class="num">År</th>
+                      <th class="num">Kunder</th>
+                      <th class="num">Deals</th>
+                      <th class="num">Omsætning</th>
+                      <th class="num">Pr. kunde</th>
+                    </tr>
+                  </thead>
+                  <tbody id="perf-tbody">
+                    <tr><td colspan="6" class="empty">Indlæser…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Heatmap (fuld bredde) -->
+          <div class="dash-card" style="margin-bottom:20px">
+            <div class="dash-card-title">
+              <span>Kunde-aktivitet pr. År (Heatmap)</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)">Kun kunder med 2+ køb · klik for kundehistorik</span>
+            </div>
+            <div style="font-size:10px;color:var(--ink-4);margin-bottom:12px;display:flex;gap:16px;align-items:center">
+              <span>Aktivitet:&nbsp;
+                <span class="hm-cell hm-high" style="width:auto;padding:0 6px">3+</span>&nbsp;Høj&nbsp;
+                <span class="hm-cell hm-mid" style="width:auto;padding:0 6px">2</span>&nbsp;Middel&nbsp;
+                <span class="hm-cell hm-low" style="width:auto;padding:0 6px">1</span>&nbsp;Lav&nbsp;
+                <span class="hm-cell hm-none" style="width:auto;padding:0 6px">—</span>&nbsp;Ingen
+              </span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="v-table" id="heatmap-table">
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th class="num" style="min-width:52px">2023</th>
+                    <th class="num" style="min-width:52px">2024</th>
+                    <th class="num" style="min-width:52px">2025</th>
+                    <th class="num" style="min-width:52px">2026</th>
+                    <th class="num">Deals i alt</th>
+                    <th class="num">Total Omsætning</th>
+                  </tr>
+                </thead>
+                <tbody id="heatmap-tbody">
+                  <tr><td colspan="7" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /dash-content -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kundehistorik Modal -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Kundehistorik</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let activePipeline = 'banner';
+let isManager = {{ 'true' if user.role in ('sales_manager','management','admin') else 'false' }};
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtKr(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000).toLocaleString('da-DK') + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+
+function fmtFull(v) {
+  return Math.round(v).toLocaleString('da-DK') + ' kr.';
+}
+
+function getFilters() {
+  return {
+    pipeline: activePipeline,
+    year:     document.getElementById('filter-year').value,
+    owner:    document.getElementById('filter-owner').value,
+  };
+}
+
+function buildParams(extra = {}) {
+  const f = getFilters();
+  const p = new URLSearchParams({ pipeline: f.pipeline });
+  if (f.year)  p.set('year', f.year);
+  if (f.owner) p.set('owner', f.owner);
+  Object.entries(extra).forEach(([k,v]) => p.set(k, v));
+  return p;
+}
+
+function setPipeline(p) {
+  activePipeline = p;
+  document.getElementById('btn-banner').classList.toggle('active', p === 'banner');
+  document.getElementById('btn-job').classList.toggle('active', p === 'job');
+  document.getElementById('page-title').textContent = (p === 'banner' ? 'Banner' : 'Job') + ' Kunde Dashboard';
+  // Reload owners for new pipeline, then reload data
+  loadOwners().then(() => loadAll());
+}
+
+async function loadOwners() {
+  const r = await fetch(`/tools/banner-job/owners?pipeline=${activePipeline}`);
+  const d = await r.json();
+  const sel = document.getElementById('filter-owner');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Alle sælgere</option>';
+  (d.owners || []).forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o; opt.textContent = o;
+    if (o === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function buildYearOptions() {
+  const sel = document.getElementById('filter-year');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Alle år (2023–)</option>';
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear; y >= 2023; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (String(y) === cur) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadAll() {
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('dash-content').classList.add('hidden');
+
+  const f = getFilters();
+  const labelYear = f.year || '2023–';
+  document.getElementById('top-label').textContent = labelYear;
+  document.getElementById('perf-label').textContent = f.year ? f.year : 'Alle år';
+
+  try {
+    const [kpiRes, topRes, hmRes] = await Promise.all([
+      fetch('/tools/banner-job/kpi-data?'     + buildParams()),
+      fetch('/tools/banner-job/top-customers?' + buildParams()),
+      fetch('/tools/banner-job/customer-heatmap?' + new URLSearchParams({
+        pipeline: activePipeline,
+        ...(f.owner ? {owner: f.owner} : {}),
+      })),
+    ]);
+
+    const [kpi, top, hm] = await Promise.all([kpiRes.json(), topRes.json(), hmRes.json()]);
+
+    renderKPIs(kpi);
+    renderTopCustomers(top.rows || []);
+    renderHeatmap(hm.rows || []);
+
+    if (isManager) {
+      const perfRes = await fetch('/tools/banner-job/salesperson-performance?' +
+        new URLSearchParams({ pipeline: activePipeline, ...(f.year ? {year: f.year} : {}) }));
+      const perf = await perfRes.json();
+      renderPerformance(perf.rows || []);
+    } else {
+      document.getElementById('perf-tbody').innerHTML =
+        '<tr><td colspan="6" class="empty" style="font-style:normal">Kræver Manager-adgang</td></tr>';
+    }
+
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('dash-content').classList.remove('hidden');
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loading-state').innerHTML =
+      '<div style="color:#B32E45;padding:40px;text-align:center">Fejl ved hentning af data</div>';
+  }
+}
+
+function renderKPIs(d) {
+  document.getElementById('kpi-active').textContent    = (d.active_customers || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-revenue').textContent   = fmtKr(d.total_value || 0);
+  document.getElementById('kpi-avg').textContent       = fmtKr(d.avg_deal || 0);
+  document.getElementById('kpi-returning').textContent = (d.returning_customers || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-deals-sub').textContent = (d.total_deals || 0).toLocaleString('da-DK') + ' deals i alt';
+}
+
+function renderTopCustomers(rows) {
+  const el = document.getElementById('top-customers-chart');
+  if (!rows.length) {
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--ink-4);font-style:italic">Ingen data</div>';
+    return;
+  }
+  const max = Math.max(...rows.map(r => r.total_value), 1);
+  const fillClass = activePipeline === 'job' ? ' job' : '';
+  el.innerHTML = rows.map(r => {
+    const pct = Math.round(r.total_value / max * 100);
+    return `<div class="bar-chart-row">
+      <div class="bar-chart-label" title="${escHtml(r.org_name)}">${escHtml(r.org_name)}</div>
+      <div class="bar-chart-track">
+        <div class="bar-chart-fill${fillClass}" style="width:${pct}%"></div>
+      </div>
+      <div class="bar-chart-val">${fmtKr(r.total_value)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderPerformance(rows) {
+  const tbody = document.getElementById('perf-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data</td></tr>';
+    return;
+  }
+  // Group by owner for zebra-style display
+  let lastOwner = null;
+  tbody.innerHTML = rows.map(r => {
+    const isNew = r.owner_name !== lastOwner;
+    lastOwner = r.owner_name;
+    const nameCell = isNew
+      ? `<td rowspan="1" style="font-weight:700;color:var(--ink)">${escHtml(r.owner_name)}</td>`
+      : `<td style="color:var(--ink-4);font-size:10px"></td>`;
+    return `<tr>
+      ${nameCell}
+      <td class="num">${r.aar}</td>
+      <td class="num">${r.antal_kunder}</td>
+      <td class="num">${r.antal_deals}</td>
+      <td class="num">${fmtFull(r.total_value)}</td>
+      <td class="num">${fmtFull(r.value_pr_kunde)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderHeatmap(rows) {
+  const tbody = document.getElementById('heatmap-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen tilbagevendende kunder fundet</td></tr>';
+    return;
+  }
+
+  function hmCell(antal) {
+    if (!antal) return `<span class="hm-cell hm-none">—</span>`;
+    const cls = antal >= 3 ? 'hm-high' : antal === 2 ? 'hm-mid' : 'hm-low';
+    return `<span class="hm-cell ${cls}">${antal}</span>`;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr onclick="openCustomerModal(${JSON.stringify(escHtml(r.org_id))})">
+      <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+      <td class="num">${hmCell(r.antal_2023)}</td>
+      <td class="num">${hmCell(r.antal_2024)}</td>
+      <td class="num">${hmCell(r.antal_2025)}</td>
+      <td class="num">${hmCell(r.antal_2026)}</td>
+      <td class="num">${r.antal_total}</td>
+      <td class="num">${fmtFull(r.total_value)}</td>
+    </tr>`).join('');
+}
+
+async function openCustomerModal(orgId) {
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = 'Kundehistorik';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>';
+  overlay.classList.remove('hidden');
+
+  try {
+    const r = await fetch(`/tools/banner-job/customer-history?pipeline=${activePipeline}&org_id=${encodeURIComponent(orgId)}`);
+    const d = await r.json();
+    document.getElementById('modal-title').textContent = escHtml(d.org_name || orgId);
+
+    let html = '';
+
+    // Yearly summary
+    if (d.by_year && d.by_year.length) {
+      html += `<div style="margin-bottom:20px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px">Omsætning pr. År</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">`;
+      d.by_year.forEach(y => {
+        html += `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 16px;min-width:100px">
+          <div style="font-size:20px;font-weight:800;color:var(--green)">${y.aar}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--ink);margin-top:4px">${fmtKr(y.total_value)}</div>
+          <div style="font-size:10px;color:var(--ink-4);margin-top:2px">${y.antal_deals} deal${y.antal_deals !== 1 ? 's' : ''}</div>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    // Deals list
+    if (d.deals && d.deals.length) {
+      html += `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px">Alle Deals</div>
+        <table class="v-table">
+          <thead><tr>
+            <th>Titel</th>
+            <th class="num">År</th>
+            <th>Dato</th>
+            <th>Sælger</th>
+            <th class="num">Værdi</th>
+          </tr></thead>
+          <tbody>`;
+      d.deals.forEach(deal => {
+        html += `<tr>
+          <td>${escHtml(deal.title)}</td>
+          <td class="num">${deal.aar}</td>
+          <td>${escHtml(deal.dato)}</td>
+          <td>${escHtml(deal.owner_name)}</td>
+          <td class="num">${fmtFull(deal.value)}</td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    if (!html) html = '<div style="text-align:center;padding:30px;color:var(--ink-4)">Ingen data fundet</div>';
+    document.getElementById('modal-body').innerHTML = html;
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML =
+      '<div style="color:#B32E45;text-align:center;padding:30px">Fejl ved hentning af kundedata</div>';
+  }
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay')) {
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// Init
+buildYearOptions();
+loadOwners().then(() => loadAll());
+</script>
+</body>
+</html>

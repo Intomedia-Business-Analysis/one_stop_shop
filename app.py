@@ -26,6 +26,7 @@ from moduler.modul_perf.router import router as perf_router
 from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
 from moduler.modul_banner_specifik.router import router as banner_router
+from moduler.modul_banner_job.router import router as banner_job_router
 
 load_dotenv()
 
@@ -45,6 +46,7 @@ app.include_router(forecast_router)
 app.include_router(perf_router)
 app.include_router(barsel_router)
 app.include_router(banner_router)
+app.include_router(banner_job_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
@@ -93,6 +95,19 @@ CATEGORIES = [
         "items": [
             {"id": "budget-upload-tool", "title": "Budget",   "type": "tool", "subcategory": "budget",   "brand": None, "min_role": "sales_operations", "url": "/tools/budget/"},
             {"id": "forecast-tool",      "title": "Forecast", "type": "tool", "subcategory": "forecast", "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
+        ],
+    },
+
+    {
+        "id": "banner-job",
+        "title": "Banner & Job",
+        "description": "Kunde-dashboards for Banner og Job pipeline",
+        "icon": "activity",
+        "color": "green",
+        "min_role": "salesperson",
+        "subcategories": [],
+        "items": [
+            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/banner-job/"},
         ],
     },
 
