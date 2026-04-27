@@ -130,6 +130,7 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         total_value = int(row.get("total_value", 0) or 0)
         total_deals = int(row.get("total_deals", 0) or 0)
         avg_deal = round(total_value / total_deals) if total_deals > 0 else 0
+        avg_per_customer = round(total_value / active_customers) if active_customers > 0 else 0
 
         # Tilbagevendende kunder (købt i mere end ét år)
         cur.execute(f"""
@@ -150,12 +151,13 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
             "active_customers": active_customers,
             "total_value": total_value,
             "avg_deal": avg_deal,
+            "avg_per_customer": avg_per_customer,
             "total_deals": total_deals,
             "returning_customers": returning_customers,
         }
     except Exception:
         traceback.print_exc()
-        return {"active_customers": 0, "total_value": 0, "avg_deal": 0, "total_deals": 0, "returning_customers": 0}
+        return {"active_customers": 0, "total_value": 0, "avg_deal": 0, "avg_per_customer": 0, "total_deals": 0, "returning_customers": 0}
 
 
 def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> list[dict]:
