@@ -236,7 +236,7 @@
               <div class="kpi-icon">🔄</div>
               <div class="dash-card-title">Tilbagevendende</div>
               <div class="kpi-value green" id="kpi-returning">—</div>
-              <div class="kpi-sub">Kunder med køb i 2+ år</div>
+              <div class="kpi-sub" id="kpi-returning-sub">Kunder med køb i 2+ år</div>
             </div>
           </div>
 
@@ -471,6 +471,9 @@ function renderKPIs(d) {
   document.getElementById('kpi-avg').textContent          = fmtKr(d.avg_deal || 0);
   document.getElementById('kpi-avg-customer').textContent = fmtKr(d.avg_per_customer || 0);
   document.getElementById('kpi-returning').textContent    = (d.returning_customers || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-returning-sub').textContent = getFilters().year
+    ? `Købt i ${getFilters().year} + mindst ét andet år`
+    : 'Kunder med køb i 2+ år';
   document.getElementById('kpi-deals-sub').textContent    = (d.total_deals || 0).toLocaleString('da-DK') + ' deals i alt';
 }
 
