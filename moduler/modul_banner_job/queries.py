@@ -41,18 +41,36 @@ def _owner_clause(owner_name: str | None) -> tuple[str, list]:
     return "", []
 
 
+PIPELINE_TEAM = {
+    "banner": "Team Banner",
+    "job":    "Team Job",
+}
+
+
 def db_owners(pipeline: str) -> list[str]:
+    team_name = PIPELINE_TEAM.get(pipeline)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
-        cur.execute(f"""
-            SELECT DISTINCT owner_name
-            FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE}
-              AND owner_name IS NOT NULL
-              AND owner_name <> 'System Admin'
-            ORDER BY owner_name
-        """, (pipeline,))
+        if team_name:
+            cur.execute("""
+                SELECT u.name AS owner_name
+                FROM HubUsers u
+                JOIN TeamMemberships tm ON tm.user_id = u.id
+                JOIN Teams t ON t.id = tm.team_id
+                WHERE t.name = %s
+                  AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+                ORDER BY u.name
+            """, (team_name,))
+        else:
+            cur.execute(f"""
+                SELECT DISTINCT owner_name
+                FROM [dbo].[PipedriveDeals]
+                WHERE {_BASE_WHERE}
+                  AND owner_name IS NOT NULL
+                  AND owner_name <> 'System Admin'
+                ORDER BY owner_name
+            """, (pipeline,))
         rows = [r["owner_name"] for r in cur.fetchall()]
         conn.close()
         return rows
