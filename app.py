@@ -25,7 +25,6 @@ from moduler.modul_forcast.router import router as forecast_router
 from moduler.modul_perf.router import router as perf_router
 from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
-from moduler.modul_banner_specifik.router import router as banner_router
 from moduler.modul_banner_job.router import router as banner_job_router
 
 load_dotenv()
@@ -45,7 +44,6 @@ app.include_router(admin_router)
 app.include_router(forecast_router)
 app.include_router(perf_router)
 app.include_router(barsel_router)
-app.include_router(banner_router)
 app.include_router(banner_job_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -77,7 +75,6 @@ CATEGORIES = [
             {"id": "kpi-saelger",       "title": "Sælger Dashboard",        "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",   "url": "/tools/performance/saelger"},
             {"id": "kpi-manager",       "title": "Manager Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/performance/manager"},
             {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management",    "url": "/tools/performance/afdelingsleder"},
-            {"id": "kpi-banner",        "title": "Banner Specifik",         "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/banner/"},
     ],
 },
 
