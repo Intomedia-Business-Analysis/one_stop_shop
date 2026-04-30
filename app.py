@@ -106,9 +106,10 @@ CATEGORIES = [
         "icon": "activity",
         "color": "green",
         "min_role": "salesperson",
+        "required_team": "Banner og Job",
         "subcategories": [],
         "items": [
-            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/banner-job/"},
+            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "url": "/tools/banner-job/"},
         ],
     },
 
@@ -134,7 +135,7 @@ def filter_categories(categories: list, user: dict) -> list:
             continue
         visible_items = []
         for item in cat["items"]:
-            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"))
+            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"), item.get("required_team"))
             if access != "none":
                 visible_items.append({**item, "access": access})
         visible_subs = [
