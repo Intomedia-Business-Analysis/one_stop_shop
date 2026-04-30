@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Carl-Emil/Downloads/**)",
+      "Bash(python3 -c \":*)",
+      "Read(//c/Users/Carl-Emil/**)",
+      "Bash(python3 -:*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('moduler/modul_portfolio_alignment/queries.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('moduler/modul_portfolio_alignment/router.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('app.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Carl-Emil/Downloads/**)",
+      "Bash(python3 -c \":*)",
+      "Read(//c/Users/Carl-Emil/**)",
+      "Bash(python3 -:*)"
+    ]
+  }
+}

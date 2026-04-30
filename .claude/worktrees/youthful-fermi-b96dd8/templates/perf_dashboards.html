@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KPI Dashboards — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:900px;margin:0 auto}
+.dash-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:32px}
+@media(max-width:800px){.dash-cards{grid-template-columns:1fr}}
+
+.dash-pick-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:32px 28px;position:relative;overflow:hidden;transition:all .15s;display:flex;flex-direction:column;gap:16px}
+.dash-pick-card.unlocked{cursor:pointer}
+.dash-pick-card.unlocked:hover{border-color:var(--green);box-shadow:0 4px 20px rgba(27,92,74,.1);transform:translateY(-2px)}
+.dash-pick-card.locked{opacity:.55;cursor:not-allowed}
+.dash-pick-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:var(--r) var(--r) 0 0}
+.dash-pick-card.color-green::before{background:var(--green)}
+.dash-pick-card.color-amber::before{background:var(--amber)}
+.dash-pick-card.color-blue::before{background:#3B82F6}
+.dash-pick-card.locked::before{background:var(--border)}
+
+.dpc-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.dpc-icon.green{background:var(--green-light)}
+.dpc-icon.amber{background:var(--amber-light)}
+.dpc-icon.blue{background:#EFF6FF}
+.dpc-icon svg{width:22px;height:22px;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.dpc-icon.green svg{stroke:var(--green)}
+.dpc-icon.amber svg{stroke:var(--amber)}
+.dpc-icon.blue svg{stroke:#3B82F6}
+
+.dpc-title{font-size:16px;font-weight:700;color:var(--ink)}
+.dpc-desc{font-size:12px;color:var(--ink-3);line-height:1.6}
+.dpc-features{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.dpc-feature{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3)}
+.dpc-feature svg{width:13px;height:13px;stroke:var(--green);fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0}
+
+.dpc-footer{margin-top:auto;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.dpc-role-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:3px 9px;border-radius:10px}
+.dpc-role-badge.green{background:var(--green-light);color:var(--green)}
+.dpc-role-badge.amber{background:var(--amber-light);color:var(--amber)}
+.dpc-role-badge.blue{background:#EFF6FF;color:#3B82F6}
+.dpc-role-badge.locked{background:var(--border);color:var(--ink-4)}
+
+.dpc-arrow{font-size:18px;color:var(--green);transition:transform .15s}
+.dash-pick-card.unlocked:hover .dpc-arrow{transform:translateX(4px)}
+.dpc-lock{font-size:16px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+      <a href="/tools/performance/dashboards" class="sbi active">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        KPI Dashboards
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/subscription-sales" class="tb-btn">← Subscription Sales</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
+          <span>KPI Dashboards</span>
+        </div>
+
+        <h1 class="page-title" style="margin-bottom:4px">KPI Dashboards</h1>
+        <p class="page-sub">Vælg det dashboard der passer til din rolle</p>
+
+        <div class="dash-cards">
+
+          <!-- Sælger -->
+          <div class="dash-pick-card unlocked color-green"
+               onclick="window.location='/tools/performance/saelger'">
+            <div class="dpc-icon green">
+              <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div>
+              <div class="dpc-title">Sælger</div>
+              <div class="dpc-desc">Personlige KPI'er, månedsmål og pipeline — alt hvad du har brug for at holde fokus.</div>
+            </div>
+            <div class="dpc-features">
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Månedsmål (radial progress)
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Åben pipeline denne måned
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                YoY sammenligning
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Seneste deals vundet
+              </div>
+            </div>
+            <div class="dpc-footer">
+              <span class="dpc-role-badge green">Alle roller</span>
+              <span class="dpc-arrow">→</span>
+            </div>
+          </div>
+
+          <!-- Manager -->
+          {% if is_manager %}
+          <div class="dash-pick-card unlocked color-amber"
+               onclick="window.location='/tools/performance/manager'">
+          {% else %}
+          <div class="dash-pick-card locked color-amber">
+          {% endif %}
+            <div class="dpc-icon amber">
+              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+              <div class="dpc-title">Sales Manager</div>
+              <div class="dpc-desc">Team-performance, konverteringsrate og leaderboard — overblik over hele holdet.</div>
+            </div>
+            <div class="dpc-features">
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Team total (real-time)
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Konverteringsrate (gauge)
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Leaderboard med budget
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Filtrer på team
+              </div>
+            </div>
+            <div class="dpc-footer">
+              <span class="dpc-role-badge {% if is_manager %}amber{% else %}locked{% endif %}">
+                Sales Manager+
+              </span>
+              {% if is_manager %}
+              <span class="dpc-arrow">→</span>
+              {% else %}
+              <span class="dpc-lock">🔒</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Afdelingsleder -->
+          {% if is_management %}
+          <div class="dash-pick-card unlocked color-blue"
+               onclick="window.location='/tools/performance/afdelingsleder'">
+          {% else %}
+          <div class="dash-pick-card locked color-blue">
+          {% endif %}
+            <div class="dpc-icon blue">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            </div>
+            <div>
+              <div class="dpc-title">Afdelingsleder</div>
+              <div class="dpc-desc">Helikopter-perspektiv på hele afdelingen — revenue, budget, forecast og vækst.</div>
+            </div>
+            <div class="dpc-features">
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Revenue vs. budget (bullet graph)
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Forecast vs. nu
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Churn/netto bar chart
+              </div>
+              <div class="dpc-feature">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Toggle: abonnementer / alle brands
+              </div>
+            </div>
+            <div class="dpc-footer">
+              <span class="dpc-role-badge {% if is_management %}blue{% else %}locked{% endif %}">
+                Management+
+              </span>
+              {% if is_management %}
+              <span class="dpc-arrow">→</span>
+              {% else %}
+              <span class="dpc-lock">🔒</span>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hold — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.75rem;
+    }
+    .admin-header h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+    .admin-header p {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      margin: .25rem 0 0;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .5625rem 1rem;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    .notif {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .75rem 1rem;
+      border-radius: var(--r-sm);
+      font-size: .8125rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 1.5rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+    .card-header .toggle-icon { color: var(--text-muted); font-size: 1.25rem; line-height: 1; transition: transform .2s; }
+    .card-header.open .toggle-icon { transform: rotate(45deg); }
+    .card-body { padding: 1.25rem; display: none; }
+    .card-body.open { display: block; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .field { display: flex; flex-direction: column; gap: .375rem; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
+    .field input,
+    .field select,
+    .field textarea {
+      padding: .5rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus { border-color: var(--green); }
+    .field textarea { resize: vertical; min-height: 60px; }
+
+    .teams-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .teams-card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .teams-card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+
+    .count-badge {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: .2rem .65rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: .625rem 1rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .875rem 1rem;
+      font-size: .875rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg); }
+
+    .team-name-cell { display: flex; align-items: center; gap: .75rem; }
+
+    .avatar {
+      width: 32px; height: 32px;
+      background: var(--green);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6875rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .avatar.team-avatar { background: #dbeafe; color: #1e40af; }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .6rem;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+      background: #f0f9ff;
+      color: #0369a1;
+    }
+
+    .member-count {
+      display: inline-flex;
+      align-items: center;
+      gap: .25rem;
+      font-size: .8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .action-btn {
+      padding: .3125rem .75rem;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+    }
+    .action-btn:hover { border-color: var(--green); background: var(--bg); }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+      font-size: .875rem;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      <a href="/admin/teams" class="sbi on">
+        {% include "icons/users.svg" %} Hold
+      </a>
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+    <div style="padding: 2rem; max-width: 1100px;">
+
+      <div class="admin-header">
+        <div>
+          <h1>Holdoversigt</h1>
+          <p>Opret og administrer hold med tidsbaserede medlemskaber</p>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      {% if success == 'created' %}
+      <div class="notif notif-success">Hold oprettet</div>
+      {% endif %}
+
+      {% if error == 'missing_name' %}
+      <div class="notif notif-error">Holdnavn er påkrævet</div>
+      {% elif error == 'db_error' %}
+      <div class="notif notif-error">Der opstod en databasefejl — prøv igen</div>
+      {% elif error %}
+      <div class="notif notif-error">Der opstod en fejl — prøv igen</div>
+      {% endif %}
+
+      <!-- ── Create team accordion ── -->
+      <div class="card">
+        <div class="card-header" id="createHeader" onclick="toggleCreate()">
+          <h2>Opret nyt hold</h2>
+          <span class="toggle-icon" id="toggleIcon">+</span>
+        </div>
+        <div class="card-body" id="createBody">
+          <form method="post" action="/admin/teams/create">
+            <div class="form-grid">
+              <div class="field">
+                <label>Holdnavn *</label>
+                <input type="text" name="name" placeholder="f.eks. Watch DK Team" required>
+              </div>
+              <div class="field">
+                <label>Brand <span style="font-weight:400;color:var(--text-muted);font-size:.75rem;">— styrer hvilke sites holdet tildeles</span></label>
+                <select name="brand">
+                  {% for val, label in brands %}
+                  <option value="{{ val }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <span style="font-size:.75rem;color:var(--text-muted);margin-top:.25rem;">
+                  Tværgående hold (Banner, Job, o.l.) bruger <strong>Alle brands</strong> — de tildeles deals som ikke passer til et specifikt brand-hold.
+                </span>
+              </div>
+              <div class="field full">
+                <label>Beskrivelse</label>
+                <input type="text" name="description" placeholder="Valgfri beskrivelse af holdet">
+              </div>
+            </div>
+            <button type="submit" class="btn-primary">Opret hold</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Teams table ── -->
+      <div class="teams-card">
+        <div class="teams-card-header">
+          <h2>Alle hold</h2>
+          <span class="count-badge">{{ teams | length }}</span>
+        </div>
+
+        {% if teams %}
+        <table>
+          <thead>
+            <tr>
+              <th>Hold</th>
+              <th>Brand</th>
+              <th>Beskrivelse</th>
+              <th>Medlemmer</th>
+              <th>Oprettet</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in teams %}
+            <tr>
+              <td>
+                <div class="team-name-cell">
+                  <div class="avatar team-avatar">{{ t.name[:2].upper() }}</div>
+                  <span style="font-weight: 500;">{{ t.name }}</span>
+                </div>
+              </td>
+              <td>
+                {% set brand_label = dict(brands).get(t.brand or '', 'Alle brands') %}
+                {% if t.brand %}
+                <span class="brand-badge">{{ brand_label }}</span>
+                {% else %}
+                <span style="font-size:.75rem;color:var(--text-muted);font-style:italic;">Alle brands</span>
+                {% endif %}
+              </td>
+              <td style="color: var(--text-muted); font-size: .8125rem; max-width: 260px;">
+                {{ t.description if t.description else '—' }}
+              </td>
+              <td>
+                <span class="member-count">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  {{ t.member_count }}
+                </span>
+              </td>
+              <td style="color: var(--text-muted); font-size: .8125rem;">
+                {% if t.created_at %}
+                  {{ t.created_at.strftime('%d/%m/%Y') if t.created_at else '—' }}
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                <a href="/admin/teams/{{ t.id }}" class="action-btn">Rediger</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">Ingen hold endnu — opret det første ovenfor</div>
+        {% endif %}
+      </div>
+
+    </div>
+    </div><!-- /max-width -->
+    </div><!-- /scroll wrapper -->
+  </div>
+</div>
+
+<script>
+  function toggleCreate() {
+    const header = document.getElementById('createHeader');
+    const body   = document.getElementById('createBody');
+    const icon   = document.getElementById('toggleIcon');
+    header.classList.toggle('open');
+    body.classList.toggle('open');
+    icon.textContent = body.classList.contains('open') ? '×' : '+';
+  }
+
+  {% if error %}
+  toggleCreate();
+  {% endif %}
+</script>
+</body>
+</html>

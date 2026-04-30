@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rediger bruger — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .375rem;
+      font-size: .875rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color .15s;
+    }
+    .back-btn:hover { color: var(--text); }
+    .page-header h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .notif {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .75rem 1rem;
+      border-radius: var(--r-sm);
+      font-size: .8125rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+
+    /* ── Edit card (basic user info) ── */
+    .edit-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      max-width: 680px;
+    }
+    .edit-card-header {
+      padding: 1.125rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: .875rem;
+    }
+    .edit-card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+    .edit-card-header p  { font-size: .8125rem; color: var(--text-muted); margin: .125rem 0 0; }
+    .edit-card-body { padding: 1.5rem; }
+
+    .avatar-lg {
+      width: 44px; height: 44px;
+      background: var(--green);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .8125rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .avatar-lg.inactive { background: var(--border); color: var(--text-muted); }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 540px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: .375rem; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
+    .field input,
+    .field select {
+      padding: .5625rem .875rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus,
+    .field select:focus { border-color: var(--green); }
+    .field .hint { font-size: .75rem; color: var(--text-muted); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+    .toggle-field { display: flex; align-items: center; gap: .75rem; }
+    .toggle-field label { font-size: .875rem; font-weight: 500; color: var(--text); cursor: pointer; }
+
+    .toggle-switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 99px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+    }
+    .toggle-switch input:checked + .slider { background: var(--green); }
+    .toggle-switch input:checked + .slider::before { transform: translateX(18px); }
+
+    .form-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1.5rem; }
+
+    .btn-primary {
+      padding: .625rem 1.25rem;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    .btn-ghost {
+      padding: .625rem 1rem;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color .15s;
+    }
+    .btn-ghost:hover { border-color: var(--text-muted); }
+
+    /* ── Section cards (resource access + memberships) ── */
+    .section-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-top: 1.5rem;
+    }
+    .section-card-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .section-card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+    .section-card-header p  { font-size: .8125rem; color: var(--text-muted); margin: .25rem 0 0; }
+    .section-card-body { padding: 1.5rem; }
+
+    /* ── Resource access ── */
+    .access-category { margin-bottom: 1.75rem; }
+    .access-category:last-child { margin-bottom: 0; }
+
+    .access-cat-label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: .5rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .access-cat-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .access-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .5rem 0;
+      border-bottom: 1px solid var(--border);
+      gap: 1rem;
+    }
+    .access-item-row:last-child { border-bottom: none; }
+
+    .access-item-info {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      min-width: 0;
+    }
+    .access-item-title {
+      font-size: .875rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .type-pill {
+      font-size: .6875rem;
+      font-weight: 600;
+      padding: .15rem .45rem;
+      border-radius: 99px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .type-dashboard { background: #dbeafe; color: #1e40af; }
+    .type-tool      { background: #ede9fe; color: #5b21b6; }
+
+    .access-select {
+      padding: .375rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      min-width: 180px;
+      flex-shrink: 0;
+      transition: border-color .15s;
+    }
+    .access-select:focus { border-color: var(--green); }
+    .access-select.is-override {
+      border-color: #f59e0b;
+      background: #fffbeb;
+      color: #92400e;
+    }
+
+    /* ── Memberships table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: .625rem 1rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .75rem 1rem;
+      font-size: .875rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg); }
+
+    .team-role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .6rem;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .role-leader { background: #dbeafe; color: #1e40af; }
+    .role-member { background: #f0fdf4; color: #166534; }
+
+    .period-ongoing {
+      font-size: .75rem;
+      font-weight: 600;
+      color: #166534;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 99px;
+      padding: .15rem .5rem;
+    }
+
+    .action-btn {
+      padding: .3125rem .75rem;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+      white-space: nowrap;
+    }
+    .action-btn:hover { border-color: var(--green); background: var(--bg); }
+    .action-btn-danger { border-color: #f5c2c7; color: #842029; }
+    .action-btn-danger:hover { border-color: #842029; background: #fff3f3; }
+
+    .add-membership-section {
+      padding: 1.25rem 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .add-membership-section h3 {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 1rem;
+    }
+    .add-membership-grid {
+      display: grid;
+      grid-template-columns: 2fr 120px 1fr 1fr 2fr auto;
+      gap: .75rem;
+      align-items: end;
+    }
+    @media (max-width: 900px) {
+      .add-membership-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: .875rem;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      <a href="/admin/users" class="sbi on">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      <a href="/admin/teams" class="sbi">
+        {% include "icons/users.svg" %} Hold
+      </a>
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+    <div style="padding: 2rem; max-width: 1000px;">
+
+      <div class="page-header">
+        <a href="/admin/users" class="back-btn">← Alle brugere</a>
+        <h1>Rediger bruger</h1>
+      </div>
+
+      <!-- Notifications -->
+      {% if success == 'updated' %}
+      <div class="notif notif-success">Bruger opdateret</div>
+      {% elif success == 'access_updated' %}
+      <div class="notif notif-success">Adgangsindstillinger gemt</div>
+      {% elif success == 'member_added' %}
+      <div class="notif notif-success">Tilføjet til hold</div>
+      {% elif success == 'member_removed' %}
+      <div class="notif notif-success">Fjernet fra hold</div>
+      {% endif %}
+
+      {% if error == 'missing_fields' %}
+      <div class="notif notif-error">Alle påkrævede felter skal udfyldes</div>
+      {% elif error %}
+      <div class="notif notif-error">Der opstod en fejl — prøv igen</div>
+      {% endif %}
+
+      <!-- ── 1. Basic user info ── -->
+      <div class="edit-card">
+        <div class="edit-card-header">
+          <div class="avatar-lg {% if not target.is_active %}inactive{% endif %}">
+            {{ target.initials }}
+          </div>
+          <div>
+            <h2>{{ target.name }}</h2>
+            <p>@{{ target.username }}</p>
+          </div>
+        </div>
+
+        <div class="edit-card-body">
+          <form method="post" action="/admin/users/{{ target.id }}/update">
+
+            <div class="form-grid">
+              <div class="field">
+                <label>Fulde navn</label>
+                <input type="text" name="name" value="{{ target.name }}" required>
+              </div>
+              <div class="field">
+                <label>Initialer</label>
+                <input type="text" name="initials" value="{{ target.initials }}" maxlength="5" required>
+              </div>
+              <div class="field">
+                <label>Rolle</label>
+                <select name="role" required>
+                  {% for val, label in roles %}
+                  <option value="{{ val }}" {% if target.role == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label>Brand</label>
+                <select name="brand">
+                  {% for val, label in brands %}
+                  <option value="{{ val }}" {% if (target.brand or '') == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="toggle-field" style="margin-bottom: 1.25rem;">
+              <label class="toggle-switch">
+                <input type="checkbox" name="is_active" {% if target.is_active %}checked{% endif %}>
+                <span class="slider"></span>
+              </label>
+              <label>Bruger er aktiv</label>
+            </div>
+
+            <hr class="divider">
+
+            <div class="field" style="max-width: 320px; margin-bottom: 0;">
+              <label>Nyt adgangskode</label>
+              <input type="password" name="password" placeholder="Lad stå tom for at beholde nuværende">
+              <span class="hint">Udfyld kun hvis du vil ændre adgangskoden</span>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Gem ændringer</button>
+              <a href="/admin/users" class="btn-ghost">Annuller</a>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+      <!-- ── 2. Resource access overrides ── -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div>
+            <h2>Ressource-adgang</h2>
+            <p>Tilsidesæt den rolle-baserede adgang for specifikke dashboards og værktøjer</p>
+          </div>
+        </div>
+        <div class="section-card-body">
+          <form method="post" action="/admin/users/{{ target.id }}/resource-access">
+
+            {% for cat in categories %}
+            <div class="access-category">
+              <div class="access-cat-label">{{ cat.title }}</div>
+
+              {% for item in cat['items'] %}
+              {% set current = resource_access.get(item.id) %}
+              <div class="access-item-row">
+                <div class="access-item-info">
+                  <span class="access-item-title">{{ item.title }}</span>
+                  <span class="type-pill {% if item.type == 'dashboard' %}type-dashboard{% else %}type-tool{% endif %}">
+                    {{ 'Dashboard' if item.type == 'dashboard' else 'Værktøj' }}
+                  </span>
+                </div>
+                <select name="access_{{ item.id }}"
+                        class="access-select {% if current is not none %}is-override{% endif %}"
+                        onchange="this.classList.toggle('is-override', this.value !== 'default')">
+                  <option value="default" {% if current is none %}selected{% endif %}>Standard (rolle)</option>
+                  <option value="write"   {% if current == 'write' %}selected{% endif %}>Fuld adgang</option>
+                  <option value="read"    {% if current == 'read'  %}selected{% endif %}>Kun læs</option>
+                  <option value="none"    {% if current == 'none'  %}selected{% endif %}>Ingen adgang</option>
+                </select>
+              </div>
+              {% endfor %}
+
+            </div>
+            {% endfor %}
+
+            <div style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); display:flex; align-items:center; gap:1rem;">
+              <button type="submit" class="btn-primary">Gem adgangsindstillinger</button>
+              <span style="font-size:.8125rem;color:var(--text-muted);">
+                Gule felter = tilpasset override (afviger fra rollestandard)
+              </span>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+      <!-- ── 3. Team memberships ── -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div>
+            <h2>Holdmedlemskaber</h2>
+            <p>Tidsbaserede hold-tilknytninger — bruges til filtrering af omsætning</p>
+          </div>
+          <span style="font-size:.8125rem;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:.2rem .65rem;">
+            {{ memberships | length }}
+          </span>
+        </div>
+
+        {% if memberships %}
+        <table>
+          <thead>
+            <tr>
+              <th>Hold</th>
+              <th>Brand</th>
+              <th>Rolle</th>
+              <th>Start</th>
+              <th>Slut</th>
+              <th>Noter</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in memberships %}
+            <tr>
+              <td>
+                <a href="/admin/teams/{{ m.team_id }}"
+                   style="font-weight:500;color:var(--text);text-decoration:none;">
+                  {{ m.team_name }}
+                </a>
+              </td>
+              <td style="color:var(--text-muted);font-size:.8125rem;">
+                {{ m.team_brand if m.team_brand else '—' }}
+              </td>
+              <td>
+                <span class="team-role-badge {% if m.role == 'leader' %}role-leader{% else %}role-member{% endif %}">
+                  {{ 'Leder' if m.role == 'leader' else 'Medlem' }}
+                </span>
+              </td>
+              <td style="color:var(--text-muted);font-size:.8125rem;">{{ m.start_date }}</td>
+              <td style="font-size:.8125rem;">
+                {% if m.end_date %}
+                <span style="color:var(--text-muted);">{{ m.end_date }}</span>
+                {% else %}
+                <span class="period-ongoing">Igangværende</span>
+                {% endif %}
+              </td>
+              <td style="color:var(--text-muted);font-size:.8125rem;max-width:200px;">
+                {{ m.notes if m.notes else '—' }}
+              </td>
+              <td>
+                <form method="post"
+                      action="/admin/users/{{ target.id }}/memberships/{{ m.id }}/remove"
+                      onsubmit="return confirm('Fjern {{ target.name }} fra {{ m.team_name }}?')">
+                  <button type="submit" class="action-btn action-btn-danger">Fjern</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">Ingen holdmedlemskaber — tilføj nedenfor</div>
+        {% endif %}
+
+        <!-- Add membership form -->
+        <div class="add-membership-section">
+          <h3>Tilføj til hold</h3>
+          {% if all_teams %}
+          <form method="post" action="/admin/users/{{ target.id }}/memberships/add">
+            <div class="add-membership-grid">
+              <div class="field">
+                <label>Hold *</label>
+                <select name="team_id" required>
+                  <option value="">Vælg hold…</option>
+                  {% for t in all_teams %}
+                  <option value="{{ t.id }}">{{ t.name }}{% if t.brand %} ({{ t.brand }}){% endif %}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label>Rolle</label>
+                <select name="role">
+                  <option value="member">Medlem</option>
+                  <option value="leader">Leder</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Startdato *</label>
+                <input type="date" name="start_date" id="user-add-start-date" required>
+              </div>
+              <div class="field">
+                <label>Slutdato</label>
+                <input type="date" name="end_date">
+              </div>
+              <div class="field">
+                <label>Noter</label>
+                <input type="text" name="notes" placeholder="Valgfri noter">
+              </div>
+              <div>
+                <button type="submit" class="btn-primary">Tilføj</button>
+              </div>
+            </div>
+          </form>
+          {% else %}
+          <p style="font-size:.8125rem;color:var(--text-muted);">
+            Ingen hold oprettet endnu.
+            <a href="/admin/teams" style="color:var(--green);">Opret et hold</a> først.
+          </p>
+          {% endif %}
+        </div>
+
+      </div><!-- /.section-card memberships -->
+
+    </div><!-- /max-width -->
+    </div><!-- /scroll wrapper -->
+  </div>
+</div>
+<script>
+// Pre-fill today's date in add-team-membership start date field
+(function() {
+  const el = document.getElementById('user-add-start-date');
+  if (el) el.value = new Date().toISOString().split('T')[0];
+})();
+</script>
+</body>
+</html>
