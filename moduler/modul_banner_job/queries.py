@@ -326,8 +326,7 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
             SELECT
                 YEAR(service_activation_date) AS aar,
                 COUNT(*) AS antal_deals,
-                CAST(SUM(value_dkk) AS INT) AS total_value,
-                STRING_AGG(COALESCE(title, ''), ' | ') AS deal_titles
+                CAST(SUM(value_dkk) AS INT) AS total_value
             FROM [dbo].[PipedriveDeals]
             WHERE org_id = %s
               AND account = 'jppol_advertising'
@@ -343,7 +342,6 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
                 "aar": int(r["aar"]),
                 "antal_deals": int(r["antal_deals"] or 0),
                 "total_value": int(r["total_value"] or 0),
-                "deal_titles": r["deal_titles"] or "",
             }
             for r in cur.fetchall()
         ]
