@@ -216,8 +216,8 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     if user["role"] in ("salesperson", "sales_manager") and brand and user.get("brand") != brand:
         return "none"
 
-    # Holdspærring — hvis ressourcen kræver et bestemt hold
-    if required_team:
+    # Holdspærring — gælder kun for sælger-niveau (sales_manager og derunder)
+    if required_team and user_rank <= ROLE_RANK.get("sales_manager", 2):
         user_teams = user.get("_teams", [])
         if required_team not in user_teams:
             return "none"
