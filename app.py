@@ -144,6 +144,8 @@ def filter_categories(categories: list, user: dict) -> list:
         ]
         dashboard_count = sum(1 for i in visible_items if i["type"] == "dashboard")
         tool_count      = sum(1 for i in visible_items if i["type"] == "tool")
+        if not visible_items and not visible_subs:
+            continue
         result.append({
             **cat,
             "items":           visible_items,
