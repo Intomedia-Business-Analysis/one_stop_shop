@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Manager Dashboard — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1280px;margin:0 auto}
+
+/* Dashboard grid */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.dash-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px}
+.dash-grid-full{grid-column:1/-1}
+@media(max-width:1024px){.dash-grid-3{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.dash-grid,.dash-grid-3{grid-template-columns:1fr}}
+
+/* Dashboard kort */
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.dash-card-sub{font-size:11px;color:var(--ink-4);margin-top:4px}
+
+/* Big number */
+.big-number{font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.big-number.green{color:var(--green)}
+
+/* Måneds bar chart */
+.month-bars{display:flex;align-items:flex-end;gap:4px;height:64px;margin-top:12px}
+.mb-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.mb-bar{width:100%;border-radius:2px 2px 0 0;background:var(--green);opacity:.7;min-height:2px;transition:height .4s}
+.mb-bar.current{opacity:1;background:var(--green)}
+.mb-bar.future{background:var(--border);opacity:.4}
+.mb-label{font-size:8px;color:var(--ink-4);white-space:nowrap}
+.mb-label.current{color:var(--green);font-weight:700}
+
+/* Gauge */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
+.gauge-svg{width:200px;height:110px}
+.gauge-value{font-size:28px;font-weight:800;color:var(--ink);text-align:center;margin-top:-8px;letter-spacing:-.5px}
+.gauge-sub{font-size:11px;color:var(--ink-4);text-align:center;margin-top:4px}
+.gauge-legend{display:flex;justify-content:space-between;width:200px;margin-top:8px}
+.gauge-legend span{font-size:10px;color:var(--ink-4)}
+
+/* Leaderboard tabel */
+.lb-table{width:100%;border-collapse:collapse;font-size:12px}
+.lb-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.lb-table th.num{text-align:right}
+.lb-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.lb-table tr:hover td{background:var(--green-light)}
+.lb-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.lb-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+/* Rank badge */
+.rank-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:11px;font-weight:800;background:var(--border);color:var(--ink-3)}
+.rank-badge.gold{background:#FDF3D0;color:#B8860B}
+.rank-badge.silver{background:#F0F0F0;color:#888}
+.rank-badge.bronze{background:#FDE8DC;color:#B5540A}
+
+/* Mini progress i tabel */
+.lb-bar-wrap{display:flex;align-items:center;gap:8px}
+.lb-bar-track{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden;min-width:60px}
+.lb-bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .4s}
+.lb-bar-fill.warn{background:var(--amber)}
+.lb-bar-fill.neg{background:#B32E45}
+.lb-bar-pct{font-size:10px;font-weight:700;min-width:36px;text-align:right}
+.lb-bar-pct.green{color:var(--green)}
+.lb-bar-pct.warn{color:var(--amber)}
+.lb-bar-pct.neg{color:#B32E45}
+
+/* Spinner */
+.spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+/* Refresh knap */
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* Top Performer hero card */
+.hero-avatar{width:64px;height:64px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;letter-spacing:-1px;margin:0 auto 12px;border:3px solid var(--green-light)}
+.hero-name{font-size:18px;font-weight:800;color:var(--ink);text-align:center;line-height:1.2}
+.hero-amount{font-size:28px;font-weight:800;color:var(--green);text-align:center;letter-spacing:-1px;margin-top:8px}
+.hero-sub{font-size:11px;color:var(--ink-4);text-align:center;margin-top:4px}
+.hero-trophy{font-size:20px;text-align:center;margin-bottom:4px}
+.hero-empty{text-align:center;padding:20px;color:var(--ink-4);font-style:italic;font-size:12px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+      <a href="/tools/performance/manager" class="sbi active">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager Dashboard
+      </a>
+      <a href="/tools/performance/overview" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Overblik
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/subscription-sales" class="tb-btn">← Subscription Sales</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
+          <span>Manager Dashboard</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Manager Dashboard</h1>
+            <p class="page-sub" id="page-sub">Real-time overblik over teamets performance</p>
+          </div>
+          <button class="refresh-btn" onclick="loadData()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Opdater nu
+          </button>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+          <select class="filter-select" id="filter-month" onchange="loadData()">
+            <option value="">Alle måneder</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <select class="filter-select" id="team-select" onchange="loadData()">
+            <option value="">Alle teams</option>
+          </select>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-date-col" onchange="loadData()">
+            <option value="won_time">Vundet dato</option>
+            <option value="service_activation_date">Aktiverings dato</option>
+          </select>
+        </div>
+
+        <!-- Loading state -->
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <!-- Dashboard indhold (skjult til data er klar) -->
+        <div id="dash-content" style="display:none">
+
+          <!-- Række 1: Salg i dag + Konverteringsrate + Top Performer -->
+          <div class="dash-grid-3">
+
+            <!-- Kort 1: Team Total -->
+            <div class="dash-card">
+              <div class="dash-card-title">
+                <span>Team Total</span>
+                <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+              </div>
+              <div class="big-number green" id="salg-maaned">—</div>
+              <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
+              <div style="margin-top:4px;font-size:11px;color:var(--ink-4)">
+                I dag: <span id="salg-dag" style="font-weight:700;color:var(--ink)">—</span>
+              </div>
+              <!-- Månedsoversigt -->
+              <div style="margin-top:16px">
+                <div style="font-size:9px;color:var(--ink-4);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px" id="maaned-year-label"></div>
+                <div class="month-bars" id="month-bars"></div>
+              </div>
+            </div>
+
+            <!-- Kort 2: Konverteringsrate -->
+            <div class="dash-card">
+              <div class="dash-card-title">Konverteringsrate (Gennemsnit)</div>
+              <div class="gauge-wrap">
+                <svg class="gauge-svg" viewBox="0 0 200 110" id="gauge-svg">
+                  <!-- Baggrunds-arc -->
+                  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E8E8E4" stroke-width="16" stroke-linecap="round"/>
+                  <!-- Rød zone (0-15%) -->
+                  <path d="M 20 100 A 80 80 0 0 1 58 36" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Gul zone (15-25%) -->
+                  <path d="M 58 36 A 80 80 0 0 1 127 22" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Grøn zone (25-50%) -->
+                  <path d="M 127 22 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
+                  <!-- Aktiv nål -->
+                  <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+                  <circle cx="100" cy="100" r="5" fill="var(--ink)"/>
+                  <!-- Labels -->
+                  <text x="16" y="112" font-size="9" fill="#888" text-anchor="middle">0</text>
+                  <text x="48" y="44" font-size="9" fill="#888" text-anchor="middle">10%</text>
+                  <text x="100" y="18" font-size="9" fill="#888" text-anchor="middle">25%</text>
+                  <text x="155" y="44" font-size="9" fill="#888" text-anchor="middle">40%</text>
+                  <text x="184" y="112" font-size="9" fill="#888" text-anchor="middle">50%</text>
+                </svg>
+                <div class="gauge-value" id="gauge-value">—</div>
+                <div class="gauge-sub" id="gauge-sub">— won · — lost denne måned</div>
+              </div>
+            </div>
+
+            <!-- Kort 3: Top Performer (The Hero) -->
+            <div class="dash-card" id="card-hero">
+              <div class="dash-card-title">Top Performer (The Hero)</div>
+              <div id="hero-content" class="hero-empty">Indlæser…</div>
+            </div>
+
+          </div>
+
+          <!-- Række 2: Leaderboard (fuld bredde) -->
+          <div class="dash-card dash-grid-full">
+            <div class="dash-card-title">
+              <span>Leaderboard</span>
+              <span id="lb-month-label" style="font-size:10px;font-weight:400;color:var(--ink-4)"></span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="lb-table">
+                <thead>
+                  <tr>
+                    <th style="width:40px">#</th>
+                    <th>Sælger</th>
+                    <th class="num">Salg (måned)</th>
+                    <th class="num">Deals</th>
+                    <th class="num">Afmeldinger</th>
+                    <th class="num" style="min-width:180px">Vs. budget</th>
+                  </tr>
+                </thead>
+                <tbody id="lb-tbody">
+                  <tr><td colspan="6" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /dash-content -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DAY_NAMES = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
+let autoRefreshTimer = null;
+
+function fmtKr(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000) + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+
+function fmtFull(v) {
+  return Math.round(v).toLocaleString('da-DK') + ' kr.';
+}
+
+async function loadMeta() {
+  // Hent tilgængelige år fra saelger-meta (vi genbruger samme endpoint)
+  // og populer team-dropdown fra første data-kald
+  const today = new Date();
+  const yearSel = document.getElementById('filter-year');
+  // Byg år-dropdown: indeværende år + 3 år tilbage
+  yearSel.innerHTML = '';
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === today.getFullYear()) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  // Sæt aktuel måned som default
+  document.getElementById('filter-month').value = String(today.getMonth() + 1);
+}
+
+async function loadData() {
+  const year    = document.getElementById('filter-year').value;
+  const month   = document.getElementById('filter-month').value;
+  const team    = document.getElementById('team-select').value;
+  const dateCol = document.getElementById('filter-date-col').value;
+
+  const params = new URLSearchParams();
+  if (year)    params.set('year',     year);
+  if (month)   params.set('month',    month);
+  if (team)    params.set('team',     team);
+  if (dateCol) params.set('date_col', dateCol);
+
+  try {
+    const r = await fetch(`/tools/performance/manager-data?` + params);
+    const d = await r.json();
+    if (!r.ok) return;
+
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('dash-content').style.display  = '';
+
+    // Populer team-dropdown første gang
+    const select = document.getElementById('team-select');
+    if (select.options.length === 1 && d.teams) {
+      d.teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        select.appendChild(opt);
+      });
+    }
+
+    document.getElementById('page-sub').textContent = d.month_label;
+
+    renderTeamTotal(d);
+    renderGauge(d);
+    renderHero(d);
+    renderLeaderboard(d);
+
+    const now = new Date();
+    document.getElementById('last-updated').textContent =
+      `Opdateret ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+
+  } catch(e) {
+    console.error('Fejl ved hentning af data:', e);
+  }
+}
+
+function renderTeamTotal(d) {
+  document.getElementById('salg-maaned').textContent = fmtKr(d.salg_maaned);
+  document.getElementById('salg-dag').textContent    = fmtKr(d.salg_dag);
+  document.getElementById('salg-maaned-label').textContent = 'Salg ' + d.month_label;
+
+  // Månedsoversigt
+  const maxBarPx = 48;
+  const curMonth  = d.cur_month;
+  const refMonth  = d.ref_month || curMonth;
+  const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
+  const curYear   = parseInt(d.today.split('-')[0]);
+
+  document.getElementById('maaned-year-label').textContent = refYear;
+
+  const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
+  document.getElementById('month-bars').innerHTML = d.maaned_chart.map((m, i) => {
+    const month    = i + 1;
+    const isCur    = month === refMonth;
+    const isFuture = refYear >= curYear && month > curMonth;
+    const h = isFuture ? 0 : Math.max(Math.round((m.won / max) * maxBarPx), m.won > 0 ? 2 : 0);
+    return `<div class="mb-col">
+      <div class="mb-bar ${isCur ? 'current' : isFuture ? 'future' : ''}"
+           style="height:${h}px" title="${m.maaned}: ${fmtKr(m.won)}"></div>
+      <div class="mb-label ${isCur ? 'current' : ''}">${m.maaned}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderGauge(d) {
+  const pct = Math.min(d.conv_rate, 50); // max 50% på gauge
+  // Konverter pct til vinkel (0% = 180°, 50% = 0°, altså 180° spænd)
+  const angle = 180 - (pct / 50) * 180;
+  const rad   = (angle * Math.PI) / 180;
+  const cx = 100, cy = 100, r = 72;
+  const x2 = cx + r * Math.cos(rad);
+  const y2 = cy - r * Math.sin(rad);
+
+  const needle = document.getElementById('gauge-needle');
+  needle.setAttribute('x2', x2.toFixed(1));
+  needle.setAttribute('y2', y2.toFixed(1));
+
+  const valEl = document.getElementById('gauge-value');
+  valEl.textContent = d.conv_rate.toFixed(1).replace('.', ',') + '%';
+  valEl.style.color = d.conv_rate >= 25 ? 'var(--green)' : d.conv_rate >= 15 ? 'var(--amber)' : '#B32E45';
+
+  document.getElementById('gauge-sub').textContent =
+    `${d.won_count} won · ${d.lost_count} lost/opsagt denne måned`;
+}
+
+function renderHero(d) {
+  const el = document.getElementById('hero-content');
+  if (!d.leaderboard || !d.leaderboard.length) {
+    el.innerHTML = '<div class="hero-empty">Ingen data denne måned</div>';
+    return;
+  }
+  const hero = d.leaderboard[0];
+  const initials = hero.owner_name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0].toUpperCase())
+    .join('');
+
+  const hasBudget = hero.budget > 0;
+  const pct = hasBudget ? Math.round(hero.vs_budget_pct) : null;
+  const pctColor = !hasBudget ? 'var(--ink-4)' : pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : '#B32E45';
+  const pctTxt = hasBudget ? `${pct}% af budget` : '';
+
+  el.innerHTML = `
+    <div class="hero-trophy">🏆</div>
+    <div class="hero-avatar">${escHtml(initials)}</div>
+    <div class="hero-name">${escHtml(hero.owner_name)}</div>
+    <div class="hero-amount">${fmtKr(hero.won_amount)}</div>
+    <div class="hero-sub">${d.month_label}</div>
+    ${hasBudget ? `<div style="margin-top:8px;font-size:11px;font-weight:700;color:${pctColor};text-align:center">${pctTxt}</div>` : ''}
+    ${hero.won_count ? `<div class="hero-sub">${hero.won_count} deals vundet</div>` : ''}
+  `;
+}
+
+function renderLeaderboard(d) {
+  document.getElementById('lb-month-label').textContent = d.month_label;
+
+  const tbody = document.getElementById('lb-tbody');
+  if (!d.leaderboard.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data denne måned</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = d.leaderboard.map((r, i) => {
+    const rank = i + 1;
+    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+    const rankIcon  = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+
+    const hasBudget = r.budget > 0;
+    const pct       = hasBudget ? r.vs_budget_pct : null;
+    const barClass  = !hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
+    const pctClass  = !hasBudget ? '' : pct >= 100 ? 'green' : pct >= 70 ? 'warn' : 'neg';
+    const barWidth  = hasBudget ? Math.min(pct, 100) : 0;
+
+    const budgetCell = hasBudget
+      ? `<div class="lb-bar-wrap">
+           <div style="flex:1">
+             <div style="font-size:11px;margin-bottom:3px;text-align:right">
+               ${fmtFull(r.won_amount)} / ${fmtFull(r.budget)}
+             </div>
+             <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
+           </div>
+           <div class="lb-bar-pct ${pctClass}">${Math.round(pct)}%</div>
+         </div>`
+      : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
+
+    return `<tr>
+      <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
+      <td style="font-weight:600;color:var(--ink)">${escHtml(r.owner_name)}</td>
+      <td class="num">${fmtFull(r.won_amount)}</td>
+      <td class="num">${r.won_count}</td>
+      <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
+        ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
+      </td>
+      <td class="num">${budgetCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Start
+loadMeta().then(() => loadData());
+autoRefreshTimer = setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio Alignment — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1500px;margin:0 auto}
+.dash-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:20px}
+@media(max-width:1100px){.dash-grid-5{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.dash-grid-5{grid-template-columns:1fr 1fr}}
+
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card.warn::before{background:#E8A33D}
+.dash-card.bad::before{background:#B32E45}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px}
+.kpi-value{font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.kpi-value.green{color:var(--green)}
+.kpi-value.warn{color:#E8A33D}
+.kpi-value.bad{color:#B32E45}
+.kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
+.kpi-icon{font-size:22px;margin-bottom:8px}
+
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select,.filter-input{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-input{cursor:text;width:240px}
+.filter-select:focus,.filter-input:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap;cursor:pointer;user-select:none}
+.v-table th.num{text-align:right}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table tr:hover td{background:var(--green-light,#f0f8f4)}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+.tag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:3px 8px;border-radius:10px}
+.tag-match     {background:#C8E6D8;color:#0F5132}
+.tag-mismatch  {background:#F8D7DA;color:#842029}
+.tag-pd_only   {background:#FDF3D0;color:#856404}
+.tag-zuora_only{background:#D1E4F5;color:#0B4F8A}
+
+.diff-pos{color:#0F5132;font-weight:700}
+.diff-neg{color:#B32E45;font-weight:700}
+.diff-zero{color:var(--ink-4)}
+
+.cached-info{font-size:10px;color:var(--ink-4);margin-left:8px}
+.hidden{display:none}
+.legend{font-size:10px;color:var(--ink-4);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/portfolio-alignment/" class="sbi active">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+        Portfolio Alignment
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/" class="tb-btn">← Hub</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <span>Portfolio Alignment</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Portfolio Alignment</h1>
+            <p class="page-sub">Sammenligner Pipedrive ACV (live) med Zuora ARR fra ugentlig snapshot-fil — pr. kunde og site.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="cached-info" id="snapshot-info"></span>
+            <span class="cached-info" id="cached-info"></span>
+            <button class="refresh-btn" onclick="loadData(true)">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Genindlæs
+            </button>
+          </div>
+        </div>
+
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data fra Pipedrive og Zuora… (kan tage 10–30 sek.)</div>
+        </div>
+
+        <div id="error-state" class="hidden" style="background:#F8D7DA;border:1px solid #F5C2C7;color:#842029;padding:16px;border-radius:var(--r);margin-bottom:20px">
+          <strong>Fejl:</strong> <span id="error-msg"></span>
+          <div style="font-size:11px;margin-top:6px;color:#842029">
+            Tjek at der ligger en fil med navnet <code>ACV_snapshot_DDMMYYYY.csv</code> (eller .xlsx) i porteføljemappen.
+            Mappestien sættes med <code>ZUORA_SNAPSHOT_DIR</code> i .env — flere stier kan adskilles med <code>;</code>
+            så samme .env virker på både lokal og remote (første sti der findes vinder).
+          </div>
+        </div>
+
+        <div id="dash-content" class="hidden">
+
+          <div class="dash-grid-5">
+            <div class="dash-card">
+              <div class="kpi-icon">📋</div>
+              <div class="dash-card-title">Linjer i alt</div>
+              <div class="kpi-value" id="kpi-total">—</div>
+              <div class="kpi-sub">Kunde × site kombinationer</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">✓</div>
+              <div class="dash-card-title">Match</div>
+              <div class="kpi-value green" id="kpi-match">—</div>
+              <div class="kpi-sub">PD ACV = Zuora ARR (±1 kr.)</div>
+            </div>
+            <div class="dash-card warn">
+              <div class="kpi-icon">⚖</div>
+              <div class="dash-card-title">Mismatch</div>
+              <div class="kpi-value warn" id="kpi-mismatch">—</div>
+              <div class="kpi-sub">Eksisterer begge steder, men beløb er forskelligt</div>
+            </div>
+            <div class="dash-card bad">
+              <div class="kpi-icon">⚠</div>
+              <div class="dash-card-title">Kun i Pipedrive</div>
+              <div class="kpi-value bad" id="kpi-pd-only">—</div>
+              <div class="kpi-sub">Vundet i PD, men ikke fundet i Zuora</div>
+            </div>
+            <div class="dash-card bad">
+              <div class="kpi-icon">⚠</div>
+              <div class="dash-card-title">Kun i Zuora</div>
+              <div class="kpi-value bad" id="kpi-zu-only">—</div>
+              <div class="kpi-sub">Faktureres i Zuora, men ikke i PD</div>
+            </div>
+          </div>
+
+          <div class="dash-grid-5" style="grid-template-columns:repeat(4,1fr)">
+            <div class="dash-card">
+              <div class="dash-card-title">PD ACV i alt (B2B)</div>
+              <div class="kpi-value" id="kpi-pd-total">—</div>
+            </div>
+            <div class="dash-card">
+              <div class="dash-card-title">Zuora ARR i alt (B2B)</div>
+              <div class="kpi-value" id="kpi-zu-total">—</div>
+            </div>
+            <div class="dash-card warn">
+              <div class="dash-card-title">Total difference (PD − Zuora)</div>
+              <div class="kpi-value warn" id="kpi-total-diff">—</div>
+            </div>
+            <div class="dash-card warn">
+              <div class="dash-card-title">Web sales — diff (PD − Zuora)</div>
+              <div class="kpi-value warn" id="kpi-websales-total">—</div>
+              <div class="kpi-sub" id="kpi-websales-sub">— sites · — mismatches</div>
+            </div>
+          </div>
+
+          <div class="filter-bar">
+            <span class="filter-label">Account</span>
+            <select class="filter-select" id="filter-account" onchange="onAccountChange()">
+              <option value="all">Alle accounts</option>
+            </select>
+            <div class="filter-sep"></div>
+            <span class="filter-label">Filter</span>
+            <select class="filter-select" id="filter-status" onchange="renderTable()">
+              <option value="">Alle statusser</option>
+              <option value="mismatch">Mismatch</option>
+              <option value="pd_only">Kun i Pipedrive</option>
+              <option value="zuora_only">Kun i Zuora</option>
+              <option value="match">Match</option>
+            </select>
+            <select class="filter-select" id="filter-site" onchange="renderTable()">
+              <option value="">Alle sites</option>
+            </select>
+            <div class="filter-sep"></div>
+            <input type="text" class="filter-input" id="filter-search" placeholder="Søg kunde…" oninput="renderTable()">
+            <div class="filter-sep"></div>
+            <span class="legend">
+              <span class="tag tag-match">Match</span>
+              <span class="tag tag-mismatch">Mismatch</span>
+              <span class="tag tag-pd_only">Kun PD</span>
+              <span class="tag tag-zuora_only">Kun Zuora</span>
+            </span>
+          </div>
+
+          <div class="dash-card" style="padding:0;overflow:hidden">
+            <div style="overflow-x:auto;max-height:70vh">
+              <table class="v-table">
+                <thead>
+                  <tr>
+                    <th onclick="sortBy('scope_label')">Account</th>
+                    <th onclick="sortBy('org_name')">Kunde</th>
+                    <th onclick="sortBy('site')">Site</th>
+                    <th class="num" onclick="sortBy('pd_acv')">PD ACV</th>
+                    <th class="num" onclick="sortBy('zuora_arr')">Zuora ARR</th>
+                    <th class="num" onclick="sortBy('diff')">Difference</th>
+                    <th class="num" onclick="sortBy('diff_pct')">Δ %</th>
+                    <th onclick="sortBy('status')">Status</th>
+                    <th>Detaljer</th>
+                  </tr>
+                </thead>
+                <tbody id="cmp-tbody">
+                  <tr><td colspan="9" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="text-align:center;margin-top:14px;font-size:11px;color:var(--ink-4)">
+            <span id="row-count">—</span>
+          </div>
+
+          <div class="dash-card" style="margin-top:24px">
+            <div class="dash-card-title">
+              <span>Web sales pr. site (B2C)</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)">PD's "Web Sale"-organisation vs. Zuora's Consumer uden pipedrive_id — klik for deals</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="v-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Site</th>
+                    <th class="num">PD ACV</th>
+                    <th class="num">PD deals</th>
+                    <th class="num">Zuora ARR</th>
+                    <th class="num">Zuora accounts</th>
+                    <th class="num">Difference</th>
+                    <th class="num">Δ %</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="websales-tbody">
+                  <tr><td colspan="9" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Kundedetalje-modal: alle deals for valgt (scope, org_id) -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeCustomerModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:1100px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Kundedetaljer</div>
+      <button class="modal-close" onclick="closeCustomerModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>
+    </div>
+  </div>
+</div>
+
+<style>
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal-overlay.hidden{display:none}  /* mere specifik end .hidden alene → vinder kaskaden */
+.modal-box{background:var(--surface);border-radius:var(--r);width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-title{font-size:16px;font-weight:800;color:var(--ink)}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:20px;line-height:1;padding:4px}
+.modal-body{padding:20px 24px}
+.kpi-pill{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 14px;font-size:11px;font-weight:700;color:var(--ink-3);display:inline-flex;align-items:center;gap:6px}
+.kpi-pill strong{color:var(--ink);font-size:13px}
+.tag-status{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:2px 7px;border-radius:8px}
+.tag-status-won  {background:#C8E6D8;color:#0F5132}
+.tag-status-lost {background:#F8D7DA;color:#842029}
+.tag-status-open {background:#D1E4F5;color:#0B4F8A}
+.tag-status-other{background:#F0F0EE;color:#666}
+.tag-admin{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;background:#FDF3D0;color:#856404;margin-left:6px}
+</style>
+
+<script>
+let allRows = [];
+let currentScope = 'all';
+let sortKey = 'diff';
+let sortDir = -1; // -1 desc, 1 asc
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtKr(v) {
+  if (v === null || v === undefined) return '—';
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000).toLocaleString('da-DK') + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+
+function fmtFull(v) {
+  if (v === null || v === undefined) return '—';
+  return Math.round(v).toLocaleString('da-DK') + ' kr.';
+}
+
+function fmtPct(v) {
+  if (v === null || v === undefined) return '—';
+  const sign = v > 0 ? '+' : '';
+  return sign + v.toFixed(1).replace('.',',') + ' %';
+}
+
+function fmtTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString('da-DK');
+}
+
+const STATUS_LABEL = {
+  match:      'Match',
+  mismatch:   'Mismatch',
+  pd_only:    'Kun PD',
+  zuora_only: 'Kun Zuora',
+};
+
+async function loadAccounts() {
+  try {
+    const r = await fetch('/tools/portfolio-alignment/accounts');
+    const d = await r.json();
+    const sel = document.getElementById('filter-account');
+    sel.innerHTML = (d.scopes || []).map(s =>
+      `<option value="${escHtml(s.id)}"${s.id===currentScope?' selected':''}>${escHtml(s.label)}</option>`
+    ).join('');
+  } catch(e) { console.error(e); }
+}
+
+function onAccountChange() {
+  currentScope = document.getElementById('filter-account').value || 'all';
+  loadData(false);
+}
+
+async function loadData(force) {
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('dash-content').classList.add('hidden');
+  document.getElementById('error-state').classList.add('hidden');
+
+  try {
+    const url = '/tools/portfolio-alignment/comparison?scope=' +
+                encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
+    const r = await fetch(url);
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
+    }
+    const d = await r.json();
+
+    allRows = d.rows || [];
+    renderSummary(d.summary || {});
+    populateSiteFilter();
+    renderTable();
+    renderWebSales(d.web_sales || [], d.summary || {});
+
+    const snap = d.snapshot || {};
+    const snapInfo = document.getElementById('snapshot-info');
+    if (snap.filename) {
+      snapInfo.textContent = `Zuora-fil: ${snap.filename} (snapshot ${snap.snapshot_date || '?'})`;
+      snapInfo.title = snap.path || '';
+    } else {
+      snapInfo.textContent = '';
+    }
+
+    document.getElementById('cached-info').textContent =
+      d.cached_at ? `Indlæst: ${fmtTs(d.cached_at)}` : '';
+
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('dash-content').classList.remove('hidden');
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('error-msg').textContent = e.message || String(e);
+    document.getElementById('error-state').classList.remove('hidden');
+  }
+}
+
+function renderSummary(s) {
+  document.getElementById('kpi-total').textContent     = (s.total_rows || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-match').textContent     = (s.match || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-mismatch').textContent  = (s.mismatch || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-pd-only').textContent   = (s.pd_only || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-zu-only').textContent   = (s.zuora_only || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-pd-total').textContent  = fmtKr(s.total_pd_acv || 0);
+  document.getElementById('kpi-zu-total').textContent  = fmtKr(s.total_zuora || 0);
+  const td = s.total_diff || 0;
+  document.getElementById('kpi-total-diff').textContent = (td >= 0 ? '+' : '') + fmtKr(td);
+  const wsd = s.web_sales_total_diff || 0;
+  document.getElementById('kpi-websales-total').textContent = (wsd >= 0 ? '+' : '') + fmtKr(wsd);
+  document.getElementById('kpi-websales-sub').textContent =
+    `${s.web_sales_sites || 0} sites · ${(s.web_sales_mismatch || 0)} mismatch / ${(s.web_sales_match || 0)} match`;
+}
+
+function renderWebSales(rows, summary) {
+  const tbody = document.getElementById('websales-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">Ingen web sales fundet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const diffCls = r.status === 'match' ? 'diff-zero'
+                  : (r.diff > 0 ? 'diff-pos' : r.diff < 0 ? 'diff-neg' : 'diff-zero');
+    const clickable = r.scope && r.site;
+    const dataAttrs = clickable
+      ? `class="ws-row-clickable" data-scope="${escHtml(r.scope)}" data-site="${escHtml(r.site)}"`
+      : '';
+    const cursor = clickable ? 'cursor:pointer' : '';
+    return `<tr ${dataAttrs} style="${cursor}">
+      <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
+      <td style="font-weight:600;color:var(--ink)">${escHtml(r.site)}</td>
+      <td class="num">${fmtFull(r.pd_acv)}</td>
+      <td class="num" style="color:var(--ink-4);font-size:10px">${(r.deal_count || 0).toLocaleString('da-DK')}</td>
+      <td class="num">${fmtFull(r.zuora_arr)}</td>
+      <td class="num" style="color:var(--ink-4);font-size:10px">${(r.account_count || 0).toLocaleString('da-DK')}</td>
+      <td class="num ${diffCls}">${(r.diff>0?'+':'')}${fmtFull(r.diff)}</td>
+      <td class="num">${fmtPct(r.diff_pct)}</td>
+      <td><span class="tag tag-${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Kundedetalje-modal: alle deals i Pipedrive for én (scope, org_id)
+// ---------------------------------------------------------------------------
+
+function statusTag(status) {
+  const s = (status || '').toLowerCase();
+  let cls = 'tag-status-other';
+  if (s === 'won') cls = 'tag-status-won';
+  else if (s === 'lost' || s === 'deleted') cls = 'tag-status-lost';
+  else if (s === 'open') cls = 'tag-status-open';
+  return `<span class="tag-status ${cls}">${escHtml(status || '—')}</span>`;
+}
+
+async function openCustomerModal(scope, orgId, orgName) {
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = orgName || 'Kundedetaljer';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="spin-wrap"><div class="spinner"></div><div>Henter deals…</div></div>';
+  overlay.classList.remove('hidden');
+
+  try {
+    const r = await fetch(`/tools/portfolio-alignment/customer-deals?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}`);
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
+    }
+    const d = await r.json();
+    document.getElementById('modal-title').textContent = d.org_name || orgName || 'Kunde';
+
+    const deals = d.deals || [];
+    if (!deals.length) {
+      document.getElementById('modal-body').innerHTML =
+        '<div style="text-align:center;padding:30px;color:var(--ink-4)">Ingen deals fundet for denne kunde</div>';
+      return;
+    }
+
+    // Summering
+    const wonDeals = deals.filter(x => (x.status || '').toLowerCase() === 'won');
+    const wonValue = wonDeals.reduce((a, x) => a + (x.value || 0), 0);
+    const adminDeals = deals.filter(x => x.administrativ);
+
+    const statusPills = Object.entries(d.by_status || {})
+      .sort((a,b) => b[1] - a[1])
+      .map(([k, v]) => `<span class="kpi-pill">${escHtml(k)} <strong>${v}</strong></span>`)
+      .join(' ');
+
+    const pipelinePills = Object.entries(d.by_pipeline || {})
+      .sort((a,b) => b[1] - a[1])
+      .map(([k, v]) => `<span class="kpi-pill">${escHtml(k)} <strong>${v}</strong></span>`)
+      .join(' ');
+
+    const dealsRows = deals.map(x => `
+      <tr>
+        <td style="font-weight:600;color:var(--ink)">${escHtml(x.title)}${x.administrativ ? '<span class="tag-admin">ADMIN</span>' : ''}</td>
+        <td>${statusTag(x.status)}</td>
+        <td>${escHtml(x.pipeline)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.deal_type)}</td>
+        <td>${escHtml(x.sites)}</td>
+        <td class="num">${fmtFull(x.value)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.activation_date)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.owner)}</td>
+      </tr>`).join('');
+
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+        <span class="kpi-pill">Won-deals <strong>${wonDeals.length}</strong></span>
+        <span class="kpi-pill">Won-værdi <strong>${fmtFull(wonValue)}</strong></span>
+        <span class="kpi-pill">Administrative <strong>${adminDeals.length}</strong></span>
+        <span class="kpi-pill">Total deals <strong>${deals.length}</strong></span>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Status-fordeling</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${statusPills || '—'}</div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Pipeline-fordeling</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${pipelinePills || '—'}</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals</div>
+      <div style="overflow-x:auto">
+        <table class="v-table">
+          <thead><tr>
+            <th>Titel</th>
+            <th>Status</th>
+            <th>Pipeline</th>
+            <th>Deal type</th>
+            <th>Sites</th>
+            <th class="num">Værdi (DKK)</th>
+            <th>Aktiveret</th>
+            <th>Sælger</th>
+          </tr></thead>
+          <tbody>${dealsRows}</tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('modal-body').innerHTML =
+      `<div style="background:#F8D7DA;color:#842029;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function closeCustomerModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay')) {
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustomerModal(); });
+
+// Delegated click-listener på tbody — virker også efter re-render af rows
+document.getElementById('cmp-tbody').addEventListener('click', e => {
+  const tr = e.target.closest('tr.row-clickable');
+  if (!tr) return;
+  const { scope, orgId, orgName } = tr.dataset;
+  if (scope && orgId) openCustomerModal(scope, orgId, orgName || '');
+});
+
+// Web sales: klik på en site-række → modal med alle Web Sale-deals for det site
+document.getElementById('websales-tbody').addEventListener('click', e => {
+  const tr = e.target.closest('tr.ws-row-clickable');
+  if (!tr) return;
+  const { scope, site } = tr.dataset;
+  if (scope && site) openWebSaleModal(scope, site);
+});
+
+async function openWebSaleModal(scope, site) {
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = `Web Sale · ${site}`;
+  document.getElementById('modal-body').innerHTML =
+    '<div class="spin-wrap"><div class="spinner"></div><div>Henter deals…</div></div>';
+  overlay.classList.remove('hidden');
+  try {
+    const r = await fetch(`/tools/portfolio-alignment/web-sale-deals?scope=${encodeURIComponent(scope)}&site=${encodeURIComponent(site)}`);
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
+    }
+    const d = await r.json();
+    const deals = d.deals || [];
+    if (!deals.length) {
+      document.getElementById('modal-body').innerHTML =
+        '<div style="text-align:center;padding:30px;color:var(--ink-4)">Ingen Web Sale-deals fundet for dette site</div>';
+      return;
+    }
+    const wonDeals = deals.filter(x => (x.status || '').toLowerCase() === 'won');
+    const wonValue = wonDeals.reduce((a, x) => a + (x.value || 0), 0);
+    const statusPills = Object.entries(d.by_status || {}).sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<span class="kpi-pill">${escHtml(k)} <strong>${v}</strong></span>`).join(' ');
+    const pipelinePills = Object.entries(d.by_pipeline || {}).sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<span class="kpi-pill">${escHtml(k)} <strong>${v}</strong></span>`).join(' ');
+
+    const dealsRows = deals.map(x => `
+      <tr>
+        <td style="font-weight:600;color:var(--ink)">${escHtml(x.title)}${x.administrativ ? '<span class="tag-admin">ADMIN</span>' : ''}</td>
+        <td>${statusTag(x.status)}</td>
+        <td>${escHtml(x.pipeline)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.deal_type)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.site_raw)}</td>
+        <td class="num">${fmtFull(x.value)}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.currency)} ${(x.value_local||0).toLocaleString('da-DK')}</td>
+        <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.activation_date)}</td>
+      </tr>`).join('');
+
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+        <span class="kpi-pill">Won-deals <strong>${wonDeals.length}</strong></span>
+        <span class="kpi-pill">Won-værdi (DKK fixed) <strong>${fmtFull(wonValue)}</strong></span>
+        <span class="kpi-pill">Total deals <strong>${deals.length}</strong></span>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Status</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${statusPills || '—'}</div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Pipeline</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${pipelinePills || '—'}</div>
+      </div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals</div>
+      <div style="overflow-x:auto">
+        <table class="v-table">
+          <thead><tr>
+            <th>Titel</th><th>Status</th><th>Pipeline</th><th>Deal type</th><th>Site (raw)</th>
+            <th class="num">DKK (fixed)</th><th>Lokal</th><th>Aktiveret</th>
+          </tr></thead>
+          <tbody>${dealsRows}</tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('modal-body').innerHTML =
+      `<div style="background:#F8D7DA;color:#842029;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function populateSiteFilter() {
+  const sel = document.getElementById('filter-site');
+  const cur = sel.value;
+  const sites = Array.from(new Set(allRows.map(r => r.site))).filter(Boolean).sort();
+  sel.innerHTML = '<option value="">Alle sites</option>' +
+    sites.map(s => `<option value="${escHtml(s)}"${s===cur?' selected':''}>${escHtml(s)}</option>`).join('');
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortDir = -sortDir;
+  else { sortKey = key; sortDir = (key === 'org_name' || key === 'site' || key === 'status') ? 1 : -1; }
+  renderTable();
+}
+
+function renderTable() {
+  const status = document.getElementById('filter-status').value;
+  const site   = document.getElementById('filter-site').value;
+  const q      = document.getElementById('filter-search').value.trim().toLowerCase();
+
+  let rows = allRows;
+  if (status) rows = rows.filter(r => r.status === status);
+  if (site)   rows = rows.filter(r => r.site === site);
+  if (q)      rows = rows.filter(r => (r.org_name || '').toLowerCase().includes(q));
+
+  rows = rows.slice().sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (av === null || av === undefined) av = sortDir === 1 ? Infinity : -Infinity;
+    if (bv === null || bv === undefined) bv = sortDir === 1 ? Infinity : -Infinity;
+    if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+    return (av - bv) * sortDir;
+  });
+
+  const tbody = document.getElementById('cmp-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">Ingen rækker matcher filteret</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => {
+      const diffCls = r.status === 'match' ? 'diff-zero'
+                    : (r.diff > 0 ? 'diff-pos' : r.diff < 0 ? 'diff-neg' : 'diff-zero');
+      const detalje = [];
+      if (r.account_numbers && r.account_numbers.length) {
+        detalje.push(`Acc: ${r.account_numbers.slice(0,3).map(escHtml).join(', ')}${r.account_numbers.length>3?'…':''}`);
+      }
+      if (r.deal_count) detalje.push(`${r.deal_count} deal${r.deal_count!==1?'s':''}`);
+      // Klikbar hvis vi har et org_id (PD-kunde) — så drill-down virker.
+      // Bruger data-* attributter + delegated listener (se nedenfor) — det
+      // håndterer citationstegn/apostroffer i org_name uden escape-bøvl.
+      const clickable = r.org_id && r.scope;
+      const dataAttrs = clickable
+        ? `class="row-clickable" data-scope="${escHtml(r.scope)}" data-org-id="${escHtml(String(r.org_id))}" data-org-name="${escHtml(r.org_name || '')}"`
+        : '';
+      const cursor = clickable ? 'cursor:pointer' : '';
+      return `<tr ${dataAttrs} style="${cursor}">
+        <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
+        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+        <td>${escHtml(r.site)}</td>
+        <td class="num">${fmtFull(r.pd_acv)}</td>
+        <td class="num">${fmtFull(r.zuora_arr)}</td>
+        <td class="num ${diffCls}">${(r.diff>0?'+':'')}${fmtFull(r.diff)}</td>
+        <td class="num">${fmtPct(r.diff_pct)}</td>
+        <td><span class="tag tag-${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
+        <td style="font-size:10px;color:var(--ink-4)">${detalje.join(' · ') || '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('row-count').textContent =
+    `Viser ${rows.length.toLocaleString('da-DK')} af ${allRows.length.toLocaleString('da-DK')} rækker`;
+}
+
+loadAccounts().then(() => loadData(false));
+</script>
+</body>
+</html>

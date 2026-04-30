@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/static" class="sbi on">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+      <a href="#" class="sbi">
+        {% include "icons/star.svg" %} Mine favoritter
+        <span class="sbi-count">4</span>
+      </a>
+      <a href="#" class="sbi">
+        {% include "icons/clock.svg" %} Seneste
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Kategorier</div>
+      {% for cat in categories %}
+      <a href="/category/{{ cat.id }}" class="sbi">
+        {% include "icons/" + cat.icon + ".svg" %}
+        {{ cat.title }}
+        <span class="sbi-count">{{ cat.dashboard_count + cat.tool_count }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      {% if user.role == 'admin' %}
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      {% endif %}
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ──────────────────────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <button class="search-trigger" id="searchTrigger" aria-label="Åbn søgning">
+        <span class="st-icon">{% include "icons/search.svg" %}</span>
+        <span class="st-text">Søg i dashboards, tools og kategorier...</span>
+        <span class="st-right">
+          <kbd class="st-k">⌘</kbd><kbd class="st-k">K</kbd>
+        </span>
+      </button>
+      <div class="tb-right">
+        <button class="tb-btn">
+          {% include "icons/plus-circle.svg" %} Anmod om adgang
+        </button>
+        {% if user.role == 'admin' %}
+        <button class="tb-btn primary">
+          {% include "icons/plus.svg" %} Nyt dashboard
+        </button>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="content-area">
+      <h1 class="page-title">Intomedia Hub</h1>
+      <p class="page-sub">Samlet adgang til alle tools, dashboards og rapporter på tværs af brands og afdelinger</p>
+
+      <!-- Stats -->
+      <div class="stat-bar">
+        <div class="stat">
+          <div class="stat-n">{{ total_dash }}</div>
+          <div class="stat-l">Dashboards</div>
+        </div>
+        <div class="stat">
+          <div class="stat-n">{{ total_tools }}</div>
+          <div class="stat-l">Tools</div>
+        </div>
+        <div class="stat">
+          <div class="stat-n">{{ cat_count }}</div>
+          <div class="stat-l">Kategorier</div>
+        </div>
+        <div class="stat">
+          <div class="stat-n">4</div>
+          <div class="stat-l">Brands</div>
+        </div>
+      </div>
+
+      <!-- Category cards -->
+      <div class="section-head">
+        <span class="section-label">Alle kategorier</span>
+      </div>
+
+      <div class="cat-grid">
+        {% for cat in categories %}
+        <a href="/category/{{ cat.id }}" class="cc" style="--delay: {{ loop.index0 * 0.05 }}s">
+          <div class="cc-head">
+            <div class="cc-icon cc-icon--{{ cat.color }}">
+              {% include "icons/" + cat.icon + ".svg" %}
+            </div>
+            <span class="cc-arrow">{% include "icons/arrow-up-right.svg" %}</span>
+          </div>
+          <div class="cc-body">
+            <div class="cc-title">{{ cat.title }}</div>
+            <div class="cc-desc">{{ cat.description }}</div>
+          </div>
+          <div class="cc-foot">
+            <span class="tag tag-d">{{ cat.dashboard_count }} dashboard{{ 's' if cat.dashboard_count != 1 else '' }}</span>
+            <span class="tag tag-t">{{ cat.tool_count }} tool{{ 's' if cat.tool_count != 1 else '' }}</span>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+
+      <!-- Recent items (statisk — kobl til DB/session i produktion) -->
+      <div class="section-head">
+        <span class="section-label">Senest besøgt</span>
+        <a href="#" class="section-link">Se alt →</a>
+      </div>
+      <div class="rec-list" id="recentList">
+        <!-- Udfyldes dynamisk af JS fra localStorage -->
+      </div>
+
+    </main>
+  </div><!-- /main -->
+
+</div><!-- /shell -->
+
+<!-- ── COMMAND PALETTE ──────────────────────────────────────────── -->
+<div class="cp-backdrop" id="cpBackdrop" role="dialog" aria-modal="true" aria-label="Søg">
+  <div class="cp">
+    <div class="cp-input-row">
+      {% include "icons/search.svg" %}
+      <input
+        class="cp-input"
+        id="cpInput"
+        type="text"
+        placeholder="Søg efter dashboard, tool eller kategori..."
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <kbd class="cp-esc">Esc</kbd>
+    </div>
+    <div id="cpResults"></div>
+    <div class="cp-footer">
+      <div class="cp-hint"><kbd class="cp-hint-k">↑</kbd><kbd class="cp-hint-k">↓</kbd> Naviger</div>
+      <div class="cp-hint"><kbd class="cp-hint-k">↵</kbd> Åbn</div>
+      <div class="cp-hint"><kbd class="cp-hint-k">Esc</kbd> Luk</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCRIPTS ───────────────────────────────────────────────────── -->
+<script>
+// Search index fra server
+const SEARCH_INDEX = {{ search_index | safe }};
+
+// ── Command Palette ──────────────────────────────────────────────
+const backdrop  = document.getElementById('cpBackdrop');
+const cpInput   = document.getElementById('cpInput');
+const cpResults = document.getElementById('cpResults');
+let selectedIdx = 0;
+
+function openCP() {
+  backdrop.classList.add('show');
+  cpInput.focus();
+  renderResults('');
+}
+
+function closeCP() {
+  backdrop.classList.remove('show');
+  cpInput.value = '';
+}
+
+function renderResults(query) {
+  const q = query.trim().toLowerCase();
+  let items;
+
+  if (q.length === 0) {
+    // Vis seneste + kategorier som standard
+    const recent = getRecent();
+    const cats   = {{ categories | tojson | safe }};
+    let html = '';
+
+    if (recent.length) {
+      html += `<div class="cp-section"><div class="cp-slabel">Senest brugt</div></div>`;
+      recent.slice(0, 3).forEach((r, i) => {
+        const cls = i === selectedIdx ? ' sel' : '';
+        html += cpItemHTML(r, i);
+      });
+    }
+
+    html += `<div class="cp-section"><div class="cp-slabel">Kategorier</div></div>`;
+    cats.slice(0, 4).forEach((c, i) => {
+      const idx = (recent.length || 0) + i;
+      html += `
+        <div class="cp-item${idx === selectedIdx ? ' sel' : ''}" data-url="/category/${c.id}" data-idx="${idx}">
+          <div class="cp-item-icon cp-icon--${c.color}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div>
+            <div class="cp-item-title">${c.title}</div>
+            <div class="cp-item-sub">${c.dashboard_count + c.tool_count} items</div>
+          </div>
+        </div>`;
+    });
+    cpResults.innerHTML = html;
+  } else {
+    const matches = SEARCH_INDEX.filter(item =>
+      item.title.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    ).slice(0, 8);
+
+    if (!matches.length) {
+      cpResults.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink-4);font-size:13px">Ingen resultater for "${query}"</div>`;
+      return;
+    }
+
+    cpResults.innerHTML = `<div class="cp-section"><div class="cp-slabel">Resultater</div></div>` +
+      matches.map((item, i) => cpItemHTML(item, i)).join('');
+  }
+
+  // Click handlers
+  cpResults.querySelectorAll('.cp-item').forEach(el => {
+    el.addEventListener('click', () => {
+      saveRecent(el.dataset);
+      window.location.href = el.dataset.url;
+    });
+  });
+}
+
+function cpItemHTML(item, idx) {
+  const tagClass = item.type === 'dashboard' ? 'tag-d' : 'tag-t';
+  const tagLabel = item.type === 'dashboard' ? 'Dashboard' : 'Tool';
+  return `
+    <div class="cp-item${idx === selectedIdx ? ' sel' : ''}" data-url="${item.url}" data-idx="${idx}"
+         data-id="${item.id}" data-title="${item.title}" data-type="${item.type}" data-category="${item.category}">
+      <div class="cp-item-icon cp-icon--green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div>
+        <div class="cp-item-title">${item.title}</div>
+        <div class="cp-item-sub">${item.category}</div>
+      </div>
+      <span class="cp-item-badge tag ${tagClass}">${tagLabel}</span>
+    </div>`;
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openCP(); return; }
+  if (!backdrop.classList.contains('show')) return;
+  const items = cpResults.querySelectorAll('.cp-item');
+  if (e.key === 'Escape')     { closeCP(); return; }
+  if (e.key === 'ArrowDown')  { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, items.length - 1); updateSelection(items); }
+  if (e.key === 'ArrowUp')    { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); updateSelection(items); }
+  if (e.key === 'Enter' && items[selectedIdx]) {
+    const el = items[selectedIdx];
+    if (el.dataset.id) saveRecent(el.dataset);
+    window.location.href = el.dataset.url;
+  }
+});
+
+function updateSelection(items) {
+  items.forEach((el, i) => el.classList.toggle('sel', i === selectedIdx));
+}
+
+cpInput.addEventListener('input', e => { selectedIdx = 0; renderResults(e.target.value); });
+backdrop.addEventListener('click', e => { if (e.target === backdrop) closeCP(); });
+document.getElementById('searchTrigger').addEventListener('click', openCP);
+
+// ── Recent items (localStorage) ──────────────────────────────────
+const RECENT_KEY = 'im_hub_recent';
+
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+}
+
+function saveRecent(data) {
+  const recent = getRecent().filter(r => r.id !== data.id);
+  recent.unshift({ id: data.id, title: data.title, type: data.type, category: data.category, url: data.url });
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, 10)));
+}
+
+function renderRecentList() {
+  const list   = document.getElementById('recentList');
+  const recent = getRecent();
+  if (!recent.length) { list.innerHTML = '<p style="color:var(--ink-4);font-size:12px;padding:4px 0">Ingen seneste besøg endnu</p>'; return; }
+  list.innerHTML = recent.slice(0, 5).map(item => `
+    <a href="${item.url}" class="ri" onclick="saveRecent(${JSON.stringify(item).replace(/"/g,'&quot;')})">
+      <div class="ri-icon ri-icon--${item.type === 'dashboard' ? 'green' : 'amber'}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      </div>
+      <div>
+        <div class="ri-name">${item.title}</div>
+        <div class="ri-meta">${item.category}</div>
+      </div>
+      <span class="ri-badge tag ${item.type === 'dashboard' ? 'tag-d' : 'tag-t'}">${item.type === 'dashboard' ? 'Dashboard' : 'Tool'}</span>
+    </a>`).join('');
+}
+
+renderRecentList();
+</script>
+
+</body>
+</html>
