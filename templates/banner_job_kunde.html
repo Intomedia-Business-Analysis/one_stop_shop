@@ -46,6 +46,14 @@
 .pipeline-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
 .pipeline-badge.banner{background:#e6f4ec;color:#1a6b3c}
 .pipeline-badge.job{background:#e6f0fb;color:#1a4a8c}
+
+.deal-filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.deal-filter-bar .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.deal-filter-bar select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none}
+.deal-filter-bar select:focus{border-color:var(--green)}
+.deal-filter-bar .filter-reset{font-size:11px;font-weight:600;color:var(--ink-4);background:none;border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 10px;cursor:pointer}
+.deal-filter-bar .filter-reset:hover{border-color:var(--green);color:var(--green)}
+.deal-filter-count{font-size:11px;color:var(--ink-4);margin-left:auto}
 </style>
 </head>
 <body>
@@ -145,6 +153,20 @@
           <!-- Deal historik -->
           <div class="dash-card">
             <div class="dash-card-title">Deal Historik</div>
+            <div class="deal-filter-bar" id="deal-filter-bar">
+              <span class="filter-label">Filtrer</span>
+              <select id="filter-aar" onchange="filterDeals()">
+                <option value="">Alle år</option>
+              </select>
+              <select id="filter-saelger" onchange="filterDeals()">
+                <option value="">Alle sælgere</option>
+              </select>
+              <select id="filter-site" onchange="filterDeals()">
+                <option value="">Alle sites</option>
+              </select>
+              <button class="filter-reset" onclick="resetFilters()">Nulstil</button>
+              <span class="deal-filter-count" id="filter-count"></span>
+            </div>
             <table class="v-table" id="deals-table">
               <thead>
                 <tr>
@@ -179,6 +201,7 @@
 <script>
 const pipeline = {{ pipeline | tojson }};
 const orgId    = {{ org_id | tojson }};
+let allDeals   = [];
 
 function fmtKr(v) {
   if (!v) return '0 kr.';
@@ -192,6 +215,71 @@ function fmtFull(v) {
 }
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function populateFilters(deals) {
+  const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))].sort();
+
+  const aarSel = document.getElementById('filter-aar');
+  unique('aar').forEach(v => {
+    const o = document.createElement('option'); o.value = v; o.textContent = v; aarSel.appendChild(o);
+  });
+
+  const saelgerSel = document.getElementById('filter-saelger');
+  unique('owner_name').forEach(v => {
+    const o = document.createElement('option'); o.value = v; o.textContent = v; saelgerSel.appendChild(o);
+  });
+
+  const siteSel = document.getElementById('filter-site');
+  const siteValues = [...new Set(
+    deals.flatMap(d => (d.sites || '').split(',').map(s => s.trim())).filter(Boolean)
+  )].sort();
+  siteValues.forEach(v => {
+    const o = document.createElement('option'); o.value = v; o.textContent = v; siteSel.appendChild(o);
+  });
+}
+
+function renderDeals(deals) {
+  const tbody = document.getElementById('deals-tbody');
+  const total = allDeals.length;
+  const count = deals.length;
+  document.getElementById('filter-count').textContent =
+    count < total ? `Viser ${count} af ${total} deals` : `${total} deals`;
+
+  if (deals.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen deals matcher filteret</td></tr>';
+    return;
+  }
+  tbody.innerHTML = deals.map(deal => `
+    <tr>
+      <td>${escHtml(deal.title)}</td>
+      <td>${escHtml(deal.sites)}</td>
+      <td>${escHtml(deal.owner_name)}</td>
+      <td>${escHtml(deal.dato)}</td>
+      <td class="num">${deal.aar}</td>
+      <td class="num">${fmtFull(deal.value)}</td>
+    </tr>
+  `).join('');
+}
+
+function filterDeals() {
+  const aar     = document.getElementById('filter-aar').value;
+  const saelger = document.getElementById('filter-saelger').value;
+  const site    = document.getElementById('filter-site').value;
+  const filtered = allDeals.filter(d => {
+    if (aar     && String(d.aar) !== aar)                                                    return false;
+    if (saelger && d.owner_name !== saelger)                                                 return false;
+    if (site    && !(d.sites || '').split(',').map(s => s.trim()).includes(site))             return false;
+    return true;
+  });
+  renderDeals(filtered);
+}
+
+function resetFilters() {
+  document.getElementById('filter-aar').value     = '';
+  document.getElementById('filter-saelger').value = '';
+  document.getElementById('filter-site').value    = '';
+  renderDeals(allDeals);
 }
 
 async function loadKunde() {
@@ -274,23 +362,11 @@ async function loadKunde() {
     document.getElementById('year-chart').innerHTML = `
       <div style="display:flex;gap:12px;align-items:flex-end">${colsHtml}</div>`;
 
-    // Deals table
+    // Deals table + filters
     const deals = d.deals || [];
-    if (deals.length === 0) {
-      document.getElementById('deals-tbody').innerHTML =
-        '<tr><td colspan="6" class="empty">Ingen deals fundet</td></tr>';
-    } else {
-      document.getElementById('deals-tbody').innerHTML = deals.map(deal => `
-        <tr>
-          <td>${escHtml(deal.title)}</td>
-          <td>${escHtml(deal.sites)}</td>
-          <td>${escHtml(deal.owner_name)}</td>
-          <td>${escHtml(deal.dato)}</td>
-          <td class="num">${deal.aar}</td>
-          <td class="num">${fmtFull(deal.value)}</td>
-        </tr>
-      `).join('');
-    }
+    allDeals = deals;
+    populateFilters(deals);
+    renderDeals(deals);
 
     document.getElementById('page-content').classList.remove('hidden');
 
