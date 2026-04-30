@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Afdelingsleder Dashboard — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1280px;margin:0 auto}
+/* Hoved-grid: team-chart venstre, højre kolonne */
+.dash-main-grid{display:grid;grid-template-columns:3fr 2fr;gap:20px;align-items:start}
+.right-col{display:flex;flex-direction:column;gap:20px}
+@media(max-width:960px){.dash-main-grid{grid-template-columns:1fr}}
+/* Kort */
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+/* Toggle */
+.toggle-pills{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;width:fit-content}
+.toggle-pill{padding:5px 14px;border-radius:5px;border:none;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;transition:all .13s;background:transparent;color:var(--ink-3)}
+.toggle-pill.on{background:var(--green);color:#fff}
+/* Team chart (horisontale bars) */
+.tc-row{display:grid;grid-template-columns:115px 1fr 195px;align-items:center;gap:10px;margin-bottom:10px}
+.tc-label{font-size:11px;font-weight:600;color:var(--ink);text-align:right;white-space:nowrap}
+.tc-track{height:14px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
+.tc-zone{position:absolute;top:0;height:100%}
+.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#5B9BD5;z-index:2;transition:width .5s ease}
+.tc-bar-can{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#B32E45;opacity:.75;z-index:3;transition:width .5s ease}
+.tc-vline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.25);z-index:4}
+.tc-val{font-size:13px;font-weight:700;text-align:right;white-space:nowrap;color:var(--ink)}
+.tc-val small{font-size:12px;color:var(--green);font-weight:600}
+/* Akse-række bruger samme grid som tc-row */
+.tc-axis-row{display:grid;grid-template-columns:115px 1fr 195px;gap:10px;margin-top:2px}
+.tc-axis-inner{display:flex;justify-content:space-between;font-size:8px;color:var(--ink-4)}
+/* Forecast bokse */
+.fc-boxes{display:flex;align-items:center;gap:10px;margin-top:4px}
+.fc-box{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 12px;text-align:center}
+.fc-box-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:8px}
+.fc-box-val{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.5px}
+.fc-big-arrow{font-size:26px;color:var(--ink-3);flex-shrink:0;line-height:1}
+.fc-big-arrow.up{color:var(--green)}
+.fc-big-arrow.down{color:#B32E45}
+.fc-meta{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.fc-meta-item{display:flex;flex-direction:column;gap:3px}
+.fc-meta-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.fc-meta-val{font-size:13px;font-weight:700;color:var(--ink)}
+.fc-meta-val.green{color:var(--green)}
+.fc-meta-val.neg{color:#B32E45}
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+/* Spinner */
+.spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+      <a href="/tools/performance/dashboards" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        KPI Dashboards
+      </a>
+      <a href="/tools/performance/afdelingsleder" class="sbi active">
+        <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z" fill="none"/><path d="M3 9h18M9 21V9"/></svg>
+        Afdelingsleder
+      </a>
+      <a href="/tools/performance/manager" class="sbi">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager
+      </a>
+      <a href="/tools/performance/overview" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Overblik
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/tools/performance/dashboards" class="tb-btn">← KPI Dashboards</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/performance/dashboards" class="bc-link">KPI Dashboards</a><span class="bc-sep">/</span>
+          <span>Afdelingsleder</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Afdelingsleder Dashboard</h1>
+            <p class="page-sub">Helikopter-perspektiv — omsætning, budget, forecast og vækst</p>
+          </div>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+          <select class="filter-select" id="filter-month" onchange="loadData()">
+            <option value="">Alle måneder</option>
+            <option value="1">Januar</option>
+            <option value="2">Februar</option>
+            <option value="3">Marts</option>
+            <option value="4">April</option>
+            <option value="5">Maj</option>
+            <option value="6">Juni</option>
+            <option value="7">Juli</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+          <div class="filter-sep"></div>
+          <button class="refresh-btn" onclick="loadData()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Opdater
+          </button>
+        </div>
+
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <div id="dash-content" style="display:none">
+          <div class="dash-main-grid">
+
+            <!-- Venstre: Nettosalg vs. Budget per team -->
+            <div class="dash-card">
+              <div class="dash-card-title">
+                <span>Nettosalg vs. Budget</span>
+                <span id="rv-month-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+              </div>
+              <div id="team-chart"><div style="color:var(--ink-4);font-size:12px">Henter…</div></div>
+              <div class="tc-axis-row" id="tc-axis" style="display:none">
+                <div></div>
+                <div class="tc-axis-inner"><span>0%</span><span>50%</span><span>100%</span></div>
+                <div></div>
+              </div>
+            </div>
+
+            <!-- Højre kolonne: Forecast + Kundetilgang -->
+            <div class="right-col">
+
+              <!-- Forecast -->
+              <div class="dash-card">
+                <div class="dash-card-title">Forecast</div>
+                <div class="fc-boxes">
+                  <div class="fc-box">
+                    <div class="fc-box-label">Nuværende</div>
+                    <div class="fc-box-val" id="fc-nu">—</div>
+                  </div>
+                  <div class="fc-big-arrow" id="fc-arrow">→</div>
+                  <div class="fc-box">
+                    <div class="fc-box-label">Forventet</div>
+                    <div class="fc-box-val" id="fc-forecast">—</div>
+                  </div>
+                </div>
+                <div class="fc-meta">
+                  <div class="fc-meta-item">
+                    <span class="fc-meta-label">Vs. LY (netto)</span>
+                    <span class="fc-meta-val" id="fc-vs-ly">—</span>
+                  </div>
+                  <div class="fc-meta-item">
+                    <span class="fc-meta-label">YoY %</span>
+                    <span class="fc-meta-val" id="fc-yoy-pct">—</span>
+                  </div>
+                  <div class="fc-meta-item">
+                    <span class="fc-meta-label">Budget</span>
+                    <span class="fc-meta-val" id="fc-budget">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Kundetilgang (netto) -->
+              <div class="dash-card">
+                <div class="dash-card-title">
+                  <span>Kundetilgang (Netto)</span>
+                  <span id="chart-year-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+                </div>
+                <div id="net-chart"></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function fmtKr(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000) + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function loadMeta() {
+  const today = new Date();
+  const yearSel = document.getElementById('filter-year');
+  yearSel.innerHTML = '';
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (y === today.getFullYear()) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  // Lad "Alle måneder" være default — sæt ikke en specifik måned
+}
+
+async function loadData() {
+  const year  = document.getElementById('filter-year').value;
+  const month = document.getElementById('filter-month').value;
+  const params = new URLSearchParams();
+  if (year)  params.set('year',  year);
+  if (month) params.set('month', month);
+  try {
+    const r = await fetch(`/tools/performance/afdelingsleder-data?` + params, { cache: 'no-store' });
+    const d = await r.json();
+    if (!r.ok) return;
+
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('dash-content').style.display  = '';
+
+    renderTeamChart(d);
+    renderForecast(d);
+    renderNetChart(d);
+
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function fmtFull(v) {
+  const sign = v < 0 ? '-' : '';
+  return sign + Math.abs(Math.round(v)).toLocaleString('da-DK') + ' kr.';
+}
+
+function renderTeamChart(d) {
+  document.getElementById('rv-month-label').textContent = d.month_label;
+  const teams = d.team_chart || [];
+  const axisEl = document.getElementById('tc-axis');
+
+  if (!teams.length) {
+    document.getElementById('team-chart').innerHTML =
+      '<div style="color:var(--ink-4);font-size:12px;padding:20px 0">Ingen data</div>';
+    axisEl.style.display = 'none';
+    return;
+  }
+
+  // Reference for skalering: brug budget hvis tilgængeligt, ellers max won
+  const maxWon    = Math.max(...teams.map(t => t.won), 1);
+  const maxBudget = Math.max(...teams.map(t => t.budget), 0);
+  axisEl.style.display = '';
+
+  document.getElementById('team-chart').innerHTML = teams.map(t => {
+    // 100% = budget (hvis sat), ellers max won på tværs af teams
+    const ref    = t.budget > 0 ? t.budget : (maxBudget > 0 ? maxBudget : maxWon);
+    const wonPct = Math.min((t.netto / ref) * 100, 120).toFixed(1); // kan gå lidt over 100%
+
+    // Højre side: netto / budget (som manager dashboard)
+    const hasBudget = t.budget > 0;
+    const valHtml = hasBudget
+      ? `${fmtFull(t.netto)} <small>/ ${fmtFull(t.budget)}</small>`
+      : fmtKr(t.netto);
+
+    return `
+      <div class="tc-row">
+        <div class="tc-label">${escHtml(t.team)}</div>
+        <div class="tc-track">
+          <div class="tc-zone" style="left:0;width:50%;background:#FDE8EC"></div>
+          <div class="tc-zone" style="left:50%;width:35%;background:#FEF3DC"></div>
+          <div class="tc-zone" style="left:85%;width:15%;background:#D4EDE4"></div>
+          <div class="tc-bar-won" style="width:${wonPct}%" title="Won: ${fmtKr(t.won)}"></div>
+          <div class="tc-vline" style="left:50%"></div>
+          <div class="tc-vline" style="left:calc(100% - 1px)"></div>
+        </div>
+        <div class="tc-val">${valHtml}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderForecast(d) {
+  document.getElementById('fc-nu').textContent = fmtKr(d.netto_maaned);
+  document.getElementById('fc-budget').textContent = d.budget_maaned > 0 ? fmtKr(d.budget_maaned) : '—';
+
+  // FORVENTET = netto vundet + vægtet åben pipeline
+  const hasPipeline = (d.pipeline_won || 0) + (d.pipeline_cancel || 0) > 0;
+  document.getElementById('fc-forecast').textContent = hasPipeline ? fmtKr(d.forecast_netto) : fmtKr(d.netto_maaned);
+
+  // Pil baseret på om forecast er over eller under nuværende
+  const arrowEl = document.getElementById('fc-arrow');
+  const diff = (d.forecast_netto || d.netto_maaned) - d.netto_maaned;
+  if (hasPipeline && diff !== 0) {
+    arrowEl.textContent = diff > 0 ? '↑' : '↓';
+    arrowEl.className   = 'fc-big-arrow ' + (diff > 0 ? 'up' : 'down');
+  } else {
+    arrowEl.textContent = '→';
+    arrowEl.className   = 'fc-big-arrow';
+  }
+
+  // VS. LY og YOY%
+  if (d.vs_ly !== null && d.vs_ly !== undefined) {
+    const sign = d.vs_ly >= 0 ? '+' : '';
+    const el   = document.getElementById('fc-vs-ly');
+    el.textContent = sign + fmtKr(d.vs_ly);
+    el.className   = 'fc-meta-val ' + (d.vs_ly >= 0 ? 'green' : 'neg');
+  }
+  if (d.vs_ly_pct !== null && d.vs_ly_pct !== undefined) {
+    const yoyEl = document.getElementById('fc-yoy-pct');
+    yoyEl.textContent = (d.vs_ly_pct >= 0 ? '+' : '') + d.vs_ly_pct.toFixed(1).replace('.',',') + '%';
+    yoyEl.className   = 'fc-meta-val ' + (d.vs_ly_pct >= 0 ? 'green' : 'neg');
+  }
+}
+
+function renderNetChart(d) {
+  document.getElementById('chart-year-label').textContent = new Date(d.today).getFullYear();
+  const chart    = d.churn_chart;
+  const curMonth = parseInt(d.today.split('-')[1]);
+
+  // Brug antal kunder (netto_count), ikke beløb
+  const maxAbs = Math.max(...chart.map(m => Math.abs(m.netto_count)), 1);
+
+  const W = 260, padX = 24, padY = 8;
+  const H = 110;
+  const midY  = padY + (H - padY * 2) / 2;
+  const halfH = (H - padY * 2) / 2;
+  const barW  = (W - padX * 2) / 12;
+
+  // Y-akse labels (max, 0, min)
+  const yMax = Math.ceil(maxAbs);
+  const yAxisLabels = [
+    { val: yMax,  y: padY },
+    { val: 0,     y: midY },
+    { val: -yMax, y: padY + (H - padY * 2) },
+  ].map(l =>
+    `<text x="${(padX - 4).toFixed(1)}" y="${l.y.toFixed(1)}" font-size="7"
+      fill="var(--ink-4)" text-anchor="end" dominant-baseline="middle">${l.val}</text>`
+  ).join('');
+
+  const items = chart.map((m, i) => {
+    const month    = i + 1;
+    const isFuture = month > curMonth;
+    const isCur    = month === curMonth;
+    const cx  = padX + i * barW + barW / 2;
+    const bw  = barW * 0.55;
+    const bx  = cx - bw / 2;
+    const lblCol = isCur ? 'var(--green)' : 'var(--ink-4)';
+    const lblFw  = isCur ? '700' : '400';
+    const op     = isFuture ? 0.35 : 1;
+
+    let bar = '';
+    if (!isFuture && m.netto_count !== 0) {
+      const pct = m.netto_count / maxAbs;
+      const bh  = Math.max(Math.abs(pct) * halfH, 2);
+      const by  = pct >= 0 ? midY - bh : midY;
+      const col = m.netto_count >= 0 ? 'var(--green)' : '#B32E45';
+      bar = `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"
+        fill="${col}" opacity="${isCur ? 1 : 0.82}" rx="1.5">
+        <title>${m.maaned}: ${m.netto_count > 0 ? '+' : ''}${m.netto_count} kunder (${m.won_count} nye, ${m.cancel_count} tabt)</title>
+      </rect>`;
+    }
+
+    return bar + `<text x="${cx.toFixed(1)}" y="${H + 4}" font-size="7" fill="${lblCol}"
+      font-weight="${lblFw}" opacity="${op}" text-anchor="middle">${m.maaned}</text>`;
+  }).join('');
+
+  document.getElementById('net-chart').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H + 14}" style="width:100%;overflow:visible">
+       ${yAxisLabels}
+       <line x1="${padX}" y1="${midY.toFixed(1)}" x2="${W - padX}" y2="${midY.toFixed(1)}"
+         stroke="var(--border)" stroke-width="1"/>
+       ${items}
+     </svg>`;
+}
+
+loadMeta();
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

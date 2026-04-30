@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barselsplanlægger — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    /* Sørg for at iframe fylder den resterende højde */
+    .shell { height: 100vh; }
+    .main  { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+    .tool-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: .75rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .tool-topbar-left {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+    }
+
+    .tool-topbar-left a {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .tool-topbar-left a:hover { color: var(--text); }
+
+    .tool-topbar-left .sep {
+      color: var(--border);
+      font-size: .875rem;
+    }
+
+    .tool-topbar-title {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .tool-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .6rem;
+      background: var(--green-tint, #edf7f3);
+      color: var(--green);
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+
+    .tool-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+      <a href="#" class="sbi">
+        {% include "icons/star.svg" %} Mine favoritter
+      </a>
+      <a href="#" class="sbi">
+        {% include "icons/clock.svg" %} Seneste
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Kategorier</div>
+      {% for cat in categories %}
+      <a href="/category/{{ cat.id }}" class="sbi {% if cat.id == 'hr' %}on{% endif %}">
+        {% include "icons/" + cat.icon + ".svg" %}
+        {{ cat.title }}
+        <span class="sbi-count">{{ cat.dashboard_count + cat.tool_count }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      {% if user.role == 'admin' %}
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      {% endif %}
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN: topbar + iframe ── -->
+  <div class="main">
+
+    <div class="tool-topbar">
+      <div class="tool-topbar-left">
+        <a href="/">Hub</a>
+        <span class="sep">›</span>
+        <a href="/category/hr">HR</a>
+        <span class="sep">›</span>
+        <span class="tool-topbar-title">🍼 Barselsplanlægger</span>
+        <span class="tool-badge">Værktøj</span>
+      </div>
+    </div>
+
+    <iframe
+      class="tool-frame"
+      src="/tool/barselsberegner/app"
+      title="Barselsplanlægger"
+    ></iframe>
+
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brugerstyring — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    /* ── Notifications ── */
+    .notif {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .75rem 1rem;
+      border-radius: var(--r-sm);
+      font-size: .8125rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+
+    /* ── Create user card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 1.5rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header h2 {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+    }
+    .card-header .toggle-icon {
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      line-height: 1;
+      transition: transform .2s;
+    }
+    .card-header.open .toggle-icon { transform: rotate(45deg); }
+    .card-body { padding: 1.25rem; display: none; }
+    .card-body.open { display: block; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .field { display: flex; flex-direction: column; gap: .375rem; }
+    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
+    .field input, .field select {
+      padding: .5rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--green); }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .5625rem 1rem;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    /* ── Group sections ── */
+    .group-section {
+      margin-bottom: 1.5rem;
+    }
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      margin-bottom: .5rem;
+    }
+    .group-title {
+      font-size: .8125rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .group-count {
+      font-size: .75rem;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: .15rem .55rem;
+    }
+    .group-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: .5rem 1rem;
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .75rem 1rem;
+      font-size: .875rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg); }
+
+    .user-name-cell { display: flex; align-items: center; gap: .75rem; }
+    .avatar {
+      width: 30px;
+      height: 30px;
+      background: var(--green);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .625rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .avatar.inactive { background: var(--border); color: var(--text-muted); }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .6rem;
+      border-radius: 99px;
+      font-size: .72rem;
+      font-weight: 600;
+    }
+    .role-admin            { background: #fef3c7; color: #92400e; }
+    .role-management       { background: #dbeafe; color: #1e40af; }
+    .role-sales_operations { background: #ede9fe; color: #5b21b6; }
+    .role-marketing        { background: #fce7f3; color: #9d174d; }
+    .role-sales_manager    { background: #d1fae5; color: #065f46; }
+    .role-salesperson      { background: #f0fdf4; color: #166534; }
+
+    .status-badge { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; }
+    .status-active   { color: #166534; }
+    .status-inactive { color: var(--text-muted); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .dot-active   { background: #22c55e; }
+    .dot-inactive { background: var(--border); }
+
+    .action-btn {
+      padding: .3125rem .75rem;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+    }
+    .action-btn:hover { border-color: var(--green); background: var(--bg); }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: .875rem;
+    }
+
+    /* ── Summary bar ── */
+    .summary-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .summary-bar h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+    .summary-bar p {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      margin: .25rem 0 0;
+    }
+    .summary-actions { display: flex; gap: .625rem; align-items: center; }
+    .total-count {
+      font-size: .8125rem;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: .25rem .75rem;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      <a href="/admin/users" class="sbi on">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      <a href="/admin/teams" class="sbi">
+        {% include "icons/users.svg" %} Hold
+      </a>
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <!-- scroll wrapper: full height flex child, handles overflow -->
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1100px;">
+
+        <!-- Header -->
+        <div class="summary-bar">
+          <div>
+            <h1>Brugerstyring</h1>
+            <p>Opret og administrer brugere og deres rettigheder</p>
+          </div>
+          <div class="summary-actions">
+            <span class="total-count">{{ users | length }} brugere</span>
+            <form method="post" action="/admin/db-init"
+                  onsubmit="return confirm('Kør DB-initialisering? Opretter manglende tabeller (idempotent — sletter ikke data).')">
+              <button type="submit"
+                      style="padding:.5rem .9rem;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;"
+                      title="Kør DB-initialisering manuelt">
+                ⚙ Initialiser DB
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Notifications -->
+        {% if success == 'created' %}
+        <div class="notif notif-success">Bruger oprettet</div>
+        {% elif success == 'updated' %}
+        <div class="notif notif-success">Bruger opdateret</div>
+        {% elif success == 'db_init' %}
+        <div class="notif notif-success">DB initialiseret — manglende tabeller er oprettet</div>
+        {% endif %}
+
+        {% if error == 'missing_fields' %}
+        <div class="notif notif-error">Alle felter skal udfyldes</div>
+        {% elif error == 'username_taken' %}
+        <div class="notif notif-error">Brugernavnet er allerede i brug</div>
+        {% elif error == 'db_init_failed' %}
+        <div class="notif notif-error">DB-initialisering fejlede — tjek databaseforbindelsen</div>
+        {% elif error %}
+        <div class="notif notif-error">Der opstod en fejl — prøv igen</div>
+        {% endif %}
+
+        <!-- ── Opret bruger (accordion) ── -->
+        <div class="card">
+          <div class="card-header" id="createHeader" onclick="toggleCreate()">
+            <h2>Opret ny bruger</h2>
+            <span class="toggle-icon" id="toggleIcon">+</span>
+          </div>
+          <div class="card-body" id="createBody">
+            <form method="post" action="/admin/users/create">
+              <div class="form-grid">
+                <div class="field">
+                  <label>Fulde navn *</label>
+                  <input type="text" name="name" placeholder="f.eks. Anna Nielsen" required>
+                </div>
+                <div class="field">
+                  <label>Brugernavn *</label>
+                  <input type="text" name="username" placeholder="f.eks. anna" required>
+                </div>
+                <div class="field">
+                  <label>Initialer *</label>
+                  <input type="text" name="initials" placeholder="f.eks. AN" maxlength="5" required>
+                </div>
+                <div class="field">
+                  <label>Adgangskode *</label>
+                  <input type="password" name="password" placeholder="Min. 8 tegn" required>
+                </div>
+                <div class="field">
+                  <label>Rolle *</label>
+                  <select name="role" required>
+                    {% for val, label in roles %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Brand</label>
+                  <select name="brand">
+                    {% for val, label in brands %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <button type="submit" class="btn-primary">Opret bruger</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- ── Grouped user sections ── -->
+        {% if groups %}
+          {% for grp in groups %}
+          <div class="group-section">
+            <div class="group-header">
+              <span class="group-title">{{ grp.title }}</span>
+              <span class="group-count">{{ grp.users | length }}</span>
+            </div>
+            <div class="group-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Navn</th>
+                    <th>Brugernavn</th>
+                    <th>Rolle</th>
+                    <th>Status</th>
+                    <th>Oprettet</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in grp.users %}
+                  <tr>
+                    <td>
+                      <div class="user-name-cell">
+                        <div class="avatar {% if not u.is_active %}inactive{% endif %}">{{ u.initials }}</div>
+                        <span>{{ u.name }}</span>
+                      </div>
+                    </td>
+                    <td style="color:var(--text-muted);font-size:.8125rem;">{{ u.username }}</td>
+                    <td>
+                      <span class="role-badge role-{{ u.role }}">
+                        {{ ROLE_LABELS.get(u.role, u.role) }}
+                      </span>
+                    </td>
+                    <td>
+                      {% if u.is_active %}
+                      <span class="status-badge status-active">
+                        <span class="dot dot-active"></span> Aktiv
+                      </span>
+                      {% else %}
+                      <span class="status-badge status-inactive">
+                        <span class="dot dot-inactive"></span> Inaktiv
+                      </span>
+                      {% endif %}
+                    </td>
+                    <td style="color:var(--text-muted);font-size:.8125rem;">
+                      {% if u.created_at %}
+                        {{ u.created_at.strftime('%d/%m/%Y') }}
+                      {% else %}—{% endif %}
+                    </td>
+                    <td>
+                      <a href="/admin/users/{{ u.id }}/edit" class="action-btn">Rediger</a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">Ingen brugere endnu — opret den første ovenfor</div>
+        {% endif %}
+
+      </div><!-- /max-width -->
+    </div><!-- /scroll wrapper -->
+  </div>
+</div>
+
+<script>
+  function toggleCreate() {
+    const header = document.getElementById('createHeader');
+    const body   = document.getElementById('createBody');
+    const icon   = document.getElementById('toggleIcon');
+    header.classList.toggle('open');
+    body.classList.toggle('open');
+    icon.textContent = body.classList.contains('open') ? '×' : '+';
+  }
+
+  {% if error %}
+  toggleCreate();
+  {% endif %}
+</script>
+</body>
+</html>

@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rediger hold — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .375rem;
+      font-size: .875rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color .15s;
+    }
+    .back-btn:hover { color: var(--text); }
+    .page-header h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0;
+    }
+
+    .notif {
+      display: flex;
+      align-items: center;
+      gap: .625rem;
+      padding: .75rem 1rem;
+      border-radius: var(--r-sm);
+      font-size: .8125rem;
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+
+    /* ── Edit card (team info) ── */
+    .edit-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      max-width: 680px;
+      margin-bottom: 1.5rem;
+    }
+    .edit-card-header {
+      padding: 1.125rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: .875rem;
+    }
+    .edit-card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+    .edit-card-header p  { font-size: .8125rem; color: var(--text-muted); margin: .125rem 0 0; }
+    .edit-card-body { padding: 1.5rem; }
+
+    .avatar-lg {
+      width: 44px; height: 44px;
+      background: #dbeafe; color: #1e40af;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .8125rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 540px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: .375rem; }
+    .field.full { grid-column: 1 / -1; }
+    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
+    .field input,
+    .field select,
+    .field textarea {
+      padding: .5625rem .875rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus { border-color: var(--green); }
+    .field textarea { resize: vertical; min-height: 60px; }
+
+    .form-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1.5rem; }
+
+    .btn-primary {
+      padding: .625rem 1.25rem;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88; }
+
+    .btn-ghost {
+      padding: .625rem 1rem;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .875rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color .15s;
+    }
+    .btn-ghost:hover { border-color: var(--text-muted); }
+
+    /* ── Members section ── */
+    .section-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .section-card-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .section-card-header h2 { font-size: .9375rem; font-weight: 600; color: var(--text); margin: 0; }
+    .section-card-header p  { font-size: .8125rem; color: var(--text-muted); margin: .25rem 0 0; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: .625rem 1rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: .75rem 1rem;
+      font-size: .875rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg); }
+
+    .user-name-cell { display: flex; align-items: center; gap: .75rem; }
+
+    .avatar {
+      width: 32px; height: 32px;
+      background: var(--green);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6875rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .team-role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .2rem .6rem;
+      border-radius: 99px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .role-leader { background: #dbeafe; color: #1e40af; }
+    .role-member { background: #f0fdf4; color: #166534; }
+
+    .action-btn {
+      padding: .3125rem .75rem;
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+      white-space: nowrap;
+    }
+    .action-btn:hover { border-color: var(--green); background: var(--bg); }
+    .action-btn-danger { border-color: #f5c2c7; color: #842029; }
+    .action-btn-danger:hover { border-color: #842029; background: #fff3f3; }
+
+    .edit-row-form td {
+      background: var(--bg) !important;
+      padding: 1rem 1.25rem;
+    }
+
+    .inline-form-grid {
+      display: grid;
+      grid-template-columns: 120px 1fr 1fr 1fr 2fr auto;
+      gap: .75rem;
+      align-items: end;
+    }
+
+    .add-member-section {
+      padding: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .add-member-section h3 {
+      font-size: .9375rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 1rem;
+    }
+    .add-member-grid {
+      display: grid;
+      grid-template-columns: 2fr 120px 1fr 1fr 2fr auto;
+      gap: .75rem;
+      align-items: end;
+    }
+    @media (max-width: 900px) {
+      .add-member-grid,
+      .inline-form-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--text-muted);
+      font-size: .875rem;
+    }
+
+    .period-text {
+      font-size: .8125rem;
+      color: var(--text-muted);
+    }
+    .period-ongoing {
+      font-size: .75rem;
+      font-weight: 600;
+      color: #166534;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 99px;
+      padding: .15rem .5rem;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">:m</div>
+      <span class="sb-logo-text">intomedia</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        {% include "icons/grid.svg" %} Hub
+      </a>
+    </nav>
+
+    <div class="sb-divider"></div>
+
+    <nav class="sb-nav">
+      <div class="sb-section-label">Administration</div>
+      <a href="/admin/users" class="sbi">
+        {% include "icons/lock.svg" %} Brugerstyring
+      </a>
+      <a href="/admin/teams" class="sbi on">
+        {% include "icons/users.svg" %} Hold
+      </a>
+      <a href="/settings" class="sbi">
+        {% include "icons/settings.svg" %} Indstillinger
+      </a>
+    </nav>
+
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
+      </div>
+    </div>
+
+    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
+      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
+        Log ud
+      </button>
+    </form>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+    <div style="padding: 2rem; max-width: 1000px;">
+
+      <div class="page-header">
+        <a href="/admin/teams" class="back-btn">← Alle hold</a>
+        <h1>{{ team.name }}</h1>
+      </div>
+
+      <!-- Notifications -->
+      {% if success == 'updated' %}
+      <div class="notif notif-success">Ændringer gemt</div>
+      {% elif success == 'member_added' %}
+      <div class="notif notif-success">Medlem tilføjet</div>
+      {% elif success == 'member_removed' %}
+      <div class="notif notif-success">Medlem fjernet</div>
+      {% endif %}
+
+      {% if error == 'missing_fields' %}
+      <div class="notif notif-error">Bruger og startdato er påkrævet</div>
+      {% elif error == 'db_error' %}
+      <div class="notif notif-error">Der opstod en databasefejl — prøv igen</div>
+      {% elif error %}
+      <div class="notif notif-error">Der opstod en fejl — prøv igen</div>
+      {% endif %}
+
+      <!-- ── Team info card ── -->
+      <div class="edit-card">
+        <div class="edit-card-header">
+          <div class="avatar-lg">{{ team.name[:2].upper() }}</div>
+          <div>
+            <h2>{{ team.name }}</h2>
+            {% if team.brand %}<p>Brand: {{ team.brand }}</p>{% else %}<p>Intet brand tilknyttet</p>{% endif %}
+          </div>
+        </div>
+
+        <div class="edit-card-body">
+          <form method="post" action="/admin/teams/{{ team.id }}/update">
+            <div class="form-grid">
+              <div class="field">
+                <label>Holdnavn</label>
+                <input type="text" name="name" value="{{ team.name }}" required>
+              </div>
+              <div class="field">
+                <label>Brand <span style="font-weight:400;color:var(--text-muted);font-size:.75rem;">— styrer hvilke sites holdet tildeles</span></label>
+                <select name="brand">
+                  {% for val, label in brands %}
+                  <option value="{{ val }}" {% if (team.brand or '') == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <span style="font-size:.75rem;color:var(--text-muted);margin-top:.25rem;">
+                  Tværgående hold (Banner, Job, o.l.) bruger <strong>Alle brands</strong>.
+                </span>
+              </div>
+              <div class="field full">
+                <label>Beskrivelse</label>
+                <input type="text" name="description" value="{{ team.description or '' }}" placeholder="Valgfri beskrivelse">
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Gem ændringer</button>
+              <a href="/admin/teams" class="btn-ghost">Annuller</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- ── Members section ── -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div>
+            <h2>Holdmedlemmer</h2>
+            <p>Tidsbaserede medlemskaber — en bruger kan have perioder i flere hold</p>
+          </div>
+          <span style="font-size:.8125rem;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:.2rem .65rem;">
+            {{ memberships | length }}
+          </span>
+        </div>
+
+        {% if memberships %}
+        <table>
+          <thead>
+            <tr>
+              <th>Bruger</th>
+              <th>Rolle i hold</th>
+              <th>Periode</th>
+              <th>Noter</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in memberships %}
+            <tr>
+              <td>
+                <div class="user-name-cell">
+                  <div class="avatar">{{ m.initials }}</div>
+                  <div>
+                    <div style="font-weight:500;">{{ m.user_name }}</div>
+                    <div style="color:var(--text-muted);font-size:.75rem;">@{{ m.username }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="team-role-badge {% if m.role == 'leader' %}role-leader{% else %}role-member{% endif %}">
+                  {{ 'Leder' if m.role == 'leader' else 'Medlem' }}
+                </span>
+              </td>
+              <td>
+                <div class="period-text">
+                  {{ m.start_date }}
+                  {% if m.end_date %}
+                  → {{ m.end_date }}
+                  {% else %}
+                  → <span class="period-ongoing">Igangværende</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td style="color:var(--text-muted);font-size:.8125rem;max-width:200px;">
+                {{ m.notes if m.notes else '—' }}
+              </td>
+              <td style="white-space:nowrap;">
+                <button type="button"
+                        onclick="toggleEditRow('editrow-{{ m.id }}')"
+                        class="action-btn">Rediger</button>
+                <form method="post"
+                      action="/admin/teams/{{ team.id }}/memberships/{{ m.id }}/remove"
+                      style="display:inline-block;margin-left:.375rem;"
+                      onsubmit="return confirm('Fjern {{ m.user_name }} fra holdet?')">
+                  <button type="submit" class="action-btn action-btn-danger">Fjern</button>
+                </form>
+              </td>
+            </tr>
+            <tr id="editrow-{{ m.id }}" class="edit-row-form" style="display:none;">
+              <td colspan="5">
+                <form method="post" action="/admin/teams/{{ team.id }}/memberships/{{ m.id }}/update">
+                  <div class="inline-form-grid">
+                    <div class="field">
+                      <label>Rolle</label>
+                      <select name="role">
+                        <option value="member" {% if m.role == 'member' %}selected{% endif %}>Medlem</option>
+                        <option value="leader" {% if m.role == 'leader' %}selected{% endif %}>Leder</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>Startdato *</label>
+                      <input type="date" name="start_date" value="{{ m.start_date }}" required>
+                    </div>
+                    <div class="field">
+                      <label>Slutdato (tom = igangværende)</label>
+                      <input type="date" name="end_date" value="{{ m.end_date or '' }}">
+                    </div>
+                    <div class="field" style="grid-column: span 2;">
+                      <label>Noter</label>
+                      <input type="text" name="notes" value="{{ m.notes or '' }}" placeholder="Valgfri noter">
+                    </div>
+                    <div style="display:flex;gap:.5rem;">
+                      <button type="submit" class="btn-primary">Gem</button>
+                      <button type="button" onclick="toggleEditRow('editrow-{{ m.id }}')" class="btn-ghost">Luk</button>
+                    </div>
+                  </div>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">Ingen medlemmer endnu — tilføj det første nedenfor</div>
+        {% endif %}
+
+        <!-- ── Add member form ── -->
+        <div class="add-member-section">
+          <h3>Tilføj medlem</h3>
+          <form method="post" action="/admin/teams/{{ team.id }}/memberships/add">
+            <div class="add-member-grid">
+              <div class="field">
+                <label>Bruger *</label>
+                <select name="user_id" required>
+                  <option value="">Vælg bruger…</option>
+                  {% for u in all_users %}
+                  <option value="{{ u.id }}">{{ u.name }} ({{ u.initials }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="field">
+                <label>Rolle</label>
+                <select name="role">
+                  <option value="member">Medlem</option>
+                  <option value="leader">Leder</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Startdato *</label>
+                <input type="date" name="start_date" id="add-start-date" required>
+              </div>
+              <div class="field">
+                <label>Slutdato</label>
+                <input type="date" name="end_date">
+              </div>
+              <div class="field">
+                <label>Noter</label>
+                <input type="text" name="notes" placeholder="Valgfri noter">
+              </div>
+              <div>
+                <button type="submit" class="btn-primary">Tilføj</button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div><!-- /.section-card -->
+
+    </div><!-- /max-width -->
+    </div><!-- /scroll wrapper -->
+  </div>
+</div>
+
+<script>
+  // Pre-fill today's date in the add-member start date field
+(function() {
+  const el = document.getElementById('add-start-date');
+  if (el) {
+    const today = new Date();
+    el.value = today.toISOString().split('T')[0];
+  }
+})();
+
+function toggleEditRow(id) {
+    const row = document.getElementById(id);
+    if (!row) return;
+    const isVisible = row.style.display !== 'none';
+    row.style.display = isVisible ? 'none' : 'table-row';
+  }
+</script>
+</body>
+</html>
