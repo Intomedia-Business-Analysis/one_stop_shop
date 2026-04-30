@@ -26,6 +26,7 @@ from moduler.modul_perf.router import router as perf_router
 from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
 from moduler.modul_banner_job.router import router as banner_job_router
+from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
 
 load_dotenv()
 
@@ -45,6 +46,7 @@ app.include_router(forecast_router)
 app.include_router(perf_router)
 app.include_router(barsel_router)
 app.include_router(banner_job_router)
+app.include_router(portfolio_alignment_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
@@ -86,12 +88,14 @@ CATEGORIES = [
         "color": "amber",
         "min_role": "sales_manager",
         "subcategories": [
-            {"id": "budget",   "title": "Budget",   "description": "Budget upload og dashboard", "brand": None, "min_role": "sales_operations"},
-            {"id": "forecast", "title": "Forecast", "description": "Salgsprognoser",             "brand": None, "min_role": "sales_manager"},
+            {"id": "budget",    "title": "Budget",    "description": "Budget upload og dashboard",       "brand": None, "min_role": "sales_operations"},
+            {"id": "forecast",  "title": "Forecast",  "description": "Salgsprognoser",                   "brand": None, "min_role": "sales_manager"},
+            {"id": "alignment", "title": "Alignment", "description": "Pipedrive vs. Zuora ACV-kontrol",  "brand": None, "min_role": "sales_operations"},
         ],
         "items": [
-            {"id": "budget-upload-tool", "title": "Budget",   "type": "tool", "subcategory": "budget",   "brand": None, "min_role": "sales_operations", "url": "/tools/budget/"},
-            {"id": "forecast-tool",      "title": "Forecast", "type": "tool", "subcategory": "forecast", "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
+            {"id": "budget-upload-tool",      "title": "Budget",              "type": "tool",      "subcategory": "budget",    "brand": None, "min_role": "sales_operations", "url": "/tools/budget/"},
+            {"id": "forecast-tool",           "title": "Forecast",            "type": "tool",      "subcategory": "forecast",  "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
+            {"id": "portfolio-alignment",     "title": "Portfolio Alignment", "type": "dashboard", "subcategory": "alignment", "brand": None, "min_role": "sales_operations", "url": "/tools/portfolio-alignment/"},
         ],
     },
 
