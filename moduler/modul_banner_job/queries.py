@@ -212,6 +212,19 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
+        team_name = PIPELINE_TEAM.get(pipeline)
+        team_filter = ""
+        if team_name:
+            team_filter = """
+              AND owner_name IN (
+                SELECT u.name
+                FROM HubUsers u
+                JOIN TeamMemberships tm ON tm.user_id = u.id
+                JOIN Teams t ON t.id = tm.team_id
+                WHERE t.name = %s
+                  AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+              )"""
+            params = params + (team_name,)
         cur.execute(f"""
             SELECT
                 owner_name,
@@ -223,8 +236,8 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
             FROM [dbo].[PipedriveDeals]
             WHERE {_BASE_WHERE} {yc}
               AND status = 'won'
-              AND owner_name <> 'System Admin'
               AND owner_name IS NOT NULL
+              {team_filter}
             GROUP BY owner_name, YEAR(service_activation_date)
             ORDER BY owner_name, aar
         """, params)
