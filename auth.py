@@ -1,4 +1,5 @@
 import os
+import datetime
 import pymssql
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -167,13 +168,38 @@ def get_user_resource_access(user_id: int) -> dict:
         return {}
 
 
-def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None) -> str:
+def get_user_teams(user_id: int) -> list:
+    """Returnér liste af holdnavne som brugeren er aktivt medlem af i dag."""
+    try:
+        today = datetime.date.today().isoformat()
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """
+            SELECT t.name
+            FROM   TeamMemberships tm
+            JOIN   Teams t ON t.id = tm.team_id
+            WHERE  tm.user_id = %s
+              AND  tm.start_date <= %s
+              AND  (tm.end_date IS NULL OR tm.end_date >= %s)
+            """,
+            (user_id, today, today),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [r["name"] for r in rows]
+    except Exception:
+        return []
+
+
+def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None) -> str:
     """
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
 
     Rækkefølge:
     1. Eksplicit DB-override pr. bruger → brugt direkte (kan udvide ELLER begrænse).
     2. Ingen override: tjek rolle + brand → 'none' hvis ikke kvalificeret, ellers 'write'.
+    3. Hvis required_team er sat: tjek at brugeren er aktivt medlem af holdet.
     """
     # Eksplicit override?
     overrides = user.get("_resource_access", {})
@@ -189,6 +215,12 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     # Brandspærring for sælger og sales manager
     if user["role"] in ("salesperson", "sales_manager") and brand and user.get("brand") != brand:
         return "none"
+
+    # Holdspærring — gælder kun for sælger-niveau (sales_manager og derunder)
+    if required_team and user_rank <= ROLE_RANK.get("sales_manager", 2):
+        user_teams = user.get("_teams", [])
+        if required_team not in user_teams:
+            return "none"
 
     return "write"
 
@@ -210,6 +242,7 @@ def authenticate_user(username: str, password: str):
         if not user or not verify_password(password, user["password_hash"]):
             return None
         user["_resource_access"] = get_user_resource_access(user["id"])
+        user["_teams"] = get_user_teams(user["id"])
         return user
     except Exception:
         return None
@@ -227,6 +260,7 @@ def get_user_by_id(user_id: int):
         conn.close()
         if user:
             user["_resource_access"] = get_user_resource_access(user_id)
+            user["_teams"] = get_user_teams(user_id)
         return user
     except Exception:
         return None
