@@ -1,7 +1,7 @@
 import time
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -18,6 +18,7 @@ from moduler.modul_portfolio_alignment.queries import (
     save_note,
     set_handled,
 )
+from moduler.modul_portfolio_alignment.pipedrive_api import create_alignment_deal
 
 router = APIRouter(prefix="/tools/portfolio-alignment", tags=["Portfolio Alignment"])
 templates = Jinja2Templates(directory="templates")
@@ -175,3 +176,48 @@ async def alignment_save_note(request: Request, user=Depends(get_current_user)):
     if not ok:
         raise HTTPException(500, "Kunne ikke gemme kommentar")
     return JSONResponse(get_note(scope, org_id, site) or {"note": note, "updated_by": user["name"], "updated_at": ""})
+
+
+@router.post("/create-deal")
+async def alignment_create_deal(
+    payload: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    """Opret en Porteføljeafstemning-deal i Pipedrive baseret på diff-fortegnet.
+
+    Body: {scope, org_id, site, diff, dry_run?}
+    """
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+
+    scope   = payload.get("scope")
+    org_id  = payload.get("org_id")
+    site    = payload.get("site")
+    diff    = payload.get("diff")
+    dry_run = bool(payload.get("dry_run"))
+
+    if not scope or scope not in ACCOUNT_SCOPES:
+        raise HTTPException(400, "scope er påkrævet og skal være et gyldigt account-scope")
+    if not org_id:
+        raise HTTPException(400, "org_id er påkrævet")
+    if not site:
+        raise HTTPException(400, "site er påkrævet")
+    try:
+        diff_f = float(diff)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "diff er påkrævet og skal være et tal")
+
+    try:
+        result = create_alignment_deal(
+            scope=scope,
+            org_id=int(org_id),
+            site=site,
+            diff=diff_f,
+            dry_run=dry_run,
+        )
+        return JSONResponse(result)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))

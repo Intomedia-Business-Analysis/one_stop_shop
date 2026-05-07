@@ -62,6 +62,30 @@
 .tag-filter.tag-inactive{opacity:.25;text-decoration:line-through}
 .row-handled td{opacity:.35}
 .handled-cb{cursor:pointer;width:15px;height:15px;accent-color:var(--green)}
+
+.create-deal-btn{font-family:var(--font);font-size:10px;font-weight:700;padding:5px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg);color:var(--ink-2);cursor:pointer;white-space:nowrap;transition:background .13s,border-color .13s,color .13s}
+.create-deal-btn:hover{background:var(--green);border-color:var(--green);color:#fff}
+.create-deal-btn:disabled{opacity:.55;cursor:wait}
+
+.cd-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1100;display:flex;align-items:center;justify-content:center;padding:24px}
+.cd-modal-overlay.hidden{display:none}
+.cd-modal-box{background:var(--surface);border-radius:var(--r);width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden}
+.cd-modal-header{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.cd-modal-title{font-size:14px;font-weight:800;color:var(--ink)}
+.cd-modal-body{padding:18px 22px;font-size:12px;color:var(--ink-2);line-height:1.55}
+.cd-modal-body dl{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;margin:14px 0}
+.cd-modal-body dt{color:var(--ink-4);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;align-self:center}
+.cd-modal-body dd{margin:0;color:var(--ink);font-weight:600}
+.cd-modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;background:var(--bg)}
+.cd-btn{font-family:var(--font);font-size:11px;font-weight:700;padding:8px 16px;border-radius:var(--r-sm);border:1px solid var(--border);cursor:pointer;background:var(--surface);color:var(--ink-2)}
+.cd-btn:hover{background:var(--bg)}
+.cd-btn-primary{background:var(--green);color:#fff;border-color:var(--green)}
+.cd-btn-primary:hover{background:var(--green-mid)}
+.cd-btn-primary:disabled{opacity:.6;cursor:wait}
+.cd-result{margin-top:14px;padding:12px;border-radius:var(--r-sm);font-size:11px;line-height:1.5}
+.cd-result.success{background:#C8E6D8;color:#0F5132;border:1px solid #B0D4C0}
+.cd-result.error{background:#F8D7DA;color:#842029;border:1px solid #F5C2C7}
+.cd-result a{color:inherit;text-decoration:underline;font-weight:700}
 </style>
 </head>
 <body>
@@ -240,10 +264,11 @@
                     <th class="num" onclick="sortBy('diff_pct')">Δ %</th>
                     <th onclick="sortBy('status')">Status</th>
                     <th>Detaljer</th>
+                    <th>Handling</th>
                   </tr>
                 </thead>
                 <tbody id="cmp-tbody">
-                  <tr><td colspan="10" class="empty">Indlæser…</td></tr>
+                  <tr><td colspan="11" class="empty">Indlæser…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -283,6 +308,31 @@
         </div>
 
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bekræftelses-modal til oprettelse af alignment-deal -->
+<div class="cd-modal-overlay hidden" id="cd-modal" onclick="closeCreateDealModal(event)">
+  <div class="cd-modal-box" onclick="event.stopPropagation()">
+    <div class="cd-modal-header">
+      <div class="cd-modal-title">Opret afstemnings-deal i Pipedrive</div>
+      <button class="modal-close" onclick="closeCreateDealModal()">✕</button>
+    </div>
+    <div class="cd-modal-body" id="cd-modal-body">
+      <div>Følgende deal oprettes i Pipedrive med <strong>Porteføljeafstemning 2026</strong> som titel og markeres som administrativ.</div>
+      <dl>
+        <dt>Account</dt><dd id="cd-account">—</dd>
+        <dt>Kunde</dt><dd id="cd-customer">—</dd>
+        <dt>Site</dt><dd id="cd-site">—</dd>
+        <dt>Pipeline</dt><dd id="cd-pipeline">—</dd>
+        <dt>Værdi</dt><dd id="cd-value">—</dd>
+      </dl>
+      <div id="cd-result"></div>
+    </div>
+    <div class="cd-modal-footer">
+      <button class="cd-btn" onclick="closeCreateDealModal()" id="cd-cancel-btn">Annullér</button>
+      <button class="cd-btn cd-btn-primary" id="cd-confirm-btn" onclick="submitCreateDeal()">Opret deal</button>
     </div>
   </div>
 </div>
@@ -677,10 +727,89 @@ document.getElementById('cmp-tbody').addEventListener('change', e => {
 
 // Delegated click-listener på tbody — virker også efter re-render af rows
 document.getElementById('cmp-tbody').addEventListener('click', e => {
+  // Opret-deal-knap har forrang så klik på knappen ikke åbner kundedetaljer
+  const btn = e.target.closest('button.create-deal-btn');
+  if (btn) {
+    e.stopPropagation();
+    openCreateDealModal(btn.dataset);
+    return;
+  }
   const tr = e.target.closest('tr.row-clickable');
   if (!tr) return;
   const { scope, orgId, orgName, site } = tr.dataset;
   if (scope && orgId) openCustomerModal(scope, orgId, orgName || '', site || '');
+});
+
+// ---------------------------------------------------------------------------
+// Opret-deal modal
+// ---------------------------------------------------------------------------
+let cdPending = null;
+
+function openCreateDealModal(ds) {
+  const diff = parseFloat(ds.diff);
+  cdPending = {
+    scope:    ds.scope,
+    org_id:   ds.orgId,
+    org_name: ds.orgName,
+    site:     ds.site,
+    diff:     diff,
+  };
+  const scopeRow = allRows.find(r => r.scope === ds.scope);
+  document.getElementById('cd-account').textContent = (scopeRow && scopeRow.scope_label) || ds.scope;
+  document.getElementById('cd-customer').textContent = ds.orgName || ds.orgId;
+  document.getElementById('cd-site').textContent = ds.site;
+  document.getElementById('cd-pipeline').textContent = diff > 0
+    ? 'Pipeline Cancellation (PD > Zuora)'
+    : 'Customer Pipeline (Zuora > PD)';
+  document.getElementById('cd-value').textContent = fmtFull(Math.abs(diff)) + ' (DKK)';
+  document.getElementById('cd-result').innerHTML = '';
+  const confirmBtn = document.getElementById('cd-confirm-btn');
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = 'Opret deal';
+  document.getElementById('cd-cancel-btn').disabled = false;
+  document.getElementById('cd-modal').classList.remove('hidden');
+}
+
+function closeCreateDealModal(e) {
+  if (e && e.target !== document.getElementById('cd-modal')) return;
+  document.getElementById('cd-modal').classList.add('hidden');
+  cdPending = null;
+}
+
+async function submitCreateDeal() {
+  if (!cdPending) return;
+  const confirmBtn = document.getElementById('cd-confirm-btn');
+  const cancelBtn  = document.getElementById('cd-cancel-btn');
+  const resultEl   = document.getElementById('cd-result');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Opretter…';
+  resultEl.innerHTML = '';
+  try {
+    const r = await fetch('/tools/portfolio-alignment/create-deal', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cdPending),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    const link = d.deal_url
+      ? ` — <a href="${escHtml(d.deal_url)}" target="_blank" rel="noopener">Åbn deal #${escHtml(String(d.deal_id))}</a>`
+      : ` (deal #${escHtml(String(d.deal_id || '?'))})`;
+    resultEl.className = 'cd-result success';
+    resultEl.innerHTML = `Deal oprettet i pipelinen <strong>${escHtml(d.pipeline?.name || '?')}</strong>${link}.`;
+    confirmBtn.textContent = 'Oprettet';
+    cancelBtn.textContent = 'Luk';
+  } catch(err) {
+    resultEl.className = 'cd-result error';
+    resultEl.innerHTML = `<strong>Fejl:</strong> ${escHtml(err.message || String(err))}`;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Prøv igen';
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !document.getElementById('cd-modal').classList.contains('hidden')) {
+    closeCreateDealModal();
+  }
 });
 
 // Web sales: klik på en site-række → modal med alle Web Sale-deals for det site
@@ -796,7 +925,7 @@ function renderTable() {
 
   const tbody = document.getElementById('cmp-tbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">Ingen rækker matcher filteret</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">Ingen rækker matcher filteret</td></tr>';
   } else {
     tbody.innerHTML = rows.map(r => {
       const diffCls = r.status === 'match' ? 'diff-zero'
@@ -817,6 +946,12 @@ function renderTable() {
       const cb = clickable
         ? `<td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="handled-cb" ${isHandled ? 'checked' : ''}></td>`
         : '<td></td>';
+      // Opret-deal-knap: kun når vi har org_id og diff er meningsfuld
+      const canCreate = clickable && Math.abs(r.diff || 0) >= 1;
+      const createLabel = (r.diff || 0) > 0 ? 'Opret opsigelse' : 'Opret kunde-deal';
+      const createBtn = canCreate
+        ? `<button class="create-deal-btn" data-scope="${escHtml(r.scope)}" data-org-id="${escHtml(String(r.org_id))}" data-org-name="${escHtml(r.org_name || '')}" data-site="${escHtml(r.site)}" data-diff="${r.diff}" title="Opret afstemnings-deal i Pipedrive">${createLabel}</button>`
+        : '<span style="color:var(--ink-4);font-size:10px">—</span>';
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
@@ -828,6 +963,7 @@ function renderTable() {
         <td class="num">${fmtPct(r.diff_pct)}</td>
         <td><span class="tag tag-${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
         <td style="font-size:10px;color:var(--ink-4)">${detalje.join(' · ') || '—'}</td>
+        <td onclick="event.stopPropagation()">${createBtn}</td>
       </tr>`;
     }).join('');
   }
