@@ -11,12 +11,18 @@ from moduler.modul_portfolio_alignment.queries import (
     compare_portfolios,
     fetch_customer_deals,
     fetch_web_sale_deals,
+    get_handled_states,
+    get_note,
+    init_portfolio_notes_db,
     list_account_scopes,
+    save_note,
+    set_handled,
 )
 
 router = APIRouter(prefix="/tools/portfolio-alignment", tags=["Portfolio Alignment"])
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+init_portfolio_notes_db()
 
 # Cache pr. scope (Pipedrive- og Zuora-load er ikke billige).
 _CACHE: dict[str, dict] = {}
@@ -101,6 +107,7 @@ async def alignment_web_sale_deals(
 async def alignment_customer_deals(
     scope: str,
     org_id: str,
+    site: str = "",
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_operations"):
@@ -110,7 +117,61 @@ async def alignment_customer_deals(
     if not org_id:
         raise HTTPException(400, "org_id er påkrævet")
     try:
-        return JSONResponse(fetch_customer_deals(scope, org_id))
+        return JSONResponse(fetch_customer_deals(scope, org_id, site=site or None))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
+
+
+@router.get("/handled-states")
+async def alignment_handled_states(scope: str = "all", user=Depends(get_current_user)):
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+    return JSONResponse(get_handled_states(scope if scope != "all" else None))
+
+
+@router.post("/handled")
+async def alignment_set_handled(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+    body    = await request.json()
+    scope   = body.get("scope", "").strip()
+    org_id  = body.get("org_id", "").strip()
+    site    = body.get("site", "").strip()
+    handled = bool(body.get("handled", False))
+    if not scope or not org_id or not site:
+        raise HTTPException(400, "scope, org_id og site er påkrævet")
+    ok = set_handled(scope, org_id, site, handled, user["name"])
+    if not ok:
+        raise HTTPException(500, "Kunne ikke opdatere status")
+    return JSONResponse({"ok": True})
+
+
+@router.get("/note")
+async def alignment_get_note(
+    scope: str,
+    org_id: str,
+    site: str,
+    user=Depends(get_current_user),
+):
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+    note = get_note(scope, org_id, site)
+    return JSONResponse(note or {"note": "", "updated_by": "", "updated_at": ""})
+
+
+@router.post("/note")
+async def alignment_save_note(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+    body   = await request.json()
+    scope  = body.get("scope", "").strip()
+    org_id = body.get("org_id", "").strip()
+    site   = body.get("site", "").strip()
+    note   = body.get("note", "").strip()
+    if not scope or not org_id or not site:
+        raise HTTPException(400, "scope, org_id og site er påkrævet")
+    ok = save_note(scope, org_id, site, note, user["name"])
+    if not ok:
+        raise HTTPException(500, "Kunne ikke gemme kommentar")
+    return JSONResponse(get_note(scope, org_id, site) or {"note": note, "updated_by": user["name"], "updated_at": ""})

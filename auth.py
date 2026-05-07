@@ -38,7 +38,6 @@ def get_conn():
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
         login_timeout=5,
         timeout=5,
     )
@@ -244,7 +243,8 @@ def authenticate_user(username: str, password: str):
         user["_resource_access"] = get_user_resource_access(user["id"])
         user["_teams"] = get_user_teams(user["id"])
         return user
-    except Exception:
+    except Exception as e:
+        print(f"[authenticate_user] FEJL: {e}")
         return None
 
 

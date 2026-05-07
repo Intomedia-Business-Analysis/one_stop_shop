@@ -58,6 +58,10 @@
 .cached-info{font-size:10px;color:var(--ink-4);margin-left:8px}
 .hidden{display:none}
 .legend{font-size:10px;color:var(--ink-4);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.tag-filter{cursor:pointer;user-select:none;transition:opacity .15s}
+.tag-filter.tag-inactive{opacity:.25;text-decoration:line-through}
+.row-handled td{opacity:.35}
+.handled-cb{cursor:pointer;width:15px;height:15px;accent-color:var(--green)}
 </style>
 </head>
 <body>
@@ -201,26 +205,24 @@
               <option value="all">Alle accounts</option>
             </select>
             <div class="filter-sep"></div>
-            <span class="filter-label">Filter</span>
-            <select class="filter-select" id="filter-status" onchange="renderTable()">
-              <option value="">Alle statusser</option>
-              <option value="mismatch">Mismatch</option>
-              <option value="pd_only">Kun i Pipedrive</option>
-              <option value="zuora_only">Kun i Zuora</option>
-              <option value="match">Match</option>
-            </select>
+            <span class="filter-label">Status</span>
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              <span class="tag tag-filter tag-mismatch"  data-status="mismatch"   onclick="toggleStatus('mismatch')">Mismatch</span>
+              <span class="tag tag-filter tag-pd_only"   data-status="pd_only"    onclick="toggleStatus('pd_only')">Kun PD</span>
+              <span class="tag tag-filter tag-zuora_only" data-status="zuora_only" onclick="toggleStatus('zuora_only')">Kun Zuora</span>
+              <span class="tag tag-filter tag-match"     data-status="match"      onclick="toggleStatus('match')">Match</span>
+            </div>
+            <div class="filter-sep"></div>
             <select class="filter-select" id="filter-site" onchange="renderTable()">
               <option value="">Alle sites</option>
             </select>
             <div class="filter-sep"></div>
             <input type="text" class="filter-input" id="filter-search" placeholder="Søg kunde…" oninput="renderTable()">
             <div class="filter-sep"></div>
-            <span class="legend">
-              <span class="tag tag-match">Match</span>
-              <span class="tag tag-mismatch">Mismatch</span>
-              <span class="tag tag-pd_only">Kun PD</span>
-              <span class="tag tag-zuora_only">Kun Zuora</span>
-            </span>
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap">
+              <input type="checkbox" id="filter-hide-handled" onchange="renderTable()" style="width:14px;height:14px;accent-color:var(--green);cursor:pointer">
+              Skjul håndterede
+            </label>
           </div>
 
           <div class="dash-card" style="padding:0;overflow:hidden">
@@ -228,6 +230,7 @@
               <table class="v-table">
                 <thead>
                   <tr>
+                    <th style="width:36px;text-align:center">✓</th>
                     <th onclick="sortBy('scope_label')">Account</th>
                     <th onclick="sortBy('org_name')">Kunde</th>
                     <th onclick="sortBy('site')">Site</th>
@@ -240,7 +243,7 @@
                   </tr>
                 </thead>
                 <tbody id="cmp-tbody">
-                  <tr><td colspan="9" class="empty">Indlæser…</td></tr>
+                  <tr><td colspan="10" class="empty">Indlæser…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -271,7 +274,7 @@
                   </tr>
                 </thead>
                 <tbody id="websales-tbody">
-                  <tr><td colspan="9" class="empty">Indlæser…</td></tr>
+                  <tr><td colspan="10" class="empty">Indlæser…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -317,9 +320,11 @@
 
 <script>
 let allRows = [];
+let handledSet = new Set();
+let activeStatuses = new Set(['match', 'mismatch', 'pd_only', 'zuora_only']);
 let currentScope = 'all';
 let sortKey = 'diff';
-let sortDir = -1; // -1 desc, 1 asc
+let sortDir = -1;
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -380,14 +385,16 @@ async function loadData(force) {
   document.getElementById('error-state').classList.add('hidden');
 
   try {
-    const url = '/tools/portfolio-alignment/comparison?scope=' +
-                encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
-    const r = await fetch(url);
-    if (!r.ok) {
-      const t = await r.text();
-      throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
+    const compUrl    = '/tools/portfolio-alignment/comparison?scope=' + encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
+    const handledUrl = '/tools/portfolio-alignment/handled-states?scope=' + encodeURIComponent(currentScope);
+    const [compResp, handledResp] = await Promise.all([fetch(compUrl), fetch(handledUrl)]);
+    if (!compResp.ok) {
+      const t = await compResp.text();
+      throw new Error(`HTTP ${compResp.status}: ${t.slice(0,200)}`);
     }
-    const d = await r.json();
+    const d = await compResp.json();
+    const handledData = handledResp.ok ? await handledResp.json() : [];
+    handledSet = new Set(handledData.map(h => `${h.scope}|${h.org_id}|${h.site}`));
 
     allRows = d.rows || [];
     renderSummary(d.summary || {});
@@ -474,7 +481,51 @@ function statusTag(status) {
   return `<span class="tag-status ${cls}">${escHtml(status || '—')}</span>`;
 }
 
-async function openCustomerModal(scope, orgId, orgName) {
+let _noteCtx = { scope: null, orgId: null, site: null };
+
+async function loadNote(scope, orgId, site) {
+  _noteCtx = { scope, orgId, site };
+  const meta = document.getElementById('note-meta');
+  const ta   = document.getElementById('note-textarea');
+  if (!meta || !ta) return;
+  try {
+    const r = await fetch(`/tools/portfolio-alignment/note?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}&site=${encodeURIComponent(site)}`);
+    if (r.ok) {
+      const d = await r.json();
+      ta.value = d.note || '';
+      meta.textContent = d.updated_by ? ` — ${d.updated_by}, ${d.updated_at}` : '';
+    }
+  } catch(e) { console.error('Note load', e); }
+}
+
+async function saveNote() {
+  const { scope, orgId, site } = _noteCtx;
+  if (!scope || !orgId || !site) return;
+  const ta  = document.getElementById('note-textarea');
+  const btn = document.getElementById('note-save-btn');
+  const note = ta ? ta.value.trim() : '';
+  if (btn) btn.textContent = 'Gemmer…';
+  try {
+    const r = await fetch('/tools/portfolio-alignment/note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, org_id: orgId, site, note }),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      const meta = document.getElementById('note-meta');
+      if (meta) meta.textContent = d.updated_by ? ` — ${d.updated_by}, ${d.updated_at}` : '';
+      if (btn) { btn.textContent = 'Gemt ✓'; setTimeout(() => { if(btn) btn.textContent = 'Gem kommentar'; }, 2000); }
+    } else {
+      if (btn) btn.textContent = 'Gem kommentar';
+    }
+  } catch(e) {
+    console.error('Note save', e);
+    if (btn) btn.textContent = 'Gem kommentar';
+  }
+}
+
+async function openCustomerModal(scope, orgId, orgName, site) {
   const overlay = document.getElementById('modal-overlay');
   document.getElementById('modal-title').textContent = orgName || 'Kundedetaljer';
   document.getElementById('modal-body').innerHTML =
@@ -482,7 +533,8 @@ async function openCustomerModal(scope, orgId, orgName) {
   overlay.classList.remove('hidden');
 
   try {
-    const r = await fetch(`/tools/portfolio-alignment/customer-deals?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}`);
+    const url = `/tools/portfolio-alignment/customer-deals?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}${site ? '&site=' + encodeURIComponent(site) : ''}`;
+    const r = await fetch(url);
     if (!r.ok) {
       const t = await r.text();
       throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
@@ -524,12 +576,14 @@ async function openCustomerModal(scope, orgId, orgName) {
         <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.owner)}</td>
       </tr>`).join('');
 
+    const siteLabel = site ? ` · ${escHtml(site)}` : '';
     document.getElementById('modal-body').innerHTML = `
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
         <span class="kpi-pill">Won-deals <strong>${wonDeals.length}</strong></span>
         <span class="kpi-pill">Won-værdi <strong>${fmtFull(wonValue)}</strong></span>
         <span class="kpi-pill">Administrative <strong>${adminDeals.length}</strong></span>
         <span class="kpi-pill">Total deals <strong>${deals.length}</strong></span>
+        ${site ? `<span class="kpi-pill" style="background:#EEF6FF;border-color:#B8D6F5">Filtreret til site <strong>${escHtml(site)}</strong></span>` : ''}
       </div>
       <div style="margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Status-fordeling</div>
@@ -539,7 +593,7 @@ async function openCustomerModal(scope, orgId, orgName) {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Pipeline-fordeling</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">${pipelinePills || '—'}</div>
       </div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals</div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals${siteLabel}</div>
       <div style="overflow-x:auto">
         <table class="v-table">
           <thead><tr>
@@ -555,7 +609,17 @@ async function openCustomerModal(scope, orgId, orgName) {
           <tbody>${dealsRows}</tbody>
         </table>
       </div>
+      <div style="margin-top:24px;border:1px solid var(--border);border-radius:var(--r);padding:16px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px">
+          Kommentar<span id="note-meta" style="font-weight:400;margin-left:6px"></span>
+        </div>
+        <textarea id="note-textarea" rows="3" style="width:100%;box-sizing:border-box;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px;resize:vertical;outline:none" placeholder="Skriv en kommentar om denne difference…"></textarea>
+        <div style="margin-top:8px;display:flex;justify-content:flex-end">
+          <button id="note-save-btn" onclick="saveNote()" style="padding:7px 16px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer">Gem kommentar</button>
+        </div>
+      </div>
     `;
+    loadNote(scope, orgId, site || '');
   } catch(e) {
     console.error(e);
     document.getElementById('modal-body').innerHTML =
@@ -570,12 +634,53 @@ function closeCustomerModal(e) {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCustomerModal(); });
 
+function toggleStatus(s) {
+  if (activeStatuses.has(s)) activeStatuses.delete(s);
+  else activeStatuses.add(s);
+  document.querySelectorAll('.tag-filter').forEach(el => {
+    el.classList.toggle('tag-inactive', !activeStatuses.has(el.dataset.status));
+  });
+  renderTable();
+}
+
+async function toggleHandled(scope, orgId, site, handled, tr) {
+  const key = `${scope}|${orgId}|${site}`;
+  try {
+    const r = await fetch('/tools/portfolio-alignment/handled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, org_id: orgId, site, handled }),
+    });
+    if (r.ok) {
+      if (handled) handledSet.add(key); else handledSet.delete(key);
+      if (tr) tr.classList.toggle('row-handled', handled);
+    } else {
+      // Rul checkbox tilbage ved fejl
+      const cb = tr ? tr.querySelector('.handled-cb') : null;
+      if (cb) cb.checked = !handled;
+    }
+  } catch(e) {
+    console.error('Toggle handled', e);
+    const cb = tr ? tr.querySelector('.handled-cb') : null;
+    if (cb) cb.checked = !handled;
+  }
+}
+
+// Delegated change-listener til håndteret-checkboxes
+document.getElementById('cmp-tbody').addEventListener('change', e => {
+  if (!e.target.classList.contains('handled-cb')) return;
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const { scope, orgId, site } = tr.dataset;
+  if (scope && orgId && site) toggleHandled(scope, orgId, site, e.target.checked, tr);
+});
+
 // Delegated click-listener på tbody — virker også efter re-render af rows
 document.getElementById('cmp-tbody').addEventListener('click', e => {
   const tr = e.target.closest('tr.row-clickable');
   if (!tr) return;
-  const { scope, orgId, orgName } = tr.dataset;
-  if (scope && orgId) openCustomerModal(scope, orgId, orgName || '');
+  const { scope, orgId, orgName, site } = tr.dataset;
+  if (scope && orgId) openCustomerModal(scope, orgId, orgName || '', site || '');
 });
 
 // Web sales: klik på en site-række → modal med alle Web Sale-deals for det site
@@ -671,14 +776,15 @@ function sortBy(key) {
 }
 
 function renderTable() {
-  const status = document.getElementById('filter-status').value;
-  const site   = document.getElementById('filter-site').value;
-  const q      = document.getElementById('filter-search').value.trim().toLowerCase();
+  const site = document.getElementById('filter-site').value;
+  const q    = document.getElementById('filter-search').value.trim().toLowerCase();
 
+  const hideHandled = document.getElementById('filter-hide-handled').checked;
   let rows = allRows;
-  if (status) rows = rows.filter(r => r.status === status);
-  if (site)   rows = rows.filter(r => r.site === site);
-  if (q)      rows = rows.filter(r => (r.org_name || '').toLowerCase().includes(q));
+  if (hideHandled) rows = rows.filter(r => !handledSet.has(`${r.scope}|${r.org_id}|${r.site}`));
+  rows = rows.filter(r => activeStatuses.has(r.status));
+  if (site) rows = rows.filter(r => r.site === site);
+  if (q)    rows = rows.filter(r => (r.org_name || '').toLowerCase().includes(q));
 
   rows = rows.slice().sort((a, b) => {
     let av = a[sortKey], bv = b[sortKey];
@@ -700,15 +806,19 @@ function renderTable() {
         detalje.push(`Acc: ${r.account_numbers.slice(0,3).map(escHtml).join(', ')}${r.account_numbers.length>3?'…':''}`);
       }
       if (r.deal_count) detalje.push(`${r.deal_count} deal${r.deal_count!==1?'s':''}`);
-      // Klikbar hvis vi har et org_id (PD-kunde) — så drill-down virker.
-      // Bruger data-* attributter + delegated listener (se nedenfor) — det
-      // håndterer citationstegn/apostroffer i org_name uden escape-bøvl.
       const clickable = r.org_id && r.scope;
+      const key = `${r.scope}|${r.org_id}|${r.site}`;
+      const isHandled = clickable && handledSet.has(key);
       const dataAttrs = clickable
-        ? `class="row-clickable" data-scope="${escHtml(r.scope)}" data-org-id="${escHtml(String(r.org_id))}" data-org-name="${escHtml(r.org_name || '')}"`
+        ? `data-scope="${escHtml(r.scope)}" data-org-id="${escHtml(String(r.org_id))}" data-org-name="${escHtml(r.org_name || '')}" data-site="${escHtml(r.site || '')}"`
         : '';
+      const rowClass = `class="${['row-entry', clickable ? 'row-clickable' : '', isHandled ? 'row-handled' : ''].filter(Boolean).join(' ')}"`;
       const cursor = clickable ? 'cursor:pointer' : '';
-      return `<tr ${dataAttrs} style="${cursor}">
+      const cb = clickable
+        ? `<td style="text-align:center" onclick="event.stopPropagation()"><input type="checkbox" class="handled-cb" ${isHandled ? 'checked' : ''}></td>`
+        : '<td></td>';
+      return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
+        ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
         <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
         <td>${escHtml(r.site)}</td>
