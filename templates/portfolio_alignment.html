@@ -963,7 +963,7 @@ function renderTable() {
         <td class="num">${fmtPct(r.diff_pct)}</td>
         <td><span class="tag tag-${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
         <td style="font-size:10px;color:var(--ink-4)">${detalje.join(' · ') || '—'}</td>
-        <td onclick="event.stopPropagation()">${createBtn}</td>
+        <td>${createBtn}</td>
       </tr>`;
     }).join('');
   }
