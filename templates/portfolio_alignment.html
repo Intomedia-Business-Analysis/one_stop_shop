@@ -761,7 +761,10 @@ function openCreateDealModal(ds) {
   document.getElementById('cd-pipeline').textContent = diff > 0
     ? 'Pipeline Cancellation (PD > Zuora)'
     : 'Customer Pipeline (Zuora > PD)';
-  document.getElementById('cd-value').textContent = fmtFull(Math.abs(diff)) + ' (DKK)';
+  // Cancellation = -diff, customer-deal = -diff. Begge: deal-værdien er -diff.
+  const dealValue = -diff;
+  document.getElementById('cd-value').textContent =
+    (dealValue > 0 ? '+' : '') + fmtFull(dealValue) + ' (DKK)';
   document.getElementById('cd-result').innerHTML = '';
   const confirmBtn = document.getElementById('cd-confirm-btn');
   confirmBtn.disabled = false;

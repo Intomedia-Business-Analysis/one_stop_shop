@@ -47,6 +47,19 @@ SCOPE_TOKEN_ENV: dict[str, str] = {
     "monitor":      "PD_TOKEN_MONITOR",
 }
 
+# Custom-felt-keys for Administrativ pr. scope. Hver Pipedrive-konto har sit
+# eget hash-baserede field key — navnet er ikke nødvendigvis 'Administrativ'.
+# Værdier kopieret fra pipedrive_sync/config.py så de holdes i sync.
+# Tom streng → opslag via navn (bruges på watch_de hvor feltet bogstaveligt
+# hedder 'Administrativ').
+ADMIN_FIELD_KEY: dict[str, str] = {
+    "watch_medier": "df6dd5cbd8bff4ab30974bbf18b53e8fb8c98ccf",
+    "watch_no":     "5494a067b751fedb4457719bfa0bf1a77ebc32e7",
+    "watch_se":     "8765a546fe66531b80649dbc10644b5f86607bda",
+    "watch_de":     "",
+    "monitor":      "a82c8f6f7fa3a2b87103025e9a4f474d7f9710d9",
+}
+
 # Pipedrive-pipeline-navne pr. fortegn på diff. Vi matcher case-insensitivt
 # substring så små variationer i navngivning på tværs af accounts ikke vælter.
 PIPELINE_KEYWORDS_FOR_POS_DIFF = ["cancellation"]   # PD > Zuora → opsigelse
@@ -167,18 +180,23 @@ def _get_meta(scope: str) -> dict:
         for s in stages_raw
     ]
     fields_by_name: dict[str, dict] = {}
+    fields_by_key:  dict[str, dict] = {}
     for f in fields_raw:
         opts = {opt["id"]: opt.get("label", "") for opt in (f.get("options") or [])}
-        fields_by_name[f["name"].strip().lower()] = {
+        field_data = {
             "key":        f["key"],
+            "name":       f.get("name", ""),
             "field_type": f.get("field_type", ""),
             "options":    opts,
         }
+        fields_by_name[f["name"].strip().lower()] = field_data
+        fields_by_key[f["key"]] = field_data
 
     meta = {
         "pipelines":      pipelines,
         "stages":         stages,
         "fields_by_name": fields_by_name,
+        "fields_by_key":  fields_by_key,
     }
     _META_CACHE[token] = meta
     return meta
@@ -294,12 +312,29 @@ def create_alignment_deal(
     sites_field = _resolve_field(meta, "Sites")
     site_opt_id = _site_option_id(sites_field, site)
 
-    admin_field = _resolve_field(meta, "Administrativ")
-    admin_opt   = _admin_yes_option_id(admin_field)
+    # Administrativ-feltet har forskellige hash-keys pr. konto, men hedder ikke
+    # nødvendigvis 'Administrativ' i Pipedrive's UI. Slå op via hardkodet key
+    # først; fald tilbage til navne-opslag (watch_de).
+    admin_key = ADMIN_FIELD_KEY.get(scope, "")
+    if admin_key:
+        admin_field = meta["fields_by_key"].get(admin_key)
+        if not admin_field:
+            raise RuntimeError(
+                f"Administrativ-feltet ({admin_key!r}) blev ikke fundet i Pipedrive "
+                f"for scope {scope!r}. Tjek hash-keyen i pipedrive_sync/config.py."
+            )
+    else:
+        admin_field = _resolve_field(meta, "Administrativ")
+    admin_opt = _admin_yes_option_id(admin_field)
+
+    # Værdi: cancellation = -diff (revenue går væk), customer-deal = -diff (positiv).
+    # Begge fanges af samme udtryk fordi diff er signed: diff>0 → negativ værdi,
+    # diff<0 → positiv værdi.
+    deal_value = round(-diff, 2)
 
     payload: dict = {
         "title":    DEAL_TITLE,
-        "value":    round(abs(diff), 2),
+        "value":    deal_value,
         "currency": "DKK",
         "org_id":   int(org_id),
         "stage_id": stage["id"],
