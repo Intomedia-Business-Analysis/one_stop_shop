@@ -329,8 +329,9 @@ def create_alignment_deal(
 
     # Værdi: cancellation = -diff (revenue går væk), customer-deal = -diff (positiv).
     # Begge fanges af samme udtryk fordi diff er signed: diff>0 → negativ værdi,
-    # diff<0 → positiv værdi.
-    deal_value = round(-diff, 2)
+    # diff<0 → positiv værdi. Afrund til hele kroner så Pipedrive-værdien matcher
+    # diff-tallet UI'en viser (som også er afrundet med Math.round).
+    deal_value = int(round(-diff))
 
     payload: dict = {
         "title":    DEAL_TITLE,
