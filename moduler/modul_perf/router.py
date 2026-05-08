@@ -11,6 +11,7 @@ from moduler.modul_perf.queries import (
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
     db_get_filters, db_manager_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
+    db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
 )
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
@@ -60,6 +61,63 @@ async def perf_manager_data(
 #----------------------------------------------------------------------------------------------------------------------
 #                                        DET NYE DASHBOARD FOR LEDELSE
 #----------------------------------------------------------------------------------------------------------------------
+
+@router.get("/manager-saelger", response_class=HTMLResponse)
+async def perf_manager_saelger_page(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Kun Sales Managers og derover har adgang")
+    return templates.TemplateResponse("perf_manager_saelger.html", {"request": request, "user": user})
+
+@router.get("/manager-saelger-filters")
+async def manager_saelger_filters_endpoint(
+    owner_name: str,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_manager_saelger_filters(owner_name))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+@router.get("/manager-saelger-pipeline")
+async def manager_saelger_pipeline(
+    owner_name: str,
+    year: int | None = None,
+    month: int | None = None,
+    site: str | None = None,
+    pipeline_type: str | None = None,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_manager_saelger_pipeline(owner_name, year, month, site, pipeline_type))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+@router.get("/manager-saelger-deals")
+async def manager_saelger_deals(
+    owner_name: str,
+    year: int,
+    month: int,
+    date_col: str = "won_time",
+    site: str | None = None,
+    pipeline_type: str | None = None,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_manager_saelger_deals(owner_name, year, month, date_col, site, pipeline_type))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
 
 @router.get("/afdelingsleder", response_class=HTMLResponse)
 async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_user)):
