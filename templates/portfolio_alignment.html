@@ -63,6 +63,11 @@
 .row-handled td{opacity:.35}
 .handled-cb{cursor:pointer;width:15px;height:15px;accent-color:var(--green)}
 
+.cur-badge{display:inline-block;font-size:8px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:8px;font-family:var(--font);text-transform:uppercase}
+.cur-badge.cur-dkk{background:#EEF1F5;color:#5C6E80;border:1px solid #D8DFE6}
+.cur-badge.cur-foreign{background:#0B4F8A;color:#fff;border:1px solid #094175}
+.cur-badge.cur-multi{background:#FDF3D0;color:#856404;border:1px solid #F4D77A;margin-left:2px}
+
 .create-deal-btn{font-family:var(--font);font-size:10px;font-weight:700;padding:5px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg);color:var(--ink-2);cursor:pointer;white-space:nowrap;transition:background .13s,border-color .13s,color .13s}
 .create-deal-btn:hover{background:var(--green);border-color:var(--green);color:#fff}
 .create-deal-btn:disabled{opacity:.55;cursor:wait}
@@ -286,7 +291,8 @@
                     <th onclick="sortBy('site')">Site</th>
                     <th class="num" onclick="sortBy('pd_acv')">PD ACV</th>
                     <th class="num" onclick="sortBy('zuora_arr')">Zuora ARR</th>
-                    <th class="num" onclick="sortBy('diff')">Difference</th>
+                    <th class="num" onclick="sortBy('diff')">Diff (DKK)</th>
+                    <th class="num" onclick="sortBy('deal_value')" title="Værdi der bruges hvis du opretter en deal">Diff (deal)</th>
                     <th class="num" onclick="sortBy('diff_pct')">Δ %</th>
                     <th onclick="sortBy('status')">Status</th>
                     <th>Detaljer</th>
@@ -294,7 +300,7 @@
                   </tr>
                 </thead>
                 <tbody id="cmp-tbody">
-                  <tr><td colspan="11" class="empty">Indlæser…</td></tr>
+                  <tr><td colspan="12" class="empty">Indlæser…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1179,7 +1185,7 @@ function renderTable() {
 
   const tbody = document.getElementById('cmp-tbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="11" class="empty">Ingen rækker matcher filteret</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="empty">Ingen rækker matcher filteret</td></tr>';
   } else {
     tbody.innerHTML = rows.map(r => {
       const diffCls = r.status === 'match' ? 'diff-zero'
@@ -1206,6 +1212,19 @@ function renderTable() {
       const createBtn = canCreate
         ? `<button class="create-deal-btn" data-scope="${escHtml(r.scope)}" data-org-id="${escHtml(String(r.org_id))}" data-org-name="${escHtml(r.org_name || '')}" data-site="${escHtml(r.site)}" data-diff="${r.diff}" title="Opret afstemnings-deal i Pipedrive">${createLabel}</button>`
         : '<span style="color:var(--ink-4);font-size:10px">—</span>';
+      // Diff (deal): vist i den valuta deal'en ville blive oprettet i.
+      // For multi-currency rækker viser vi DKK med "multi"-badge så det er klart
+      // at fallback-logikken er trådt i kraft.
+      const dealCur = r.deal_currency || 'DKK';
+      const dealVal = (r.deal_value !== undefined && r.deal_value !== null) ? r.deal_value : r.diff;
+      const dealCls = (dealVal > 0) ? 'diff-pos' : (dealVal < 0 ? 'diff-neg' : 'diff-zero');
+      const dealValStr = (dealVal > 0 ? '+' : '') + Math.round(dealVal).toLocaleString('da-DK');
+      const curBadge = dealCur === 'DKK'
+        ? `<span class="cur-badge cur-dkk">${dealCur}</span>`
+        : `<span class="cur-badge cur-foreign">${escHtml(dealCur)}</span>`;
+      const multiBadge = r.multi_currency
+        ? '<span class="cur-badge cur-multi" title="Kunden har flere valutaer — værdi vist i DKK med fast kurs">multi</span>'
+        : '';
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
@@ -1214,6 +1233,7 @@ function renderTable() {
         <td class="num">${fmtFull(r.pd_acv)}</td>
         <td class="num">${fmtFull(r.zuora_arr)}</td>
         <td class="num ${diffCls}">${(r.diff>0?'+':'')}${fmtFull(r.diff)}</td>
+        <td class="num ${dealCls}"><span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end">${dealValStr} ${curBadge}${multiBadge}</span></td>
         <td class="num">${fmtPct(r.diff_pct)}</td>
         <td><span class="tag tag-${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
         <td style="font-size:10px;color:var(--ink-4)">${detalje.join(' · ') || '—'}</td>
