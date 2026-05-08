@@ -683,6 +683,13 @@ async function openCustomerModal(scope, orgId, orgName, site) {
     // Summering
     const wonDeals = deals.filter(x => (x.status || '').toLowerCase() === 'won');
     const wonValue = wonDeals.reduce((a, x) => a + (x.value || 0), 0);
+    // Hvis alle won-deals deler samme valuta viser vi den, ellers — siden lokal-
+    // sum er meningsløs på tværs af valutaer — falder vi tilbage til en advarsel.
+    const wonCurrencies = new Set(wonDeals.map(x => x.currency).filter(Boolean));
+    const wonCurrency = wonCurrencies.size === 1 ? [...wonCurrencies][0] : '';
+    const wonValueStr = wonCurrency
+      ? `${Math.round(wonValue).toLocaleString('da-DK')} ${wonCurrency}`
+      : `${Math.round(wonValue).toLocaleString('da-DK')} (blandet valuta)`;
     const adminDeals = deals.filter(x => x.administrativ);
 
     const statusPills = Object.entries(d.by_status || {})
@@ -702,7 +709,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
         <td>${escHtml(x.pipeline)}</td>
         <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.deal_type)}</td>
         <td>${escHtml(x.sites)}</td>
-        <td class="num">${fmtFull(x.value)}</td>
+        <td class="num">${Math.round(x.value || 0).toLocaleString('da-DK')} ${escHtml(x.currency || '')}</td>
         <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.activation_date)}</td>
         <td style="font-size:10px;color:var(--ink-4)">${escHtml(x.owner)}</td>
       </tr>`).join('');
@@ -711,7 +718,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
     document.getElementById('modal-body').innerHTML = `
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
         <span class="kpi-pill">Won-deals <strong>${wonDeals.length}</strong></span>
-        <span class="kpi-pill">Won-værdi <strong>${fmtFull(wonValue)}</strong></span>
+        <span class="kpi-pill">Won-værdi <strong>${escHtml(wonValueStr)}</strong></span>
         <span class="kpi-pill">Administrative <strong>${adminDeals.length}</strong></span>
         <span class="kpi-pill">Total deals <strong>${deals.length}</strong></span>
         ${site ? `<span class="kpi-pill" style="background:#EEF6FF;border-color:#B8D6F5">Filtreret til site <strong>${escHtml(site)}</strong></span>` : ''}
@@ -733,7 +740,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
             <th>Pipeline</th>
             <th>Deal type</th>
             <th>Sites</th>
-            <th class="num">Værdi (DKK)</th>
+            <th class="num">Værdi (lokal)</th>
             <th>Aktiveret</th>
             <th>Sælger</th>
           </tr></thead>
