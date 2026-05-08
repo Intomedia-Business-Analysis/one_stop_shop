@@ -10,7 +10,7 @@ Anvendelse:
 
 For diff > 0  → "pipeline cancellation"-pipeline (PD over-recorded)
 For diff < 0  → "customer pipeline"-pipeline       (PD under-recorded)
-Title         = "Porteføljeafstemning 2026"
+Title         = "Porteføljeafstemning <måned> <år>" (bygges dynamisk pr. kørsel)
 Administrativ = Yes
 Sites         = option der matcher den normaliserede site fra alignment-tabellen
 Value         = abs(diff) i DKK
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import date
 from typing import Optional
 
 import requests
@@ -35,7 +36,22 @@ load_dotenv()
 BASE_URL = "https://api.pipedrive.com/v1"
 PAGE_LIMIT = 500
 MAX_RETRIES = 3
-DEAL_TITLE = "Porteføljeafstemning 2026"
+
+# Danske månedsnavne — bruges til at bygge titlen dynamisk så hver afstemning
+# får den aktuelle måned + år, fx 'Porteføljeafstemning maj 2026'.
+_DK_MONTHS = [
+    "januar", "februar", "marts", "april", "maj", "juni",
+    "juli", "august", "september", "oktober", "november", "december",
+]
+
+
+def get_deal_title(today: Optional[date] = None) -> str:
+    """Returnér deal-titel for indeværende måned, fx 'Porteføljeafstemning maj 2026'.
+
+    today-argumentet er kun til test — i produktion bruges date.today().
+    """
+    d = today or date.today()
+    return f"Porteføljeafstemning {_DK_MONTHS[d.month - 1]} {d.year}"
 
 # Alle afstemnings-deals stemples med samme service_activation_date
 # (1. januar 2019). Det placerer dem klart i historisk tid så de ikke
@@ -322,7 +338,7 @@ def _build_payload(
     deal_value = int(round(-diff_signed))
 
     payload: dict = {
-        "title":    DEAL_TITLE,
+        "title":    get_deal_title(),
         "value":    deal_value,
         "currency": currency,
         "org_id":   int(org_id),
