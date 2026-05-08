@@ -1058,8 +1058,12 @@ async function _pollBulkJob(jobId, total, isDryRun, resultEl) {
   // netværksfejl), prøver vi igen — server-side er jobbet upåvirket, det kører
   // i en daemon-tråd uafhængigt af request-håndteringen.
   let consecutiveErrors = 0;
+  let firstPoll = true;
   while (true) {
-    await new Promise(resolve => setTimeout(resolve, BULK_POLL_INTERVAL_MS));
+    // Poll med det samme første gang — ellers står UI'en og siger 'Starter job…'
+    // i 2 sek selvom serveren typisk er færdig på <100 ms.
+    await new Promise(resolve => setTimeout(resolve, firstPoll ? 200 : BULK_POLL_INTERVAL_MS));
+    firstPoll = false;
     let job;
     try {
       const r = await fetch(`/tools/portfolio-alignment/bulk-status?job_id=${encodeURIComponent(jobId)}`);
