@@ -38,6 +38,7 @@ def get_conn():
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME", "INTOMEDIA"),
+        tds_version="7.0",
         login_timeout=5,
         timeout=5,
     )
@@ -215,8 +216,8 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     if user["role"] in ("salesperson", "sales_manager") and brand and user.get("brand") != brand:
         return "none"
 
-    # Holdspærring — gælder kun for sælger-niveau (sales_manager og derunder)
-    if required_team and user_rank <= ROLE_RANK.get("sales_manager", 2):
+    # Holdspærring — gælder kun for salesperson (ikke ledere eller højere)
+    if required_team and user["role"] == "salesperson":
         user_teams = user.get("_teams", [])
         if required_team not in user_teams:
             return "none"
@@ -243,8 +244,7 @@ def authenticate_user(username: str, password: str):
         user["_resource_access"] = get_user_resource_access(user["id"])
         user["_teams"] = get_user_teams(user["id"])
         return user
-    except Exception as e:
-        print(f"[authenticate_user] FEJL: {e}")
+    except Exception:
         return None
 
 
