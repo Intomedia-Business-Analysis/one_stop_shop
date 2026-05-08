@@ -780,6 +780,21 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     pipeline_value = float(pipe_row.get("pipeline_value", 0) or 0)
     pipeline_count = int(pipe_row.get("pipeline_count", 0) or 0)
 
+    cur.execute(f"""
+        SELECT [pipeline_name], COUNT(*) AS antal
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
+          AND [expected_close_date] >= %s AND [expected_close_date] < %s
+          AND [owner_name] = %s
+          AND [sites] IN {brands_ph}
+          AND COALESCE([value_dkk],[value]) > 0
+          {_ADM_EXCLUDE}
+          {team_clause}
+        GROUP BY [pipeline_name]
+        ORDER BY antal DESC
+    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    pipeline_fordeling = [{"navn": r["pipeline_name"] or "Ukendt", "antal": int(r["antal"])} for r in (cur.fetchall() or [])]
+
     ly_from = date(ref_year - 1, ref_month, 1)
     ly_next = ref_month % 12 + 1
     ly_ny   = ref_year - 1 + (1 if ref_month == 12 else 0)
@@ -844,7 +859,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     # Q9: Deals — filtreret på valgt periode + team
     cur.execute(f"""
         SELECT
-            [title], [sites],
+            [title], [sites], [org_name],
             ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
             CONVERT(NVARCHAR(10), {d_col}, 23) AS event_date,
             [deal_type],
@@ -864,12 +879,12 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     seneste_deals = [{
         "title": r["title"] or "(Uden titel)",
         "site": r["sites"] or "—",
+        "org_name": r["org_name"] or "—",
         "value": float(r["value"] or 0),
         "dato": r["event_date"] or "—",
-        "deal_type": r["deal_type"] or "—",
         "status": "Vundet",
         "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser')
-    } for r in cur.fetchall()]
+    } for r in (cur.fetchall() or [])]
 
     # Won-beløb per team (til budget-breakdown)
     cur.execute(f"""
@@ -924,8 +939,9 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "vs_budget_pct":   vs_budget_pct,
         "salg_dag":        round(salg_dag, 2),
         "sparkline":       sparkline,
-        "pipeline_value":  round(pipeline_value, 2),
-        "pipeline_count":  pipeline_count,
+        "pipeline_value":     round(pipeline_value, 2),
+        "pipeline_count":     pipeline_count,
+        "pipeline_fordeling": pipeline_fordeling,
         "ly_won":          round(ly_won, 2),
         "yoy_pct":         yoy_pct,
         "maaned_chart":    maaned_chart,
