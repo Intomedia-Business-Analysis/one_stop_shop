@@ -359,23 +359,18 @@ PD_NOT_WEB_SALE_SQL = "d.org_name NOT LIKE 'Web Sale%%'"
 def fetch_pipedrive_acv(
     scope: Optional[str] = None,
     snapshot_date: Optional[str] = None,
-) -> list[dict]:
-    """Pipedrive ACV pr. (scope, org_id, site).
+) -> tuple[list[dict], dict]:
+    """Pipedrive ACV pr. (scope, org_id, site) — plus currency-breakdown.
 
-    scope=None eller 'all' → alle definerede scopes.
-    scope='watch_no' osv. → kun det ene.
-
-    ACV beregnes som value × FAST kurs (ikke value_dkk fra DB), så det matcher
-    Zuora-snapshot's faste kurssætning. Ellers ville rene kursforskelle blive
-    flagget som mismatch.
-
-    snapshot_date afgrænser service_activation_date <= snapshot_date — så vi
-    kun tæller deals der var aktive på Zuora-snapshot-tidspunktet.
+    Returnerer to ting:
+      out: liste af aggregerede rækker pr. (scope, org_id, site)
+      pd_currency_map: dict[(scope, org_id, site)] -> dict[currency] -> {pd_local, pd_dkk}
     """
     scope_ids = _scope_ids_for(scope)
     snap_date = snapshot_date or current_snapshot_date()
 
     out: list[dict] = []
+    pd_currency_map: dict[tuple, dict[str, dict]] = {}
     try:
         conn = get_pipedrive_conn()
         cur = conn.cursor(as_dict=True)
@@ -388,6 +383,7 @@ def fetch_pipedrive_acv(
                 SELECT
                     d.org_id,
                     d.org_name,
+                    UPPER(LTRIM(RTRIM(d.currency))) AS currency,
                     LTRIM(RTRIM(s.value)) AS site_raw,
                     SUM(d.value * {PD_FIXED_RATES_SQL}) AS total_value_dkk_fixed,
                     SUM(d.value)                        AS total_value_local,
@@ -405,26 +401,51 @@ def fetch_pipedrive_acv(
                   AND {PD_NOT_WEB_SALE_SQL}
                   AND d.service_activation_date IS NOT NULL
                   AND d.service_activation_date <= %s
-                GROUP BY d.org_id, d.org_name, LTRIM(RTRIM(s.value))
+                GROUP BY d.org_id, d.org_name, UPPER(LTRIM(RTRIM(d.currency))), LTRIM(RTRIM(s.value))
             """, params)
+            agg: dict[tuple, dict] = {}
             for r in cur.fetchall():
                 site_norm = normalize_site(r["site_raw"])
                 if not site_norm:
                     continue
-                out.append({
-                    "scope":      scope_id,
-                    "org_id":     str(r["org_id"]),
+                org_id = str(r["org_id"])
+                currency = (r["currency"] or "DKK").upper()
+                v_dkk    = float(r["total_value_dkk_fixed"] or 0)
+                v_local  = float(r["total_value_local"]    or 0)
+                count    = int(r["deal_count"]              or 0)
+
+                k = (scope_id, org_id, site_norm)
+                bucket = agg.setdefault(k, {
                     "org_name":   r["org_name"] or "—",
-                    "site":       site_norm,
                     "site_raw":   r["site_raw"],
-                    "pd_acv":     float(r["total_value_dkk_fixed"] or 0),
-                    "pd_local":   float(r["total_value_local"] or 0),
-                    "deal_count": int(r["deal_count"] or 0),
+                    "pd_acv":     0.0,
+                    "pd_local":   0.0,
+                    "deal_count": 0,
+                })
+                bucket["pd_acv"]     += v_dkk
+                bucket["pd_local"]   += v_local   # kun meningsfuldt hvis 1 valuta
+                bucket["deal_count"] += count
+
+                cm = pd_currency_map.setdefault(k, {})
+                cb = cm.setdefault(currency, {"pd_local": 0.0, "pd_dkk": 0.0})
+                cb["pd_local"] += v_local
+                cb["pd_dkk"]   += v_dkk
+
+            for (sc, oid, site_n), b in agg.items():
+                out.append({
+                    "scope":      sc,
+                    "org_id":     oid,
+                    "org_name":   b["org_name"],
+                    "site":       site_n,
+                    "site_raw":   b["site_raw"],
+                    "pd_acv":     b["pd_acv"],
+                    "pd_local":   b["pd_local"],
+                    "deal_count": b["deal_count"],
                 })
         conn.close()
     except Exception:
         traceback.print_exc()
-    return out
+    return out, pd_currency_map
 
 
 def fetch_pipedrive_org_names(scope: Optional[str] = None) -> dict[str, str]:
@@ -893,15 +914,31 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
     snap = load_zuora_snapshot()
     snapshot_meta     = snap["meta"]
     snap_date         = snapshot_meta.get("snapshot_date")
-    pd_rows = fetch_pipedrive_acv(scope, snapshot_date=snap_date)
+    pd_rows, pd_currency_map = fetch_pipedrive_acv(scope, snapshot_date=snap_date)
     pd_web  = fetch_pipedrive_web_sales(scope, snapshot_date=snap_date)
     pd_all_org_names  = fetch_pipedrive_org_names(scope)  # permissiv lookup
     all_zu_rows       = snap["enterprise_rows"]
     all_web_sales     = snap["web_sales_by_site"]
+    enterprise_raw    = snap.get("enterprise_raw", [])
 
     # Filtrér Zuora til de scopes der er valgt
     zu_rows           = [r for r in all_zu_rows if r["scope"] in scope_ids]
     zu_web_sales      = [w for w in all_web_sales if w["scope"] in scope_ids]
+
+    # Zuora currency-breakdown pr. (scope, pipedrive_id, site) — bygges fra rå
+    # snapshot-rækker så vi kan vise lokal valuta og mængde i alignment-tabellen.
+    zu_currency_map: dict[tuple, dict[str, dict]] = {}
+    for r in enterprise_raw:
+        if r["scope"] not in scope_ids:
+            continue
+        if not r.get("pipedrive_id"):
+            continue
+        k = (r["scope"], str(r["pipedrive_id"]), r["site"])
+        cm = zu_currency_map.setdefault(k, {})
+        cb = cm.setdefault((r.get("currency") or "DKK").upper(),
+                           {"zu_local": 0.0, "zu_dkk": 0.0})
+        cb["zu_local"] += float(r.get("arr_local") or 0)
+        cb["zu_dkk"]   += float(r.get("arr_dkk")   or 0)
 
     # Index Pipedrive pr. (scope, org_id, site)
     pd_by_key: dict[tuple, dict] = {}
@@ -964,6 +1001,20 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
 
         scope_label = ACCOUNT_SCOPES.get(scope_id, {}).get("label", scope_id) if scope_id else "(ukendt)"
 
+        # Currency-info: hvilken valuta ville en deal blive oprettet i, og hvad er
+        # lokal-værdien? Vi har kun reel valuta-data hvis vi har en pipedrive_id
+        # (zuora_only-rækker uden id keyes på 'acc:...' og kan ikke matches mod
+        # Zuora-currency-mappet — så de viser bare DKK).
+        if isinstance(org_id, str) and org_id.startswith("acc:"):
+            curr_info = None
+        else:
+            pd_curr = pd_currency_map.get(key, {})
+            zu_curr = zu_currency_map.get((scope_id, str(org_id), site), {})
+            if pd_curr or zu_curr:
+                curr_info = _select_currency_and_diff(pd_curr, zu_curr)
+            else:
+                curr_info = None
+
         rows.append({
             "scope":           scope_id,
             "scope_label":     scope_label,
@@ -978,6 +1029,13 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
             "account_numbers": zu_r["account_numbers"] if zu_r else [],
             "deal_count":      pd_r["deal_count"] if pd_r else 0,
             "site_raw":        pd_r["site_raw"] if pd_r else None,
+            # Currency-info til UI: hvilken valuta deal'en ville blive i, lokal-diff,
+            # og om vi måtte falde tilbage til DKK fordi kunden har flere valutaer.
+            "deal_currency":   curr_info["currency"]        if curr_info else "DKK",
+            "deal_value":      curr_info["value"]           if curr_info else int(round(diff)),
+            "single_currency": bool(curr_info and curr_info["single_currency"]),
+            "multi_currency":  bool(curr_info and curr_info["fallback"]),
+            "currencies":      curr_info["currencies"]      if curr_info else [],
         })
 
     rows.sort(key=lambda r: (-abs(r["diff"]), r["org_name"] or ""))
@@ -1190,6 +1248,55 @@ def save_note(scope: str, org_id: str, site: str, note: str, updated_by: str) ->
 # Currency-aware diff til deal-oprettelse
 # ---------------------------------------------------------------------------
 
+def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
+    """Vælg foretrukken valuta + diff givet PD- og Zuora-currency-breakdown.
+
+    pd_by_curr: dict[currency] -> {pd_local, pd_dkk}
+    zu_by_curr: dict[currency] -> {zu_local, zu_dkk}
+
+    Regel: hvis præcis én valuta er aktiv (har et beløb > 0,5 på enten PD eller
+    Zuora-side) bruges den. Ellers DKK fallback (med fast kurs).
+    """
+    all_curr = set(pd_by_curr) | set(zu_by_curr)
+    by_currency: dict[str, dict] = {}
+    for c in all_curr:
+        pd_d = pd_by_curr.get(c, {"pd_local": 0.0, "pd_dkk": 0.0})
+        zu_d = zu_by_curr.get(c, {"zu_local": 0.0, "zu_dkk": 0.0})
+        by_currency[c] = {
+            "pd_local":     round(pd_d["pd_local"], 2),
+            "zuora_local":  round(zu_d["zu_local"], 2),
+            "diff_local":   round(pd_d["pd_local"] - zu_d["zu_local"], 2),
+            "pd_dkk":       round(pd_d["pd_dkk"], 2),
+            "zuora_dkk":    round(zu_d["zu_dkk"], 2),
+            "diff_dkk":     round(pd_d["pd_dkk"] - zu_d["zu_dkk"], 2),
+        }
+    diff_dkk_total = sum(b["diff_dkk"] for b in by_currency.values())
+    active = [c for c, b in by_currency.items()
+              if abs(b["pd_local"]) > 0.5 or abs(b["zuora_local"]) > 0.5]
+    if len(active) == 1:
+        c = active[0]
+        return {
+            "currency":         c,
+            "value":            int(round(by_currency[c]["diff_local"])),
+            "fallback":         False,
+            "single_currency":  True,
+            "diff_local":       int(round(by_currency[c]["diff_local"])),
+            "diff_dkk":         int(round(diff_dkk_total)),
+            "currencies":       sorted(active),
+            "by_currency":      by_currency,
+        }
+    return {
+        "currency":         "DKK",
+        "value":            int(round(diff_dkk_total)),
+        "fallback":         len(active) > 1,
+        "single_currency":  False,
+        "diff_local":       None,
+        "diff_dkk":         int(round(diff_dkk_total)),
+        "currencies":       sorted(active),
+        "by_currency":      by_currency,
+    }
+
+
 def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
     """Returnér foretrukken valuta og signed diff for én (scope, org_id, site).
 
@@ -1266,38 +1373,4 @@ def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
         bucket["zu_local"] += float(r.get("arr_local") or 0)
         bucket["zu_dkk"]   += float(r.get("arr_dkk")   or 0)
 
-    all_currencies = set(pd_by_currency) | set(zu_by_currency)
-    by_currency: dict[str, dict] = {}
-    for c in all_currencies:
-        pd_d = pd_by_currency.get(c, {"pd_local": 0.0, "pd_dkk": 0.0})
-        zu_d = zu_by_currency.get(c, {"zu_local": 0.0, "zu_dkk": 0.0})
-        by_currency[c] = {
-            "pd_local":     round(pd_d["pd_local"], 2),
-            "zuora_local":  round(zu_d["zu_local"], 2),
-            "diff_local":   round(pd_d["pd_local"] - zu_d["zu_local"], 2),
-            "pd_dkk":       round(pd_d["pd_dkk"], 2),
-            "zuora_dkk":    round(zu_d["zu_dkk"], 2),
-            "diff_dkk":     round(pd_d["pd_dkk"] - zu_d["zu_dkk"], 2),
-        }
-
-    diff_dkk_total = sum(d["diff_dkk"] for d in by_currency.values())
-
-    # Aktive valutaer: enten har PD eller Zuora et væsentligt beløb. < 0,5 = numerisk støj.
-    active = [c for c, d in by_currency.items()
-              if abs(d["pd_local"]) > 0.5 or abs(d["zuora_local"]) > 0.5]
-    if len(active) == 1:
-        currency = active[0]
-        value    = int(round(by_currency[currency]["diff_local"]))
-        fallback = False
-    else:
-        currency = "DKK"
-        value    = int(round(diff_dkk_total))
-        fallback = len(active) > 1
-
-    return {
-        "currency":    currency,
-        "value":       value,
-        "fallback":    fallback,
-        "diff_dkk":    int(round(diff_dkk_total)),
-        "by_currency": by_currency,
-    }
+    return _select_currency_and_diff(pd_by_currency, zu_by_currency)
