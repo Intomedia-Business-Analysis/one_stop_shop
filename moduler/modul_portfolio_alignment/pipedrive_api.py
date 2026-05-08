@@ -37,6 +37,11 @@ PAGE_LIMIT = 500
 MAX_RETRIES = 3
 DEAL_TITLE = "Porteføljeafstemning 2026"
 
+# Alle afstemnings-deals stemples med samme service_activation_date
+# (1. januar 2019). Det placerer dem klart i historisk tid så de ikke
+# forveksles med nye salg, og holder samme dato på tværs af bulk-kørsler.
+SERVICE_ACTIVATION_DATE = "2019-01-01"
+
 # scope-id i one_stop_shop → env-variabel der indeholder API-token.
 # Disse navne matcher .env-tokens som brugeren har lagt ind.
 SCOPE_TOKEN_ENV: dict[str, str] = {
@@ -279,31 +284,18 @@ def _admin_yes_option_id(field: dict) -> int:
 # Public: opret deal
 # ---------------------------------------------------------------------------
 
-def create_alignment_deal(
+def _build_payload(
     scope: str,
     org_id: int,
     site: str,
-    diff: float,
-    dry_run: bool = False,
-) -> dict:
-    """Opret en alignment-deal i Pipedrive.
-
-    Returnerer: {ok, deal_id, deal_url, payload, pipeline, stage, dry_run}
-    """
-    if scope not in ACCOUNT_SCOPES:
-        raise ValueError(f"Ukendt scope: {scope!r}")
-    if not org_id:
-        raise ValueError("org_id er påkrævet — kan ikke oprette deal uden organisation")
-    if not site:
-        raise ValueError("site er påkrævet")
-    if diff is None or abs(diff) < 0.5:
-        raise ValueError("diff skal være ≠ 0 — der er intet at afstemme")
-
-    token = _get_token(scope)
-    meta  = _get_meta(scope)
+    diff_signed: float,
+    currency: str,
+) -> tuple[dict, dict, dict]:
+    """Byg Pipedrive deal-payload + returnér (payload, pipeline, stage)."""
+    meta = _get_meta(scope)
 
     keywords = (
-        PIPELINE_KEYWORDS_FOR_POS_DIFF if diff > 0
+        PIPELINE_KEYWORDS_FOR_POS_DIFF if diff_signed > 0
         else PIPELINE_KEYWORDS_FOR_NEG_DIFF
     )
     pipeline = _find_pipeline_by_keyword(meta, keywords)
@@ -312,9 +304,6 @@ def create_alignment_deal(
     sites_field = _resolve_field(meta, "Sites")
     site_opt_id = _site_option_id(sites_field, site)
 
-    # Administrativ-feltet har forskellige hash-keys pr. konto, men hedder ikke
-    # nødvendigvis 'Administrativ' i Pipedrive's UI. Slå op via hardkodet key
-    # først; fald tilbage til navne-opslag (watch_de).
     admin_key = ADMIN_FIELD_KEY.get(scope, "")
     if admin_key:
         admin_field = meta["fields_by_key"].get(admin_key)
@@ -327,21 +316,75 @@ def create_alignment_deal(
         admin_field = _resolve_field(meta, "Administrativ")
     admin_opt = _admin_yes_option_id(admin_field)
 
-    # Værdi: cancellation = -diff (revenue går væk), customer-deal = -diff (positiv).
-    # Begge fanges af samme udtryk fordi diff er signed: diff>0 → negativ værdi,
-    # diff<0 → positiv værdi. Afrund til hele kroner så Pipedrive-værdien matcher
-    # diff-tallet UI'en viser (som også er afrundet med Math.round).
-    deal_value = int(round(-diff))
+    sad_field = _resolve_field(meta, "Service Activation Date")
+
+    # Cancellation = -diff (negativ), customer-deal = -diff (positiv).
+    deal_value = int(round(-diff_signed))
 
     payload: dict = {
         "title":    DEAL_TITLE,
         "value":    deal_value,
-        "currency": "DKK",
+        "currency": currency,
         "org_id":   int(org_id),
         "stage_id": stage["id"],
         sites_field["key"]: str(site_opt_id),
         admin_field["key"]: str(admin_opt),
+        sad_field["key"]:   SERVICE_ACTIVATION_DATE,
     }
+    return payload, pipeline, stage
+
+
+def preview_alignment_deal(
+    scope: str,
+    org_id: int,
+    site: str,
+    diff_signed: float,
+    currency: str,
+) -> dict:
+    """Returnér samme felter som create_alignment_deal — men uden at POSTe."""
+    if scope not in ACCOUNT_SCOPES:
+        raise ValueError(f"Ukendt scope: {scope!r}")
+    if not org_id:
+        raise ValueError("org_id er påkrævet")
+    if not site:
+        raise ValueError("site er påkrævet")
+    if diff_signed is None or abs(diff_signed) < 0.5:
+        raise ValueError("diff skal være ≠ 0 — der er intet at afstemne")
+    payload, pipeline, stage = _build_payload(scope, int(org_id), site, diff_signed, currency)
+    return {
+        "ok":       True,
+        "dry_run":  True,
+        "payload":  payload,
+        "pipeline": {"id": pipeline["id"], "name": pipeline["name"]},
+        "stage":    {"id": stage["id"], "name": stage["name"]},
+        "currency": currency,
+        "value":    payload["value"],
+    }
+
+
+def create_alignment_deal(
+    scope: str,
+    org_id: int,
+    site: str,
+    diff_signed: float,
+    currency: str,
+    dry_run: bool = False,
+) -> dict:
+    """Opret en alignment-deal i Pipedrive.
+
+    Returnerer: {ok, deal_id, deal_url, payload, pipeline, stage, dry_run, currency, value}
+    """
+    if scope not in ACCOUNT_SCOPES:
+        raise ValueError(f"Ukendt scope: {scope!r}")
+    if not org_id:
+        raise ValueError("org_id er paakraevet - kan ikke oprette deal uden organisation")
+    if not site:
+        raise ValueError("site er paakraevet")
+    if diff_signed is None or abs(diff_signed) < 0.5:
+        raise ValueError("diff skal vaere != 0 - der er intet at afstemme")
+
+    token = _get_token(scope)
+    payload, pipeline, stage = _build_payload(scope, int(org_id), site, diff_signed, currency)
 
     if dry_run:
         return {
@@ -350,6 +393,8 @@ def create_alignment_deal(
             "payload":  payload,
             "pipeline": {"id": pipeline["id"], "name": pipeline["name"]},
             "stage":    {"id": stage["id"], "name": stage["name"]},
+            "currency": currency,
+            "value":    payload["value"],
         }
 
     data = _api_post(token, "/deals", payload)
@@ -368,4 +413,6 @@ def create_alignment_deal(
         "payload":  payload,
         "pipeline": {"id": pipeline["id"], "name": pipeline["name"]},
         "stage":    {"id": stage["id"], "name": stage["name"]},
+        "currency": currency,
+        "value":    payload["value"],
     }

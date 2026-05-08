@@ -771,6 +771,11 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
             arr = float(r["arr_dkk"]) if pd.notna(r["arr_dkk"]) else 0.0
         except (TypeError, ValueError):
             arr = 0.0
+        try:
+            arr_loc = float(r["arr_local"]) if pd.notna(r["arr_local"]) else 0.0
+        except (TypeError, ValueError):
+            arr_loc = 0.0
+        currency = str(r["currency"]).strip().upper() if pd.notna(r["currency"]) else "DKK"
         account_type = str(r["account_type"]).strip() if pd.notna(r["account_type"]) else ""
         pipedrive_id = _coerce_pipedrive_id(r["pipedrive_id"])
         account_number = str(r["account_number"]).strip() if pd.notna(r["account_number"]) else None
@@ -791,6 +796,8 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
             "brand":          brand,
             "site":           site_norm,
             "arr_dkk":        arr,
+            "arr_local":      arr_loc,
+            "currency":       currency or "DKK",
         }
         if is_web_sale:
             web_sales_raw.append(row)
@@ -861,6 +868,7 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
     }
     return {
         "enterprise_rows":   enterprise_rows,
+        "enterprise_raw":    enterprise_raw,   # bevar rå rækker med currency/arr_local til local-diff opslag
         "web_sales_by_site": web_sales_by_site,
         "meta":              meta,
     }
@@ -1176,3 +1184,120 @@ def save_note(scope: str, org_id: str, site: str, note: str, updated_by: str) ->
     except Exception:
         traceback.print_exc()
         return False
+
+
+# ---------------------------------------------------------------------------
+# Currency-aware diff til deal-oprettelse
+# ---------------------------------------------------------------------------
+
+def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
+    """Returnér foretrukken valuta og signed diff for én (scope, org_id, site).
+
+    Bruges til at oprette afstemnings-deals i Pipedrive med samme valuta som
+    kundens øvrige deals, hvis hele porteføljen ligger i én valuta. Falder
+    tilbage til DKK hvis der er flere valutaer på kunden.
+
+    Returnerer:
+      {
+        "currency":   "DKK"|"EUR"|"NOK"|...,
+        "value":      int  (signed: positiv = PD over Zuora),
+        "fallback":   bool (True hvis flere valutaer → DKK fallback),
+        "diff_dkk":   int  (altid med, til reference),
+        "by_currency": {C: {pd_local, zuora_local, diff_local, pd_dkk, zuora_dkk, diff_dkk}},
+      }
+    """
+    if scope not in ACCOUNT_SCOPES:
+        raise ValueError(f"Ukendt scope: {scope!r}")
+    cfg = ACCOUNT_SCOPES[scope]
+    deal_types = cfg["pd_deal_types"]
+    placeholders = ",".join(["%s"] * len(deal_types))
+    snap = load_zuora_snapshot()
+    snap_date = snap["meta"].get("snapshot_date")
+
+    pd_by_currency: dict[str, dict] = {}
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                UPPER(LTRIM(RTRIM(d.currency))) AS currency,
+                SUM(d.value)                            AS value_local,
+                SUM(d.value * {PD_FIXED_RATES_SQL})     AS value_dkk_fixed,
+                LTRIM(RTRIM(s.value))                   AS site_raw
+            FROM [INTOMEDIA].[dbo].[PipedriveDeals] d
+            CROSS APPLY STRING_SPLIT(d.sites, ',')      AS s
+            WHERE d.status = 'won'
+              AND d.value IS NOT NULL
+              AND d.org_id = %s
+              AND d.account = %s
+              AND LTRIM(RTRIM(s.value)) <> ''
+              AND d.deal_type IN ({placeholders})
+              AND {PD_NOT_BANNER_SQL}
+              AND {PD_NOT_JOBMARKED_SQL}
+              AND {PD_NOT_WEB_SALE_SQL}
+              AND d.service_activation_date IS NOT NULL
+              AND d.service_activation_date <= %s
+            GROUP BY UPPER(LTRIM(RTRIM(d.currency))), LTRIM(RTRIM(s.value))
+        """, (org_id, cfg["pd_account"], *deal_types, snap_date))
+        for r in cur.fetchall():
+            site_norm = normalize_site(r["site_raw"])
+            if site_norm != site:
+                continue
+            cur_code = (r["currency"] or "DKK").upper()
+            bucket = pd_by_currency.setdefault(cur_code, {"pd_local": 0.0, "pd_dkk": 0.0})
+            bucket["pd_local"] += float(r["value_local"]    or 0)
+            bucket["pd_dkk"]   += float(r["value_dkk_fixed"] or 0)
+        conn.close()
+    except Exception:
+        traceback.print_exc()
+
+    # Zuora-side: filtrér rå rækker. enterprise_raw bevarer currency + arr_local.
+    zu_by_currency: dict[str, dict] = {}
+    org_id_str = str(org_id)
+    for r in snap.get("enterprise_raw", []):
+        if r["scope"] != scope:
+            continue
+        if str(r["pipedrive_id"]) != org_id_str:
+            continue
+        if r["site"] != site:
+            continue
+        cur_code = (r.get("currency") or "DKK").upper()
+        bucket = zu_by_currency.setdefault(cur_code, {"zu_local": 0.0, "zu_dkk": 0.0})
+        bucket["zu_local"] += float(r.get("arr_local") or 0)
+        bucket["zu_dkk"]   += float(r.get("arr_dkk")   or 0)
+
+    all_currencies = set(pd_by_currency) | set(zu_by_currency)
+    by_currency: dict[str, dict] = {}
+    for c in all_currencies:
+        pd_d = pd_by_currency.get(c, {"pd_local": 0.0, "pd_dkk": 0.0})
+        zu_d = zu_by_currency.get(c, {"zu_local": 0.0, "zu_dkk": 0.0})
+        by_currency[c] = {
+            "pd_local":     round(pd_d["pd_local"], 2),
+            "zuora_local":  round(zu_d["zu_local"], 2),
+            "diff_local":   round(pd_d["pd_local"] - zu_d["zu_local"], 2),
+            "pd_dkk":       round(pd_d["pd_dkk"], 2),
+            "zuora_dkk":    round(zu_d["zu_dkk"], 2),
+            "diff_dkk":     round(pd_d["pd_dkk"] - zu_d["zu_dkk"], 2),
+        }
+
+    diff_dkk_total = sum(d["diff_dkk"] for d in by_currency.values())
+
+    # Aktive valutaer: enten har PD eller Zuora et væsentligt beløb. < 0,5 = numerisk støj.
+    active = [c for c, d in by_currency.items()
+              if abs(d["pd_local"]) > 0.5 or abs(d["zuora_local"]) > 0.5]
+    if len(active) == 1:
+        currency = active[0]
+        value    = int(round(by_currency[currency]["diff_local"]))
+        fallback = False
+    else:
+        currency = "DKK"
+        value    = int(round(diff_dkk_total))
+        fallback = len(active) > 1
+
+    return {
+        "currency":    currency,
+        "value":       value,
+        "fallback":    fallback,
+        "diff_dkk":    int(round(diff_dkk_total)),
+        "by_currency": by_currency,
+    }

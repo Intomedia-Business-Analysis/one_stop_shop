@@ -86,6 +86,28 @@
 .cd-result.success{background:#C8E6D8;color:#0F5132;border:1px solid #B0D4C0}
 .cd-result.error{background:#F8D7DA;color:#842029;border:1px solid #F5C2C7}
 .cd-result a{color:inherit;text-decoration:underline;font-weight:700}
+
+.bulk-modal-box{max-width:720px}
+.bulk-form{display:grid;grid-template-columns:140px 1fr;gap:14px 16px;margin:10px 0 18px}
+.bulk-form label.lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);align-self:center}
+.bulk-form .inp{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 10px;outline:none;width:100%;box-sizing:border-box}
+.bulk-form .inp:focus{border-color:var(--green)}
+.bulk-status-tags{display:flex;gap:6px;flex-wrap:wrap}
+.bulk-status-tags .tag{cursor:pointer;user-select:none;transition:opacity .15s}
+.bulk-status-tags .tag.tag-inactive{opacity:.25;text-decoration:line-through}
+.bulk-checkbox-line{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-2);cursor:pointer}
+.bulk-checkbox-line input{width:14px;height:14px;accent-color:var(--green);cursor:pointer}
+.bulk-result{margin-top:14px;padding:12px;border-radius:var(--r-sm);font-size:11px;line-height:1.5;max-height:300px;overflow-y:auto}
+.bulk-result.info{background:#EEF6FF;color:#0B4F8A;border:1px solid #B8D6F5}
+.bulk-result.success{background:#C8E6D8;color:#0F5132;border:1px solid #B0D4C0}
+.bulk-result.error{background:#F8D7DA;color:#842029;border:1px solid #F5C2C7}
+.bulk-result table{width:100%;font-size:10px;margin-top:6px;border-collapse:collapse}
+.bulk-result th{text-align:left;font-weight:700;padding:3px 6px;border-bottom:1px solid currentColor}
+.bulk-result td{padding:3px 6px;border-bottom:1px solid rgba(0,0,0,.08)}
+.bulk-result a{color:inherit;text-decoration:underline}
+
+.bulk-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:#5B7FB8;color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.bulk-btn:hover{background:#4669A0}
 </style>
 </head>
 <body>
@@ -147,6 +169,10 @@
           <div style="display:flex;align-items:center;gap:10px">
             <span class="cached-info" id="snapshot-info"></span>
             <span class="cached-info" id="cached-info"></span>
+            <button class="bulk-btn" onclick="openBulkModal()" title="Opret afstemnings-deals i batch">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Bulk-opret deals
+            </button>
             <button class="refresh-btn" onclick="loadData(true)">
               <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
               Genindlæs
@@ -308,6 +334,55 @@
         </div>
 
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk-opret modal -->
+<div class="cd-modal-overlay hidden" id="bulk-modal" onclick="closeBulkModal(event)">
+  <div class="cd-modal-box bulk-modal-box" onclick="event.stopPropagation()">
+    <div class="cd-modal-header">
+      <div class="cd-modal-title">Bulk-opret afstemnings-deals</div>
+      <button class="modal-close" onclick="closeBulkModal()">✕</button>
+    </div>
+    <div class="cd-modal-body">
+      <div>Opretter en <strong>Porteføljeafstemning 2026</strong>-deal for hver kunde×site-række der matcher filteret. Kør gerne <em>Forhåndsvis</em> først for at se hvor mange der vil blive oprettet.</div>
+      <div class="bulk-form">
+        <label class="lbl">Account</label>
+        <select class="inp" id="bulk-scope">
+          <option value="all">Alle accounts</option>
+        </select>
+
+        <label class="lbl">Sites</label>
+        <select class="inp" id="bulk-sites" multiple size="4" style="height:auto">
+        </select>
+
+        <label class="lbl">Statusser</label>
+        <div class="bulk-status-tags" id="bulk-statuses">
+          <span class="tag tag-mismatch"   data-status="mismatch"   onclick="toggleBulkStatus(this)">Mismatch</span>
+          <span class="tag tag-pd_only"    data-status="pd_only"    onclick="toggleBulkStatus(this)">Kun PD</span>
+          <span class="tag tag-zuora_only" data-status="zuora_only" onclick="toggleBulkStatus(this)">Kun Zuora</span>
+          <span class="tag tag-match tag-inactive" data-status="match" onclick="toggleBulkStatus(this)">Match</span>
+        </div>
+
+        <label class="lbl">Min |diff|</label>
+        <input class="inp" type="number" id="bulk-min" value="1" min="0" step="1" placeholder="kr. — fx 1">
+
+        <label class="lbl">Max |diff|</label>
+        <input class="inp" type="number" id="bulk-max" value="" min="0" step="1" placeholder="kr. — tom = ingen øvre grænse">
+
+        <label class="lbl">Andet</label>
+        <div>
+          <label class="bulk-checkbox-line"><input type="checkbox" id="bulk-include-handled"> Inkludér håndterede rækker</label>
+          <label class="bulk-checkbox-line" style="margin-top:4px"><input type="checkbox" id="bulk-dryrun" checked> Dry-run (vis kun, opret ikke)</label>
+        </div>
+      </div>
+      <div id="bulk-result"></div>
+    </div>
+    <div class="cd-modal-footer">
+      <button class="cd-btn" onclick="closeBulkModal()" id="bulk-cancel-btn">Luk</button>
+      <button class="cd-btn" onclick="submitBulk(true)"  id="bulk-preview-btn">Forhåndsvis</button>
+      <button class="cd-btn cd-btn-primary" onclick="submitBulk(false)" id="bulk-create-btn">Opret deals</button>
     </div>
   </div>
 </div>
@@ -745,7 +820,7 @@ document.getElementById('cmp-tbody').addEventListener('click', e => {
 // ---------------------------------------------------------------------------
 let cdPending = null;
 
-function openCreateDealModal(ds) {
+async function openCreateDealModal(ds) {
   const diff = parseFloat(ds.diff);
   cdPending = {
     scope:    ds.scope,
@@ -761,16 +836,40 @@ function openCreateDealModal(ds) {
   document.getElementById('cd-pipeline').textContent = diff > 0
     ? 'Pipeline Cancellation (PD > Zuora)'
     : 'Customer Pipeline (Zuora > PD)';
-  // Cancellation = -diff, customer-deal = -diff. Begge: deal-værdien er -diff.
-  const dealValue = -diff;
+  // Værdi vises foreløbigt som DKK-diff; opdateres når preview returnerer.
   document.getElementById('cd-value').textContent =
-    (dealValue > 0 ? '+' : '') + fmtFull(dealValue) + ' (DKK)';
+    'Henter…';
   document.getElementById('cd-result').innerHTML = '';
   const confirmBtn = document.getElementById('cd-confirm-btn');
-  confirmBtn.disabled = false;
-  confirmBtn.textContent = 'Opret deal';
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Henter…';
   document.getElementById('cd-cancel-btn').disabled = false;
   document.getElementById('cd-modal').classList.remove('hidden');
+
+  // Spørg backend hvad valutaen og det præcise beløb bliver.
+  try {
+    const url = `/tools/portfolio-alignment/deal-preview?scope=${encodeURIComponent(ds.scope)}&org_id=${encodeURIComponent(ds.orgId)}&site=${encodeURIComponent(ds.site)}`;
+    const r = await fetch(url);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    cdPending.previewCurrency = d.currency;
+    cdPending.previewValue    = d.value;
+    const valStr = (d.value > 0 ? '+' : '') + Math.round(d.value).toLocaleString('da-DK')
+      + ' ' + d.currency;
+    let extra = '';
+    if (d.local && d.local.fallback) {
+      extra = ' (flere valutaer på kunden → DKK fallback)';
+    }
+    document.getElementById('cd-value').textContent = valStr + extra;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Opret deal';
+  } catch(err) {
+    document.getElementById('cd-value').textContent = '?';
+    document.getElementById('cd-result').className = 'cd-result error';
+    document.getElementById('cd-result').innerHTML = `<strong>Forhåndsvisning fejlede:</strong> ${escHtml(err.message || String(err))}`;
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Kan ikke opretttes';
+  }
 }
 
 function closeCreateDealModal(e) {
@@ -791,15 +890,20 @@ async function submitCreateDeal() {
     const r = await fetch('/tools/portfolio-alignment/create-deal', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(cdPending),
+      body: JSON.stringify({
+        scope:  cdPending.scope,
+        org_id: cdPending.org_id,
+        site:   cdPending.site,
+      }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
     const link = d.deal_url
       ? ` — <a href="${escHtml(d.deal_url)}" target="_blank" rel="noopener">Åbn deal #${escHtml(String(d.deal_id))}</a>`
       : ` (deal #${escHtml(String(d.deal_id || '?'))})`;
+    const valStr = (d.value > 0 ? '+' : '') + Math.round(d.value).toLocaleString('da-DK') + ' ' + d.currency;
     resultEl.className = 'cd-result success';
-    resultEl.innerHTML = `Deal oprettet i pipelinen <strong>${escHtml(d.pipeline?.name || '?')}</strong>${link}.`;
+    resultEl.innerHTML = `Deal oprettet i pipelinen <strong>${escHtml(d.pipeline?.name || '?')}</strong> med værdi <strong>${valStr}</strong>${link}.`;
     confirmBtn.textContent = 'Oprettet';
     cancelBtn.textContent = 'Luk';
   } catch(err) {
@@ -814,6 +918,153 @@ document.addEventListener('keydown', e => {
     closeCreateDealModal();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Bulk-opret modal
+// ---------------------------------------------------------------------------
+
+function openBulkModal() {
+  // Populér scope-dropdown fra account-filteret (samme værdier)
+  const accountSel = document.getElementById('filter-account');
+  const bulkScope  = document.getElementById('bulk-scope');
+  bulkScope.innerHTML = accountSel.innerHTML;
+  bulkScope.value     = accountSel.value || 'all';
+
+  // Populér sites-multiselect fra det filter der allerede findes
+  const siteFilter = document.getElementById('filter-site');
+  const bulkSites  = document.getElementById('bulk-sites');
+  const sites = Array.from(siteFilter.options)
+    .map(o => o.value)
+    .filter(v => v !== '');
+  bulkSites.innerHTML = sites.map(s =>
+    `<option value="${escHtml(s)}">${escHtml(s)}</option>`
+  ).join('');
+
+  // Reset visningstilstand
+  document.getElementById('bulk-result').innerHTML = '';
+  document.getElementById('bulk-result').className = '';
+  document.getElementById('bulk-create-btn').disabled  = false;
+  document.getElementById('bulk-preview-btn').disabled = false;
+  document.getElementById('bulk-create-btn').textContent  = 'Opret deals';
+  document.getElementById('bulk-preview-btn').textContent = 'Forhåndsvis';
+
+  document.getElementById('bulk-modal').classList.remove('hidden');
+}
+
+function closeBulkModal(e) {
+  if (e && e.target !== document.getElementById('bulk-modal')) return;
+  document.getElementById('bulk-modal').classList.add('hidden');
+}
+
+function toggleBulkStatus(el) {
+  el.classList.toggle('tag-inactive');
+}
+
+function _bulkPayload(forceDryRun) {
+  const scope = document.getElementById('bulk-scope').value;
+  const sites = Array.from(document.getElementById('bulk-sites').selectedOptions)
+                 .map(o => o.value);
+  const statuses = Array.from(document.querySelectorAll('#bulk-statuses .tag'))
+                    .filter(el => !el.classList.contains('tag-inactive'))
+                    .map(el => el.dataset.status);
+  const minV = parseFloat(document.getElementById('bulk-min').value) || 0;
+  const maxV = parseFloat(document.getElementById('bulk-max').value) || 0;
+  const inclHandled = document.getElementById('bulk-include-handled').checked;
+  const dryRun      = forceDryRun || document.getElementById('bulk-dryrun').checked;
+  return {
+    scope,
+    sites,
+    statuses,
+    min_diff_abs:    minV,
+    max_diff_abs:    maxV,
+    include_handled: inclHandled,
+    dry_run:         dryRun,
+  };
+}
+
+async function submitBulk(asPreview) {
+  const previewBtn = document.getElementById('bulk-preview-btn');
+  const createBtn  = document.getElementById('bulk-create-btn');
+  const resultEl   = document.getElementById('bulk-result');
+  const body = _bulkPayload(asPreview);
+
+  if (!body.statuses.length) {
+    resultEl.className = 'bulk-result error';
+    resultEl.textContent = 'Vælg mindst én status.';
+    return;
+  }
+
+  if (!asPreview && !body.dry_run) {
+    if (!confirm(`Du er ved at oprette deals for alle matchende rækker. Fortsæt?`)) return;
+  }
+
+  previewBtn.disabled = createBtn.disabled = true;
+  (asPreview ? previewBtn : createBtn).textContent = asPreview ? 'Henter…' : 'Opretter…';
+  resultEl.className = 'bulk-result info';
+  resultEl.textContent = 'Arbejder…';
+
+  try {
+    const r = await fetch('/tools/portfolio-alignment/create-deals-bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+    _renderBulkResult(d, body.dry_run);
+  } catch(err) {
+    resultEl.className = 'bulk-result error';
+    resultEl.innerHTML = `<strong>Fejl:</strong> ${escHtml(err.message || String(err))}`;
+  } finally {
+    previewBtn.disabled = createBtn.disabled = false;
+    previewBtn.textContent = 'Forhåndsvis';
+    createBtn.textContent  = 'Opret deals';
+  }
+}
+
+function _renderBulkResult(d, isDryRun) {
+  const resultEl = document.getElementById('bulk-result');
+  const created  = d.created || [];
+  const failed   = d.failed  || [];
+  const skipped  = d.skipped || [];
+  const eligible = d.count_eligible || 0;
+
+  const successClass = failed.length ? 'info' : (created.length ? 'success' : 'info');
+  resultEl.className = 'bulk-result ' + successClass;
+
+  let html = '';
+  if (isDryRun || d.dry_run) {
+    html += `<strong>Forhåndsvisning:</strong> ${eligible} række${eligible===1?'':'r'} ville blive oprettet.`;
+  } else {
+    html += `<strong>${created.length} deal${created.length===1?'':'s'} oprettet</strong>`;
+    if (failed.length) html += ` · <strong style="color:#842029">${failed.length} fejlede</strong>`;
+    if (skipped.length) html += ` · ${skipped.length} sprunget over`;
+    html += '.';
+  }
+
+  if (created.length) {
+    html += '<table><thead><tr><th>Kunde</th><th>Site</th><th>Pipeline</th><th>Værdi</th><th>Deal</th></tr></thead><tbody>';
+    for (const c of created) {
+      const v = (c.value > 0 ? '+' : '') + Math.round(c.value || 0).toLocaleString('da-DK') + ' ' + (c.currency || '');
+      const link = c.deal_url
+        ? `<a href="${escHtml(c.deal_url)}" target="_blank" rel="noopener">#${escHtml(String(c.deal_id))}</a>`
+        : (c.deal_id ? '#' + escHtml(String(c.deal_id)) : '—');
+      html += `<tr><td>${escHtml(c.org_name||'')}</td><td>${escHtml(c.site||'')}</td><td>${escHtml(c.pipeline||'')}</td><td>${v}</td><td>${link}</td></tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  if (failed.length) {
+    html += '<div style="margin-top:8px"><strong>Fejlede:</strong></div>';
+    html += '<table><thead><tr><th>Kunde</th><th>Site</th><th>Fejl</th></tr></thead><tbody>';
+    for (const f of failed) {
+      html += `<tr><td>${escHtml(f.org_name||'')}</td><td>${escHtml(f.site||'')}</td><td>${escHtml(f.error||'')}</td></tr>`;
+    }
+    html += '</tbody></table>';
+  }
+
+  resultEl.innerHTML = html;
+}
 
 // Web sales: klik på en site-række → modal med alle Web Sale-deals for det site
 document.getElementById('websales-tbody').addEventListener('click', e => {
