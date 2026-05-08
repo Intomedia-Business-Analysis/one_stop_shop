@@ -1302,7 +1302,7 @@ function renderTable() {
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
-        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}${r.org_id ? `<div style="font-size:10px;font-weight:400;color:var(--ink-4);margin-top:2px">org_id: ${escHtml(String(r.org_id))}</div>` : ''}</td>
         <td>${escHtml(r.site)}</td>
         <td class="num">${fmtFull(r.pd_acv)}</td>
         <td class="num">${fmtFull(r.zuora_arr)}</td>
