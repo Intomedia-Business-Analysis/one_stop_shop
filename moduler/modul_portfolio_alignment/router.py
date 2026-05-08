@@ -307,7 +307,7 @@ def _gc_old_bulk_jobs() -> None:
             del _BULK_JOBS[k]
 
 
-def _bulk_worker(job_id: str, eligible: list, dry_run: bool) -> None:
+def _bulk_worker(job_id: str, eligible: list, dry_run: bool, user_name: str) -> None:
     """Kører i baggrundstråd — opretter én deal pr. række, opdaterer job-state.
 
     Bruger row's deal_currency/deal_value (fra compare_portfolios) i stedet for
@@ -333,6 +333,14 @@ def _bulk_worker(job_id: str, eligible: list, dry_run: bool) -> None:
                 currency=currency,
                 dry_run=dry_run,
             )
+            # Markér rækken som håndteret når deal'en faktisk er oprettet —
+            # ikke ved dry-run. Det forhindrer kolleger i at håndtere rækken
+            # bagefter, og at samme deal oprettes igen i næste bulk-kørsel.
+            if not dry_run:
+                try:
+                    set_handled(r["scope"], str(r["org_id"]), r["site"], True, user_name)
+                except Exception:
+                    traceback.print_exc()  # ikke kritisk — deal'en er oprettet
             with _BULK_JOBS_LOCK:
                 job["created"].append({
                     **_row_short(r),
@@ -441,7 +449,7 @@ async def alignment_create_deals_bulk(
     # daemon=True så tråden ikke blokerer en evt. server-genstart
     threading.Thread(
         target=_bulk_worker,
-        args=(job_id, eligible, dry_run),
+        args=(job_id, eligible, dry_run, user.get("name") or "system"),
         daemon=True,
     ).start()
 
