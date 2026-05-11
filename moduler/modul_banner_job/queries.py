@@ -282,7 +282,6 @@ def db_customer_heatmap(pipeline: str, owner_name: str | None = None) -> list[di
             WHERE {_BASE_WHERE} {oc}
               AND status = 'won'
             GROUP BY org_id, org_name
-            HAVING COUNT(*) > 1
             ORDER BY total_value DESC
         """, params)
         rows = []
