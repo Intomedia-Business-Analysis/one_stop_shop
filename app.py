@@ -74,9 +74,9 @@ CATEGORIES = [
         "min_role": "salesperson",
         "subcategories": [],
         "items": [
-            {"id": "kpi-saelger",       "title": "Sælger Dashboard",        "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",   "url": "/tools/performance/saelger"},
-            {"id": "kpi-manager",       "title": "Manager Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager", "url": "/tools/performance/manager"},
-            {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management",    "url": "/tools/performance/afdelingsleder"},
+            {"id": "kpi-saelger",       "title": "Sælger Dashboard",        "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",    "exclude_roles": ["sales_operations", "management"], "url": "/tools/performance/saelger"},
+            {"id": "kpi-manager",       "title": "Manager Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager",  "url": "/tools/performance/manager"},
+            {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations","url": "/tools/performance/afdelingsleder"},
     ],
 },
 
@@ -88,12 +88,12 @@ CATEGORIES = [
         "color": "amber",
         "min_role": "sales_manager",
         "subcategories": [
-            {"id": "budget",    "title": "Budget",    "description": "Budget upload og dashboard",       "brand": None, "min_role": "sales_operations"},
+            {"id": "budget",    "title": "Budget",    "description": "Budget upload og dashboard",       "brand": None, "min_role": "sales_manager"},
             {"id": "forecast",  "title": "Forecast",  "description": "Salgsprognoser",                   "brand": None, "min_role": "sales_manager"},
             {"id": "alignment", "title": "Alignment", "description": "Pipedrive vs. Zuora ACV-kontrol",  "brand": None, "min_role": "sales_operations"},
         ],
         "items": [
-            {"id": "budget-upload-tool",      "title": "Budget",              "type": "tool",      "subcategory": "budget",    "brand": None, "min_role": "sales_operations", "url": "/tools/budget/"},
+            {"id": "budget-upload-tool",      "title": "Budget",              "type": "tool",      "subcategory": "budget",    "brand": None, "min_role": "sales_manager", "url": "/tools/budget/"},
             {"id": "forecast-tool",           "title": "Forecast",            "type": "tool",      "subcategory": "forecast",  "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
             {"id": "portfolio-alignment",     "title": "Portfolio Alignment", "type": "dashboard", "subcategory": "alignment", "brand": None, "min_role": "sales_operations", "url": "/tools/portfolio-alignment/"},
         ],
@@ -106,9 +106,10 @@ CATEGORIES = [
         "icon": "activity",
         "color": "green",
         "min_role": "salesperson",
+        "required_team": "Banner og Job",
         "subcategories": [],
         "items": [
-            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/banner-job/"},
+            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "exclude_roles": ["sales_operations"], "url": "/tools/banner-job/"},
         ],
     },
 
@@ -134,7 +135,7 @@ def filter_categories(categories: list, user: dict) -> list:
             continue
         visible_items = []
         for item in cat["items"]:
-            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"))
+            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"), item.get("required_team"), item.get("exclude_roles"))
             if access != "none":
                 visible_items.append({**item, "access": access})
         visible_subs = [
@@ -143,6 +144,8 @@ def filter_categories(categories: list, user: dict) -> list:
         ]
         dashboard_count = sum(1 for i in visible_items if i["type"] == "dashboard")
         tool_count      = sum(1 for i in visible_items if i["type"] == "tool")
+        if not visible_items and not visible_subs:
+            continue
         result.append({
             **cat,
             "items":           visible_items,

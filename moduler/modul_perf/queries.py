@@ -780,6 +780,21 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     pipeline_value = float(pipe_row.get("pipeline_value", 0) or 0)
     pipeline_count = int(pipe_row.get("pipeline_count", 0) or 0)
 
+    cur.execute(f"""
+        SELECT [pipeline_name], COUNT(*) AS antal
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
+          AND [expected_close_date] >= %s AND [expected_close_date] < %s
+          AND [owner_name] = %s
+          AND [sites] IN {brands_ph}
+          AND COALESCE([value_dkk],[value]) > 0
+          {_ADM_EXCLUDE}
+          {team_clause}
+        GROUP BY [pipeline_name]
+        ORDER BY antal DESC
+    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    pipeline_fordeling = [{"navn": r["pipeline_name"] or "Ukendt", "antal": int(r["antal"])} for r in (cur.fetchall() or [])]
+
     ly_from = date(ref_year - 1, ref_month, 1)
     ly_next = ref_month % 12 + 1
     ly_ny   = ref_year - 1 + (1 if ref_month == 12 else 0)
@@ -844,7 +859,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     # Q9: Deals — filtreret på valgt periode + team
     cur.execute(f"""
         SELECT
-            [title], [sites],
+            [title], [sites], [org_name],
             ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
             CONVERT(NVARCHAR(10), {d_col}, 23) AS event_date,
             [deal_type],
@@ -864,12 +879,12 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     seneste_deals = [{
         "title": r["title"] or "(Uden titel)",
         "site": r["sites"] or "—",
+        "org_name": r["org_name"] or "—",
         "value": float(r["value"] or 0),
         "dato": r["event_date"] or "—",
-        "deal_type": r["deal_type"] or "—",
         "status": "Vundet",
         "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser')
-    } for r in cur.fetchall()]
+    } for r in (cur.fetchall() or [])]
 
     # Won-beløb per team (til budget-breakdown)
     cur.execute(f"""
@@ -924,8 +939,9 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "vs_budget_pct":   vs_budget_pct,
         "salg_dag":        round(salg_dag, 2),
         "sparkline":       sparkline,
-        "pipeline_value":  round(pipeline_value, 2),
-        "pipeline_count":  pipeline_count,
+        "pipeline_value":     round(pipeline_value, 2),
+        "pipeline_count":     pipeline_count,
+        "pipeline_fordeling": pipeline_fordeling,
         "ly_won":          round(ly_won, 2),
         "yoy_pct":         yoy_pct,
         "maaned_chart":    maaned_chart,
@@ -938,6 +954,184 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "ref_year":        ref_year,
         "today":           today.isoformat(),
     }
+
+
+def db_manager_saelger_deals(owner_name: str, year: int, month: int,
+                              date_col: str = "won_time",
+                              site: str | None = None,
+                              pipeline_type: str | None = None):
+    """Hent deals for en specifik sælger til manager deal-historik."""
+    valid_cols = {"won_time", "close_time", "service_activation_date"}
+    if date_col not in valid_cols:
+        date_col = "won_time"
+
+    from datetime import date as _date
+    month_from = _date(year, month, 1)
+    next_month = month % 12 + 1
+    next_year  = year + (1 if month == 12 else 0)
+    month_to   = _date(next_year, next_month, 1)
+
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
+    site_clause     = "AND [sites] = %s"          if site          else ""
+    pipeline_clause = "AND [pipeline_name] = %s"  if pipeline_type else ""
+    site_params     = (site,)          if site          else ()
+    pipeline_params = (pipeline_type,) if pipeline_type else ()
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                [title], [sites], [org_name],
+                ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
+                CONVERT(NVARCHAR(10), [{date_col}], 23) AS event_date,
+                [pipeline_name]
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status] = 'won'
+              AND [pipeline_name] <> 'Web Sale'
+              AND [owner_name] = %s
+              AND [sites] IN {brands_ph}
+              AND [{date_col}] >= %s AND [{date_col}] < %s
+              {site_clause}
+              {pipeline_clause}
+            ORDER BY [{date_col}] DESC
+        """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS)
+             + (month_from.isoformat(), month_to.isoformat())
+             + site_params + pipeline_params)
+
+        deals = [{
+            "title":     r["title"] or "(Uden titel)",
+            "site":      r["sites"] or "—",
+            "org_name":  r["org_name"] or "—",
+            "value":     float(r["value"] or 0),
+            "dato":      r["event_date"] or "—",
+            "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser'),
+        } for r in (cur.fetchall() or [])]
+        conn.close()
+        return deals
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
+def db_manager_saelger_filters(owner_name: str):
+    """Hent tilgængelige sites og pipeline-typer for en sælger (til filter-dropdowns)."""
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+
+        # Sites fra alle deals (vundne + åbne)
+        cur.execute(f"""
+            SELECT DISTINCT [sites] AS site
+            FROM [dbo].[PipedriveDeals]
+            WHERE [owner_name] = %s
+              AND [sites] IN {brands_ph}
+              AND [sites] IS NOT NULL
+            ORDER BY [sites]
+        """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS))
+        sites = [r["site"] for r in (cur.fetchall() or [])]
+
+        # Pipeline-typer fra vundne deals
+        cur.execute(f"""
+            SELECT DISTINCT [pipeline_name]
+            FROM [dbo].[PipedriveDeals]
+            WHERE [owner_name] = %s AND [status] = 'won'
+              AND [pipeline_name] IS NOT NULL AND [pipeline_name] <> 'Web Sale'
+              AND [sites] IN {brands_ph}
+            ORDER BY [pipeline_name]
+        """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS))
+        deal_pipelines = [r["pipeline_name"] for r in (cur.fetchall() or [])]
+
+        # Pipeline-typer fra åbne deals
+        cur.execute(f"""
+            SELECT DISTINCT [pipeline_name]
+            FROM [dbo].[PipedriveDeals]
+            WHERE [owner_name] = %s AND [status] = 'open'
+              AND [pipeline_name] IS NOT NULL AND [pipeline_name] <> 'Web Sale'
+              AND [sites] IN {brands_ph}
+            ORDER BY [pipeline_name]
+        """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS))
+        open_pipelines = [r["pipeline_name"] for r in (cur.fetchall() or [])]
+
+        conn.close()
+        return {
+            "sites":           sites,
+            "deal_pipelines":  sorted(set(deal_pipelines)),
+            "open_pipelines":  sorted(set(open_pipelines)),
+        }
+    except Exception:
+        traceback.print_exc()
+        return {"sites": [], "deal_pipelines": [], "open_pipelines": []}
+
+
+def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
+                                 month: int | None = None, site: str | None = None,
+                                 pipeline_type: str | None = None):
+    """Hent åbne pipeline deals for en sælger (til manager-visning)."""
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
+    # Bygger valgfrie klausuler
+    extra_clauses = []
+    extra_params  = []
+
+    if year and month:
+        from datetime import date as _date
+        m_from = _date(year, month, 1)
+        next_m = month % 12 + 1
+        next_y = year + (1 if month == 12 else 0)
+        m_to   = _date(next_y, next_m, 1)
+        extra_clauses.append("[expected_close_date] >= %s AND [expected_close_date] < %s")
+        extra_params += [m_from.isoformat(), m_to.isoformat()]
+    elif year:
+        extra_clauses.append("YEAR([expected_close_date]) = %s")
+        extra_params.append(year)
+
+    if site:
+        extra_clauses.append("[sites] = %s")
+        extra_params.append(site)
+
+    if pipeline_type:
+        extra_clauses.append("[pipeline_name] = %s")
+        extra_params.append(pipeline_type)
+
+    extra_sql = ("AND " + " AND ".join(extra_clauses)) if extra_clauses else ""
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                [title], [sites], [org_name],
+                ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
+                [pipeline_name],
+                CONVERT(NVARCHAR(10), [expected_close_date], 23) AS expected_close
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status] = 'open'
+              AND [pipeline_name] <> 'Web Sale'
+              AND [owner_name] = %s
+              AND [sites] IN {brands_ph}
+              AND COALESCE([value_dkk],[value]) > 0
+              {_ADM_EXCLUDE}
+              {extra_sql}
+            ORDER BY CASE WHEN [expected_close_date] IS NULL THEN 1 ELSE 0 END,
+                     [expected_close_date] ASC
+        """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + tuple(extra_params))
+
+        rows = cur.fetchall() or []
+        conn.close()
+        return [{
+            "title":          r["title"] or "(Uden titel)",
+            "site":           r["sites"] or "—",
+            "org_name":       r["org_name"] or "—",
+            "value":          float(r["value"] or 0),
+            "pipeline":       r["pipeline_name"] or "—",
+            "expected_close": r["expected_close"] or "—",
+        } for r in rows]
+    except Exception:
+        traceback.print_exc()
+        return []
 
 
 def db_saelger_meta(owner_name: str):

@@ -353,28 +353,24 @@ PD_FIXED_RATES_SQL = """
 # scope's deal_type-filter som dobbelt-værn mod fejl-kategorisering.
 PD_NOT_BANNER_SQL = "(d.pipeline_name IS NULL OR LOWER(d.pipeline_name) NOT LIKE '%banner%')"
 PD_NOT_JOBMARKED_SQL = "(d.pipeline_name IS NULL OR LOWER(d.pipeline_name) NOT LIKE '%jobmarked%')"
+PD_NOT_WEB_SALE_SQL = "d.org_name NOT LIKE 'Web Sale%%'"
 
 
 def fetch_pipedrive_acv(
     scope: Optional[str] = None,
     snapshot_date: Optional[str] = None,
-) -> list[dict]:
-    """Pipedrive ACV pr. (scope, org_id, site).
+) -> tuple[list[dict], dict]:
+    """Pipedrive ACV pr. (scope, org_id, site) — plus currency-breakdown.
 
-    scope=None eller 'all' → alle definerede scopes.
-    scope='watch_no' osv. → kun det ene.
-
-    ACV beregnes som value × FAST kurs (ikke value_dkk fra DB), så det matcher
-    Zuora-snapshot's faste kurssætning. Ellers ville rene kursforskelle blive
-    flagget som mismatch.
-
-    snapshot_date afgrænser service_activation_date <= snapshot_date — så vi
-    kun tæller deals der var aktive på Zuora-snapshot-tidspunktet.
+    Returnerer to ting:
+      out: liste af aggregerede rækker pr. (scope, org_id, site)
+      pd_currency_map: dict[(scope, org_id, site)] -> dict[currency] -> {pd_local, pd_dkk}
     """
     scope_ids = _scope_ids_for(scope)
     snap_date = snapshot_date or current_snapshot_date()
 
     out: list[dict] = []
+    pd_currency_map: dict[tuple, dict[str, dict]] = {}
     try:
         conn = get_pipedrive_conn()
         cur = conn.cursor(as_dict=True)
@@ -387,6 +383,7 @@ def fetch_pipedrive_acv(
                 SELECT
                     d.org_id,
                     d.org_name,
+                    UPPER(LTRIM(RTRIM(d.currency))) AS currency,
                     LTRIM(RTRIM(s.value)) AS site_raw,
                     SUM(d.value * {PD_FIXED_RATES_SQL}) AS total_value_dkk_fixed,
                     SUM(d.value)                        AS total_value_local,
@@ -401,28 +398,54 @@ def fetch_pipedrive_acv(
                   AND d.deal_type IN ({placeholders})
                   AND {PD_NOT_BANNER_SQL}
                   AND {PD_NOT_JOBMARKED_SQL}
+                  AND {PD_NOT_WEB_SALE_SQL}
                   AND d.service_activation_date IS NOT NULL
                   AND d.service_activation_date <= %s
-                GROUP BY d.org_id, d.org_name, LTRIM(RTRIM(s.value))
+                GROUP BY d.org_id, d.org_name, UPPER(LTRIM(RTRIM(d.currency))), LTRIM(RTRIM(s.value))
             """, params)
+            agg: dict[tuple, dict] = {}
             for r in cur.fetchall():
                 site_norm = normalize_site(r["site_raw"])
                 if not site_norm:
                     continue
-                out.append({
-                    "scope":      scope_id,
-                    "org_id":     str(r["org_id"]),
+                org_id = str(r["org_id"])
+                currency = (r["currency"] or "DKK").upper()
+                v_dkk    = float(r["total_value_dkk_fixed"] or 0)
+                v_local  = float(r["total_value_local"]    or 0)
+                count    = int(r["deal_count"]              or 0)
+
+                k = (scope_id, org_id, site_norm)
+                bucket = agg.setdefault(k, {
                     "org_name":   r["org_name"] or "—",
-                    "site":       site_norm,
                     "site_raw":   r["site_raw"],
-                    "pd_acv":     float(r["total_value_dkk_fixed"] or 0),
-                    "pd_local":   float(r["total_value_local"] or 0),
-                    "deal_count": int(r["deal_count"] or 0),
+                    "pd_acv":     0.0,
+                    "pd_local":   0.0,
+                    "deal_count": 0,
+                })
+                bucket["pd_acv"]     += v_dkk
+                bucket["pd_local"]   += v_local   # kun meningsfuldt hvis 1 valuta
+                bucket["deal_count"] += count
+
+                cm = pd_currency_map.setdefault(k, {})
+                cb = cm.setdefault(currency, {"pd_local": 0.0, "pd_dkk": 0.0})
+                cb["pd_local"] += v_local
+                cb["pd_dkk"]   += v_dkk
+
+            for (sc, oid, site_n), b in agg.items():
+                out.append({
+                    "scope":      sc,
+                    "org_id":     oid,
+                    "org_name":   b["org_name"],
+                    "site":       site_n,
+                    "site_raw":   b["site_raw"],
+                    "pd_acv":     b["pd_acv"],
+                    "pd_local":   b["pd_local"],
+                    "deal_count": b["deal_count"],
                 })
         conn.close()
     except Exception:
         traceback.print_exc()
-    return out
+    return out, pd_currency_map
 
 
 def fetch_pipedrive_org_names(scope: Optional[str] = None) -> dict[str, str]:
@@ -556,7 +579,7 @@ def fetch_web_sale_deals(scope: str, site: str, snapshot_date: Optional[str] = N
                 d.pipeline_name,
                 d.deal_type,
                 d.administrativ,
-                CAST(d.value_dkk AS BIGINT)                         AS value_dkk,
+                CAST(d.weighted_value AS BIGINT)                    AS weighted_value,
                 CAST(d.value AS BIGINT)                             AS value_local,
                 d.currency,
                 CONVERT(NVARCHAR(10), d.service_activation_date, 23) AS activation_date,
@@ -587,9 +610,9 @@ def fetch_web_sale_deals(scope: str, site: str, snapshot_date: Optional[str] = N
                 "pipeline":        r["pipeline_name"] or "—",
                 "deal_type":       r["deal_type"] or "—",
                 "administrativ":   r["administrativ"],
-                "value":           int(r["value_dkk"] or 0),
+                "value":           int(r["weighted_value"] or 0),
                 "value_local":     int(r["value_local"] or 0),
-                "currency":        r["currency"] or "—",
+                "currency":        (r["currency"] or "DKK").upper(),
                 "activation_date": r["activation_date"] or "—",
                 "org_id":          r["org_id"],
                 "org_name":        r["org_name"] or "—",
@@ -605,8 +628,8 @@ def fetch_web_sale_deals(scope: str, site: str, snapshot_date: Optional[str] = N
     return out
 
 
-def fetch_customer_deals(scope: str, org_id: str, snapshot_date: Optional[str] = None) -> dict:
-    """Hent alle deals for én kunde (én scope) — drill-down.
+def fetch_customer_deals(scope: str, org_id: str, site: Optional[str] = None, snapshot_date: Optional[str] = None) -> dict:
+    """Hent deals for én kunde (én scope), optionelt filtreret til ét site — drill-down.
 
     snapshot_date afgrænser service_activation_date <= snapshot_date.
     """
@@ -640,7 +663,8 @@ def fetch_customer_deals(scope: str, org_id: str, snapshot_date: Optional[str] =
                 d.pipeline_name,
                 d.deal_type,
                 d.administrativ,
-                CAST(d.value_dkk AS BIGINT) AS value_dkk,
+                CAST(d.weighted_value AS BIGINT) AS weighted_value,
+                d.currency,
                 CONVERT(NVARCHAR(10), d.service_activation_date, 23) AS service_activation_date,
                 CONVERT(NVARCHAR(10), d.expected_close_date, 23)     AS expected_close_date,
                 COALESCE(d.sites, '') AS sites,
@@ -648,6 +672,7 @@ def fetch_customer_deals(scope: str, org_id: str, snapshot_date: Optional[str] =
             FROM PipedriveDeals d
             WHERE d.org_id = %s
               AND d.account = %s
+              AND d.status = 'won'
               AND d.deal_type IN ({placeholders})
               AND {PD_NOT_BANNER_SQL}
               AND {PD_NOT_JOBMARKED_SQL}
@@ -663,7 +688,10 @@ def fetch_customer_deals(scope: str, org_id: str, snapshot_date: Optional[str] =
                 "pipeline":         r["pipeline_name"] or "—",
                 "deal_type":        r["deal_type"] or "—",
                 "administrativ":    r["administrativ"],
-                "value":            int(r["value_dkk"] or 0),
+                # Lokal valuta (weighted_value er på won-deals = value × 1.0).
+                # Vi viser i kundens egen valuta så afstemnings-diff matcher.
+                "value":            int(r["weighted_value"] or 0),
+                "currency":         (r["currency"] or "DKK").upper(),
                 "activation_date":  r["service_activation_date"] or "—",
                 "expected_close":   r["expected_close_date"] or "—",
                 "sites":            r["sites"] or "—",
@@ -675,6 +703,19 @@ def fetch_customer_deals(scope: str, org_id: str, snapshot_date: Optional[str] =
         conn.close()
     except Exception:
         traceback.print_exc()
+
+    if site:
+        filtered = [
+            d for d in out["deals"]
+            if site in [normalize_site(s.strip()) for s in (d.get("sites") or "").split(",") if s.strip()]
+        ]
+        out["deals"] = filtered
+        out["by_status"] = {}
+        out["by_pipeline"] = {}
+        for d in filtered:
+            out["by_status"][d["status"]]    = out["by_status"].get(d["status"], 0) + 1
+            out["by_pipeline"][d["pipeline"]] = out["by_pipeline"].get(d["pipeline"], 0) + 1
+
     return out
 
 
@@ -755,6 +796,11 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
             arr = float(r["arr_dkk"]) if pd.notna(r["arr_dkk"]) else 0.0
         except (TypeError, ValueError):
             arr = 0.0
+        try:
+            arr_loc = float(r["arr_local"]) if pd.notna(r["arr_local"]) else 0.0
+        except (TypeError, ValueError):
+            arr_loc = 0.0
+        currency = str(r["currency"]).strip().upper() if pd.notna(r["currency"]) else "DKK"
         account_type = str(r["account_type"]).strip() if pd.notna(r["account_type"]) else ""
         pipedrive_id = _coerce_pipedrive_id(r["pipedrive_id"])
         account_number = str(r["account_number"]).strip() if pd.notna(r["account_number"]) else None
@@ -775,6 +821,8 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
             "brand":          brand,
             "site":           site_norm,
             "arr_dkk":        arr,
+            "arr_local":      arr_loc,
+            "currency":       currency or "DKK",
         }
         if is_web_sale:
             web_sales_raw.append(row)
@@ -845,6 +893,7 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
     }
     return {
         "enterprise_rows":   enterprise_rows,
+        "enterprise_raw":    enterprise_raw,   # bevar rå rækker med currency/arr_local til local-diff opslag
         "web_sales_by_site": web_sales_by_site,
         "meta":              meta,
     }
@@ -869,15 +918,31 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
     snap = load_zuora_snapshot()
     snapshot_meta     = snap["meta"]
     snap_date         = snapshot_meta.get("snapshot_date")
-    pd_rows = fetch_pipedrive_acv(scope, snapshot_date=snap_date)
+    pd_rows, pd_currency_map = fetch_pipedrive_acv(scope, snapshot_date=snap_date)
     pd_web  = fetch_pipedrive_web_sales(scope, snapshot_date=snap_date)
     pd_all_org_names  = fetch_pipedrive_org_names(scope)  # permissiv lookup
     all_zu_rows       = snap["enterprise_rows"]
     all_web_sales     = snap["web_sales_by_site"]
+    enterprise_raw    = snap.get("enterprise_raw", [])
 
     # Filtrér Zuora til de scopes der er valgt
     zu_rows           = [r for r in all_zu_rows if r["scope"] in scope_ids]
     zu_web_sales      = [w for w in all_web_sales if w["scope"] in scope_ids]
+
+    # Zuora currency-breakdown pr. (scope, pipedrive_id, site) — bygges fra rå
+    # snapshot-rækker så vi kan vise lokal valuta og mængde i alignment-tabellen.
+    zu_currency_map: dict[tuple, dict[str, dict]] = {}
+    for r in enterprise_raw:
+        if r["scope"] not in scope_ids:
+            continue
+        if not r.get("pipedrive_id"):
+            continue
+        k = (r["scope"], str(r["pipedrive_id"]), r["site"])
+        cm = zu_currency_map.setdefault(k, {})
+        cb = cm.setdefault((r.get("currency") or "DKK").upper(),
+                           {"zu_local": 0.0, "zu_dkk": 0.0})
+        cb["zu_local"] += float(r.get("arr_local") or 0)
+        cb["zu_dkk"]   += float(r.get("arr_dkk")   or 0)
 
     # Index Pipedrive pr. (scope, org_id, site)
     pd_by_key: dict[tuple, dict] = {}
@@ -940,6 +1005,20 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
 
         scope_label = ACCOUNT_SCOPES.get(scope_id, {}).get("label", scope_id) if scope_id else "(ukendt)"
 
+        # Currency-info: hvilken valuta ville en deal blive oprettet i, og hvad er
+        # lokal-værdien? Vi har kun reel valuta-data hvis vi har en pipedrive_id
+        # (zuora_only-rækker uden id keyes på 'acc:...' og kan ikke matches mod
+        # Zuora-currency-mappet — så de viser bare DKK).
+        if isinstance(org_id, str) and org_id.startswith("acc:"):
+            curr_info = None
+        else:
+            pd_curr = pd_currency_map.get(key, {})
+            zu_curr = zu_currency_map.get((scope_id, str(org_id), site), {})
+            if pd_curr or zu_curr:
+                curr_info = _select_currency_and_diff(pd_curr, zu_curr)
+            else:
+                curr_info = None
+
         rows.append({
             "scope":           scope_id,
             "scope_label":     scope_label,
@@ -954,9 +1033,17 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
             "account_numbers": zu_r["account_numbers"] if zu_r else [],
             "deal_count":      pd_r["deal_count"] if pd_r else 0,
             "site_raw":        pd_r["site_raw"] if pd_r else None,
+            # Currency-info til UI: hvilken valuta deal'en ville blive i, lokal-diff,
+            # og om vi måtte falde tilbage til DKK fordi kunden har flere valutaer.
+            "deal_currency":   curr_info["currency"]        if curr_info else "DKK",
+            "deal_value":      curr_info["value"]           if curr_info else int(round(diff)),
+            "single_currency": bool(curr_info and curr_info["single_currency"]),
+            "multi_currency":  bool(curr_info and curr_info["fallback"]),
+            "currencies":      curr_info["currencies"]      if curr_info else [],
         })
 
     rows.sort(key=lambda r: (-abs(r["diff"]), r["org_name"] or ""))
+    rows = [r for r in rows if not (r["pd_acv"] == 0.0 and r["zuora_arr"] == 0.0)]
 
     # KPI-summering
     n_match     = sum(1 for r in rows if r["status"] == "match")
@@ -1040,3 +1127,254 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
         "scopes":   list_account_scopes(),
         "snapshot": snapshot_meta,
     }
+
+
+# ---------------------------------------------------------------------------
+# Kommentarer pr. (scope, org_id, site)
+# ---------------------------------------------------------------------------
+
+def init_portfolio_notes_db():
+    stmts = [
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PortfolioAlignmentNotes' AND xtype='U')
+        CREATE TABLE PortfolioAlignmentNotes (
+            id         INT IDENTITY(1,1) PRIMARY KEY,
+            scope      NVARCHAR(50)   NOT NULL,
+            org_id     NVARCHAR(50)   NOT NULL,
+            site       NVARCHAR(100)  NOT NULL,
+            note       NVARCHAR(2000) NOT NULL DEFAULT '',
+            handled    BIT            NOT NULL DEFAULT 0,
+            updated_by NVARCHAR(100)  NOT NULL,
+            updated_at DATETIME       DEFAULT GETDATE(),
+            CONSTRAINT UQ_PortfolioNotes_Key UNIQUE (scope, org_id, site)
+        )""",
+        # Migration: tilføj handled-kolonne til eksisterende tabel
+        """IF EXISTS (SELECT * FROM sysobjects WHERE name='PortfolioAlignmentNotes' AND xtype='U')
+        BEGIN
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('PortfolioAlignmentNotes') AND name='handled')
+                ALTER TABLE PortfolioAlignmentNotes ADD handled BIT NOT NULL DEFAULT 0
+        END""",
+    ]
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor()
+        for sql in stmts:
+            cur.execute(sql)
+        conn.commit()
+        conn.close()
+    except Exception:
+        traceback.print_exc()
+
+
+def get_note(scope: str, org_id: str, site: str) -> Optional[dict]:
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            "SELECT note, updated_by, CONVERT(NVARCHAR(16), updated_at, 120) AS updated_at "
+            "FROM PortfolioAlignmentNotes WHERE scope=%s AND org_id=%s AND site=%s",
+            (scope, org_id, site),
+        )
+        row = cur.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        traceback.print_exc()
+        return None
+
+
+def get_handled_states(scope: Optional[str] = None) -> list[dict]:
+    """Returnér alle (scope, org_id, site) der er markeret som håndteret."""
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor(as_dict=True)
+        if scope and scope != "all":
+            cur.execute(
+                "SELECT scope, org_id, site FROM PortfolioAlignmentNotes WHERE handled=1 AND scope=%s",
+                (scope,),
+            )
+        else:
+            cur.execute("SELECT scope, org_id, site FROM PortfolioAlignmentNotes WHERE handled=1")
+        rows = cur.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
+def set_handled(scope: str, org_id: str, site: str, handled: bool, updated_by: str) -> bool:
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE PortfolioAlignmentNotes SET handled=%s, updated_by=%s, updated_at=GETDATE() "
+            "WHERE scope=%s AND org_id=%s AND site=%s",
+            (1 if handled else 0, updated_by, scope, org_id, site),
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO PortfolioAlignmentNotes (scope, org_id, site, note, handled, updated_by) "
+                "VALUES (%s, %s, %s, '', %s, %s)",
+                (scope, org_id, site, 1 if handled else 0, updated_by),
+            )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
+def save_note(scope: str, org_id: str, site: str, note: str, updated_by: str) -> bool:
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE PortfolioAlignmentNotes SET note=%s, updated_by=%s, updated_at=GETDATE() "
+            "WHERE scope=%s AND org_id=%s AND site=%s",
+            (note, updated_by, scope, org_id, site),
+        )
+        if cur.rowcount == 0:
+            cur.execute(
+                "INSERT INTO PortfolioAlignmentNotes (scope, org_id, site, note, updated_by) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (scope, org_id, site, note, updated_by),
+            )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Currency-aware diff til deal-oprettelse
+# ---------------------------------------------------------------------------
+
+def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
+    """Vælg foretrukken valuta + diff givet PD- og Zuora-currency-breakdown.
+
+    pd_by_curr: dict[currency] -> {pd_local, pd_dkk}
+    zu_by_curr: dict[currency] -> {zu_local, zu_dkk}
+
+    Regel: hvis præcis én valuta er aktiv (har et beløb > 0,5 på enten PD eller
+    Zuora-side) bruges den. Ellers DKK fallback (med fast kurs).
+    """
+    all_curr = set(pd_by_curr) | set(zu_by_curr)
+    by_currency: dict[str, dict] = {}
+    for c in all_curr:
+        pd_d = pd_by_curr.get(c, {"pd_local": 0.0, "pd_dkk": 0.0})
+        zu_d = zu_by_curr.get(c, {"zu_local": 0.0, "zu_dkk": 0.0})
+        by_currency[c] = {
+            "pd_local":     round(pd_d["pd_local"], 2),
+            "zuora_local":  round(zu_d["zu_local"], 2),
+            "diff_local":   round(pd_d["pd_local"] - zu_d["zu_local"], 2),
+            "pd_dkk":       round(pd_d["pd_dkk"], 2),
+            "zuora_dkk":    round(zu_d["zu_dkk"], 2),
+            "diff_dkk":     round(pd_d["pd_dkk"] - zu_d["zu_dkk"], 2),
+        }
+    diff_dkk_total = sum(b["diff_dkk"] for b in by_currency.values())
+    active = [c for c, b in by_currency.items()
+              if abs(b["pd_local"]) > 0.5 or abs(b["zuora_local"]) > 0.5]
+    if len(active) == 1:
+        c = active[0]
+        return {
+            "currency":         c,
+            "value":            int(round(by_currency[c]["diff_local"])),
+            "fallback":         False,
+            "single_currency":  True,
+            "diff_local":       int(round(by_currency[c]["diff_local"])),
+            "diff_dkk":         int(round(diff_dkk_total)),
+            "currencies":       sorted(active),
+            "by_currency":      by_currency,
+        }
+    return {
+        "currency":         "DKK",
+        "value":            int(round(diff_dkk_total)),
+        "fallback":         len(active) > 1,
+        "single_currency":  False,
+        "diff_local":       None,
+        "diff_dkk":         int(round(diff_dkk_total)),
+        "currencies":       sorted(active),
+        "by_currency":      by_currency,
+    }
+
+
+def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
+    """Returnér foretrukken valuta og signed diff for én (scope, org_id, site).
+
+    Bruges til at oprette afstemnings-deals i Pipedrive med samme valuta som
+    kundens øvrige deals, hvis hele porteføljen ligger i én valuta. Falder
+    tilbage til DKK hvis der er flere valutaer på kunden.
+
+    Returnerer:
+      {
+        "currency":   "DKK"|"EUR"|"NOK"|...,
+        "value":      int  (signed: positiv = PD over Zuora),
+        "fallback":   bool (True hvis flere valutaer → DKK fallback),
+        "diff_dkk":   int  (altid med, til reference),
+        "by_currency": {C: {pd_local, zuora_local, diff_local, pd_dkk, zuora_dkk, diff_dkk}},
+      }
+    """
+    if scope not in ACCOUNT_SCOPES:
+        raise ValueError(f"Ukendt scope: {scope!r}")
+    cfg = ACCOUNT_SCOPES[scope]
+    deal_types = cfg["pd_deal_types"]
+    placeholders = ",".join(["%s"] * len(deal_types))
+    snap = load_zuora_snapshot()
+    snap_date = snap["meta"].get("snapshot_date")
+
+    pd_by_currency: dict[str, dict] = {}
+    try:
+        conn = get_pipedrive_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                UPPER(LTRIM(RTRIM(d.currency))) AS currency,
+                SUM(d.value)                            AS value_local,
+                SUM(d.value * {PD_FIXED_RATES_SQL})     AS value_dkk_fixed,
+                LTRIM(RTRIM(s.value))                   AS site_raw
+            FROM [INTOMEDIA].[dbo].[PipedriveDeals] d
+            CROSS APPLY STRING_SPLIT(d.sites, ',')      AS s
+            WHERE d.status = 'won'
+              AND d.value IS NOT NULL
+              AND d.org_id = %s
+              AND d.account = %s
+              AND LTRIM(RTRIM(s.value)) <> ''
+              AND d.deal_type IN ({placeholders})
+              AND {PD_NOT_BANNER_SQL}
+              AND {PD_NOT_JOBMARKED_SQL}
+              AND {PD_NOT_WEB_SALE_SQL}
+              AND d.service_activation_date IS NOT NULL
+              AND d.service_activation_date <= %s
+            GROUP BY UPPER(LTRIM(RTRIM(d.currency))), LTRIM(RTRIM(s.value))
+        """, (org_id, cfg["pd_account"], *deal_types, snap_date))
+        for r in cur.fetchall():
+            site_norm = normalize_site(r["site_raw"])
+            if site_norm != site:
+                continue
+            cur_code = (r["currency"] or "DKK").upper()
+            bucket = pd_by_currency.setdefault(cur_code, {"pd_local": 0.0, "pd_dkk": 0.0})
+            bucket["pd_local"] += float(r["value_local"]    or 0)
+            bucket["pd_dkk"]   += float(r["value_dkk_fixed"] or 0)
+        conn.close()
+    except Exception:
+        traceback.print_exc()
+
+    # Zuora-side: filtrér rå rækker. enterprise_raw bevarer currency + arr_local.
+    zu_by_currency: dict[str, dict] = {}
+    org_id_str = str(org_id)
+    for r in snap.get("enterprise_raw", []):
+        if r["scope"] != scope:
+            continue
+        if str(r["pipedrive_id"]) != org_id_str:
+            continue
+        if r["site"] != site:
+            continue
+        cur_code = (r.get("currency") or "DKK").upper()
+        bucket = zu_by_currency.setdefault(cur_code, {"zu_local": 0.0, "zu_dkk": 0.0})
+        bucket["zu_local"] += float(r.get("arr_local") or 0)
+        bucket["zu_dkk"]   += float(r.get("arr_dkk")   or 0)
+
+    return _select_currency_and_diff(pd_by_currency, zu_by_currency)

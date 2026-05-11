@@ -58,6 +58,7 @@
 
 /* Heatmap cells */
 .hm-cell{display:inline-block;width:28px;height:28px;border-radius:4px;font-size:10px;font-weight:700;line-height:28px;text-align:center}
+.hm-cell-wide{width:auto;min-width:52px;padding:0 6px;white-space:nowrap}
 .hm-high{background:#C8E6D8;color:#0F5132}
 .hm-mid{background:#FDF3D0;color:#856404}
 .hm-low{background:#F0F0EE;color:#666}
@@ -195,6 +196,12 @@
           <select class="filter-select" id="filter-owner" onchange="loadAll()">
             <option value="">Alle sælgere</option>
           </select>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Vurdering</span>
+          <div class="pipeline-toggle">
+            <button class="pipeline-btn active" id="btn-mode-deals" onclick="setHeatmapMode('deals')">Antal deals</button>
+            <button class="pipeline-btn" id="btn-mode-value" onclick="setHeatmapMode('value')">Omsætning</button>
+          </div>
         </div>
 
         <!-- Loading -->
@@ -289,13 +296,8 @@
 
             <!-- Søgefelt + legende -->
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-              <div style="font-size:10px;color:var(--ink-4);display:flex;gap:16px;align-items:center">
-                <span>Aktivitet:&nbsp;
-                  <span class="hm-cell hm-high" style="width:auto;padding:0 6px">3+</span>&nbsp;Høj&nbsp;
-                  <span class="hm-cell hm-mid" style="width:auto;padding:0 6px">2</span>&nbsp;Middel&nbsp;
-                  <span class="hm-cell hm-low" style="width:auto;padding:0 6px">1</span>&nbsp;Lav&nbsp;
-                  <span class="hm-cell hm-none" style="width:auto;padding:0 6px">—</span>&nbsp;Ingen
-                </span>
+              <div style="font-size:10px;color:var(--ink-4);display:flex;gap:16px;align-items:center" id="hm-legend">
+                <!-- udfyldes dynamisk af drawHeatmap() -->
               </div>
               <input
                 type="text"
@@ -317,7 +319,7 @@
                     <th class="num" style="min-width:52px">2024</th>
                     <th class="num" style="min-width:52px">2025</th>
                     <th class="num" style="min-width:52px">2026</th>
-                    <th class="num">Deals i alt</th>
+                    <th class="num" id="hm-col-total">Deals i alt</th>
                     <th class="num">Total Omsætning</th>
                   </tr>
                 </thead>
@@ -358,7 +360,15 @@
 
 <script>
 let activePipeline = 'banner';
+let heatmapMode    = 'deals'; // 'deals' | 'value'
 let isManager = {{ 'true' if user.role in ('sales_manager','management','admin') else 'false' }};
+
+function setHeatmapMode(mode) {
+  heatmapMode = mode;
+  document.getElementById('btn-mode-deals').classList.toggle('active', mode === 'deals');
+  document.getElementById('btn-mode-value').classList.toggle('active', mode === 'value');
+  drawHeatmap();
+}
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -549,10 +559,37 @@ const HM_DEFAULT_LIMIT = 50;
 let hmAllRows = [];
 let hmShowAll = false;
 
-function hmCell(antal) {
+const YEARS = [2023, 2024, 2025, 2026];
+
+function hmCell(antal, value, mode, maxVal) {
+  if (mode === 'value') {
+    if (!value) return `<span class="hm-cell hm-none">—</span>`;
+    const cls = value >= maxVal * 0.5 ? 'hm-high' : value >= maxVal * 0.15 ? 'hm-mid' : 'hm-low';
+    return `<span class="hm-cell hm-cell-wide ${cls}" title="${fmtFull(value)}">${fmtKr(value)}</span>`;
+  }
+  // deals mode
   if (!antal) return `<span class="hm-cell hm-none">—</span>`;
   const cls = antal >= 3 ? 'hm-high' : antal === 2 ? 'hm-mid' : 'hm-low';
   return `<span class="hm-cell ${cls}">${antal}</span>`;
+}
+
+function updateHmLegend() {
+  const el  = document.getElementById('hm-legend');
+  if (heatmapMode === 'value') {
+    el.innerHTML = `<span>Omsætning:&nbsp;
+      <span class="hm-cell hm-cell-wide hm-high" style="display:inline-block">Top 50%</span>&nbsp;Høj&nbsp;
+      <span class="hm-cell hm-cell-wide hm-mid" style="display:inline-block">Top 15%</span>&nbsp;Middel&nbsp;
+      <span class="hm-cell hm-cell-wide hm-low" style="display:inline-block">&gt; 0</span>&nbsp;Lav&nbsp;
+      <span class="hm-cell hm-none" style="display:inline-block;width:auto;padding:0 6px">—</span>&nbsp;Ingen
+    </span>`;
+  } else {
+    el.innerHTML = `<span>Aktivitet:&nbsp;
+      <span class="hm-cell hm-high" style="display:inline-block;width:auto;padding:0 6px">3+</span>&nbsp;Høj&nbsp;
+      <span class="hm-cell hm-mid" style="display:inline-block;width:auto;padding:0 6px">2</span>&nbsp;Middel&nbsp;
+      <span class="hm-cell hm-low" style="display:inline-block;width:auto;padding:0 6px">1</span>&nbsp;Lav&nbsp;
+      <span class="hm-cell hm-none" style="display:inline-block;width:auto;padding:0 6px">—</span>&nbsp;Ingen
+    </span>`;
+  }
 }
 
 function renderHeatmap(rows) {
@@ -579,25 +616,36 @@ function drawHeatmap() {
   const count  = document.getElementById('heatmap-count');
   const query  = document.getElementById('heatmap-search').value.toLowerCase().trim();
 
+  updateHmLegend();
+
   if (!hmAllRows.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen tilbagevendende kunder fundet</td></tr>';
     footer.style.display = 'none';
     return;
   }
 
+  // Sorter efter valgt mode: omsætning (total_value) eller antal deals (antal_total)
+  const sorted = [...hmAllRows].sort((a, b) =>
+    heatmapMode === 'value'
+      ? b.total_value - a.total_value
+      : b.antal_total - a.antal_total
+  );
+
   const filtered = query
-    ? hmAllRows.filter(r => r.org_name.toLowerCase().includes(query))
-    : hmAllRows;
+    ? sorted.filter(r => r.org_name.toLowerCase().includes(query))
+    : sorted;
 
   const visible = (hmShowAll || query) ? filtered : filtered.slice(0, HM_DEFAULT_LIMIT);
+
+  // Beregn max omsætning pr. år-celle (til relativ farvelægning)
+  const maxVal = Math.max(1, ...visible.flatMap(r =>
+    YEARS.map(y => r[`value_${y}`] || 0)
+  ));
 
   tbody.innerHTML = visible.map(r => `
     <tr onclick="goToKunde(${JSON.stringify(r.org_id)})" style="cursor:pointer">
       <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
-      <td class="num">${hmCell(r.antal_2023)}</td>
-      <td class="num">${hmCell(r.antal_2024)}</td>
-      <td class="num">${hmCell(r.antal_2025)}</td>
-      <td class="num">${hmCell(r.antal_2026)}</td>
+      ${YEARS.map(y => `<td class="num">${hmCell(r[`antal_${y}`], r[`value_${y}`], heatmapMode, maxVal)}</td>`).join('')}
       <td class="num">${r.antal_total}</td>
       <td class="num">${fmtFull(r.total_value)}</td>
     </tr>`).join('');

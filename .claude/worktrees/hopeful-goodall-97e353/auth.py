@@ -38,6 +38,7 @@ def get_conn():
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"),
         database=os.getenv("DB_NAME", "INTOMEDIA"),
+        tds_version="7.0",
         login_timeout=5,
         timeout=5,
     )
@@ -160,7 +161,7 @@ def get_user_resource_access(user_id: int) -> dict:
             "SELECT resource_id, access FROM UserResourceAccess WHERE user_id = %s",
             (user_id,),
         )
-        rows = cur.fetchall() or []
+        rows = cur.fetchall()
         conn.close()
         return {r["resource_id"]: r["access"] for r in rows}
     except Exception:
@@ -184,22 +185,21 @@ def get_user_teams(user_id: int) -> list:
             """,
             (user_id, today, today),
         )
-        rows = cur.fetchall() or []
+        rows = cur.fetchall()
         conn.close()
         return [r["name"] for r in rows]
     except Exception:
         return []
 
 
-def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None, exclude_roles: list = None) -> str:
+def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None) -> str:
     """
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
 
     Rækkefølge:
     1. Eksplicit DB-override pr. bruger → brugt direkte (kan udvide ELLER begrænse).
     2. Ingen override: tjek rolle + brand → 'none' hvis ikke kvalificeret, ellers 'write'.
-    3. Hvis required_team er sat: tjek holdmedlemskab (gælder salesperson + sales_manager).
-    4. Hvis exclude_roles er sat: bloker specifikke roller (admin undtaget).
+    3. Hvis required_team er sat: tjek at brugeren er aktivt medlem af holdet.
     """
     # Eksplicit override?
     overrides = user.get("_resource_access", {})
@@ -216,15 +216,11 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     if user["role"] in ("salesperson", "sales_manager") and brand and user.get("brand") != brand:
         return "none"
 
-    # Holdspærring — gælder kun for salesperson (sales_manager og højere bypasser)
+    # Holdspærring — gælder kun for salesperson (ikke ledere eller højere)
     if required_team and user["role"] == "salesperson":
         user_teams = user.get("_teams", [])
         if required_team not in user_teams:
             return "none"
-
-    # Rolle-ekskludering — admin bypasser altid
-    if exclude_roles and user["role"] != "admin" and user["role"] in exclude_roles:
-        return "none"
 
     return "write"
 
@@ -248,8 +244,7 @@ def authenticate_user(username: str, password: str):
         user["_resource_access"] = get_user_resource_access(user["id"])
         user["_teams"] = get_user_teams(user["id"])
         return user
-    except Exception as e:
-        print(f"[authenticate_user] FEJL: {e}")
+    except Exception:
         return None
 
 

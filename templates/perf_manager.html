@@ -26,7 +26,7 @@
 .big-number.green{color:var(--green)}
 
 /* Måneds bar chart */
-.month-bars{height:72px;margin-top:12px;overflow:visible}
+.month-bars{height:140px;margin-top:12px;overflow:visible}
 
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
@@ -215,8 +215,8 @@
         <!-- Dashboard indhold (skjult til data er klar) -->
         <div id="dash-content" style="display:none">
 
-          <!-- Række 1: Salg i dag + Konverteringsrate + Top Performer -->
-          <div class="dash-grid-3">
+          <!-- Række 1: Team Total + Top Performer -->
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:20px">
 
             <!-- Kort 1: Team Total -->
             <div class="dash-card">
@@ -237,33 +237,6 @@
               </div>
             </div>
 
-            <!-- Kort 2: Konverteringsrate -->
-            <div class="dash-card">
-              <div class="dash-card-title">Konverteringsrate (Gennemsnit)</div>
-              <div class="gauge-wrap">
-                <svg class="gauge-svg" viewBox="0 0 200 114" id="gauge-svg">
-                  <!-- Baggrunds-arc -->
-                  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E8E8E4" stroke-width="16" stroke-linecap="round"/>
-                  <!-- Rød zone (0-25%) -->
-                  <path d="M 20 100 A 80 80 0 0 1 43 43" fill="none" stroke="#F0D0D3" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Gul zone (25-75%) -->
-                  <path d="M 43 43 A 80 80 0 0 1 157 43" fill="none" stroke="#FDE8C0" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Grøn zone (75-100%) -->
-                  <path d="M 157 43 A 80 80 0 0 1 180 100" fill="none" stroke="#C8E6D8" stroke-width="16" stroke-linecap="butt"/>
-                  <!-- Aktiv nål -->
-                  <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
-                  <circle cx="100" cy="100" r="5" fill="var(--ink)"/>
-                  <!-- Labels: 0%, 25%, 50%, 75%, 100% -->
-                  <text x="16" y="112" font-size="9" fill="#888" text-anchor="middle">0%</text>
-                  <text x="36" y="46" font-size="9" fill="#888" text-anchor="middle">25%</text>
-                  <text x="100" y="15" font-size="9" fill="#888" text-anchor="middle">50%</text>
-                  <text x="164" y="46" font-size="9" fill="#888" text-anchor="middle">75%</text>
-                  <text x="184" y="112" font-size="9" fill="#888" text-anchor="middle">100%</text>
-                </svg>
-                <div class="gauge-value" id="gauge-value">—</div>
-                <div class="gauge-sub" id="gauge-sub">— won · — lost denne måned</div>
-              </div>
-            </div>
 
             <!-- Kort 3: Top Performer (The Hero) -->
             <div class="dash-card" id="card-hero">
@@ -323,6 +296,7 @@
     </div>
   </div>
 </div>
+
 
 <script>
 const DAY_NAMES = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
@@ -392,7 +366,6 @@ async function loadData() {
     document.getElementById('page-sub').textContent = d.month_label;
 
     renderTeamTotal(d);
-    renderGauge(d);
     renderHero(d);
     renderWeeklyReport(d);
     renderLeaderboard(d);
@@ -422,9 +395,11 @@ function renderTeamTotal(d) {
 
   const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
 
-  // Sparkline (punkt-diagram)
-  const spPadX = 10, spPadY = 6, spH = 44, spGap = 20;
-  const spW = spPadX * 2 + spGap * 11; // 240
+  // Sparkline (punkt-diagram) — gap beregnes dynamisk fra containerens faktiske bredde
+  const spPadX = 24, spPadY = 10, spH = 72;
+  const containerWidth = document.getElementById('month-bars').offsetWidth || 520;
+  const spGap = Math.floor((containerWidth - spPadX * 2) / 11);
+  const spW = spPadX * 2 + spGap * 11;
 
   // Kompakt beløbsformat til sparkline (fx "973k", "1,1m", "0")
   const fmtSpk = v => v >= 1e6 ? (v/1e6).toFixed(1).replace('.',',')+'m'
@@ -450,24 +425,24 @@ function renderTeamTotal(d) {
     if (p.isFuture) return '';
     const col     = p.isCur ? orange : 'var(--green)';
     const lblCol  = p.isCur ? orange : 'var(--ink-4)';
-    const r       = p.isCur ? 4 : 2.5;
+    const r       = p.isCur ? 6 : 4;
     const fw      = p.isCur ? '700' : '400';
-    const yLbl    = spPadY + spH + 13;
-    const yAmt    = spPadY + spH + 22;
-    const lbl = `<text x="${p.x}" y="${yLbl}" font-size="7" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
-      <text x="${p.x}" y="${yAmt}" font-size="6.5" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.m.won)}</text>`;
+    const yLbl    = spPadY + spH + 17;
+    const yAmt    = spPadY + spH + 31;
+    const lbl = `<text x="${p.x}" y="${yLbl}" font-size="13" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
+      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.m.won)}</text>`;
     return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}"/>${lbl}`;
   }).join('');
 
   // Labels for future months (greyed)
   const futureLabels = spPoints.filter(p => p.isFuture).map(p =>
-    `<text x="${p.x}" y="${spPadY + spH + 13}" font-size="7" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">${p.m.maaned}</text>
-     <text x="${p.x}" y="${spPadY + spH + 22}" font-size="6.5" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">—</text>`
+    `<text x="${p.x}" y="${spPadY + spH + 16}" font-size="13" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">${p.m.maaned}</text>
+     <text x="${p.x}" y="${spPadY + spH + 31}" font-size="12" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">—</text>`
   ).join('');
 
   document.getElementById('month-bars').innerHTML =
-    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 28}" style="width:100%;overflow:visible">
-       <polyline points="${lineCoords}" fill="none" stroke="var(--green)" stroke-width="1.5"
+    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 46}" style="width:100%;overflow:visible">
+       <polyline points="${lineCoords}" fill="none" stroke="var(--green)" stroke-width="2"
          stroke-linejoin="round" stroke-linecap="round"/>
        ${dots}${futureLabels}
      </svg>`;
@@ -517,8 +492,9 @@ function renderHero(d) {
     <div class="hero-trophy">🏆</div>
     <div class="hero-avatar">${escHtml(initials)}</div>
     <div class="hero-name">${escHtml(hero.owner_name)}</div>
-    <div class="hero-amount">${fmtKr(hero.won_amount)}</div>
+    <div class="hero-amount">${fmtKr(hero.netto_amount)}</div>
     <div class="hero-sub">${d.month_label}</div>
+    ${hero.cancel_amount > 0 ? `<div class="hero-sub" style="color:#B32E45">−${fmtKr(hero.cancel_amount)} afmeldinger</div>` : ''}
     ${hasBudget ? `<div style="margin-top:8px;font-size:11px;font-weight:700;color:${pctColor};text-align:center">${pctTxt}</div>` : ''}
     ${hero.won_count ? `<div class="hero-sub">${hero.won_count} deals vundet</div>` : ''}
   `;
@@ -556,9 +532,9 @@ function renderLeaderboard(d) {
          </div>`
       : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
 
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="visDealsModal('${escHtml(r.owner_name).replace(/'/g,"\\'")}')">
       <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
-      <td style="font-weight:600;color:var(--ink)">${escHtml(r.owner_name)}</td>
+      <td style="font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px">${escHtml(r.owner_name)}</td>
       <td class="num">${fmtFull(r.won_amount)}</td>
       <td class="num">${r.won_count}</td>
       <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
@@ -621,6 +597,14 @@ function renderWeeklyReport(d) {
       .map(r => weekRow(r.owner_name, r.netto, r.budget_week, r.vs_pct))
       .join('');
   }
+}
+
+function visDealsModal(ownerName) {
+  const year    = document.getElementById('filter-year').value;
+  const month   = document.getElementById('filter-month').value;
+  const dateCol = document.getElementById('filter-date-col').value;
+  const params  = new URLSearchParams({ owner_name: ownerName, year, month, date_col: dateCol });
+  window.location.href = '/tools/performance/manager-saelger?' + params;
 }
 
 // Start
