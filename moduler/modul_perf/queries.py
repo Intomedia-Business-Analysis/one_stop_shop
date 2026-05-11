@@ -480,7 +480,9 @@ def db_manager_data(today: date, team: str | None = None,
             WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
             GROUP BY [Owner]
         """, (month_from.isoformat(), month_to.isoformat()))
-    budget_map = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
+    budget_map  = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
+    team_budget = round(sum(budget_map.values()), 2)
+    netto_vs_budget_pct = round(netto_maaned / team_budget * 100, 1) if team_budget > 0 else None
 
     for row in leaderboard:
         row["budget"] = budget_map.get(row["owner_name"], 0.0)
@@ -645,11 +647,13 @@ def db_manager_data(today: date, team: str | None = None,
 
     conn.close()
     return {
-        "salg_dag":      round(salg_dag, 2),
-        "salg_maaned":   round(salg_maaned, 2),
-        "cancel_maaned": round(cancel_maaned, 2),
-        "netto_maaned":  round(netto_maaned, 2),
-        "maaned_chart":  maaned_chart,
+        "salg_dag":           round(salg_dag, 2),
+        "salg_maaned":        round(salg_maaned, 2),
+        "cancel_maaned":      round(cancel_maaned, 2),
+        "netto_maaned":       round(netto_maaned, 2),
+        "team_budget":        team_budget,
+        "netto_vs_budget_pct": netto_vs_budget_pct,
+        "maaned_chart":       maaned_chart,
         "sparkline":    sparkline,
         "conv_rate":    conv_rate,
         "won_count":    won_count,

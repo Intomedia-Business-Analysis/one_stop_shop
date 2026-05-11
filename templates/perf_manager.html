@@ -244,6 +244,20 @@
                 <span style="font-size:12px;color:var(--ink-4);font-weight:500">I dag</span>
                 <span id="salg-dag" style="font-size:18px;font-weight:700;color:var(--ink)">—</span>
               </div>
+              <!-- Budget indeksering -->
+              <div id="team-budget-wrap" style="margin-top:12px;display:none">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4)">Tilvækst vs. budget</span>
+                  <span id="team-budget-pct" style="font-size:12px;font-weight:700"></span>
+                </div>
+                <div class="lb-bar-track" style="height:7px">
+                  <div id="team-budget-bar" class="lb-bar-fill" style="width:0%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px">
+                  <span id="team-budget-netto" style="font-size:10px;color:var(--ink-4)"></span>
+                  <span id="team-budget-total" style="font-size:10px;color:var(--ink-4)"></span>
+                </div>
+              </div>
               <!-- Månedsoversigt -->
               <div style="margin-top:16px">
                 <div style="font-size:9px;color:var(--ink-4);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px" id="maaned-year-label"></div>
@@ -496,6 +510,24 @@ function renderTeamTotal(d) {
       ` (−${fmtKr(d.cancel_maaned)} afm.)`;
   }
 
+  // Budget indeksering (kun i tilvækst-mode og hvis budget findes)
+  const budgetWrap = document.getElementById('team-budget-wrap');
+  if (isNetto && d.team_budget > 0) {
+    const pct      = d.netto_vs_budget_pct ?? 0;
+    const barW     = Math.min(Math.abs(pct), 100);
+    const barClass = pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
+    const pctColor = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : '#B32E45';
+    document.getElementById('team-budget-pct').textContent  = Math.round(pct) + '%';
+    document.getElementById('team-budget-pct').style.color  = pctColor;
+    document.getElementById('team-budget-bar').style.width  = barW + '%';
+    document.getElementById('team-budget-bar').className    = 'lb-bar-fill' + barClass;
+    document.getElementById('team-budget-netto').textContent = fmtKr(d.netto_maaned);
+    document.getElementById('team-budget-total').textContent = 'Budget: ' + fmtKr(d.team_budget);
+    budgetWrap.style.display = '';
+  } else {
+    budgetWrap.style.display = 'none';
+  }
+
   // Månedsoversigt
   const curMonth  = d.cur_month;
   const refMonth  = d.ref_month || curMonth;
@@ -513,9 +545,13 @@ function renderTeamTotal(d) {
   const spW = spPadX * 2 + spGap * 11;
 
   // Kompakt beløbsformat til sparkline (fx "973k", "1,1m", "0")
-  const fmtSpk = v => v >= 1e6 ? (v/1e6).toFixed(1).replace('.',',')+'m'
-                    : v >= 1000 ? Math.round(v/1000)+'k'
-                    : Math.round(v) > 0 ? Math.round(v)+'' : '0';
+  const fmtSpk = v => {
+    const abs  = Math.abs(v);
+    const sign = v < 0 ? '−' : '';
+    if (abs >= 1e6)  return sign + (abs/1e6).toFixed(1).replace('.',',')+'m';
+    if (abs >= 1000) return sign + Math.round(abs/1000)+'k';
+    return abs > 0 ? sign + Math.round(abs) : '0';
+  };
 
   const orange = '#5B9BD5';
 
