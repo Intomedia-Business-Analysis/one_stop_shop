@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sælger Deals — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1100px;margin:0 auto}
+
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:900px){.kpi-row{grid-template-columns:1fr 1fr}}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px}
+.kpi-value{font-size:28px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.kpi-value.green{color:var(--green)}
+.kpi-value.neg{color:#B32E45}
+.kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
+
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table tr:hover td{background:var(--green-light,#f0f8f4)}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+.back-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink-3);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);transition:border-color .13s}
+.back-link:hover{border-color:var(--green);color:var(--green)}
+
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+.section-title{font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--green);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/manager" class="sbi active">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager Dashboard
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a id="back-btn" href="/tools/performance/manager" class="tb-btn">← Tilbage til Manager Dashboard</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/performance/manager" class="bc-link">Manager Dashboard</a><span class="bc-sep">/</span>
+          <span id="bc-name">Sælger</span>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <!-- Content -->
+        <div id="page-content" class="hidden">
+
+          <div style="margin-bottom:20px">
+            <h1 class="page-title" id="page-title" style="margin-bottom:4px"></h1>
+            <p class="page-sub" id="page-sub"></p>
+          </div>
+
+          <!-- Deal historik -->
+          <h2 class="section-title">Deal Historik</h2>
+          <div class="dash-card">
+            <!-- Filter inde i kortet -->
+            <div class="filter-bar" style="margin-bottom:20px">
+              <span class="filter-label">Filter</span>
+              <div class="filter-sep"></div>
+              <select class="filter-select" id="filter-year" onchange="loadDeals()">
+                <option value="">Indlæser…</option>
+              </select>
+              <select class="filter-select" id="filter-month" onchange="loadDeals()">
+                <option value="1">Januar</option>
+                <option value="2">Februar</option>
+                <option value="3">Marts</option>
+                <option value="4">April</option>
+                <option value="5">Maj</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+              <div class="filter-sep"></div>
+              <select class="filter-select" id="filter-date-col" onchange="loadDeals()">
+                <option value="won_time">Vundet dato</option>
+                <option value="service_activation_date">Aktiverings dato</option>
+              </select>
+              <div class="filter-sep"></div>
+              <select class="filter-select" id="filter-site" onchange="loadDeals()">
+                <option value="">Alle sites</option>
+              </select>
+            </div>
+            <!-- KPI inde i kortet -->
+            <div class="kpi-row" id="kpi-row" style="margin-bottom:20px"></div>
+            <table class="v-table" id="deals-table">
+              <thead>
+                <tr>
+                  <th>Medie/Site</th>
+                  <th>Virksomhed</th>
+                  <th class="num">Beløb</th>
+                  <th>Dato</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="deals-tbody">
+                <tr><td colspan="5" class="empty">Henter…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Åben Pipeline -->
+          <h2 class="section-title">
+            <span>Åben Pipeline</span>
+          </h2>
+          <div class="dash-card">
+            <!-- Filter inde i kortet -->
+            <div class="filter-bar" style="margin-bottom:20px">
+              <span class="filter-label">Filter</span>
+              <div class="filter-sep"></div>
+              <select class="filter-select" id="pipe-filter-site" onchange="loadPipeline()">
+                <option value="">Alle sites</option>
+              </select>
+              <select class="filter-select" id="filter-open-pipeline" onchange="loadPipeline()">
+                <option value="">Alle pipelines</option>
+              </select>
+            </div>
+            <div id="pipeline-kpi" class="kpi-row"></div>
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Medie/Site</th>
+                  <th>Virksomhed</th>
+                  <th>Deal</th>
+                  <th class="num">Beløb</th>
+                  <th>Pipeline</th>
+                  <th>Forventet close</th>
+                </tr>
+              </thead>
+              <tbody id="pipeline-tbody">
+                <tr><td colspan="6" class="empty">Henter…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <!-- Error state -->
+        <div id="error-state" class="hidden" style="text-align:center;padding:60px;color:#B32E45">
+          <div style="font-size:32px;margin-bottom:12px">⚠</div>
+          <div style="font-weight:700;margin-bottom:6px">Kunne ikke hente data</div>
+          <div style="font-size:12px;color:var(--ink-4)" id="error-msg"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const initParams = new URLSearchParams(window.location.search);
+const ownerName  = initParams.get('owner_name') || '';
+
+// Deal Historik filter
+function getYear()         { return document.getElementById('filter-year').value; }
+function getMonth()        { return document.getElementById('filter-month').value; }
+function getDateCol()      { return document.getElementById('filter-date-col').value; }
+function getSite()         { return document.getElementById('filter-site').value; }
+
+// Pipeline filter
+function getPipeSite()     { return document.getElementById('pipe-filter-site').value; }
+function getOpenPipeline() { return document.getElementById('filter-open-pipeline').value; }
+
+function initFilters() {
+  const today     = new Date();
+  const initYear  = parseInt(initParams.get('year')  || today.getFullYear());
+  const initMonth = parseInt(initParams.get('month') || (today.getMonth() + 1));
+  const initCol   = initParams.get('date_col') || 'won_time';
+
+  // Deal Historik filter-bar
+  const yearSel = document.getElementById('filter-year');
+  yearSel.innerHTML = '';
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (y === initYear) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+  document.getElementById('filter-month').value    = String(initMonth);
+  document.getElementById('filter-date-col').value = initCol;
+}
+
+async function loadFilterOptions() {
+  try {
+    const r = await fetch('/tools/performance/manager-saelger-filters?owner_name=' + encodeURIComponent(ownerName));
+    if (!r.ok) return;
+    const meta = await r.json();
+
+    // Populer site-dropdown i begge filter-bars
+    [document.getElementById('filter-site'), document.getElementById('pipe-filter-site')].forEach(sel => {
+      meta.sites.forEach(s => {
+        const opt = document.createElement('option'); opt.value = s; opt.textContent = s;
+        sel.appendChild(opt);
+      });
+    });
+
+    // Populer pipeline-type dropdown
+    const openPipeSel = document.getElementById('filter-open-pipeline');
+    meta.open_pipelines.forEach(p => {
+      const opt = document.createElement('option'); opt.value = p; opt.textContent = p;
+      openPipeSel.appendChild(opt);
+    });
+  } catch(e) { /* stille fejl — dropdowns forbliver med kun "Alle" */ }
+}
+
+function fmtKr(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
+  if (abs >= 1000)    return sign + Math.round(abs/1000) + 'k kr.';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+}
+function fmtFull(v) {
+  const sign = v < 0 ? '-' : '';
+  return sign + Math.abs(Math.round(v)).toLocaleString('da-DK') + ' kr.';
+}
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const MONTH_NAMES = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+
+async function loadDeals() {
+  document.getElementById('deals-tbody').innerHTML = '<tr><td colspan="5" class="empty">Henter…</td></tr>';
+  const p = new URLSearchParams({ owner_name: ownerName, year: getYear(), month: getMonth(), date_col: getDateCol() });
+  if (getSite()) p.set('site', getSite());
+  try {
+    const r = await fetch('/tools/performance/manager-saelger-deals?' + p);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const deals = await r.json();
+    if (!deals.length) {
+      document.getElementById('deals-tbody').innerHTML = '<tr><td colspan="5" class="empty">Ingen deals denne periode</td></tr>';
+      renderKpi([]);
+    } else {
+      renderKpi(deals);
+      renderDeals(deals);
+    }
+  } catch(e) {
+    document.getElementById('deals-tbody').innerHTML = `<tr><td colspan="5" class="empty" style="color:#B32E45">Fejl: ${escHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function loadPipeline() {
+  document.getElementById('pipeline-tbody').innerHTML = '<tr><td colspan="6" class="empty">Henter…</td></tr>';
+  const p = new URLSearchParams({ owner_name: ownerName });
+  if (getPipeSite())     p.set('site',          getPipeSite());
+  if (getOpenPipeline()) p.set('pipeline_type', getOpenPipeline());
+  try {
+    const r = await fetch('/tools/performance/manager-saelger-pipeline?' + p);
+    const pipeline = r.ok ? await r.json() : [];
+    renderPipeline(pipeline);
+  } catch(e) {
+    document.getElementById('pipeline-tbody').innerHTML = `<tr><td colspan="6" class="empty" style="color:#B32E45">Fejl: ${escHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function loadData() {
+  // Sæt sidens titel og back-knap én gang
+  document.getElementById('bc-name').textContent    = ownerName;
+  document.getElementById('page-title').textContent = ownerName;
+  document.title = `${ownerName} — Intomedia Hub`;
+
+  const backParams = new URLSearchParams({ year: getYear(), month: getMonth(), date_col: getDateCol() });
+  document.getElementById('back-btn').href = '/tools/performance/manager?' + backParams;
+
+  document.getElementById('loading-state').classList.add('hidden');
+  document.getElementById('page-content').classList.remove('hidden');
+
+  // Hent begge sektioner parallelt ved første indlæsning
+  await Promise.all([loadDeals(), loadPipeline()]);
+}
+
+function renderKpi(deals) {
+  const wonDeals    = deals.filter(d => !d.is_cancel);
+  const cancelDeals = deals.filter(d => d.is_cancel);
+  const wonTotal    = wonDeals.reduce((s, d) => s + d.value, 0);
+  const cancelTotal = cancelDeals.reduce((s, d) => s + d.value, 0);
+  const netto       = wonTotal - cancelTotal;
+
+  document.getElementById('kpi-row').innerHTML = [
+    ['Deals vundet',  wonDeals.length,                                  'green',  `${cancelDeals.length} opsigelse${cancelDeals.length !== 1 ? 'r' : ''}`],
+    ['Omsætning',     fmtKr(wonTotal),                                  'green',  'Vundne deals'],
+    ['Opsigelser',    cancelDeals.length > 0 ? fmtKr(cancelTotal) : '—', cancelDeals.length > 0 ? 'neg' : '', `${cancelDeals.length} opsigelse${cancelDeals.length !== 1 ? 'r' : ''}`],
+    ['Netto',         fmtKr(netto),                                      netto >= 0 ? 'green' : 'neg', 'Omsætning − opsigelser'],
+  ].map(([label, val, cls, sub]) => `
+    <div class="kpi-card">
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value ${cls}">${val}</div>
+      <div class="kpi-sub">${sub}</div>
+    </div>`).join('');
+}
+
+function renderDeals(deals) {
+  document.getElementById('deals-tbody').innerHTML = deals.map(deal => {
+    const isCancel = deal.is_cancel;
+    const valCls   = isCancel ? 'color:#B32E45' : 'color:var(--green)';
+    const sign     = isCancel ? '-' : '';
+    const badge    = isCancel
+      ? '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:#FDE8EC;color:#B32E45">Opsigelse</span>'
+      : '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:#E6F4ED;color:var(--green)">Vundet</span>';
+    return `<tr>
+      <td>${escHtml(deal.site)}</td>
+      <td>${escHtml(deal.org_name)}</td>
+      <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
+      <td>${escHtml(deal.dato)}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPipeline(pipeline) {
+  const tbody = document.getElementById('pipeline-tbody');
+  const kpiEl = document.getElementById('pipeline-kpi');
+
+  if (!pipeline.length) {
+    kpiEl.innerHTML = '';
+    tbody.innerHTML     = '<tr><td colspan="6" class="empty">Ingen åbne pipeline deals</td></tr>';
+    return;
+  }
+
+  const total = pipeline.reduce((s, d) => s + d.value, 0);
+
+  // KPI mini-kort — sammenlign dato-strenge direkte for at undgå timezone-problemer
+  const today    = new Date();
+  const todayStr = today.getFullYear() + '-'
+    + String(today.getMonth() + 1).padStart(2, '0') + '-'
+    + String(today.getDate()).padStart(2, '0');           // 'YYYY-MM-DD' lokal tid
+  const thisYM   = todayStr.slice(0, 7);                  // 'YYYY-MM'
+
+  const overdue = pipeline.filter(d => d.expected_close !== '—' && d.expected_close < todayStr);
+  const thisM   = pipeline.filter(d => d.expected_close !== '—' && d.expected_close.startsWith(thisYM));
+
+  kpiEl.innerHTML = [
+    ['Åbne deals',         pipeline.length,          '',       pipeline.length + ' deals i alt'],
+    ['Total pipeline',     fmtKr(total),              'green',  'Samlet beløb'],
+    ['Forfalden close',    overdue.length || '—',     overdue.length ? 'neg' : '', 'Forventet close passeret'],
+    ['Lukker denne måned', thisM.length || '—',       '',       'Forventet close i ' + MONTH_NAMES[today.getMonth()]],
+  ].map(([label, val, cls, sub]) => `
+    <div class="kpi-card">
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value ${cls}">${val}</div>
+      <div class="kpi-sub">${sub}</div>
+    </div>`).join('');
+
+  // Tabel
+  tbody.innerHTML = pipeline.map(deal => {
+    const isOverdue = deal.expected_close !== '—' && deal.expected_close < todayStr;
+    const dateCls   = isOverdue ? 'color:#B32E45;font-weight:700' : '';
+    return `<tr>
+      <td>${escHtml(deal.site)}</td>
+      <td>${escHtml(deal.org_name)}</td>
+      <td style="color:var(--ink-2);max-width:200px;white-space:normal;font-size:11px">${escHtml(deal.title)}</td>
+      <td class="num" style="color:var(--green)">${fmtFull(deal.value)}</td>
+      <td><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:#E6F4ED;color:var(--green)">${escHtml(deal.pipeline)}</span></td>
+      <td style="${dateCls}">${escHtml(deal.expected_close)}${isOverdue ? ' ⚠' : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+initFilters();
+loadFilterOptions();
+loadData();
+</script>
+</body>
+</html>

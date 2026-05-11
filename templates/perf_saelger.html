@@ -227,7 +227,9 @@
             <div class="dash-card">
               <div class="dash-card-title">Pipeline (denne måned)</div>
               <div class="big-number" id="pipe-value">—</div>
-              <div class="dash-sub" id="pipe-count">— åbne deals</div>
+              <div class="dash-sub">
+                <span id="pipe-count" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--ink-2)" onclick="visPipelineModal()">— åbne deals</span>
+              </div>
               <div class="pipeline-bar-wrap">
                 <div class="pipeline-track">
                   <div class="pipeline-seg won" id="pipe-seg-won" style="width:0%"></div>
@@ -243,6 +245,17 @@
                     <span>Åben pipeline</span>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Pipeline fordeling modal -->
+            <div id="pipeline-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center">
+              <div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                  <div style="font-weight:700;font-size:15px">Pipeline fordeling</div>
+                  <span onclick="document.getElementById('pipeline-modal').style.display='none'" style="cursor:pointer;font-size:20px;color:var(--ink-4);line-height:1">&times;</span>
+                </div>
+                <div id="pipeline-modal-body"></div>
               </div>
             </div>
 
@@ -280,16 +293,15 @@
                 <table class="deals-table">
                   <thead>
                     <tr>
-                      <th>Titel</th>
-                      <th>Brand</th>
+                      <th>Medie/Site</th>
+                      <th>Virksomhed</th>
                       <th class="num">Beløb</th>
                       <th>Dato</th>
-                      <th>Deal Type</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="deals-tbody">
-                    <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
+                    <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -432,18 +444,68 @@ function renderTeamBudget(d) {
   </table>`;
 }
 
+let _pipelineFordeling = [];
+
 function renderPipeline(d) {
   document.getElementById('pipe-value').textContent = fmtKr(d.pipeline_value);
   document.getElementById('pipe-count').textContent = `${d.pipeline_count} åbne deal${d.pipeline_count !== 1 ? 's' : ''}`;
+  _pipelineFordeling = d.pipeline_fordeling || [];
 
-  const total = d.won_amount + d.pipeline_value;
-  if (total > 0) {
-    const wonPct  = Math.round((d.won_amount    / total) * 100);
-    const pipePct = Math.round((d.pipeline_value / total) * 100);
-    document.getElementById('pipe-seg-won').style.width  = wonPct + '%';
-    document.getElementById('pipe-seg-pipe').style.width = pipePct + '%';
+  const resterende = Math.max((d.budget || 0) - d.won_amount, 0);
+  const pipeSeg    = document.getElementById('pipe-seg-pipe');
+  const wonSeg     = document.getElementById('pipe-seg-won');
+  const legend     = document.querySelector('.pipeline-legend');
+
+  if (resterende > 0) {
+    // Vis pipeline som andel af resterende budget
+    const pipePct = Math.min(Math.round((d.pipeline_value / resterende) * 100), 100);
+    const farve   = pipePct >= 100 ? 'var(--green)' : pipePct >= 50 ? 'var(--amber)' : '#B32E45';
+    wonSeg.style.width  = '0%';
+    pipeSeg.style.width = pipePct + '%';
+    pipeSeg.style.background = farve;
+    legend.innerHTML = `
+      <div class="pipeline-legend-item">
+        <div class="pipeline-legend-dot" style="background:${farve}"></div>
+        <span>Pipeline dækker ${pipePct}% af resterende budget (${fmtKr(resterende)})</span>
+      </div>`;
+  } else if (d.budget > 0) {
+    // Budget nået eller overskredet
+    wonSeg.style.width  = '100%';
+    pipeSeg.style.width = '0%';
+    legend.innerHTML = `
+      <div class="pipeline-legend-item">
+        <div class="pipeline-legend-dot" style="background:var(--green)"></div>
+        <span>Budget nået</span>
+      </div>`;
+  } else {
+    // Intet budget sat — vis blot pipeline-værdien som bar
+    wonSeg.style.width  = '0%';
+    pipeSeg.style.width = d.pipeline_value > 0 ? '100%' : '0%';
+    legend.innerHTML = `
+      <div class="pipeline-legend-item">
+        <div class="pipeline-legend-dot" style="background:#6BAED6"></div>
+        <span>Åben pipeline (intet budget sat)</span>
+      </div>`;
   }
 }
+
+function visPipelineModal() {
+  const body = document.getElementById('pipeline-modal-body');
+  if (!_pipelineFordeling.length) {
+    body.innerHTML = '<p style="color:var(--ink-4);font-style:italic">Ingen åbne deals denne måned</p>';
+  } else {
+    body.innerHTML = _pipelineFordeling.map(p => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:14px">${escHtml(p.navn)}</span>
+        <span style="font-weight:700;font-size:14px;background:#EFF6FF;color:#1D4ED8;padding:2px 10px;border-radius:20px">${p.antal}</span>
+      </div>`).join('');
+  }
+  document.getElementById('pipeline-modal').style.display = 'flex';
+}
+
+document.getElementById('pipeline-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
 
 function renderYoy(d) {
   const diff = d.won_amount - d.ly_won;
@@ -491,7 +553,7 @@ function renderMonthBars(d) {
 function renderDeals(d) {
   const tbody = document.getElementById('deals-tbody');
   if (!d.seneste_deals.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals</td></tr>';
     return;
   }
   tbody.innerHTML = d.seneste_deals.map(deal => {
@@ -504,11 +566,10 @@ function renderDeals(d) {
     const valCls   = isCancel || isLost ? 'color:#B32E45' : 'color:var(--green)';
     const sign     = isCancel ? '-' : '';
     return `<tr>
-      <td style="max-width:200px;white-space:normal">${escHtml(deal.title)}</td>
       <td>${escHtml(deal.site)}</td>
+      <td style="max-width:160px;white-space:normal">${escHtml(deal.org_name)}</td>
       <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
       <td>${escHtml(deal.dato)}</td>
-      <td>${escHtml(deal.deal_type)}</td>
       <td><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;${badgeCls}">${badgeTxt}</span></td>
     </tr>`;
   }).join('');

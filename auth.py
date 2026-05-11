@@ -160,7 +160,7 @@ def get_user_resource_access(user_id: int) -> dict:
             "SELECT resource_id, access FROM UserResourceAccess WHERE user_id = %s",
             (user_id,),
         )
-        rows = cur.fetchall()
+        rows = cur.fetchall() or []
         conn.close()
         return {r["resource_id"]: r["access"] for r in rows}
     except Exception:
@@ -184,21 +184,22 @@ def get_user_teams(user_id: int) -> list:
             """,
             (user_id, today, today),
         )
-        rows = cur.fetchall()
+        rows = cur.fetchall() or []
         conn.close()
         return [r["name"] for r in rows]
     except Exception:
         return []
 
 
-def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None) -> str:
+def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None, exclude_roles: list = None) -> str:
     """
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
 
     Rækkefølge:
     1. Eksplicit DB-override pr. bruger → brugt direkte (kan udvide ELLER begrænse).
     2. Ingen override: tjek rolle + brand → 'none' hvis ikke kvalificeret, ellers 'write'.
-    3. Hvis required_team er sat: tjek at brugeren er aktivt medlem af holdet.
+    3. Hvis required_team er sat: tjek holdmedlemskab (gælder salesperson + sales_manager).
+    4. Hvis exclude_roles er sat: bloker specifikke roller (admin undtaget).
     """
     # Eksplicit override?
     overrides = user.get("_resource_access", {})
@@ -215,11 +216,15 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     if user["role"] in ("salesperson", "sales_manager") and brand and user.get("brand") != brand:
         return "none"
 
-    # Holdspærring — gælder kun for sælger-niveau (sales_manager og derunder)
-    if required_team and user_rank <= ROLE_RANK.get("sales_manager", 2):
+    # Holdspærring — gælder kun for salesperson (sales_manager og højere bypasser)
+    if required_team and user["role"] == "salesperson":
         user_teams = user.get("_teams", [])
         if required_team not in user_teams:
             return "none"
+
+    # Rolle-ekskludering — admin bypasser altid
+    if exclude_roles and user["role"] != "admin" and user["role"] in exclude_roles:
+        return "none"
 
     return "write"
 
