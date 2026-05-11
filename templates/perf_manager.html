@@ -40,6 +40,10 @@
 .lb-table{width:100%;border-collapse:collapse;font-size:12px}
 .lb-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .lb-table th.num{text-align:right}
+.lb-table th.sortable{cursor:pointer;user-select:none}
+.lb-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.lb-table th .sort-arrow{margin-left:6px;opacity:0.5;font-style:normal;font-size:12px}
+.lb-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .lb-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .lb-table tr:hover td{background:var(--green-light)}
 .lb-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
@@ -202,7 +206,7 @@
           <div class="filter-sep"></div>
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
             <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date">Aktiverings dato</option>
+            <option value="service_activation_date" selected>Aktiverings dato</option>
           </select>
         </div>
 
@@ -258,10 +262,10 @@
                   <tr>
                     <th style="width:40px">#</th>
                     <th>Sælger</th>
-                    <th class="num">Salg (måned)</th>
-                    <th class="num">Deals</th>
-                    <th class="num">Afmeldinger</th>
-                    <th class="num" style="min-width:180px">Vs. budget</th>
+                    <th class="num sortable" onclick="sortLb('won_amount')">Salg (måned)<i class="sort-arrow" id="arr-won_amount">↕</i></th>
+                    <th class="num sortable" onclick="sortLb('won_count')">Deals<i class="sort-arrow" id="arr-won_count">↕</i></th>
+                    <th class="num sortable" onclick="sortLb('cancel_amount')">Afmeldinger<i class="sort-arrow" id="arr-cancel_amount">↕</i></th>
+                    <th class="num sortable" style="min-width:180px" onclick="sortLb('vs_budget_pct')">Vs. budget<i class="sort-arrow" id="arr-vs_budget_pct">↕</i></th>
                   </tr>
                 </thead>
                 <tbody id="lb-tbody">
@@ -301,6 +305,85 @@
 <script>
 const DAY_NAMES = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
 let autoRefreshTimer = null;
+let lbData     = [];
+let lbSortCol  = 'netto_amount';
+let lbSortDir  = 'desc';
+
+function sortLb(col) {
+  if (lbSortCol === col) {
+    if (lbSortDir === 'desc')       lbSortDir = 'asc';
+    else if (lbSortDir === 'asc') { lbSortCol = 'netto_amount'; lbSortDir = 'desc'; } // reset
+  } else {
+    lbSortCol = col;
+    lbSortDir = 'desc';
+  }
+  drawLeaderboard();
+}
+
+function drawLeaderboard() {
+  const cols = ['won_amount','won_count','cancel_amount','vs_budget_pct'];
+
+  // Opdater pile
+  cols.forEach(c => {
+    const arrow = document.getElementById('arr-' + c);
+    const th    = arrow?.closest('th');
+    if (!arrow) return;
+    if (c === lbSortCol) {
+      arrow.textContent = lbSortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    } else {
+      arrow.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
+
+  const sorted = [...lbData].sort((a, b) => {
+    const av = a[lbSortCol] ?? -Infinity;
+    const bv = b[lbSortCol] ?? -Infinity;
+    return lbSortDir === 'desc' ? bv - av : av - bv;
+  });
+
+  const tbody = document.getElementById('lb-tbody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data denne måned</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map((r, i) => {
+    const rank = i + 1;
+    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+    const rankIcon  = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+
+    const hasBudget = r.budget > 0;
+    const pct       = hasBudget ? r.vs_budget_pct : null;
+    const barClass  = !hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
+    const pctClass  = !hasBudget ? '' : pct >= 100 ? 'green' : pct >= 70 ? 'warn' : 'neg';
+    const barWidth  = hasBudget ? Math.min(pct, 100) : 0;
+
+    const budgetCell = hasBudget
+      ? `<div class="lb-bar-wrap">
+           <div style="flex:1">
+             <div style="font-size:11px;margin-bottom:3px;text-align:right">
+               ${fmtFull(r.netto_amount)} / ${fmtFull(r.budget)}
+             </div>
+             <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
+           </div>
+           <div class="lb-bar-pct ${pctClass}">${Math.round(pct)}%</div>
+         </div>`
+      : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
+
+    return `<tr style="cursor:pointer" onclick="visDealsModal('${escHtml(r.owner_name).replace(/'/g,"\\'")}')">
+      <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
+      <td style="font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px">${escHtml(r.owner_name)}</td>
+      <td class="num">${fmtFull(r.won_amount)}</td>
+      <td class="num">${r.won_count}</td>
+      <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
+        ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
+      </td>
+      <td class="num">${budgetCell}</td>
+    </tr>`;
+  }).join('');
+}
 
 function fmtKr(v) {
   const abs = Math.abs(v);
@@ -502,47 +585,8 @@ function renderHero(d) {
 
 function renderLeaderboard(d) {
   document.getElementById('lb-month-label').textContent = d.month_label;
-
-  const tbody = document.getElementById('lb-tbody');
-  if (!d.leaderboard.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data denne måned</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = d.leaderboard.map((r, i) => {
-    const rank = i + 1;
-    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
-    const rankIcon  = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-
-    const hasBudget = r.budget > 0;
-    const pct       = hasBudget ? r.vs_budget_pct : null;
-    const barClass  = !hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
-    const pctClass  = !hasBudget ? '' : pct >= 100 ? 'green' : pct >= 70 ? 'warn' : 'neg';
-    const barWidth  = hasBudget ? Math.min(pct, 100) : 0;
-
-    const budgetCell = hasBudget
-      ? `<div class="lb-bar-wrap">
-           <div style="flex:1">
-             <div style="font-size:11px;margin-bottom:3px;text-align:right">
-               ${fmtFull(r.netto_amount)} / ${fmtFull(r.budget)}
-             </div>
-             <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
-           </div>
-           <div class="lb-bar-pct ${pctClass}">${Math.round(pct)}%</div>
-         </div>`
-      : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
-
-    return `<tr style="cursor:pointer" onclick="visDealsModal('${escHtml(r.owner_name).replace(/'/g,"\\'")}')">
-      <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
-      <td style="font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px">${escHtml(r.owner_name)}</td>
-      <td class="num">${fmtFull(r.won_amount)}</td>
-      <td class="num">${r.won_count}</td>
-      <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
-        ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
-      </td>
-      <td class="num">${budgetCell}</td>
-    </tr>`;
-  }).join('');
+  lbData = d.leaderboard || [];
+  drawLeaderboard();
 }
 
 function escHtml(s) {
