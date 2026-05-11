@@ -51,6 +51,10 @@
 .v-table{width:100%;border-collapse:collapse;font-size:12px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
+.v-table th.sortable{cursor:pointer;user-select:none}
+.v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4);cursor:pointer}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -319,8 +323,8 @@
                     <th class="num" style="min-width:52px">2024</th>
                     <th class="num" style="min-width:52px">2025</th>
                     <th class="num" style="min-width:52px">2026</th>
-                    <th class="num" id="hm-col-total">Deals i alt</th>
-                    <th class="num">Total Omsætning</th>
+                    <th class="num sortable" id="hm-col-total" onclick="sortHm('antal_total')">Deals i alt<i class="sort-arrow" id="arr-antal_total">↕</i></th>
+                    <th class="num sortable" onclick="sortHm('total_value')">Total Omsætning<i class="sort-arrow" id="arr-total_value">↕</i></th>
                   </tr>
                 </thead>
                 <tbody id="heatmap-tbody">
@@ -361,10 +365,25 @@
 <script>
 let activePipeline = 'banner';
 let heatmapMode    = 'deals'; // 'deals' | 'value'
+let hmSortCol      = null;    // null = følger heatmapMode default
+let hmSortDir      = 'desc';
 let isManager = {{ 'true' if user.role in ('sales_manager','management','admin') else 'false' }};
+
+function sortHm(col) {
+  if (hmSortCol === col) {
+    if (hmSortDir === 'desc')      hmSortDir = 'asc';
+    else { hmSortCol = null; hmSortDir = 'desc'; } // reset til mode-default
+  } else {
+    hmSortCol = col;
+    hmSortDir = 'desc';
+  }
+  drawHeatmap();
+}
 
 function setHeatmapMode(mode) {
   heatmapMode = mode;
+  hmSortCol   = null; // nulstil sortering ved mode-skift
+  hmSortDir   = 'desc';
   document.getElementById('btn-mode-deals').classList.toggle('active', mode === 'deals');
   document.getElementById('btn-mode-value').classList.toggle('active', mode === 'value');
   drawHeatmap();
@@ -624,12 +643,24 @@ function drawHeatmap() {
     return;
   }
 
-  // Sorter efter valgt mode: omsætning (total_value) eller antal deals (antal_total)
+  // Sorter: eksplicit kolonne hvis valgt, ellers mode-default
+  const effectiveCol = hmSortCol || (heatmapMode === 'value' ? 'total_value' : 'antal_total');
   const sorted = [...hmAllRows].sort((a, b) =>
-    heatmapMode === 'value'
-      ? b.total_value - a.total_value
-      : b.antal_total - a.antal_total
+    hmSortDir === 'desc' ? b[effectiveCol] - a[effectiveCol] : a[effectiveCol] - b[effectiveCol]
   );
+  // Opdater pile
+  ['antal_total','total_value'].forEach(col => {
+    const arrow = document.getElementById('arr-' + col);
+    const th    = arrow?.closest('th');
+    if (!arrow) return;
+    if (col === hmSortCol) {
+      arrow.textContent = hmSortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    } else {
+      arrow.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
 
   const filtered = query
     ? sorted.filter(r => r.org_name.toLowerCase().includes(query))

@@ -25,6 +25,10 @@
 .v-table{width:100%;border-collapse:collapse;font-size:12px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
+.v-table th.sortable{cursor:pointer;user-select:none}
+.v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -156,8 +160,8 @@
                 <tr>
                   <th>Medie/Site</th>
                   <th>Virksomhed</th>
-                  <th class="num">Beløb</th>
-                  <th>Dato</th>
+                  <th class="num sortable" onclick="sortDeals('value')">Beløb<i class="sort-arrow" id="arr-d-value">↕</i></th>
+                  <th class="sortable" onclick="sortDeals('dato')">Dato<i class="sort-arrow" id="arr-d-dato">↕</i></th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -190,9 +194,9 @@
                   <th>Medie/Site</th>
                   <th>Virksomhed</th>
                   <th>Deal</th>
-                  <th class="num">Beløb</th>
+                  <th class="num sortable" onclick="sortPipeline('value')">Beløb<i class="sort-arrow" id="arr-p-value">↕</i></th>
                   <th>Pipeline</th>
-                  <th>Forventet close</th>
+                  <th class="sortable" onclick="sortPipeline('expected_close')">Forventet close<i class="sort-arrow" id="arr-p-expected_close">↕</i></th>
                 </tr>
               </thead>
               <tbody id="pipeline-tbody">
@@ -358,8 +362,48 @@ function renderKpi(deals) {
     </div>`).join('');
 }
 
+let allDealsData    = [];
+let dealsSortCol    = 'dato';
+let dealsSortDir    = 'desc';
+let allPipelineData = [];
+let pipeSortCol     = null;   // null = default sortering (asc expected_close)
+let pipeSortDir     = 'desc';
+
+function sortDeals(col) {
+  if (dealsSortCol === col) {
+    if (dealsSortDir === 'desc')      dealsSortDir = 'asc';
+    else { dealsSortCol = 'dato'; dealsSortDir = 'desc'; }
+  } else { dealsSortCol = col; dealsSortDir = 'desc'; }
+  renderDeals(allDealsData);
+}
+
+function sortPipeline(col) {
+  if (pipeSortCol === col) {
+    if (pipeSortDir === 'desc')      pipeSortDir = 'asc';
+    else { pipeSortCol = null; pipeSortDir = 'desc'; } // reset til default
+  } else { pipeSortCol = col; pipeSortDir = 'desc'; }
+  renderPipeline(allPipelineData);
+}
+
+function _updateArrows(cols, sortCol, sortDir) {
+  cols.forEach(({id, key}) => {
+    const arrow = document.getElementById(id);
+    const th    = arrow?.closest('th');
+    if (!arrow) return;
+    if (key === sortCol) { arrow.textContent = sortDir === 'desc' ? '↓' : '↑'; th?.classList.add('sort-active'); }
+    else                 { arrow.textContent = '↕'; th?.classList.remove('sort-active'); }
+  });
+}
+
 function renderDeals(deals) {
-  document.getElementById('deals-tbody').innerHTML = deals.map(deal => {
+  allDealsData = deals;
+  const sorted = [...deals].sort((a, b) => {
+    const av = a[dealsSortCol] ?? '', bv = b[dealsSortCol] ?? '';
+    if (dealsSortCol === 'value') return dealsSortDir === 'desc' ? bv - av : av - bv;
+    return dealsSortDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+  });
+  _updateArrows([{id:'arr-d-value',key:'value'},{id:'arr-d-dato',key:'dato'}], dealsSortCol, dealsSortDir);
+  document.getElementById('deals-tbody').innerHTML = sorted.map(deal => {
     const isCancel = deal.is_cancel;
     const valCls   = isCancel ? 'color:#B32E45' : 'color:var(--green)';
     const sign     = isCancel ? '-' : '';
@@ -377,6 +421,7 @@ function renderDeals(deals) {
 }
 
 function renderPipeline(pipeline) {
+  allPipelineData = pipeline;
   const tbody = document.getElementById('pipeline-tbody');
   const kpiEl = document.getElementById('pipeline-kpi');
 
@@ -410,8 +455,17 @@ function renderPipeline(pipeline) {
       <div class="kpi-sub">${sub}</div>
     </div>`).join('');
 
-  // Tabel
-  tbody.innerHTML = pipeline.map(deal => {
+  // Sorter pipeline — null = default (asc expected_close)
+  const effectiveCol = pipeSortCol || 'expected_close';
+  const effectiveDir = pipeSortCol ? pipeSortDir : 'asc';
+  const sortedPipe = [...pipeline].sort((a, b) => {
+    const av = a[effectiveCol] ?? '', bv = b[effectiveCol] ?? '';
+    if (effectiveCol === 'value') return effectiveDir === 'desc' ? bv - av : av - bv;
+    return effectiveDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+  });
+  _updateArrows([{id:'arr-p-value',key:'value'},{id:'arr-p-expected_close',key:'expected_close'}], pipeSortCol, pipeSortDir);
+
+  tbody.innerHTML = sortedPipe.map(deal => {
     const isOverdue = deal.expected_close !== '—' && deal.expected_close < todayStr;
     const dateCls   = isOverdue ? 'color:#B32E45;font-weight:700' : '';
     return `<tr>

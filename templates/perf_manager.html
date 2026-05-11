@@ -40,6 +40,10 @@
 .lb-table{width:100%;border-collapse:collapse;font-size:12px}
 .lb-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .lb-table th.num{text-align:right}
+.lb-table th.sortable{cursor:pointer;user-select:none}
+.lb-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.lb-table th .sort-arrow{margin-left:6px;opacity:0.5;font-style:normal;font-size:12px}
+.lb-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .lb-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .lb-table tr:hover td{background:var(--green-light)}
 .lb-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
@@ -74,8 +78,12 @@
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 /* Refresh knap */
-.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
+/* Toggle knapper */
+.pipeline-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:3px}
+.pipeline-btn{flex:1;padding:5px 12px;border:none;border-radius:4px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:var(--ink-3)}
+.pipeline-btn.active{background:var(--green);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Top Performer hero card */
 .hero-avatar{width:64px;height:64px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;letter-spacing:-1px;margin:0 auto 12px;border:3px solid var(--green-light)}
@@ -163,10 +171,16 @@
             <h1 class="page-title" style="margin-bottom:4px">Manager Dashboard</h1>
             <p class="page-sub" id="page-sub">Real-time overblik over teamets performance</p>
           </div>
-          <button class="refresh-btn" onclick="loadData()">
-            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
-            Opdater nu
-          </button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <a href="/tools/performance/yoy" class="refresh-btn" style="text-decoration:none">
+              <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              YoY Sammenligning
+            </a>
+            <button class="refresh-btn" onclick="loadData()">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Opdater nu
+            </button>
+          </div>
         </div>
 
         <!-- Filter-bar -->
@@ -200,9 +214,17 @@
             <option value="">Alle teams</option>
           </select>
           <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+            <option value="all">Alle pipelines</option>
+            <option value="Customer">Customer</option>
+            <option value="Newbizz">Newbizz</option>
+            <option value="Company Trial">Company Trial</option>
+            <option value="Cancellations">Opsigelser</option>
+          </select>
+          <div class="filter-sep"></div>
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
             <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date">Aktiverings dato</option>
+            <option value="service_activation_date" selected>Aktiverings dato</option>
           </select>
         </div>
 
@@ -222,13 +244,33 @@
             <div class="dash-card">
               <div class="dash-card-title">
                 <span>Team Total</span>
-                <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div class="pipeline-toggle">
+                    <button class="pipeline-btn active" id="btn-salg" onclick="setTeamMode('salg')">Salg</button>
+                    <button class="pipeline-btn" id="btn-netto" onclick="setTeamMode('netto')">Tilvækst</button>
+                  </div>
+                  <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+                </div>
               </div>
               <div class="big-number green" id="salg-maaned">—</div>
               <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
               <div style="margin-top:8px;display:flex;align-items:baseline;gap:6px">
                 <span style="font-size:12px;color:var(--ink-4);font-weight:500">I dag</span>
                 <span id="salg-dag" style="font-size:18px;font-weight:700;color:var(--ink)">—</span>
+              </div>
+              <!-- Budget indeksering -->
+              <div id="team-budget-wrap" style="margin-top:12px;display:none">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4)">Tilvækst vs. budget</span>
+                  <span id="team-budget-pct" style="font-size:12px;font-weight:700"></span>
+                </div>
+                <div class="lb-bar-track" style="height:7px">
+                  <div id="team-budget-bar" class="lb-bar-fill" style="width:0%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px">
+                  <span id="team-budget-netto" style="font-size:10px;color:var(--ink-4)"></span>
+                  <span id="team-budget-total" style="font-size:10px;color:var(--ink-4)"></span>
+                </div>
               </div>
               <!-- Månedsoversigt -->
               <div style="margin-top:16px">
@@ -258,10 +300,10 @@
                   <tr>
                     <th style="width:40px">#</th>
                     <th>Sælger</th>
-                    <th class="num">Salg (måned)</th>
-                    <th class="num">Deals</th>
-                    <th class="num">Afmeldinger</th>
-                    <th class="num" style="min-width:180px">Vs. budget</th>
+                    <th class="num sortable" onclick="sortLb('won_amount')">Salg (måned)<i class="sort-arrow" id="arr-won_amount">↕</i></th>
+                    <th class="num sortable" onclick="sortLb('won_count')">Deals<i class="sort-arrow" id="arr-won_count">↕</i></th>
+                    <th class="num sortable" onclick="sortLb('cancel_amount')">Afmeldinger<i class="sort-arrow" id="arr-cancel_amount">↕</i></th>
+                    <th class="num sortable" style="min-width:180px" onclick="sortLb('vs_budget_pct')">Vs. budget<i class="sort-arrow" id="arr-vs_budget_pct">↕</i></th>
                   </tr>
                 </thead>
                 <tbody id="lb-tbody">
@@ -301,6 +343,94 @@
 <script>
 const DAY_NAMES = ['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
 let autoRefreshTimer = null;
+let lbData     = [];
+let lbSortCol  = 'netto_amount';
+let lbSortDir  = 'desc';
+let teamMode   = 'salg'; // 'salg' | 'netto'
+let lastTeamData = null;
+
+function setTeamMode(mode) {
+  teamMode = mode;
+  document.getElementById('btn-salg').classList.toggle('active', mode === 'salg');
+  document.getElementById('btn-netto').classList.toggle('active', mode === 'netto');
+  if (lastTeamData) renderTeamTotal(lastTeamData);
+}
+
+function sortLb(col) {
+  if (lbSortCol === col) {
+    if (lbSortDir === 'desc')       lbSortDir = 'asc';
+    else if (lbSortDir === 'asc') { lbSortCol = 'netto_amount'; lbSortDir = 'desc'; } // reset
+  } else {
+    lbSortCol = col;
+    lbSortDir = 'desc';
+  }
+  drawLeaderboard();
+}
+
+function drawLeaderboard() {
+  const cols = ['won_amount','won_count','cancel_amount','vs_budget_pct'];
+
+  // Opdater pile
+  cols.forEach(c => {
+    const arrow = document.getElementById('arr-' + c);
+    const th    = arrow?.closest('th');
+    if (!arrow) return;
+    if (c === lbSortCol) {
+      arrow.textContent = lbSortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    } else {
+      arrow.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
+
+  const sorted = [...lbData].sort((a, b) => {
+    const av = a[lbSortCol] ?? -Infinity;
+    const bv = b[lbSortCol] ?? -Infinity;
+    return lbSortDir === 'desc' ? bv - av : av - bv;
+  });
+
+  const tbody = document.getElementById('lb-tbody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data denne måned</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = sorted.map((r, i) => {
+    const rank = i + 1;
+    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+    const rankIcon  = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
+
+    const hasBudget = r.budget > 0;
+    const pct       = hasBudget ? r.vs_budget_pct : null;
+    const barClass  = !hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
+    const pctClass  = !hasBudget ? '' : pct >= 100 ? 'green' : pct >= 70 ? 'warn' : 'neg';
+    const barWidth  = hasBudget ? Math.min(pct, 100) : 0;
+
+    const budgetCell = hasBudget
+      ? `<div class="lb-bar-wrap">
+           <div style="flex:1">
+             <div style="font-size:11px;margin-bottom:3px;text-align:right">
+               ${fmtFull(r.netto_amount)} / ${fmtFull(r.budget)}
+             </div>
+             <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
+           </div>
+           <div class="lb-bar-pct ${pctClass}">${Math.round(pct)}%</div>
+         </div>`
+      : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
+
+    return `<tr style="cursor:pointer" onclick="visDealsModal('${escHtml(r.owner_name).replace(/'/g,"\\'")}')">
+      <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
+      <td style="font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px">${escHtml(r.owner_name)}</td>
+      <td class="num">${fmtFull(r.won_amount)}</td>
+      <td class="num">${r.won_count}</td>
+      <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
+        ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
+      </td>
+      <td class="num">${budgetCell}</td>
+    </tr>`;
+  }).join('');
+}
 
 function fmtKr(v) {
   const abs = Math.abs(v);
@@ -333,16 +463,18 @@ async function loadMeta() {
 }
 
 async function loadData() {
-  const year    = document.getElementById('filter-year').value;
-  const month   = document.getElementById('filter-month').value;
-  const team    = document.getElementById('team-select').value;
-  const dateCol = document.getElementById('filter-date-col').value;
+  const year           = document.getElementById('filter-year').value;
+  const month          = document.getElementById('filter-month').value;
+  const team           = document.getElementById('team-select').value;
+  const dateCol        = document.getElementById('filter-date-col').value;
+  const pipelineFilter = document.getElementById('filter-pipeline').value;
 
   const params = new URLSearchParams();
-  if (year)    params.set('year',     year);
-  if (month)   params.set('month',    month);
-  if (team)    params.set('team',     team);
-  if (dateCol) params.set('date_col', dateCol);
+  if (year)                              params.set('year',            year);
+  if (month)                             params.set('month',           month);
+  if (team)                              params.set('team',            team);
+  if (dateCol)                           params.set('date_col',        dateCol);
+  if (pipelineFilter && pipelineFilter !== 'all') params.set('pipeline_filter', pipelineFilter);
 
   try {
     const r = await fetch(`/tools/performance/manager-data?` + params);
@@ -380,12 +512,39 @@ async function loadData() {
 }
 
 function renderTeamTotal(d) {
-  document.getElementById('salg-maaned').textContent = fmtKr(d.salg_maaned);
+  lastTeamData = d;
+  const isNetto = teamMode === 'netto';
+  const visVal  = isNetto ? d.netto_maaned : d.salg_maaned;
+  const visKey  = isNetto ? 'netto' : 'won';
+
+  document.getElementById('salg-maaned').textContent = fmtKr(visVal);
   document.getElementById('salg-dag').textContent    = fmtKr(d.salg_dag);
-  document.getElementById('salg-maaned-label').textContent = 'Salg ' + d.month_label;
+  document.getElementById('salg-maaned-label').textContent =
+    (isNetto ? 'Tilvækst ' : 'Salg ') + d.month_label;
+  if (isNetto && d.cancel_maaned > 0) {
+    document.getElementById('salg-maaned-label').textContent +=
+      ` (−${fmtKr(d.cancel_maaned)} afm.)`;
+  }
+
+  // Budget indeksering (kun i tilvækst-mode og hvis budget findes)
+  const budgetWrap = document.getElementById('team-budget-wrap');
+  if (isNetto && d.team_budget > 0) {
+    const pct      = d.netto_vs_budget_pct ?? 0;
+    const barW     = Math.min(Math.abs(pct), 100);
+    const barClass = pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
+    const pctColor = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : '#B32E45';
+    document.getElementById('team-budget-pct').textContent  = Math.round(pct) + '%';
+    document.getElementById('team-budget-pct').style.color  = pctColor;
+    document.getElementById('team-budget-bar').style.width  = barW + '%';
+    document.getElementById('team-budget-bar').className    = 'lb-bar-fill' + barClass;
+    document.getElementById('team-budget-netto').textContent = fmtKr(d.netto_maaned);
+    document.getElementById('team-budget-total').textContent = 'Budget: ' + fmtKr(d.team_budget);
+    budgetWrap.style.display = '';
+  } else {
+    budgetWrap.style.display = 'none';
+  }
 
   // Månedsoversigt
-  const maxBarPx = 48;
   const curMonth  = d.cur_month;
   const refMonth  = d.ref_month || curMonth;
   const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
@@ -393,7 +552,7 @@ function renderTeamTotal(d) {
 
   document.getElementById('maaned-year-label').textContent = refYear;
 
-  const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
+  const max = Math.max(...d.maaned_chart.map(m => Math.abs(m[visKey] || 0)), 1);
 
   // Sparkline (punkt-diagram) — gap beregnes dynamisk fra containerens faktiske bredde
   const spPadX = 24, spPadY = 10, spH = 72;
@@ -402,9 +561,13 @@ function renderTeamTotal(d) {
   const spW = spPadX * 2 + spGap * 11;
 
   // Kompakt beløbsformat til sparkline (fx "973k", "1,1m", "0")
-  const fmtSpk = v => v >= 1e6 ? (v/1e6).toFixed(1).replace('.',',')+'m'
-                    : v >= 1000 ? Math.round(v/1000)+'k'
-                    : Math.round(v) > 0 ? Math.round(v)+'' : '0';
+  const fmtSpk = v => {
+    const abs  = Math.abs(v);
+    const sign = v < 0 ? '−' : '';
+    if (abs >= 1e6)  return sign + (abs/1e6).toFixed(1).replace('.',',')+'m';
+    if (abs >= 1000) return sign + Math.round(abs/1000)+'k';
+    return abs > 0 ? sign + Math.round(abs) : '0';
+  };
 
   const orange = '#5B9BD5';
 
@@ -413,8 +576,9 @@ function renderTeamTotal(d) {
     const isCur    = month === refMonth;
     const isFuture = refYear >= curYear && month > curMonth;
     const x = spPadX + i * spGap;
-    const y = isFuture ? null : spPadY + (1 - m.won / max) * spH;
-    return { x, y, m, isFuture, isCur };
+    const val  = m[visKey] || 0;
+    const y = isFuture ? null : spPadY + (1 - Math.abs(val) / max) * spH;
+    return { x, y, m, val, isFuture, isCur };
   });
 
   const lineCoords = spPoints
@@ -423,14 +587,15 @@ function renderTeamTotal(d) {
 
   const dots = spPoints.map(p => {
     if (p.isFuture) return '';
-    const col     = p.isCur ? orange : 'var(--green)';
-    const lblCol  = p.isCur ? orange : 'var(--ink-4)';
+    const isNeg   = p.val < 0;
+    const col     = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--green)';
+    const lblCol  = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--ink-4)';
     const r       = p.isCur ? 6 : 4;
     const fw      = p.isCur ? '700' : '400';
     const yLbl    = spPadY + spH + 17;
     const yAmt    = spPadY + spH + 31;
     const lbl = `<text x="${p.x}" y="${yLbl}" font-size="13" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
-      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.m.won)}</text>`;
+      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.val)}</text>`;
     return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}"/>${lbl}`;
   }).join('');
 
@@ -502,47 +667,8 @@ function renderHero(d) {
 
 function renderLeaderboard(d) {
   document.getElementById('lb-month-label').textContent = d.month_label;
-
-  const tbody = document.getElementById('lb-tbody');
-  if (!d.leaderboard.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen data denne måned</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = d.leaderboard.map((r, i) => {
-    const rank = i + 1;
-    const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
-    const rankIcon  = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank;
-
-    const hasBudget = r.budget > 0;
-    const pct       = hasBudget ? r.vs_budget_pct : null;
-    const barClass  = !hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' warn' : ' neg';
-    const pctClass  = !hasBudget ? '' : pct >= 100 ? 'green' : pct >= 70 ? 'warn' : 'neg';
-    const barWidth  = hasBudget ? Math.min(pct, 100) : 0;
-
-    const budgetCell = hasBudget
-      ? `<div class="lb-bar-wrap">
-           <div style="flex:1">
-             <div style="font-size:11px;margin-bottom:3px;text-align:right">
-               ${fmtFull(r.netto_amount)} / ${fmtFull(r.budget)}
-             </div>
-             <div class="lb-bar-track"><div class="lb-bar-fill${barClass}" style="width:${barWidth}%"></div></div>
-           </div>
-           <div class="lb-bar-pct ${pctClass}">${Math.round(pct)}%</div>
-         </div>`
-      : '<span style="color:var(--ink-4);font-size:11px">Intet budget</span>';
-
-    return `<tr style="cursor:pointer" onclick="visDealsModal('${escHtml(r.owner_name).replace(/'/g,"\\'")}')">
-      <td><span class="rank-badge ${rankClass}">${rankIcon}</span></td>
-      <td style="font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px">${escHtml(r.owner_name)}</td>
-      <td class="num">${fmtFull(r.won_amount)}</td>
-      <td class="num">${r.won_count}</td>
-      <td class="num" style="color:${r.cancel_amount > 0 ? '#B32E45' : 'var(--ink-4)'}">
-        ${r.cancel_amount > 0 ? '-' + fmtFull(r.cancel_amount) : '—'}
-      </td>
-      <td class="num">${budgetCell}</td>
-    </tr>`;
-  }).join('');
+  lbData = d.leaderboard || [];
+  drawLeaderboard();
 }
 
 function escHtml(s) {

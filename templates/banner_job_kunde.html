@@ -30,6 +30,10 @@
 .v-table{width:100%;border-collapse:collapse;font-size:12px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
+.v-table th.sortable{cursor:pointer;user-select:none}
+.v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
@@ -173,9 +177,9 @@
                   <th>Titel</th>
                   <th>Site / Medie</th>
                   <th>Sælger</th>
-                  <th>Dato</th>
+                  <th class="sortable" onclick="sortDeals('dato')">Dato<i class="sort-arrow" id="arr-dato">↕</i></th>
                   <th class="num">År</th>
-                  <th class="num">Værdi</th>
+                  <th class="num sortable" onclick="sortDeals('value')">Værdi<i class="sort-arrow" id="arr-value">↕</i></th>
                 </tr>
               </thead>
               <tbody id="deals-tbody">
@@ -239,12 +243,40 @@ function populateFilters(deals) {
   });
 }
 
+let dealSortCol = 'dato';
+let dealSortDir = 'desc';
+
+function sortDeals(col) {
+  if (dealSortCol === col) {
+    if (dealSortDir === 'desc')      dealSortDir = 'asc';
+    else { dealSortCol = 'dato'; dealSortDir = 'desc'; } // reset
+  } else {
+    dealSortCol = col;
+    dealSortDir = 'desc';
+  }
+  filterDeals();
+}
+
 function renderDeals(deals) {
   const tbody = document.getElementById('deals-tbody');
   const total = allDeals.length;
   const count = deals.length;
   document.getElementById('filter-count').textContent =
     count < total ? `Viser ${count} af ${total} deals` : `${total} deals`;
+
+  // Opdater pile
+  ['dato','value'].forEach(col => {
+    const arrow = document.getElementById('arr-' + col);
+    const th    = arrow?.closest('th');
+    if (!arrow) return;
+    if (col === dealSortCol) {
+      arrow.textContent = dealSortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    } else {
+      arrow.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
 
   if (deals.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen deals matcher filteret</td></tr>';
@@ -266,11 +298,20 @@ function filterDeals() {
   const aar     = document.getElementById('filter-aar').value;
   const saelger = document.getElementById('filter-saelger').value;
   const site    = document.getElementById('filter-site').value;
-  const filtered = allDeals.filter(d => {
+  let filtered = allDeals.filter(d => {
     if (aar     && String(d.aar) !== aar)                                                    return false;
     if (saelger && d.owner_name !== saelger)                                                 return false;
     if (site    && !(d.sites || '').split(',').map(s => s.trim()).includes(site))             return false;
     return true;
+  });
+  // Sorter
+  filtered = filtered.sort((a, b) => {
+    if (dealSortCol === 'dato') {
+      const av = a.dato || '', bv = b.dato || '';
+      return dealSortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv);
+    }
+    const av = a.value ?? 0, bv = b.value ?? 0;
+    return dealSortDir === 'desc' ? bv - av : av - bv;
   });
   renderDeals(filtered);
 }
@@ -279,7 +320,7 @@ function resetFilters() {
   document.getElementById('filter-aar').value     = '';
   document.getElementById('filter-saelger').value = '';
   document.getElementById('filter-site').value    = '';
-  renderDeals(allDeals);
+  filterDeals();
 }
 
 async function loadKunde() {
