@@ -242,7 +242,7 @@ def db_get_filters():
 
 def db_manager_data(today: date, team: str | None = None,
                      selected_year: int | None = None, selected_month: str | None = None,
-                     date_col: str = "won_time"):
+                     date_col: str = "won_time", pipeline_filter: str | None = None):
     ref_year = selected_year or today.year
 
     if selected_month in ("Q1", "Q2", "Q3", "Q4"):
@@ -310,6 +310,38 @@ def db_manager_data(today: date, team: str | None = None,
     # Når team er valgt: tillad også NULL sites (fx Marketwire-deals har ingen site-værdi)
     sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)" if team else f"AND [sites] IN {brands_ph}"
 
+    # ── Pipeline filter ──────────────────────────────────────────────────────
+    if not pipeline_filter or pipeline_filter == 'all':
+        won_where      = f"AND [pipeline_name] NOT IN {_CANCEL_PH}"
+        won_wparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_where   = f"AND [pipeline_name] IN {_CANCEL_PH}"
+        cancel_wparams = tuple(CANCELLATION_PIPELINES)
+        won_case       = f"[pipeline_name] NOT IN {_CANCEL_PH}"
+        cancel_case    = f"[pipeline_name] IN {_CANCEL_PH}"
+        won_cparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_cparams = tuple(CANCELLATION_PIPELINES)
+    elif pipeline_filter == 'Cancellations':
+        won_where      = f"AND [pipeline_name] IN {_CANCEL_PH}"
+        won_wparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_where   = "AND 1=0"
+        cancel_wparams = ()
+        won_case       = f"[pipeline_name] IN {_CANCEL_PH}"
+        cancel_case    = "1=0"
+        won_cparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_cparams = ()
+    else:
+        won_where      = "AND [pipeline_name] = %s"
+        won_wparams    = (pipeline_filter,)
+        cancel_where   = "AND 1=0"
+        cancel_wparams = ()
+        won_case       = "[pipeline_name] = %s"
+        cancel_case    = "1=0"
+        won_cparams    = (pipeline_filter,)
+        cancel_cparams = ()
+    # d.-prefixed variants for JOIN leaderboard queries
+    won_case_d    = won_case.replace('[pipeline_name]', 'd.[pipeline_name]')
+    cancel_case_d = cancel_case.replace('[pipeline_name]', 'd.[pipeline_name]')
+
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
 
@@ -319,11 +351,11 @@ def db_manager_data(today: date, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+          {won_where}
           {_ADM_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
-    """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
 
     # Månedlig teamtotal for valgt periode
@@ -333,11 +365,11 @@ def db_manager_data(today: date, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+          {won_where}
           {_ADM_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
-    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
     salg_maaned = float((cur.fetchone() or {}).get("total", 0) or 0)
 
     # Team afmeldinger for valgt periode
@@ -347,9 +379,9 @@ def db_manager_data(today: date, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+          {cancel_where}
           {team_clause}
-    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + cancel_wparams + team_params)
     cancel_maaned = abs(float((cur.fetchone() or {}).get("total", 0) or 0))
     netto_maaned  = round(salg_maaned - cancel_maaned, 2)
 
@@ -358,9 +390,9 @@ def db_manager_data(today: date, team: str | None = None,
     year_to   = date(ref_year + 1, 1, 1)
     cur.execute(f"""
         SELECT MONTH({d_col}) AS maaned,
-               ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+               ISNULL(SUM(CASE WHEN {won_case}
                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
-               ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+               ISNULL(SUM(CASE WHEN {cancel_case}
                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
@@ -371,7 +403,7 @@ def db_manager_data(today: date, team: str | None = None,
           {team_clause}
         GROUP BY MONTH({d_col})
         ORDER BY maaned
-    """, (year_from.isoformat(), year_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, won_cparams + cancel_cparams + (year_from.isoformat(), year_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     maaned_raw = {r["maaned"]: (float(r["won"] or 0), abs(float(r["cancel"] or 0))) for r in cur.fetchall()}
     maaned_chart = [{"maaned": MONTH_NAMES_DA[m - 1][:3],
                      "won":    round(maaned_raw.get(m, (0,0))[0], 2),
@@ -382,11 +414,10 @@ def db_manager_data(today: date, team: str | None = None,
 
     cur.execute(f"""
         SELECT
-            COUNT(CASE WHEN [status]='won'
-                AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+            COUNT(CASE WHEN [status]='won' AND {won_case}
                 THEN 1 END) AS won_count,
             COUNT(CASE WHEN [status]='lost'
-                OR ([status]='won' AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser'))
+                OR ([status]='won' AND {cancel_case})
                 THEN 1 END) AS lost_count
         FROM [dbo].[PipedriveDeals]
         WHERE ([status]='won' OR [status]='lost')
@@ -396,7 +427,7 @@ def db_manager_data(today: date, team: str | None = None,
           {_ADM_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
-    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, won_cparams + cancel_cparams + (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     conv_row   = cur.fetchone() or {}
     won_count  = int(conv_row.get("won_count", 0) or 0)
     lost_count = int(conv_row.get("lost_count", 0) or 0)
@@ -408,11 +439,11 @@ def db_manager_data(today: date, team: str | None = None,
         cur.execute(f"""
             SELECT
                 u.name AS owner_name,
-                ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                ISNULL(SUM(CASE WHEN {won_case_d}
                     THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won_amount,
-                COUNT(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                COUNT(CASE WHEN {won_case_d}
                     THEN 1 END) AS won_count,
-                ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                ISNULL(SUM(CASE WHEN {cancel_case_d}
                     THEN CAST(COALESCE(d.[value_dkk],d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS cancel_amount
             FROM HubUsers u
             JOIN TeamMemberships tm ON tm.user_id = u.id
@@ -432,16 +463,16 @@ def db_manager_data(today: date, team: str | None = None,
               AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
             ORDER BY won_amount DESC
-        """, (month_from.isoformat(), month_to.isoformat()) + (() if is_finans_team else (team,)) + (team,))
+        """, won_cparams + won_cparams + cancel_cparams + (month_from.isoformat(), month_to.isoformat()) + (() if is_finans_team else (team,)) + (team,))
     else:
         cur.execute(f"""
             SELECT
                 COALESCE([owner_name], 'Ukendt') AS owner_name,
-                ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                ISNULL(SUM(CASE WHEN {won_case}
                     THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won_amount,
-                COUNT(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                COUNT(CASE WHEN {won_case}
                     THEN 1 END) AS won_count,
-                ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                ISNULL(SUM(CASE WHEN {cancel_case}
                     THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS cancel_amount
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
@@ -451,7 +482,7 @@ def db_manager_data(today: date, team: str | None = None,
           {non_finans_exclude}
             GROUP BY [owner_name]
             ORDER BY won_amount DESC
-        """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS))
+        """, won_cparams + won_cparams + cancel_cparams + (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS))
 
     leaderboard = []
     for r in cur.fetchall():

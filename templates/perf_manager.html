@@ -208,6 +208,14 @@
             <option value="">Alle teams</option>
           </select>
           <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+            <option value="all">Alle pipelines</option>
+            <option value="Customer">Customer</option>
+            <option value="Newbizz">Newbizz</option>
+            <option value="Company Trial">Company Trial</option>
+            <option value="Cancellations">Opsigelser</option>
+          </select>
+          <div class="filter-sep"></div>
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
             <option value="won_time">Vundet dato</option>
             <option value="service_activation_date" selected>Aktiverings dato</option>
@@ -449,16 +457,18 @@ async function loadMeta() {
 }
 
 async function loadData() {
-  const year    = document.getElementById('filter-year').value;
-  const month   = document.getElementById('filter-month').value;
-  const team    = document.getElementById('team-select').value;
-  const dateCol = document.getElementById('filter-date-col').value;
+  const year           = document.getElementById('filter-year').value;
+  const month          = document.getElementById('filter-month').value;
+  const team           = document.getElementById('team-select').value;
+  const dateCol        = document.getElementById('filter-date-col').value;
+  const pipelineFilter = document.getElementById('filter-pipeline').value;
 
   const params = new URLSearchParams();
-  if (year)    params.set('year',     year);
-  if (month)   params.set('month',    month);
-  if (team)    params.set('team',     team);
-  if (dateCol) params.set('date_col', dateCol);
+  if (year)                              params.set('year',            year);
+  if (month)                             params.set('month',           month);
+  if (team)                              params.set('team',            team);
+  if (dateCol)                           params.set('date_col',        dateCol);
+  if (pipelineFilter && pipelineFilter !== 'all') params.set('pipeline_filter', pipelineFilter);
 
   try {
     const r = await fetch(`/tools/performance/manager-data?` + params);

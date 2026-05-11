@@ -44,6 +44,7 @@ async def perf_manager_data(
     year: int | None = None,
     month: str | None = None,
     date_col: str = "won_time",
+    pipeline_filter: str | None = None,
     user=Depends(get_current_user)
 ):
     if not has_access(user, "sales_manager"):
@@ -52,6 +53,7 @@ async def perf_manager_data(
         return JSONResponse(db_manager_data(
             date.today(), team=team,
             selected_year=year, selected_month=month, date_col=date_col,
+            pipeline_filter=pipeline_filter,
         ))
     except Exception as e:
         traceback.print_exc()
