@@ -1,5 +1,7 @@
+import threading
 import time
 import traceback
+import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -273,12 +275,102 @@ async def alignment_create_deal(
         raise HTTPException(500, str(e))
 
 
+# ---------------------------------------------------------------------------
+# Bulk-job-pattern
+# ---------------------------------------------------------------------------
+# Bulk-oprettelse kalder Pipedrive's API én gang pr. række (1-3 sek pr. kald),
+# så for 100+ rækker kan det tage minutter. Hvis vi gør det synkront i request-
+# håndteringen, blokerer event-loopet og hubben fryser for alle brugere.
+#
+# I stedet starter endpointet en thread og returnerer øjeblikkeligt med et
+# job_id. Frontend poller så /bulk-status?job_id=… hvert par sekunder for at
+# tegne en progress-bar og resultatet til sidst.
+#
+# Note: in-memory store — hvis serveren genstartes mens et job kører, mistes
+# status (men deals der allerede er oprettet i Pipedrive er der stadig). Det
+# er acceptabelt for vores brug.
+
+_BULK_JOBS: dict[str, dict] = {}
+_BULK_JOBS_LOCK = threading.Lock()
+_BULK_JOB_TTL_SEC = 3600  # behold færdige jobs i 1 time så frontend kan se resultatet
+
+
+def _gc_old_bulk_jobs() -> None:
+    """Ryd op i færdige jobs ældre end TTL — undgår at hukommelsen vokser."""
+    now = time.time()
+    with _BULK_JOBS_LOCK:
+        stale = [
+            k for k, v in _BULK_JOBS.items()
+            if v.get("status") == "done" and (now - (v.get("finished_at") or 0)) > _BULK_JOB_TTL_SEC
+        ]
+        for k in stale:
+            del _BULK_JOBS[k]
+
+
+def _bulk_worker(job_id: str, eligible: list, dry_run: bool, user_name: str) -> None:
+    """Kører i baggrundstråd — opretter én deal pr. række, opdaterer job-state.
+
+    Bruger row's deal_currency/deal_value (fra compare_portfolios) i stedet for
+    at kalde compute_local_diff pr. række — det sparer DB-query + fil-load
+    (snapshot.csv) for hver eneste række og er nødvendigt for at bulken kan
+    nå at færdiggøres på rimelig tid.
+    """
+    job = _BULK_JOBS[job_id]
+    for r in eligible:
+        currency    = r.get("deal_currency") or "DKK"
+        diff_signed = r.get("deal_value")
+        try:
+            if diff_signed is None or abs(diff_signed) < 1:
+                with _BULK_JOBS_LOCK:
+                    job["skipped"].append({**_row_short(r), "reason": "diff for lille til at afstemne"})
+                    job["progress"] += 1
+                continue
+            res = create_alignment_deal(
+                scope=r["scope"],
+                org_id=int(r["org_id"]),
+                site=r["site"],
+                diff_signed=float(diff_signed),
+                currency=currency,
+                dry_run=dry_run,
+            )
+            # Markér rækken som håndteret når deal'en faktisk er oprettet —
+            # ikke ved dry-run. Det forhindrer kolleger i at håndtere rækken
+            # bagefter, og at samme deal oprettes igen i næste bulk-kørsel.
+            if not dry_run:
+                try:
+                    set_handled(r["scope"], str(r["org_id"]), r["site"], True, user_name)
+                except Exception:
+                    traceback.print_exc()  # ikke kritisk — deal'en er oprettet
+            with _BULK_JOBS_LOCK:
+                job["created"].append({
+                    **_row_short(r),
+                    "currency": res.get("currency"),
+                    "value":    res.get("value"),
+                    "deal_id":  res.get("deal_id"),
+                    "deal_url": res.get("deal_url"),
+                    "pipeline": (res.get("pipeline") or {}).get("name"),
+                })
+                job["progress"] += 1
+        except (ValueError, RuntimeError) as e:
+            with _BULK_JOBS_LOCK:
+                job["failed"].append({**_row_short(r), "error": str(e)})
+                job["progress"] += 1
+        except Exception as e:
+            traceback.print_exc()
+            with _BULK_JOBS_LOCK:
+                job["failed"].append({**_row_short(r), "error": str(e)})
+                job["progress"] += 1
+    with _BULK_JOBS_LOCK:
+        job["status"]      = "done"
+        job["finished_at"] = time.time()
+
+
 @router.post("/create-deals-bulk")
 async def alignment_create_deals_bulk(
     payload: dict = Body(...),
     user=Depends(get_current_user),
 ):
-    """Opret afstemnings-deals for alle rækker der matcher filteret.
+    """Start et bulk-oprettelses-job. Returnerer øjeblikkeligt med job_id.
 
     Body:
       scope:          'all' eller specifik scope-id
@@ -289,7 +381,8 @@ async def alignment_create_deals_bulk(
       include_handled: bool — inkludér håndterede rækker (default false)
       dry_run:        bool
 
-    Returnerer: {created: [...], failed: [...], skipped: [...], dry_run, count_eligible}
+    Returnerer: {job_id, count_eligible, dry_run}
+    Frontend poller /bulk-status?job_id=… for at få fremdrift og slutresultat.
     """
     if not has_access(user, "sales_operations"):
         raise HTTPException(403, "Kræver Sales Operations-adgang")
@@ -339,42 +432,48 @@ async def alignment_create_deals_bulk(
             continue
         eligible.append(r)
 
-    created, failed, skipped = [], [], []
-    for r in eligible:
-        try:
-            local = compute_local_diff(r["scope"], str(r["org_id"]), r["site"])
-            if abs(local["value"]) < 1:
-                skipped.append({**_row_short(r), "reason": "diff for lille til at afstemme"})
-                continue
-            res = create_alignment_deal(
-                scope=r["scope"],
-                org_id=int(r["org_id"]),
-                site=r["site"],
-                diff_signed=float(local["value"]),
-                currency=local["currency"],
-                dry_run=dry_run,
-            )
-            created.append({
-                **_row_short(r),
-                "currency": res.get("currency"),
-                "value":    res.get("value"),
-                "deal_id":  res.get("deal_id"),
-                "deal_url": res.get("deal_url"),
-                "pipeline": (res.get("pipeline") or {}).get("name"),
-            })
-        except (ValueError, RuntimeError) as e:
-            failed.append({**_row_short(r), "error": str(e)})
-        except Exception as e:
-            traceback.print_exc()
-            failed.append({**_row_short(r), "error": str(e)})
+    _gc_old_bulk_jobs()
+    job_id = uuid.uuid4().hex
+    with _BULK_JOBS_LOCK:
+        _BULK_JOBS[job_id] = {
+            "status":         "running",
+            "progress":       0,
+            "total":          len(eligible),
+            "created":        [],
+            "failed":         [],
+            "skipped":        [],
+            "dry_run":        dry_run,
+            "started_at":     time.time(),
+            "finished_at":    None,
+        }
+    # daemon=True så tråden ikke blokerer en evt. server-genstart
+    threading.Thread(
+        target=_bulk_worker,
+        args=(job_id, eligible, dry_run, user.get("name") or "system"),
+        daemon=True,
+    ).start()
 
     return JSONResponse({
-        "dry_run":        dry_run,
+        "job_id":         job_id,
         "count_eligible": len(eligible),
-        "created":        created,
-        "failed":         failed,
-        "skipped":        skipped,
+        "dry_run":        dry_run,
     })
+
+
+@router.get("/bulk-status")
+async def alignment_bulk_status(
+    job_id: str,
+    user=Depends(get_current_user),
+):
+    """Returnér status for et igangværende eller netop færdigt bulk-job."""
+    if not has_access(user, "sales_operations"):
+        raise HTTPException(403, "Kræver Sales Operations-adgang")
+    with _BULK_JOBS_LOCK:
+        job = _BULK_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(404, "Ukendt job (eller udløbet)")
+        # Returnér en kopi så frontend kan læse uden at vi holder lock i JSON-encoding
+        return JSONResponse(dict(job))
 
 
 def _row_short(r: dict) -> dict:

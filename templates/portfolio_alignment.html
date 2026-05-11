@@ -995,6 +995,11 @@ function _bulkPayload(forceDryRun) {
   };
 }
 
+// Polling-interval for /bulk-status. 2 sek er hurtigt nok til at give live-
+// fornemmelse, men sjældent nok til at status-endpointet ikke selv overbelaster
+// serveren ved mange brugere.
+const BULK_POLL_INTERVAL_MS = 2000;
+
 async function submitBulk(asPreview) {
   const previewBtn = document.getElementById('bulk-preview-btn');
   const createBtn  = document.getElementById('bulk-create-btn');
@@ -1014,9 +1019,10 @@ async function submitBulk(asPreview) {
   previewBtn.disabled = createBtn.disabled = true;
   (asPreview ? previewBtn : createBtn).textContent = asPreview ? 'Henter…' : 'Opretter…';
   resultEl.className = 'bulk-result info';
-  resultEl.textContent = 'Arbejder…';
+  resultEl.textContent = 'Starter job…';
 
   try {
+    // Trin 1: start job. Endpointet returnerer øjeblikkeligt med job_id.
     const r = await fetch('/tools/portfolio-alignment/create-deals-bulk', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -1024,7 +1030,19 @@ async function submitBulk(asPreview) {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
-    _renderBulkResult(d, body.dry_run);
+
+    if (!d.job_id) {
+      throw new Error('Server returnerede intet job_id');
+    }
+    if (!d.count_eligible) {
+      // Tom batch — vis straks tomt resultat uden at polle.
+      _renderBulkResult({...d, created: [], failed: [], skipped: []}, body.dry_run);
+      return;
+    }
+
+    // Trin 2: poll status indtil jobbet er færdigt. Imellem polls opdaterer
+    // vi resultat-feltet med fremdrift, så brugeren kan se det skride.
+    await _pollBulkJob(d.job_id, d.count_eligible, body.dry_run, resultEl);
   } catch(err) {
     resultEl.className = 'bulk-result error';
     resultEl.innerHTML = `<strong>Fejl:</strong> ${escHtml(err.message || String(err))}`;
@@ -1032,6 +1050,55 @@ async function submitBulk(asPreview) {
     previewBtn.disabled = createBtn.disabled = false;
     previewBtn.textContent = 'Forhåndsvis';
     createBtn.textContent  = 'Opret deals';
+  }
+}
+
+async function _pollBulkJob(jobId, total, isDryRun, resultEl) {
+  // Loop indtil status='done'. Fejler vi i et enkelt poll-kald (fx midlertidig
+  // netværksfejl), prøver vi igen — server-side er jobbet upåvirket, det kører
+  // i en daemon-tråd uafhængigt af request-håndteringen.
+  let consecutiveErrors = 0;
+  let firstPoll = true;
+  while (true) {
+    // Poll med det samme første gang — ellers står UI'en og siger 'Starter job…'
+    // i 2 sek selvom serveren typisk er færdig på <100 ms.
+    await new Promise(resolve => setTimeout(resolve, firstPoll ? 200 : BULK_POLL_INTERVAL_MS));
+    firstPoll = false;
+    let job;
+    try {
+      const r = await fetch(`/tools/portfolio-alignment/bulk-status?job_id=${encodeURIComponent(jobId)}`);
+      job = await r.json();
+      if (!r.ok) throw new Error(job.detail || `HTTP ${r.status}`);
+      consecutiveErrors = 0;
+    } catch(e) {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 5) {
+        resultEl.className = 'bulk-result error';
+        resultEl.innerHTML = `<strong>Mistede kontakt til serveren under polling.</strong> ` +
+          `Jobbet kører måske stadig i baggrunden — genindlæs siden og tjek om dealsne er oprettet ` +
+          `før du prøver igen. (${escHtml(e.message || String(e))})`;
+        return;
+      }
+      continue;
+    }
+
+    if (job.status === 'running') {
+      const created = (job.created || []).length;
+      const failed  = (job.failed  || []).length;
+      const skipped = (job.skipped || []).length;
+      resultEl.className = 'bulk-result info';
+      resultEl.innerHTML =
+        `<strong>${isDryRun ? 'Forhåndsvis' : 'Opretter'}…</strong> ${job.progress} / ${total}` +
+        ` &nbsp;·&nbsp; ✓ ${created}` +
+        (failed  ? ` &nbsp;·&nbsp; <span style="color:#842029">✗ ${failed}</span>` : '') +
+        (skipped ? ` &nbsp;·&nbsp; ↷ ${skipped}` : '');
+      continue;
+    }
+
+    if (job.status === 'done') {
+      _renderBulkResult({...job, count_eligible: total}, isDryRun);
+      return;
+    }
   }
 }
 
@@ -1235,7 +1302,7 @@ function renderTable() {
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
-        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}${r.org_id ? `<div style="font-size:10px;font-weight:400;color:var(--ink-4);margin-top:2px">org_id: ${escHtml(String(r.org_id))}</div>` : ''}</td>
         <td>${escHtml(r.site)}</td>
         <td class="num">${fmtFull(r.pd_acv)}</td>
         <td class="num">${fmtFull(r.zuora_arr)}</td>

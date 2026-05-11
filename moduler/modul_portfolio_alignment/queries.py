@@ -744,6 +744,12 @@ def _coerce_pipedrive_id(v) -> Optional[str]:
     return s
 
 
+# In-memory cache for Zuora-snapshot. CSV/XLSX-fil-load er den dyreste del
+# af en page-load (5-10 sek for store filer), og filen ændres kun én gang om
+# ugen. Vi keyer på (sti, mtime) så ny snapshot-fil automatisk inviderer cachen.
+_SNAPSHOT_CACHE: dict[tuple, dict] = {}
+
+
 def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
     """Læs Zuora-snapshot fra CSV eller XLSX.
 
@@ -762,6 +768,15 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
         raise FileNotFoundError(
             f"Ingen ACV_snapshot_*.csv eller .xlsx fundet i {folder}"
         )
+
+    # Cache-key: sti + mtime. Hvis filen er den samme bruger vi cached resultat.
+    try:
+        cache_key = (str(target), target.stat().st_mtime)
+        cached = _SNAPSHOT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+    except OSError:
+        cache_key = None
 
     suffix = target.suffix.lower()
     if suffix == ".xlsx":
@@ -891,12 +906,16 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
         "web_sales_rows":    len(web_sales_raw),
         "web_sales_total":   round(sum(w["zuora_arr"] for w in web_sales_by_site), 2),
     }
-    return {
+    result = {
         "enterprise_rows":   enterprise_rows,
         "enterprise_raw":    enterprise_raw,   # bevar rå rækker med currency/arr_local til local-diff opslag
         "web_sales_by_site": web_sales_by_site,
         "meta":              meta,
     }
+    if cache_key is not None:
+        _SNAPSHOT_CACHE.clear()  # behold kun seneste version, så hukommelsen ikke vokser
+        _SNAPSHOT_CACHE[cache_key] = result
+    return result
 
 
 # ---------------------------------------------------------------------------
