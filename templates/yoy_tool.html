@@ -59,6 +59,10 @@
 .yoy-table{width:100%;border-collapse:collapse;font-size:12px}
 .yoy-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .yoy-table th.num{text-align:right}
+.yoy-table th.sortable{cursor:pointer;user-select:none}
+.yoy-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.yoy-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.yoy-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .yoy-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .yoy-table tr:hover td{background:var(--green-light)}
 .yoy-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
@@ -246,6 +250,73 @@
 <script>
 const CURRENT_YEAR  = {{ current_year }};
 const CURRENT_MONTH = {{ current_month }};
+
+// ── Sort state ────────────────────────────────────────────────────────────────
+let yoySaelgere  = [];
+let yoySortCol   = 'curr_netto';
+let yoySortDir   = 'desc';
+let yoyRefYear   = null;
+let yoyPrevYear  = null;
+
+function sortYoy(col) {
+  if (yoySortCol === col) {
+    if (yoySortDir === 'desc')      yoySortDir = 'asc';
+    else { yoySortCol = 'curr_netto'; yoySortDir = 'desc'; } // reset
+  } else {
+    yoySortCol = col;
+    yoySortDir = 'desc';
+  }
+  drawYoySaelgere();
+}
+
+function drawYoySaelgere() {
+  const refY  = yoyRefYear;
+  const prevY = yoyPrevYear;
+  const cols  = ['curr_netto','prev_netto','delta_netto','delta_pct','curr_count'];
+
+  const sorted = [...yoySaelgere].sort((a, b) => {
+    const av = a[yoySortCol] ?? -Infinity;
+    const bv = b[yoySortCol] ?? -Infinity;
+    return yoySortDir === 'desc' ? bv - av : av - bv;
+  });
+
+  let rows = '';
+  sorted.forEach(s => {
+    const diff   = s.delta_netto;
+    const pct    = s.delta_pct;
+    const good   = diff >= 0;
+    const cls    = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
+    const sign   = diff > 0 ? '+' : '';
+    const pctTxt = pct !== null ? fmtPct(pct) : '—';
+    rows += `<tr>
+      <td>${s.owner_name}</td>
+      <td class="num">${fmtKr(s.curr_netto)}</td>
+      <td class="num" style="color:var(--ink-4)">${fmtKr(s.prev_netto)}</td>
+      <td class="num"><span class="${cls}" style="font-weight:700">${sign}${fmtKr(diff)}</span></td>
+      <td class="num"><span class="delta-pill ${cls}">${pctTxt}</span></td>
+      <td class="num" style="color:var(--ink-4)">${s.curr_count}</td>
+    </tr>`;
+  });
+
+  const arrows = col => {
+    const active = col === yoySortCol;
+    const arrow  = active ? (yoySortDir === 'desc' ? '↓' : '↑') : '↕';
+    return `<i class="sort-arrow" style="${active ? 'opacity:1;font-size:13px' : ''}">${arrow}</i>`;
+  };
+
+  document.getElementById('saelger-wrap').innerHTML = `
+    <table class="yoy-table">
+      <thead><tr>
+        <th>Sælger</th>
+        <th class="num sortable ${yoySortCol==='curr_netto'?'sort-active':''}" onclick="sortYoy('curr_netto')">Netto ${refY}${arrows('curr_netto')}</th>
+        <th class="num sortable ${yoySortCol==='prev_netto'?'sort-active':''}" onclick="sortYoy('prev_netto')">Netto ${prevY}${arrows('prev_netto')}</th>
+        <th class="num sortable ${yoySortCol==='delta_netto'?'sort-active':''}" onclick="sortYoy('delta_netto')">Forskel${arrows('delta_netto')}</th>
+        <th class="num sortable ${yoySortCol==='delta_pct'?'sort-active':''}" onclick="sortYoy('delta_pct')">% ændring${arrows('delta_pct')}</th>
+        <th class="num sortable ${yoySortCol==='curr_count'?'sort-active':''}" onclick="sortYoy('curr_count')">Deals ${refY}${arrows('curr_count')}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmtKr = v => {
@@ -455,46 +526,16 @@ function renderChart(d) {
 
 // ── Salesperson table ─────────────────────────────────────────────────────────
 function renderSaelgere(d) {
-  const wrap = document.getElementById('saelger-wrap');
   if (!d.saelgere || d.saelgere.length === 0) {
-    wrap.innerHTML = '<p class="empty" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Ingen data</p>';
+    document.getElementById('saelger-wrap').innerHTML =
+      '<p style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Ingen data</p>';
     return;
   }
-
-  const refY  = d.ref_year;
-  const prevY = d.prev_year;
-
-  let rows = '';
-  d.saelgere.forEach(s => {
-    const diff   = s.delta_netto;
-    const pct    = s.delta_pct;
-    const good   = diff >= 0;
-    const cls    = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
-    const sign   = diff > 0 ? '+' : '';
-    const pctTxt = pct !== null ? fmtPct(pct) : '—';
-
-    rows += `<tr>
-      <td>${s.owner_name}</td>
-      <td class="num">${fmtKr(s.curr_netto)}</td>
-      <td class="num" style="color:var(--ink-4)">${fmtKr(s.prev_netto)}</td>
-      <td class="num"><span class="${cls}" style="font-weight:700">${sign}${fmtKr(diff)}</span></td>
-      <td class="num"><span class="delta-pill ${cls}">${pctTxt}</span></td>
-      <td class="num" style="color:var(--ink-4)">${s.curr_count}</td>
-    </tr>`;
-  });
-
-  wrap.innerHTML = `
-    <table class="yoy-table">
-      <thead><tr>
-        <th>Sælger</th>
-        <th class="num">Netto ${refY}</th>
-        <th class="num">Netto ${prevY}</th>
-        <th class="num">Forskel</th>
-        <th class="num">% ændring</th>
-        <th class="num">Deals ${refY}</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  yoySaelgere = d.saelgere;
+  yoyRefYear  = d.ref_year;
+  yoyPrevYear = d.prev_year;
+  // Behold sort-tilstand på tværs af data-opdateringer
+  drawYoySaelgere();
 }
 
 window.addEventListener('resize', () => {
