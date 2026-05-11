@@ -10,7 +10,7 @@ from moduler.modul_perf.queries import (
     SUBSCRIPTION_BRANDS, BRAND_GROUPS, BRAND_GROUP_LABELS, GROUPBY_COLUMNS,
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
-    db_get_filters, db_manager_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
+    db_get_filters, db_manager_data, db_yoy_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
 )
 
@@ -54,6 +54,45 @@ async def perf_manager_data(
             date.today(), team=team,
             selected_year=year, selected_month=month, date_col=date_col,
             pipeline_filter=pipeline_filter,
+        ))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        YoY SAMMENLIGNINGSVÆRKTØJ
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/yoy", response_class=HTMLResponse)
+async def perf_yoy_page(request: Request, user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Kun Sales Managers og derover har adgang")
+    today = date.today()
+    return templates.TemplateResponse("yoy_tool.html", {
+        "request":       request,
+        "user":          user,
+        "current_year":  today.year,
+        "current_month": today.month,
+    })
+
+@router.get("/yoy-data")
+async def perf_yoy_data(
+    team:            str | None = None,
+    year:            int | None = None,
+    compare_year:    int | None = None,
+    month:           str | None = None,
+    date_col:        str = "won_time",
+    pipeline_filter: str | None = None,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_yoy_data(
+            date.today(), team=team,
+            selected_year=year, compare_year=compare_year,
+            selected_month=month,
+            date_col=date_col, pipeline_filter=pipeline_filter,
         ))
     except Exception as e:
         traceback.print_exc()

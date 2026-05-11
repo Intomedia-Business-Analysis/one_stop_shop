@@ -704,6 +704,280 @@ def db_manager_data(today: date, team: str | None = None,
 
 
 #-----------------------------------------------------------------------------------------------------------------------
+#                                          YoY SAMMENLIGNINGSVÆRKTØJ
+#-----------------------------------------------------------------------------------------------------------------------
+
+def db_yoy_data(today: date, team: str | None = None,
+                selected_year: int | None = None, compare_year: int | None = None,
+                selected_month: str | None = None,
+                date_col: str = "won_time", pipeline_filter: str | None = None):
+    ref_year  = selected_year or today.year
+    prev_year = compare_year if compare_year else ref_year - 1
+
+    # ── Period label + month/quarter SQL clause ──────────────────────────────
+    if selected_month in ("Q1", "Q2", "Q3", "Q4"):
+        q = int(selected_month[1])
+        m_from = (q - 1) * 3 + 1
+        m_to   = q * 3
+        period_sql    = f"AND MONTH({{}}) BETWEEN %s AND %s"
+        period_params = (m_from, m_to)
+        period_label  = f"{selected_month} {ref_year} vs {selected_month} {prev_year}"
+    elif selected_month:
+        ref_month = int(selected_month)
+        period_sql    = f"AND MONTH({{}}) = %s"
+        period_params = (ref_month,)
+        period_label  = f"{MONTH_NAMES_DA[ref_month - 1]} {ref_year} vs {MONTH_NAMES_DA[ref_month - 1]} {prev_year}"
+    else:
+        period_sql    = ""
+        period_params = ()
+        period_label  = f"Hele {ref_year} vs Hele {prev_year}"
+
+    # Date range spanning both years
+    both_from = date(prev_year, 1, 1)
+    both_to   = date(ref_year + 1, 1, 1)
+
+    # ── Date column ──────────────────────────────────────────────────────────
+    _VALID_DATE_COLS = {"won_time", "service_activation_date"}
+    if date_col not in _VALID_DATE_COLS:
+        date_col = "won_time"
+    d_col = f"[{date_col}]"
+
+    # ── Team clause ──────────────────────────────────────────────────────────
+    is_finans_team   = team and "FINANS" in team.upper()
+    is_watch_dk_team = team and "WATCH DK" in team.upper()
+    is_watch_int_team = team and "WATCH INT" in team.upper()
+
+    if is_finans_team and team:
+        team_clause  = """AND [owner_name] IN (
+            SELECT u2.name FROM HubUsers u2
+            JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
+            JOIN Teams t2 ON t2.id = tm2.team_id
+            WHERE t2.name = %s
+            AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
+        ) AND COALESCE([sites],'') = 'FINANS DK'"""
+        team_params  = (team,)
+    elif team:
+        team_clause  = """AND [owner_name] IN (
+            SELECT u2.name FROM HubUsers u2
+            JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
+            JOIN Teams t2 ON t2.id = tm2.team_id
+            WHERE t2.name = %s
+            AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        ) AND ([team] = %s OR [team] IS NULL)"""
+        team_params  = (team, team)
+    else:
+        team_clause  = ""
+        team_params  = ()
+
+    if is_watch_int_team:
+        non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
+    elif is_watch_dk_team:
+        non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
+    else:
+        non_finans_exclude = ""
+
+    brands_ph    = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+    sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)" if team else f"AND [sites] IN {brands_ph}"
+
+    # ── Pipeline filter ──────────────────────────────────────────────────────
+    if not pipeline_filter or pipeline_filter == 'all':
+        won_case    = f"[pipeline_name] NOT IN {_CANCEL_PH}"
+        cancel_case = f"[pipeline_name] IN {_CANCEL_PH}"
+        won_cparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_cparams = tuple(CANCELLATION_PIPELINES)
+    elif pipeline_filter == 'Cancellations':
+        won_case    = f"[pipeline_name] IN {_CANCEL_PH}"
+        cancel_case = "1=0"
+        won_cparams    = tuple(CANCELLATION_PIPELINES)
+        cancel_cparams = ()
+    else:
+        won_case    = "[pipeline_name] = %s"
+        cancel_case = "1=0"
+        won_cparams    = (pipeline_filter,)
+        cancel_cparams = ()
+
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    # ── KPI summary: GROUP BY YEAR ────────────────────────────────────────────
+    # period_sql uses d_col as format arg (filled in below)
+    psql = period_sql.format(d_col) if period_sql else ""
+    cur.execute(f"""
+        SELECT
+            YEAR({d_col}) AS aar,
+            ISNULL(SUM(CASE WHEN {won_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ISNULL(ABS(SUM(CASE WHEN {cancel_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END)), 0) AS cancel,
+            COUNT(CASE WHEN {won_case} THEN 1 END) AS won_count
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND {d_col} >= %s AND {d_col} < %s
+          {psql}
+          {sites_filter}
+          {_ADM_EXCLUDE}
+          {non_finans_exclude}
+          {team_clause}
+        GROUP BY YEAR({d_col})
+    """, won_cparams + cancel_cparams + won_cparams + (both_from.isoformat(), both_to.isoformat()) + period_params + tuple(SUBSCRIPTION_BRANDS) + team_params)
+
+    kpi_by_year = {}
+    for r in cur.fetchall():
+        y   = int(r["aar"])
+        won = float(r["won"] or 0)
+        can = float(r["cancel"] or 0)
+        kpi_by_year[y] = {
+            "won":       round(won, 2),
+            "cancel":    round(can, 2),
+            "netto":     round(won - can, 2),
+            "won_count": int(r["won_count"] or 0),
+        }
+
+    def _empty_kpi():
+        return {"won": 0, "cancel": 0, "netto": 0, "won_count": 0}
+
+    curr_kpi = kpi_by_year.get(ref_year,  _empty_kpi())
+    prev_kpi = kpi_by_year.get(prev_year, _empty_kpi())
+
+    def _delta(c, p):
+        diff = round(c - p, 2)
+        pct  = round(diff / p * 100, 1) if p != 0 else None
+        return {"diff": diff, "pct": pct}
+
+    deltas = {
+        "won":       _delta(curr_kpi["won"],       prev_kpi["won"]),
+        "cancel":    _delta(curr_kpi["cancel"],    prev_kpi["cancel"]),
+        "netto":     _delta(curr_kpi["netto"],     prev_kpi["netto"]),
+        "won_count": _delta(curr_kpi["won_count"], prev_kpi["won_count"]),
+    }
+
+    # ── Monthly chart: all 12 months × 2 years ───────────────────────────────
+    cur.execute(f"""
+        SELECT
+            YEAR({d_col}) AS aar,
+            MONTH({d_col}) AS maaned,
+            ISNULL(SUM(CASE WHEN {won_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ISNULL(ABS(SUM(CASE WHEN {cancel_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END)), 0) AS cancel
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND {d_col} >= %s AND {d_col} < %s
+          {sites_filter}
+          {_ADM_EXCLUDE}
+          {non_finans_exclude}
+          {team_clause}
+        GROUP BY YEAR({d_col}), MONTH({d_col})
+        ORDER BY aar, maaned
+    """, won_cparams + cancel_cparams + (both_from.isoformat(), both_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+
+    raw_monthly: dict[tuple, tuple] = {}
+    for r in cur.fetchall():
+        won = float(r["won"] or 0)
+        can = float(r["cancel"] or 0)
+        raw_monthly[(int(r["aar"]), int(r["maaned"]))] = (won, can)
+
+    def _month_series(year):
+        out = []
+        for m in range(1, 13):
+            won, can = raw_monthly.get((year, m), (0.0, 0.0))
+            out.append({
+                "maaned": MONTH_NAMES_DA[m - 1][:3],
+                "won":    round(won, 2),
+                "cancel": round(can, 2),
+                "netto":  round(won - can, 2),
+            })
+        return out
+
+    monthly_curr = _month_series(ref_year)
+    monthly_prev = _month_series(prev_year)
+
+    # ── Salesperson comparison ────────────────────────────────────────────────
+    cur.execute(f"""
+        SELECT
+            COALESCE([owner_name], 'Ukendt') AS owner_name,
+            YEAR({d_col}) AS aar,
+            ISNULL(SUM(CASE WHEN {won_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+            ISNULL(ABS(SUM(CASE WHEN {cancel_case}
+                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END)), 0) AS cancel,
+            COUNT(CASE WHEN {won_case} THEN 1 END) AS won_count
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND {d_col} >= %s AND {d_col} < %s
+          {psql}
+          {sites_filter}
+          {_ADM_EXCLUDE}
+          {non_finans_exclude}
+          {team_clause}
+        GROUP BY COALESCE([owner_name], 'Ukendt'), YEAR({d_col})
+        ORDER BY owner_name, aar
+    """, won_cparams + cancel_cparams + won_cparams + (both_from.isoformat(), both_to.isoformat()) + period_params + tuple(SUBSCRIPTION_BRANDS) + team_params)
+
+    saelger_map: dict[str, dict] = {}
+    for r in cur.fetchall():
+        name = r["owner_name"]
+        y    = int(r["aar"])
+        won  = float(r["won"] or 0)
+        can  = float(r["cancel"] or 0)
+        netto = round(won - can, 2)
+        if name not in saelger_map:
+            saelger_map[name] = {}
+        saelger_map[name][y] = {
+            "won":       round(won, 2),
+            "cancel":    round(can, 2),
+            "netto":     netto,
+            "won_count": int(r["won_count"] or 0),
+        }
+
+    saelgere = []
+    for name, by_year in saelger_map.items():
+        cn = by_year.get(ref_year,  {}).get("netto", 0)
+        pn = by_year.get(prev_year, {}).get("netto", 0)
+        diff = round(cn - pn, 2)
+        pct  = round(diff / pn * 100, 1) if pn != 0 else None
+        saelgere.append({
+            "owner_name":    name,
+            "curr_won":      by_year.get(ref_year,  {}).get("won",       0),
+            "curr_cancel":   by_year.get(ref_year,  {}).get("cancel",    0),
+            "curr_netto":    cn,
+            "curr_count":    by_year.get(ref_year,  {}).get("won_count", 0),
+            "prev_won":      by_year.get(prev_year, {}).get("won",       0),
+            "prev_cancel":   by_year.get(prev_year, {}).get("cancel",    0),
+            "prev_netto":    pn,
+            "prev_count":    by_year.get(prev_year, {}).get("won_count", 0),
+            "delta_netto":   diff,
+            "delta_pct":     pct,
+        })
+    saelgere.sort(key=lambda x: -x["curr_netto"])
+
+    # ── Teams list ────────────────────────────────────────────────────────────
+    cur.execute("""
+        SELECT DISTINCT t.name
+        FROM Teams t
+        JOIN TeamMemberships tm ON tm.team_id = t.id
+        WHERE t.name IS NOT NULL
+          AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+        ORDER BY t.name
+    """)
+    teams = [r["name"] for r in cur.fetchall()]
+
+    conn.close()
+    return {
+        "ref_year":     ref_year,
+        "prev_year":    prev_year,
+        "period_label": period_label,
+        "curr":         curr_kpi,
+        "prev":         prev_kpi,
+        "deltas":       deltas,
+        "monthly_curr": monthly_curr,
+        "monthly_prev": monthly_prev,
+        "saelgere":     saelgere,
+        "teams":        teams,
+    }
+
+
+#-----------------------------------------------------------------------------------------------------------------------
 #                                          DET NYE DASHBOARD FOR SÆLGER
 #-----------------------------------------------------------------------------------------------------------------------
 

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YoY Sammenligning — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1280px;margin:0 auto}
+
+/* Filter-bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-select:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+/* Page header */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.page-title{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.5px}
+.page-subtitle{font-size:12px;color:var(--ink-4);margin-top:2px}
+.back-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--surface);color:var(--ink-2);border:1px solid var(--border);border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;text-decoration:none;transition:background .13s}
+.back-btn:hover{background:var(--border)}
+
+/* KPI cards grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.kpi-grid{grid-template-columns:1fr}}
+
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:14px}
+
+.kpi-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.kpi-year{font-size:10px;font-weight:700;color:var(--ink-4)}
+.kpi-val{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.kpi-val.curr{font-size:22px;color:var(--ink)}
+
+.kpi-divider{height:1px;background:var(--border);margin:10px 0}
+
+.kpi-delta{display:flex;align-items:center;gap:8px;margin-top:4px}
+.kpi-diff{font-size:12px;font-weight:700}
+.kpi-pct{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
+.pos{color:var(--green)}.neg{color:#B32E45}.neu{color:var(--ink-4)}
+.pct-pos{background:#E6F4EC;color:var(--green)}
+.pct-neg{background:#FBEAEC;color:#B32E45}
+.pct-neu{background:var(--border);color:var(--ink-4)}
+
+/* Chart card */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px}
+.chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.chart-legend{display:flex;gap:16px}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.legend-item{font-size:11px;font-weight:600;color:var(--ink-3);display:flex;align-items:center}
+
+/* Salesperson table */
+.lb-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px}
+.lb-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px}
+.yoy-table{width:100%;border-collapse:collapse;font-size:12px}
+.yoy-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.yoy-table th.num{text-align:right}
+.yoy-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.yoy-table tr:hover td{background:var(--green-light)}
+.yoy-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.yoy-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.delta-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.delta-pill.pos{background:#E6F4EC;color:var(--green)}
+.delta-pill.neg{background:#FBEAEC;color:#B32E45}
+.delta-pill.neu{background:var(--border);color:var(--ink-4)}
+
+/* Knapper */
+.refresh-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+
+/* Spinner */
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Navigation</div>
+      <a href="/" class="sbi">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Hub
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Sales Operations</div>
+      <a href="/tools/budget/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Budget
+      </a>
+      <a href="/tools/forecast/" class="sbi">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Forecast
+      </a>
+    </div>
+    <div class="sb-divider"></div>
+    <div class="sb-nav">
+      <div class="sb-section-label">Subscription Sales</div>
+      <a href="/tools/performance/" class="sbi">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Subscription Dashboard
+      </a>
+      <a href="/tools/performance/manager" class="sbi">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Manager Dashboard
+      </a>
+      <a href="/tools/performance/yoy" class="sbi active">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        YoY Sammenligning
+      </a>
+    </div>
+    <div class="sb-user">
+      <div class="sb-avatar">{{ user.initials }}</div>
+      <div>
+        <div class="sb-user-name">{{ user.name }}</div>
+        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/subscription-sales" class="tb-btn">← Subscription Sales</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+    <div class="tool-wrap">
+
+      <!-- Page header -->
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="breadcrumb" style="margin-bottom:8px">
+            <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+            <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
+            <a href="/tools/performance/manager" class="bc-link">Manager Dashboard</a><span class="bc-sep">/</span>
+            <span>YoY Sammenligning</span>
+          </div>
+          <h1 class="page-title" style="margin-bottom:4px">YoY Sammenligning</h1>
+          <p class="page-sub" id="period-subtitle">Indlæser…</p>
+        </div>
+        <a href="/tools/performance/manager" class="refresh-btn" style="text-decoration:none">
+          ← Manager Dashboard
+        </a>
+      </div>
+
+  <!-- Filter-bar -->
+  <div class="filter-bar">
+    <span class="filter-label">Filter</span>
+    <div class="filter-sep"></div>
+    <select class="filter-select" id="filter-year" onchange="loadData()">
+      <option value="">Indlæser år…</option>
+    </select>
+    <span style="font-size:11px;font-weight:700;color:var(--ink-4)">vs</span>
+    <select class="filter-select" id="filter-compare-year" onchange="loadData()">
+      <option value="">Indlæser år…</option>
+    </select>
+    <select class="filter-select" id="filter-month" onchange="loadData()">
+      <option value="">Hele året</option>
+      <option value="Q1">Q1</option>
+      <option value="Q2">Q2</option>
+      <option value="Q3">Q3</option>
+      <option value="Q4">Q4</option>
+      <option value="1">Januar</option>
+      <option value="2">Februar</option>
+      <option value="3">Marts</option>
+      <option value="4">April</option>
+      <option value="5">Maj</option>
+      <option value="6">Juni</option>
+      <option value="7">Juli</option>
+      <option value="8">August</option>
+      <option value="9">September</option>
+      <option value="10">Oktober</option>
+      <option value="11">November</option>
+      <option value="12">December</option>
+    </select>
+    <select class="filter-select" id="team-select" onchange="loadData()">
+      <option value="">Alle teams</option>
+    </select>
+    <div class="filter-sep"></div>
+    <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+      <option value="all">Alle pipelines</option>
+      <option value="Customer">Customer</option>
+      <option value="Newbizz">Newbizz</option>
+      <option value="Company Trial">Company Trial</option>
+      <option value="Cancellations">Opsigelser</option>
+    </select>
+    <div class="filter-sep"></div>
+    <select class="filter-select" id="filter-date-col" onchange="loadData()">
+      <option value="won_time">Vundet dato</option>
+      <option value="service_activation_date" selected>Aktiverings dato</option>
+    </select>
+  </div>
+
+  <!-- Spinner -->
+  <div id="loading-state" class="spin-wrap">
+    <div class="spinner"></div><br>Henter data…
+  </div>
+
+  <div id="dash-content" style="display:none">
+
+    <!-- KPI cards -->
+    <div class="kpi-grid" id="kpi-grid"></div>
+
+    <!-- Monthly chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        <span>Månedlig netto — år for år</span>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
+          <span class="legend-item"><span class="legend-dot" style="background:#B0C9BB"></span><span id="legend-prev"></span></span>
+        </div>
+      </div>
+      <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
+    </div>
+
+    <!-- Salesperson table -->
+    <div class="lb-card">
+      <div class="lb-card-title">Sælger sammenligning</div>
+      <div id="saelger-wrap"></div>
+    </div>
+
+  </div><!-- dash-content -->
+</div><!-- tool-wrap -->
+</div><!-- content-area -->
+
+<script>
+const CURRENT_YEAR  = {{ current_year }};
+const CURRENT_MONTH = {{ current_month }};
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+const fmtKr = v => {
+  const abs = Math.abs(v), sign = v < 0 ? '−' : '';
+  if (abs >= 1e6)  return sign + (abs/1e6).toFixed(1).replace('.',',') + ' m';
+  if (abs >= 1000) return sign + (abs/1000).toFixed(0) + 'k';
+  return sign + Math.round(abs).toLocaleString('da-DK');
+};
+const fmtFull = v => {
+  const abs = Math.abs(v), sign = v < 0 ? '−' : '';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr';
+};
+const fmtPct = v => (v > 0 ? '+' : '') + v + '%';
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Populer begge år-dropdowns: 2024–current+1
+  const ySel  = document.getElementById('filter-year');
+  const cySel = document.getElementById('filter-compare-year');
+  ySel.innerHTML = '';
+  cySel.innerHTML = '';
+  for (let y = CURRENT_YEAR + 1; y >= 2024; y--) {
+    const o1 = document.createElement('option');
+    o1.value = y; o1.textContent = y;
+    if (y === CURRENT_YEAR) o1.selected = true;
+    ySel.appendChild(o1);
+
+    const o2 = document.createElement('option');
+    o2.value = y; o2.textContent = y;
+    if (y === CURRENT_YEAR - 1) o2.selected = true;
+    cySel.appendChild(o2);
+  }
+  loadData();
+});
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+async function loadData() {
+  const year           = document.getElementById('filter-year').value;
+  const compareYear    = document.getElementById('filter-compare-year').value;
+  const month          = document.getElementById('filter-month').value;
+  const team           = document.getElementById('team-select').value;
+  const dateCol        = document.getElementById('filter-date-col').value;
+  const pipelineFilter = document.getElementById('filter-pipeline').value;
+
+  const params = new URLSearchParams();
+  if (year)                                        params.set('year',            year);
+  if (compareYear)                                 params.set('compare_year',    compareYear);
+  if (month)                                       params.set('month',           month);
+  if (team)                                        params.set('team',            team);
+  if (dateCol)                                     params.set('date_col',        dateCol);
+  if (pipelineFilter && pipelineFilter !== 'all')  params.set('pipeline_filter', pipelineFilter);
+
+  document.getElementById('loading-state').style.display = '';
+  document.getElementById('dash-content').style.display  = 'none';
+
+  try {
+    const r = await fetch('/tools/performance/yoy-data?' + params);
+    const d = await r.json();
+    if (!r.ok) return;
+
+    // Populate team dropdown once
+    const sel = document.getElementById('team-select');
+    if (sel.options.length === 1 && d.teams) {
+      d.teams.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+    }
+
+    document.getElementById('period-subtitle').textContent = d.period_label;
+    document.getElementById('legend-curr').textContent = d.ref_year;
+    document.getElementById('legend-prev').textContent = d.prev_year;
+
+    renderKPI(d);
+    renderChart(d);
+    renderSaelgere(d);
+
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('dash-content').style.display  = '';
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ── KPI cards ─────────────────────────────────────────────────────────────────
+function renderKPI(d) {
+  const cards = [
+    { label: 'Omsætning',    key: 'won',       isCount: false },
+    { label: 'Opsigelser',   key: 'cancel',    isCount: false },
+    { label: 'Netto',        key: 'netto',     isCount: false },
+    { label: 'Antal deals',  key: 'won_count', isCount: true  },
+  ];
+
+  const grid = document.getElementById('kpi-grid');
+  grid.innerHTML = '';
+
+  cards.forEach(({label, key, isCount}) => {
+    const cv  = d.curr[key];
+    const pv  = d.prev[key];
+    const dlt = d.deltas[key];
+
+    const diff    = dlt.diff;
+    const pct     = dlt.pct;
+    const diffPos = diff >= 0;
+    // For opsigelser: higher cancel is bad → invert colors
+    const isCancel = key === 'cancel';
+    const good = isCancel ? !diffPos : diffPos;
+
+    const colorCls  = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
+    const pctCls    = diff === 0 ? 'pct-neu' : (good ? 'pct-pos' : 'pct-neg');
+    const diffSign  = diff > 0 ? '+' : '';
+    const diffFmt   = isCount ? diffSign + diff : diffSign + fmtKr(diff);
+    const pctFmt    = pct !== null ? fmtPct(pct) : '—';
+
+    grid.innerHTML += `
+      <div class="kpi-card">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-row">
+          <span class="kpi-year">${d.ref_year}</span>
+          <span class="kpi-val curr">${isCount ? cv : fmtKr(cv)}</span>
+        </div>
+        <div class="kpi-row">
+          <span class="kpi-year">${d.prev_year}</span>
+          <span class="kpi-val">${isCount ? pv : fmtKr(pv)}</span>
+        </div>
+        <div class="kpi-divider"></div>
+        <div class="kpi-delta">
+          <span class="kpi-diff ${colorCls}">${diffFmt}</span>
+          <span class="kpi-pct ${pctCls}">${pctFmt}</span>
+        </div>
+      </div>`;
+  });
+}
+
+// ── Monthly chart ─────────────────────────────────────────────────────────────
+function renderChart(d) {
+  const svg   = document.getElementById('monthly-chart');
+  const W     = svg.getBoundingClientRect().width || 900;
+  const H     = 200;
+  const PAD   = { t: 10, r: 10, b: 30, l: 48 };
+  const chartW = W - PAD.l - PAD.r;
+  const chartH = H - PAD.t - PAD.b;
+
+  const curr = d.monthly_curr.map(m => m.netto);
+  const prev = d.monthly_prev.map(m => m.netto);
+  const labels = d.monthly_curr.map(m => m.maaned);
+  const n = 12;
+
+  const allVals = [...curr, ...prev];
+  const minV = Math.min(0, ...allVals);
+  const maxV = Math.max(1, ...allVals);
+  const range = maxV - minV || 1;
+
+  const toY = v => PAD.t + chartH - ((v - minV) / range) * chartH;
+
+  // Bar group layout: 2 bars per month + gap
+  const groupW = chartW / n;
+  const barW   = groupW * 0.32;
+  const gap    = groupW * 0.06;
+
+  let paths = '';
+  // Zero line
+  if (minV < 0) {
+    const zy = toY(0);
+    paths += `<line x1="${PAD.l}" y1="${zy}" x2="${PAD.l + chartW}" y2="${zy}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const gx = PAD.l + i * groupW + groupW * 0.04;
+    const zy = toY(0);
+
+    // Curr bar (green)
+    const cy  = toY(curr[i]);
+    const ch  = Math.abs(cy - zy);
+    const cTop = curr[i] >= 0 ? cy : zy;
+    paths += `<rect x="${gx}" y="${cTop}" width="${barW}" height="${Math.max(ch,1)}"
+      fill="var(--green)" rx="2" opacity="0.9">
+      <title>${labels[i]} ${d.ref_year}: ${fmtFull(curr[i])}</title></rect>`;
+
+    // Prev bar (muted)
+    const px2 = gx + barW + gap;
+    const py  = toY(prev[i]);
+    const ph  = Math.abs(py - zy);
+    const pTop = prev[i] >= 0 ? py : zy;
+    paths += `<rect x="${px2}" y="${pTop}" width="${barW}" height="${Math.max(ph,1)}"
+      fill="#B0C9BB" rx="2" opacity="0.85">
+      <title>${labels[i]} ${d.prev_year}: ${fmtFull(prev[i])}</title></rect>`;
+
+    // Month label
+    paths += `<text x="${gx + barW + gap/2}" y="${H - PAD.b + 14}" text-anchor="middle"
+      font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
+  }
+
+  // Y-axis labels
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = minV + (range / ticks) * i;
+    const y = toY(v);
+    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end"
+      font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
+  }
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = paths;
+}
+
+// ── Salesperson table ─────────────────────────────────────────────────────────
+function renderSaelgere(d) {
+  const wrap = document.getElementById('saelger-wrap');
+  if (!d.saelgere || d.saelgere.length === 0) {
+    wrap.innerHTML = '<p class="empty" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Ingen data</p>';
+    return;
+  }
+
+  const refY  = d.ref_year;
+  const prevY = d.prev_year;
+
+  let rows = '';
+  d.saelgere.forEach(s => {
+    const diff   = s.delta_netto;
+    const pct    = s.delta_pct;
+    const good   = diff >= 0;
+    const cls    = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
+    const sign   = diff > 0 ? '+' : '';
+    const pctTxt = pct !== null ? fmtPct(pct) : '—';
+
+    rows += `<tr>
+      <td>${s.owner_name}</td>
+      <td class="num">${fmtKr(s.curr_netto)}</td>
+      <td class="num" style="color:var(--ink-4)">${fmtKr(s.prev_netto)}</td>
+      <td class="num"><span class="${cls}" style="font-weight:700">${sign}${fmtKr(diff)}</span></td>
+      <td class="num"><span class="delta-pill ${cls}">${pctTxt}</span></td>
+      <td class="num" style="color:var(--ink-4)">${s.curr_count}</td>
+    </tr>`;
+  });
+
+  wrap.innerHTML = `
+    <table class="yoy-table">
+      <thead><tr>
+        <th>Sælger</th>
+        <th class="num">Netto ${refY}</th>
+        <th class="num">Netto ${prevY}</th>
+        <th class="num">Forskel</th>
+        <th class="num">% ændring</th>
+        <th class="num">Deals ${refY}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+window.addEventListener('resize', () => {
+  const content = document.getElementById('dash-content');
+  if (content.style.display !== 'none') loadData();
+});
+</script>
+
+    </div><!-- content-area -->
+  </div><!-- main -->
+</div><!-- shell -->
+</body>
+</html>
