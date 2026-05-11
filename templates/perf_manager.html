@@ -80,6 +80,10 @@
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
+/* Toggle knapper */
+.pipeline-toggle{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:3px}
+.pipeline-btn{flex:1;padding:5px 12px;border:none;border-radius:4px;font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:var(--ink-3)}
+.pipeline-btn.active{background:var(--green);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* Top Performer hero card */
 .hero-avatar{width:64px;height:64px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;letter-spacing:-1px;margin:0 auto 12px;border:3px solid var(--green-light)}
@@ -226,7 +230,13 @@
             <div class="dash-card">
               <div class="dash-card-title">
                 <span>Team Total</span>
-                <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div class="pipeline-toggle">
+                    <button class="pipeline-btn active" id="btn-salg" onclick="setTeamMode('salg')">Salg</button>
+                    <button class="pipeline-btn" id="btn-netto" onclick="setTeamMode('netto')">Tilvækst</button>
+                  </div>
+                  <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
+                </div>
               </div>
               <div class="big-number green" id="salg-maaned">—</div>
               <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
@@ -308,6 +318,15 @@ let autoRefreshTimer = null;
 let lbData     = [];
 let lbSortCol  = 'netto_amount';
 let lbSortDir  = 'desc';
+let teamMode   = 'salg'; // 'salg' | 'netto'
+let lastTeamData = null;
+
+function setTeamMode(mode) {
+  teamMode = mode;
+  document.getElementById('btn-salg').classList.toggle('active', mode === 'salg');
+  document.getElementById('btn-netto').classList.toggle('active', mode === 'netto');
+  if (lastTeamData) renderTeamTotal(lastTeamData);
+}
 
 function sortLb(col) {
   if (lbSortCol === col) {
@@ -463,12 +482,21 @@ async function loadData() {
 }
 
 function renderTeamTotal(d) {
-  document.getElementById('salg-maaned').textContent = fmtKr(d.salg_maaned);
+  lastTeamData = d;
+  const isNetto = teamMode === 'netto';
+  const visVal  = isNetto ? d.netto_maaned : d.salg_maaned;
+  const visKey  = isNetto ? 'netto' : 'won';
+
+  document.getElementById('salg-maaned').textContent = fmtKr(visVal);
   document.getElementById('salg-dag').textContent    = fmtKr(d.salg_dag);
-  document.getElementById('salg-maaned-label').textContent = 'Salg ' + d.month_label;
+  document.getElementById('salg-maaned-label').textContent =
+    (isNetto ? 'Tilvækst ' : 'Salg ') + d.month_label;
+  if (isNetto && d.cancel_maaned > 0) {
+    document.getElementById('salg-maaned-label').textContent +=
+      ` (−${fmtKr(d.cancel_maaned)} afm.)`;
+  }
 
   // Månedsoversigt
-  const maxBarPx = 48;
   const curMonth  = d.cur_month;
   const refMonth  = d.ref_month || curMonth;
   const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
@@ -476,7 +504,7 @@ function renderTeamTotal(d) {
 
   document.getElementById('maaned-year-label').textContent = refYear;
 
-  const max = Math.max(...d.maaned_chart.map(m => m.won), 1);
+  const max = Math.max(...d.maaned_chart.map(m => Math.abs(m[visKey] || 0)), 1);
 
   // Sparkline (punkt-diagram) — gap beregnes dynamisk fra containerens faktiske bredde
   const spPadX = 24, spPadY = 10, spH = 72;
@@ -496,8 +524,9 @@ function renderTeamTotal(d) {
     const isCur    = month === refMonth;
     const isFuture = refYear >= curYear && month > curMonth;
     const x = spPadX + i * spGap;
-    const y = isFuture ? null : spPadY + (1 - m.won / max) * spH;
-    return { x, y, m, isFuture, isCur };
+    const val  = m[visKey] || 0;
+    const y = isFuture ? null : spPadY + (1 - Math.abs(val) / max) * spH;
+    return { x, y, m, val, isFuture, isCur };
   });
 
   const lineCoords = spPoints
@@ -506,14 +535,15 @@ function renderTeamTotal(d) {
 
   const dots = spPoints.map(p => {
     if (p.isFuture) return '';
-    const col     = p.isCur ? orange : 'var(--green)';
-    const lblCol  = p.isCur ? orange : 'var(--ink-4)';
+    const isNeg   = p.val < 0;
+    const col     = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--green)';
+    const lblCol  = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--ink-4)';
     const r       = p.isCur ? 6 : 4;
     const fw      = p.isCur ? '700' : '400';
     const yLbl    = spPadY + spH + 17;
     const yAmt    = spPadY + spH + 31;
     const lbl = `<text x="${p.x}" y="${yLbl}" font-size="13" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
-      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.m.won)}</text>`;
+      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.val)}</text>`;
     return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}"/>${lbl}`;
   }).join('');
 

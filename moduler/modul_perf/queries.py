@@ -340,25 +340,43 @@ def db_manager_data(today: date, team: str | None = None,
     """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     salg_maaned = float((cur.fetchone() or {}).get("total", 0) or 0)
 
+    # Team afmeldinger for valgt periode
+    cur.execute(f"""
+        SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND {d_col} >= %s AND {d_col} < %s
+          {sites_filter}
+          AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+          {team_clause}
+    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    cancel_maaned = abs(float((cur.fetchone() or {}).get("total", 0) or 0))
+    netto_maaned  = round(salg_maaned - cancel_maaned, 2)
+
     # Månedschart: team-total per måned for valgt år
     year_from = date(ref_year, 1, 1)
     year_to   = date(ref_year + 1, 1, 1)
     cur.execute(f"""
         SELECT MONTH({d_col}) AS maaned,
-               ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+               ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
+                   THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
+               ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
+                   THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
           {_ADM_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
         GROUP BY MONTH({d_col})
         ORDER BY maaned
     """, (year_from.isoformat(), year_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
-    maaned_raw = {r["maaned"]: float(r["total"] or 0) for r in cur.fetchall()}
-    maaned_chart = [{"maaned": MONTH_NAMES_DA[m - 1][:3], "won": round(maaned_raw.get(m, 0), 2)}
+    maaned_raw = {r["maaned"]: (float(r["won"] or 0), abs(float(r["cancel"] or 0))) for r in cur.fetchall()}
+    maaned_chart = [{"maaned": MONTH_NAMES_DA[m - 1][:3],
+                     "won":    round(maaned_raw.get(m, (0,0))[0], 2),
+                     "cancel": round(maaned_raw.get(m, (0,0))[1], 2),
+                     "netto":  round(maaned_raw.get(m, (0,0))[0] - maaned_raw.get(m, (0,0))[1], 2)}
                     for m in range(1, 13)]
     sparkline = maaned_chart  # bagudkompatibilitet
 
@@ -627,9 +645,11 @@ def db_manager_data(today: date, team: str | None = None,
 
     conn.close()
     return {
-        "salg_dag":     round(salg_dag, 2),
-        "salg_maaned":  round(salg_maaned, 2),
-        "maaned_chart": maaned_chart,
+        "salg_dag":      round(salg_dag, 2),
+        "salg_maaned":   round(salg_maaned, 2),
+        "cancel_maaned": round(cancel_maaned, 2),
+        "netto_maaned":  round(netto_maaned, 2),
+        "maaned_chart":  maaned_chart,
         "sparkline":    sparkline,
         "conv_rate":    conv_rate,
         "won_count":    won_count,
