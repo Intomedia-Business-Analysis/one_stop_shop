@@ -71,15 +71,18 @@ SCOPE_TOKEN_ENV: dict[str, str] = {
 # Custom-felt-keys for Administrativ pr. scope. Hver Pipedrive-konto har sit
 # eget hash-baserede field key — navnet er ikke nødvendigvis 'Administrativ'.
 # Værdier kopieret fra pipedrive_sync/config.py så de holdes i sync.
-# Tom streng → opslag via navn (bruges på watch_de hvor feltet bogstaveligt
-# hedder 'Administrativ').
+# Tom streng → opslag via navn-varianter (administrativ/administrative/admin).
 ADMIN_FIELD_KEY: dict[str, str] = {
     "watch_medier": "df6dd5cbd8bff4ab30974bbf18b53e8fb8c98ccf",
     "watch_no":     "5494a067b751fedb4457719bfa0bf1a77ebc32e7",
     "watch_se":     "8765a546fe66531b80649dbc10644b5f86607bda",
-    "watch_de":     "",
+    "watch_de":     "0dfcf4ecb4a8ac64d36301a200f4c3d518641773",
     "monitor":      "a82c8f6f7fa3a2b87103025e9a4f474d7f9710d9",
 }
+
+# Navne der prøves hvis hash-opslag fejler (eller hash ikke er sat).
+# Pipedrive-felter kan hedde 'Administrativ' på dk og 'Administrative' på de.
+ADMIN_FIELD_NAME_VARIANTS = ["administrativ", "administrative", "admin"]
 
 # Pipedrive-pipeline-navne pr. fortegn på diff. Vi matcher case-insensitivt
 # substring så små variationer i navngivning på tværs af accounts ikke vælter.
@@ -260,18 +263,40 @@ def _option_id_by_label_match(field: dict, predicate) -> Optional[int]:
     return None
 
 
-def _site_option_id(field: dict, normalized_site: str) -> int:
-    """Find option-ID for sites-feltet hvor labelen normaliserer til samme site.
+def _site_stem(s: str) -> str:
+    """Returnér 'stam'-form: alt før første '.', lowercased, uden whitespace.
 
-    Bruger samme normalize_site() som alignment-tabellen, så fx
-    'FinansWatch DK' (Pipedrive-label) matcher 'finanswatch.dk' (vores nøgle).
+    Bruges til scope-bevidst matching: NO/SE/DE-konti har PD-options uden TLD
+    ('MedWatch', 'FinansWatch') der ikke kan ramme alignment-target 'medwatch.no'
+    via SITE_ALIASES (som peger på .dk). Stem'et er ens på begge sider.
     """
-    target = normalize_site(normalized_site) or normalized_site.lower()
-    candidates = []
+    s = (s or "").strip().lower().replace(" ", "")
+    if "." in s:
+        s = s.split(".", 1)[0]
+    return s
+
+
+def _site_option_id(field: dict, normalized_site: str) -> int:
+    """Find option-ID for sites-feltet hvor labelen matcher target-sitet.
+
+    Først forsøges fuld-normaliseret match (samme alias-tabel som alignment-
+    tabellen — bevarer dækning for monitor-sites med æ/ae, kapwatch osv.).
+    Hvis intet matcher falder vi tilbage til stem-match, så fx PD-NO's option
+    'MedWatch' matcher target 'medwatch.no' selvom SITE_ALIASES['medwatch']
+    peger på '.dk'.
+    """
+    target_full = normalize_site(normalized_site) or normalized_site.lower()
+    target_stem = _site_stem(normalized_site)
+
+    full_candidates = []
+    stem_candidates = []
     for opt_id, label in field["options"].items():
-        nl = normalize_site(label)
-        if nl == target:
-            candidates.append((opt_id, label))
+        if normalize_site(label) == target_full:
+            full_candidates.append((opt_id, label))
+        if _site_stem(label) == target_stem:
+            stem_candidates.append((opt_id, label))
+
+    candidates = full_candidates or stem_candidates
     if not candidates:
         labels = ", ".join(sorted(field["options"].values()))
         raise RuntimeError(
@@ -320,16 +345,22 @@ def _build_payload(
     sites_field = _resolve_field(meta, "Sites")
     site_opt_id = _site_option_id(sites_field, site)
 
+    admin_field = None
     admin_key = ADMIN_FIELD_KEY.get(scope, "")
     if admin_key:
         admin_field = meta["fields_by_key"].get(admin_key)
-        if not admin_field:
-            raise RuntimeError(
-                f"Administrativ-feltet ({admin_key!r}) blev ikke fundet i Pipedrive "
-                f"for scope {scope!r}. Tjek hash-keyen i pipedrive_sync/config.py."
-            )
-    else:
-        admin_field = _resolve_field(meta, "Administrativ")
+    if not admin_field:
+        # Hash-opslag fejlede (eller var tom) — prøv navne-varianter.
+        for name in ADMIN_FIELD_NAME_VARIANTS:
+            admin_field = meta["fields_by_name"].get(name)
+            if admin_field:
+                break
+    if not admin_field:
+        raise RuntimeError(
+            f"Administrativ-feltet blev ikke fundet i Pipedrive for scope {scope!r}. "
+            f"Tjekkede hash {admin_key!r} og navne {ADMIN_FIELD_NAME_VARIANTS}. "
+            f"Opdatér ADMIN_FIELD_KEY i pipedrive_api.py."
+        )
     admin_opt = _admin_yes_option_id(admin_field)
 
     sad_field = _resolve_field(meta, "Service Activation Date")

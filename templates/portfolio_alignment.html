@@ -42,7 +42,7 @@
 .v-table th.num{text-align:right}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
-.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 
 .tag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:3px 8px;border-radius:10px}
@@ -475,6 +475,14 @@ function fmtFull(v) {
   return Math.round(v).toLocaleString('da-DK') + ' kr.';
 }
 
+// Format med valuta-suffix. DKK → 'kr.' (samme som fmtFull); andre → ISO-kode.
+function fmtCurAmount(v, cur) {
+  if (v === null || v === undefined) return '—';
+  const c = (cur || 'DKK').toUpperCase();
+  const n = Math.round(v).toLocaleString('da-DK');
+  return c === 'DKK' ? n + ' kr.' : n + ' ' + c;
+}
+
 function fmtPct(v) {
   if (v === null || v === undefined) return '—';
   const sign = v > 0 ? '+' : '';
@@ -852,7 +860,11 @@ async function openCreateDealModal(ds) {
   // Værdi vises foreløbigt som DKK-diff; opdateres når preview returnerer.
   document.getElementById('cd-value').textContent =
     'Henter…';
-  document.getElementById('cd-result').innerHTML = '';
+  // Nulstil både indhold OG klasse — ellers beholder forrige error/success
+  // sin farvede baggrund selv med tom innerHTML (rød 'streg' ved næste deal).
+  const cdResult = document.getElementById('cd-result');
+  cdResult.innerHTML = '';
+  cdResult.className = '';
   const confirmBtn = document.getElementById('cd-confirm-btn');
   confirmBtn.disabled = true;
   confirmBtn.textContent = 'Henter…';
@@ -1299,13 +1311,18 @@ function renderTable() {
       const multiBadge = r.multi_currency
         ? '<span class="cur-badge cur-multi" title="Kunden har flere valutaer — værdi vist i DKK med fast kurs">multi</span>'
         : '';
+      // PD ACV og Zuora ARR vises i lokal valuta hvis hele kunden er én ikke-DKK
+      // valuta (backend sætter display_currency + *_display); ellers DKK.
+      const dispCur = r.display_currency || 'DKK';
+      const pdDisp  = (r.pd_acv_display    !== undefined && r.pd_acv_display    !== null) ? r.pd_acv_display    : r.pd_acv;
+      const zuDisp  = (r.zuora_arr_display !== undefined && r.zuora_arr_display !== null) ? r.zuora_arr_display : r.zuora_arr;
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
         <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
         <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}${r.org_id ? `<div style="font-size:10px;font-weight:400;color:var(--ink-4);margin-top:2px">org_id: ${escHtml(String(r.org_id))}</div>` : ''}</td>
         <td>${escHtml(r.site)}</td>
-        <td class="num">${fmtFull(r.pd_acv)}</td>
-        <td class="num">${fmtFull(r.zuora_arr)}</td>
+        <td class="num">${fmtCurAmount(pdDisp, dispCur)}</td>
+        <td class="num">${fmtCurAmount(zuDisp, dispCur)}</td>
         <td class="num ${diffCls}">${(r.diff>0?'+':'')}${fmtFull(r.diff)}</td>
         <td class="num ${dealCls}"><span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end">${dealValStr} ${curBadge}${multiBadge}</span></td>
         <td class="num">${fmtPct(r.diff_pct)}</td>

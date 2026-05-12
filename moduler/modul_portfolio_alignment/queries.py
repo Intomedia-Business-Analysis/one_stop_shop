@@ -1038,27 +1038,40 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
             else:
                 curr_info = None
 
+        # Display-valuta/værdier: hvis hele kunde×site ligger i én ikke-DKK
+        # valuta, viser vi PD ACV og Zuora ARR i den valuta (frontend bytter
+        # kolonneværdierne ud). Ellers DKK-totaler — så frontend ikke skal
+        # gætte hvornår der er meningsfuld lokal-værdi.
+        display_currency = curr_info["currency"]  if curr_info else "DKK"
+        pd_acv_display    = curr_info["pd_local"]    if curr_info else round(pd_acv, 2)
+        zuora_arr_display = curr_info["zuora_local"] if curr_info else round(zuora_arr, 2)
+
         rows.append({
-            "scope":           scope_id,
-            "scope_label":     scope_label,
-            "org_id":          None if isinstance(org_id, str) and org_id.startswith("acc:") else org_id,
-            "org_name":        org_name,
-            "site":            site,
-            "pd_acv":          round(pd_acv, 2),
-            "zuora_arr":       round(zuora_arr, 2),
-            "diff":            round(diff, 2),
-            "diff_pct":        round((diff / pd_acv * 100), 1) if pd_acv else None,
-            "status":          status,
-            "account_numbers": zu_r["account_numbers"] if zu_r else [],
-            "deal_count":      pd_r["deal_count"] if pd_r else 0,
-            "site_raw":        pd_r["site_raw"] if pd_r else None,
+            "scope":              scope_id,
+            "scope_label":        scope_label,
+            "org_id":             None if isinstance(org_id, str) and org_id.startswith("acc:") else org_id,
+            "org_name":           org_name,
+            "site":               site,
+            # DKK-aggregater (uændret) — bruges til KPI-totaler og diff (DKK).
+            "pd_acv":             round(pd_acv, 2),
+            "zuora_arr":          round(zuora_arr, 2),
+            "diff":               round(diff, 2),
+            "diff_pct":           round((diff / pd_acv * 100), 1) if pd_acv else None,
+            "status":             status,
+            "account_numbers":    zu_r["account_numbers"] if zu_r else [],
+            "deal_count":         pd_r["deal_count"] if pd_r else 0,
+            "site_raw":           pd_r["site_raw"] if pd_r else None,
+            # Display: PD ACV / Zuora ARR i lokal valuta hvis hele kunden er én valuta.
+            "pd_acv_display":     round(pd_acv_display, 2),
+            "zuora_arr_display":  round(zuora_arr_display, 2),
+            "display_currency":   display_currency,
             # Currency-info til UI: hvilken valuta deal'en ville blive i, lokal-diff,
             # og om vi måtte falde tilbage til DKK fordi kunden har flere valutaer.
-            "deal_currency":   curr_info["currency"]        if curr_info else "DKK",
-            "deal_value":      curr_info["value"]           if curr_info else int(round(diff)),
-            "single_currency": bool(curr_info and curr_info["single_currency"]),
-            "multi_currency":  bool(curr_info and curr_info["fallback"]),
-            "currencies":      curr_info["currencies"]      if curr_info else [],
+            "deal_currency":      curr_info["currency"]        if curr_info else "DKK",
+            "deal_value":         curr_info["value"]           if curr_info else int(round(diff)),
+            "single_currency":    bool(curr_info and curr_info["single_currency"]),
+            "multi_currency":     bool(curr_info and curr_info["fallback"]),
+            "currencies":         curr_info["currencies"]      if curr_info else [],
         })
 
     rows.sort(key=lambda r: (-abs(r["diff"]), r["org_name"] or ""))
@@ -1293,7 +1306,9 @@ def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
             "zuora_dkk":    round(zu_d["zu_dkk"], 2),
             "diff_dkk":     round(pd_d["pd_dkk"] - zu_d["zu_dkk"], 2),
         }
-    diff_dkk_total = sum(b["diff_dkk"] for b in by_currency.values())
+    diff_dkk_total  = sum(b["diff_dkk"]    for b in by_currency.values())
+    pd_dkk_total    = sum(b["pd_dkk"]      for b in by_currency.values())
+    zuora_dkk_total = sum(b["zuora_dkk"]   for b in by_currency.values())
     active = [c for c, b in by_currency.items()
               if abs(b["pd_local"]) > 0.5 or abs(b["zuora_local"]) > 0.5]
     if len(active) == 1:
@@ -1305,6 +1320,8 @@ def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
             "single_currency":  True,
             "diff_local":       int(round(by_currency[c]["diff_local"])),
             "diff_dkk":         int(round(diff_dkk_total)),
+            "pd_local":         by_currency[c]["pd_local"],
+            "zuora_local":      by_currency[c]["zuora_local"],
             "currencies":       sorted(active),
             "by_currency":      by_currency,
         }
@@ -1315,6 +1332,9 @@ def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
         "single_currency":  False,
         "diff_local":       None,
         "diff_dkk":         int(round(diff_dkk_total)),
+        # Multi/no-currency fallback: vis DKK-totaler i display-felterne.
+        "pd_local":         round(pd_dkk_total, 2),
+        "zuora_local":      round(zuora_dkk_total, 2),
         "currencies":       sorted(active),
         "by_currency":      by_currency,
     }
