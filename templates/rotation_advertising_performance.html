@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advertising Performance</title>
+<link rel="stylesheet" href="/static/hub.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
+.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
+.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+
+/* ── INDHOLD ─────────────────────────────────────────────────────────── */
+.content {
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── VENSTRE KOLONNE ─────────────────────────────────────────────────── */
+.left-col { display:flex; flex-direction:column; gap:6px; min-height:0; }
+
+.kpi-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; flex-shrink:0; }
+.kpi-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 12px; position: relative; overflow: hidden;
+}
+.kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; }
+.kpi-value { font-size:20px; font-weight:800; color:var(--ink); letter-spacing:-0.5px; line-height:1.1; }
+
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 12px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.chart-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
+.legend-row { display:flex; gap:12px; margin-bottom:3px; flex-shrink:0; }
+.legend-item { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--ink-3); }
+.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.chart-wrap { flex:1; position:relative; min-height:0; }
+
+/* ── HØJRE KOLONNE ───────────────────────────────────────────────────── */
+.right-col { display:flex; flex-direction:column; gap:6px; min-height:0; }
+
+.deals-strip { display:grid; grid-template-columns:1fr 1fr 1.3fr; gap:6px; flex:2; min-height:0; }
+.mini-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.mini-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.card-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; white-space:nowrap; }
+.tbl-scroll { overflow-y:auto; flex:1; }
+
+.budget-strip { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex:1.5; min-height:0; }
+
+.seneste-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 2; min-height: 0;
+}
+.seneste-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+
+/* Tabel-fælles */
+.dt { width:100%; border-collapse:collapse; font-size:11px; }
+.dt th { font-size:9px; font-weight:700; color:var(--ink-4); text-transform:uppercase; letter-spacing:1px; padding:2px 4px 3px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; position:sticky; top:0; background:var(--surface); }
+.dt th.r { text-align:right; }
+.dt td { padding:3px 4px; color:var(--ink-2); border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dt td.r { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
+.dt tr:last-child td { border-bottom:none; }
+.dt tr:hover td { background:var(--green-light); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📢</div>
+    <h1>Advertising Performance — Banner &amp; Job</h1>
+    <span class="header-sub" id="lblPeriod"></span>
+  </div>
+
+  <!-- INDHOLD -->
+  <div class="content">
+
+    <!-- VENSTRE: KPI + Kvartal chart -->
+    <div class="left-col">
+
+      <div class="kpi-strip">
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — dag</div>
+          <div class="kpi-value" id="kpiDag">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — uge</div>
+          <div class="kpi-value" id="kpiUge">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — måned</div>
+          <div class="kpi-value" id="kpiMaaned">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — år</div>
+          <div class="kpi-value" id="kpiAar">—</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title" id="lblKvartal">Omsætning — Indeværende kvartal</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartKvartal"></canvas></div>
+      </div>
+
+    </div>
+
+    <!-- HØJRE: 3 deals + 2 budget charts + seneste deals -->
+    <div class="right-col">
+
+      <div class="deals-strip">
+        <div class="mini-card">
+          <div class="card-title">Deals — Oprettet</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Deals</th></tr></thead>
+              <tbody id="tblOprettet"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="card-title">Deals — Vundet</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Deals Won</th></tr></thead>
+              <tbody id="tblVundet"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="card-title">Deals omsætning — indeværende måned</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Ad deals value</th></tr></thead>
+              <tbody id="tblOmsaetning"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="budget-strip">
+        <div class="chart-card">
+          <div class="chart-title">Banner — Omsætning vs. budget</div>
+          <div class="legend-row">
+            <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartBanner"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Job — Omsætning vs. budget</div>
+          <div class="legend-row">
+            <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chartJob"></canvas></div>
+        </div>
+      </div>
+
+      <div class="seneste-card">
+        <div class="card-title">Seneste deals vundet — Uden opsigelser</div>
+        <div class="tbl-scroll">
+          <table class="dt">
+            <thead><tr>
+              <th>Sælger</th><th>Organisation</th><th>Brand</th>
+              <th class="r">Værdi</th><th>Won time</th>
+            </tr></thead>
+            <tbody id="tblSeneste"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+const charts = {};
+
+function fmt(v) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' kr.';
+}
+function fmtAxis(v) {
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:0})+'mio. kr.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t. kr.';
+  return v;
+}
+function fmtLabel(v) {
+  if (!v) return '';
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. kr.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t. kr.';
+  return fmt(v);
+}
+function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…' : (n||'—'); }
+
+function buildVBar(id, rows, labelKey, revenueKey) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r[labelKey] + (r.pipeline ? ' (' + r.pipeline + ')' : '')),
+      datasets: [
+        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2E7A64', borderRadius:2 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } },
+        datalabels:{
+          anchor:'end', align:'end', offset:1,
+          font:{family:'Montserrat',size:8,weight:'600'},
+          color:'#3D5249',
+          formatter: v => fmtLabel(v),
+          clip:false,
+        }
+      },
+      layout:{ padding:{ top:18 } },
+      scales:{
+        x:{ ticks:{font:{family:'Montserrat',size:8},maxRotation:25}, grid:{display:false} },
+        y:{ ticks:{font:{family:'Montserrat',size:8},callback:fmtAxis}, grid:{color:'#E4EDEA'} }
+      }
+    }
+  });
+}
+
+function buildHBar(id, rows, labelKey, revenueKey, budgetKey) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r[labelKey]),
+      datasets: [
+        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2E7A64', borderRadius:2 },
+        { label:'Budget',    data:rows.map(r=>r[budgetKey]||0),  backgroundColor:'#B4C8C0', borderRadius:2 },
+      ]
+    },
+    options: {
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } },
+        datalabels:{
+          anchor:'end', align:'right', offset:2,
+          font:{family:'Montserrat',size:8,weight:'600'},
+          color:'#3D5249',
+          formatter: v => fmtLabel(v),
+          clip:false,
+        }
+      },
+      layout:{ padding:{ right:70 } },
+      scales:{
+        x:{ ticks:{font:{family:'Montserrat',size:8},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
+        y:{ ticks:{font:{family:'Montserrat',size:8}}, grid:{display:false} }
+      }
+    }
+  });
+}
+
+function fillTable(id, rows, cols) {
+  const tb = document.getElementById(id);
+  if (!rows?.length) {
+    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--ink-4);padding:6px;font-style:italic;font-size:10px">Ingen data</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
+    const v = r[c.key];
+    const d = c.fmt ? c.fmt(v) : (v!=null ? String(v) : '—');
+    return `<td class="${c.cls||''}" title="${v!=null?String(v):''}">${d}</td>`;
+  }).join('') + '</tr>').join('');
+}
+
+async function loadData() {
+  const r = await fetch('/tools/rotation/advertising-performance-data');
+  if (!r.ok) return;
+  const d = await r.json();
+
+  document.getElementById('kpiDag').textContent    = fmt(d.kpis?.dag);
+  document.getElementById('kpiUge').textContent    = fmt(d.kpis?.uge);
+  document.getElementById('kpiMaaned').textContent = fmt(d.kpis?.maaned);
+  document.getElementById('kpiAar').textContent    = fmt(d.kpis?.aar);
+  document.getElementById('lblPeriod').textContent = d.maaned_label || '';
+  document.getElementById('lblKvartal').textContent = 'Omsætning — ' + (d.kvartal_label || 'Indeværende kvartal');
+
+  buildVBar('chartKvartal', d.kvartal_chart        || [], 'brand', 'revenue');
+  buildHBar('chartBanner',  d.banner_budget_chart  || [], 'brand', 'revenue', 'budget');
+  buildHBar('chartJob',     d.job_budget_chart     || [], 'brand', 'revenue', 'budget');
+
+  fillTable('tblOprettet',   d.deals_oprettet   ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
+  fillTable('tblVundet',     d.deals_vundet     ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
+  fillTable('tblOmsaetning', d.deals_omsaetning ||[], [{key:'owner_name',fmt:n=>short(n,16)},{key:'revenue',cls:'r',fmt:fmt}]);
+  fillTable('tblSeneste',    d.seneste_deals    ||[], [
+    {key:'owner_name', fmt:n=>short(n,14)},
+    {key:'org_name',   fmt:n=>short(n,18)},
+    {key:'brand',      fmt:n=>short(n,14)},
+    {key:'value',      cls:'r', fmt:fmt},
+    {key:'won_time',   fmt:v=>v?v.substring(0,16):'—'},
+  ]);
+}
+
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

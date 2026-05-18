@@ -27,6 +27,7 @@ from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
 from moduler.modul_banner_job.router import router as banner_job_router
 from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
+from moduler.modul_rotation.router import router as rotation_router
 
 load_dotenv()
 
@@ -47,6 +48,7 @@ app.include_router(perf_router)
 app.include_router(barsel_router)
 app.include_router(banner_job_router)
 app.include_router(portfolio_alignment_router)
+app.include_router(rotation_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
@@ -110,6 +112,24 @@ CATEGORIES = [
         "subcategories": [],
         "items": [
             {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "exclude_roles": ["sales_operations"], "url": "/tools/banner-job/"},
+        ],
+    },
+
+    {
+        "id": "rotation-dashboards",
+        "title": "Rotation Dashboards",
+        "description": "Performance dashboards til kontorskærme — Sales, Department, Banner, Advertising og Media",
+        "icon": "activity",
+        "color": "green",
+        "min_role": "salesperson",
+        "subcategories": [],
+        "items": [
+            {"id": "rotation-autoplay",    "title": "Rotation",                "type": "tool",      "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/"},
+            {"id": "rotation-sales",       "title": "Sales Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/sales-performance"},
+            {"id": "rotation-department",  "title": "Department Performance",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/department-performance"},
+            {"id": "rotation-banner",      "title": "Banner Performance",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/banner-performance"},
+            {"id": "rotation-advertising", "title": "Advertising Performance", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/advertising-performance"},
+            {"id": "rotation-media",       "title": "Media Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/media-performance"},
         ],
     },
 

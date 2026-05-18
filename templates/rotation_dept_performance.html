@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Department Performance — Indeværende måned</title>
+<link rel="stylesheet" href="/static/hub.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
+.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
+.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+
+/* ── 3×2 gitter ─────────────────────────────────────────────────────── */
+.grid-6 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Chart-kort ─────────────────────────────────────────────────────── */
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 12px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.chart-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
+.legend-row { display:flex; gap:12px; margin-bottom:3px; flex-shrink:0; }
+.legend-item { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--ink-3); }
+.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.chart-wrap { flex:1; position:relative; min-height:0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📊</div>
+    <h1>Department Performance — Indeværende måned</h1>
+    <span class="header-sub" id="lblPeriod"></span>
+  </div>
+
+  <!-- 6 chart-paneler -->
+  <div class="grid-6">
+
+    <div class="chart-card">
+      <div class="chart-title">Monitor Abonnement — Budget vs. tilvækst</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartMonitor"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Watch Abonnement — Budget vs. tilvækst</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartWatch"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">FINANS Abonnement — Budget vs. tilvækst</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartFinans"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Banner — Budget vs. omsætning</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartBanner"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Job — Budget vs. omsætning</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartJob"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">MarketWire — Omsætning vs. budget</div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartMW"></canvas></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+const charts = {};
+
+function fmt(v) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' kr.';
+}
+function fmtAxis(v) {
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+'mio.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.';
+  return v;
+}
+function fmtLabel(v) {
+  if (!v) return '';
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:2})+'mio.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.';
+  return fmt(v);
+}
+
+function buildHBar(id, rows, labelKey, val1Key, val2Key) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r[labelKey]),
+      datasets: [
+        { label:'Tilvækst/Omsætning', data:rows.map(r=>r[val1Key]||0), backgroundColor:'#2E7A64', borderRadius:2 },
+        { label:'Budget',             data:rows.map(r=>r[val2Key]||0), backgroundColor:'#B4C8C0', borderRadius:2 },
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } },
+        datalabels: {
+          anchor:'end', align:'right', offset:2,
+          font:{ family:'Montserrat', size:8, weight:'600' },
+          color:'#3D5249',
+          formatter: v => fmtLabel(v),
+          clip:false,
+        }
+      },
+      layout:{ padding:{ right:70 } },
+      scales: {
+        x:{ ticks:{font:{family:'Montserrat',size:8},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
+        y:{ ticks:{font:{family:'Montserrat',size:8}}, grid:{display:false} }
+      }
+    }
+  });
+}
+
+async function loadData() {
+  const r = await fetch('/tools/rotation/department-performance-data');
+  if (!r.ok) return;
+  const d = await r.json();
+
+  document.getElementById('lblPeriod').textContent = d.maaned_label || '';
+
+  buildHBar('chartMonitor', d.monitor_rows    || [], 'team',  'netto',   'budget');
+  buildHBar('chartWatch',   d.watch_rows      || [], 'team',  'netto',   'budget');
+  buildHBar('chartFinans',  d.finans_rows     || [], 'team',  'netto',   'budget');
+  buildHBar('chartBanner',  d.banner_rows     || [], 'brand', 'revenue', 'budget');
+  buildHBar('chartJob',     d.job_rows        || [], 'brand', 'revenue', 'budget');
+  buildHBar('chartMW',      d.marketwire_rows || [], 'brand', 'revenue', 'budget');
+}
+
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Performance</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
+.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
+.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+
+/* ── FILTER-BAR ──────────────────────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  flex-wrap: wrap;
+}
+.filter-group { display:flex; align-items:center; gap:6px; }
+.filter-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); white-space:nowrap; }
+.filter-chips { display:flex; gap:4px; flex-wrap:wrap; }
+.chip {
+  padding:3px 10px; border:1px solid var(--border); border-radius:20px;
+  font-size:10px; font-weight:500; cursor:pointer; color:var(--ink-2);
+  background:var(--surface); transition:all .15s;
+}
+.chip:hover { border-color:var(--green); color:var(--green); }
+.chip.active { background:var(--green); color:#fff; border-color:var(--green); }
+
+/* ── TABEL-KORT ──────────────────────────────────────────────────────── */
+.table-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.table-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; z-index:1; }
+.tbl-scroll { overflow-y:auto; flex:1; }
+
+/* Tabel */
+.dt { width:100%; border-collapse:collapse; font-size:12px; }
+.dt thead th {
+  background:var(--green); color:#fff; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1.5px; padding:8px 12px;
+  text-align:left; white-space:nowrap; cursor:pointer; user-select:none;
+  position:sticky; top:0; z-index:2;
+}
+.dt thead th:hover { filter:brightness(1.1); }
+.dt thead th.r { text-align:right; }
+.dt tbody td { padding:7px 12px; border-bottom:1px solid var(--border); color:var(--ink-2); }
+.dt tbody tr:hover td { background:var(--green-light); }
+.dt tbody .r { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
+.dt tfoot td {
+  padding:8px 12px; background:var(--green-light);
+  border-top:2px solid var(--border-strong);
+  font-weight:700; color:var(--ink); font-size:12px;
+  position:sticky; bottom:0;
+}
+.dt tfoot .r { text-align:right; font-variant-numeric:tabular-nums; }
+.dt .empty { text-align:center; padding:40px; color:var(--ink-4); font-style:italic; }
+
+/* Index badge */
+.idx { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
+.idx.high { background:#D4EDDA; color:#155724; }
+.idx.mid  { background:#FFF3CD; color:#856404; }
+.idx.low  { background:#F8D7DA; color:#721c24; }
+.idx.none { color:var(--ink-4); font-style:italic; font-weight:400; }
+
+.sort-arrow { margin-left:3px; opacity:.6; font-size:10px; }
+.sort-active .sort-arrow { opacity:1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📰</div>
+    <h1>Media Performance</h1>
+    <span class="header-sub" id="lblStatus">Henter data…</span>
+  </div>
+
+  <!-- FILTER-BAR -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <div class="filter-label">Brands</div>
+      <div class="filter-chips" id="brandChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Periode</div>
+      <div class="filter-chips" id="yearChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABEL -->
+  <div class="table-card">
+    <div class="tbl-scroll">
+      <table class="dt" id="mainTable">
+        <thead>
+          <tr>
+            <th data-col="site">Site <span class="sort-arrow">↕</span></th>
+            <th data-col="gross" class="r">Gross Revenue, Business <span class="sort-arrow">↕</span></th>
+            <th data-col="cancel" class="r">Cancellations, Business <span class="sort-arrow">↕</span></th>
+            <th data-col="net" class="r">Net Revenue, Business <span class="sort-arrow">↕</span></th>
+            <th data-col="budget" class="r">Budget Sum <span class="sort-arrow">↕</span></th>
+            <th data-col="index" class="r">Index, site budget <span class="sort-arrow">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"><tr><td colspan="6" class="empty">Henter…</td></tr></tbody>
+        <tfoot id="tblFoot" style="display:none">
+          <tr>
+            <td><strong>Total</strong></td>
+            <td class="r" id="ftGross">—</td>
+            <td class="r" id="ftCancel">—</td>
+            <td class="r" id="ftNet">—</td>
+            <td class="r" id="ftBudget">—</td>
+            <td class="r" id="ftIndex">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedBrands = new Set();
+let selectedYears  = new Set();
+let sortCol = 'net', sortDir = -1;
+let lastData = null;
+
+function fmt(v, dec=0) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {minimumFractionDigits:dec,maximumFractionDigits:dec}).format(v);
+}
+function fmtKr(v) { return v == null ? '—' : fmt(v, 0) + ' kr.'; }
+function fmtIdx(v) {
+  if (v == null) return '<span class="idx none">—</span>';
+  const cls = v >= 150 ? 'high' : v >= 80 ? 'mid' : 'low';
+  return `<span class="idx ${cls}">${fmt(v,1)} %</span>`;
+}
+
+function buildBrandChips(brands) {
+  const wrap = document.getElementById('brandChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  brands.forEach(b => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = b; s.textContent = b;
+    s.addEventListener('click', () => toggleChip(s, selectedBrands, 'brandChips', loadData));
+    wrap.appendChild(s);
+  });
+}
+
+function buildYearChips(years) {
+  const wrap = document.getElementById('yearChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  years.forEach(y => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = String(y); s.textContent = String(y);
+    s.addEventListener('click', () => toggleChip(s, selectedYears, 'yearChips', loadData));
+    wrap.appendChild(s);
+  });
+}
+
+function toggleChip(el, selSet, wrapId, cb) {
+  const val = el.dataset.val;
+  if (val === '') {
+    selSet.clear();
+    document.querySelectorAll(`#${wrapId} .chip`).forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  } else {
+    document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.remove('active');
+    if (selSet.has(val)) { selSet.delete(val); el.classList.remove('active'); }
+    else { selSet.add(val); el.classList.add('active'); }
+    if (selSet.size === 0) {
+      document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.add('active');
+    }
+  }
+  cb();
+}
+
+// Sortering
+document.getElementById('mainTable').querySelectorAll('thead th').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (!col) return;
+    if (sortCol === col) sortDir *= -1;
+    else { sortCol = col; sortDir = -1; }
+    if (lastData) renderTable(lastData);
+    document.querySelectorAll('#mainTable thead th').forEach(t => {
+      t.classList.remove('sort-active');
+      const a = t.querySelector('.sort-arrow');
+      if (a) a.textContent = '↕';
+    });
+    th.classList.add('sort-active');
+    const a = th.querySelector('.sort-arrow');
+    if (a) a.textContent = sortDir === -1 ? '↓' : '↑';
+  });
+});
+
+function renderTable(d) {
+  lastData = d;
+  const rows = [...(d.rows || [])];
+  rows.sort((a, b) => {
+    const va = a[sortCol] ?? (typeof a[sortCol] === 'string' ? '' : -Infinity);
+    const vb = b[sortCol] ?? (typeof b[sortCol] === 'string' ? '' : -Infinity);
+    if (typeof va === 'string') return sortDir * va.localeCompare(vb);
+    return sortDir * (va - vb);
+  });
+
+  const tb = document.getElementById('tblBody');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="empty">Ingen data for valgte filtre</td></tr>';
+    document.getElementById('tblFoot').style.display = 'none';
+    return;
+  }
+
+  tb.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.site}</td>
+      <td class="r">${fmtKr(r.gross)}</td>
+      <td class="r">${r.cancel ? '-' + fmtKr(r.cancel) : '0 kr.'}</td>
+      <td class="r">${fmtKr(r.net)}</td>
+      <td class="r">${r.budget ? fmtKr(r.budget) : ''}</td>
+      <td class="r">${fmtIdx(r.index)}</td>
+    </tr>
+  `).join('');
+
+  const t = d.total || {};
+  document.getElementById('ftGross').textContent  = fmtKr(t.gross);
+  document.getElementById('ftCancel').textContent = t.cancel ? '-' + fmtKr(t.cancel) : '0 kr.';
+  document.getElementById('ftNet').textContent    = fmtKr(t.net);
+  document.getElementById('ftBudget').textContent = fmtKr(t.budget);
+  document.getElementById('ftIndex').innerHTML    = fmtIdx(t.index);
+  document.getElementById('tblFoot').style.display = '';
+}
+
+async function loadData() {
+  const params = new URLSearchParams();
+  if (selectedBrands.size) params.set('brands', [...selectedBrands].join(','));
+  if (selectedYears.size)  params.set('years',  [...selectedYears].join(','));
+
+  document.getElementById('lblStatus').textContent = 'Henter…';
+  const r = await fetch('/tools/rotation/media-performance-data?' + params);
+  if (!r.ok) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
+  const d = await r.json();
+
+  document.getElementById('lblStatus').textContent = `${(d.rows||[]).length} sites`;
+
+  if (document.getElementById('brandChips').children.length === 1 && d.available_brands?.length) {
+    buildBrandChips(d.available_brands);
+  }
+  if (document.getElementById('yearChips').children.length === 1 && d.available_years?.length) {
+    buildYearChips(d.available_years);
+  }
+
+  renderTable(d);
+}
+
+// Initialiser sort-pil
+document.querySelector('#mainTable thead th[data-col="net"]').classList.add('sort-active');
+document.querySelector('#mainTable thead th[data-col="net"] .sort-arrow').textContent = '↓';
+
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
