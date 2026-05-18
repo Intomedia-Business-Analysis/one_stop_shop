@@ -72,17 +72,63 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Filter-bar */
-.filter-bar{display:flex;flex-direction:column;gap:10px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
-.filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap;min-width:52px}
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
 .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
-/* Chips */
-.chip-group{display:flex;gap:4px;flex-wrap:wrap}
-.chip{padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;color:var(--ink-2);background:var(--surface);transition:all .15s;white-space:nowrap}
-.chip:hover{border-color:var(--green);color:var(--green)}
-.chip.active{background:var(--green);color:#fff;border-color:var(--green)}
+
+/* ── Multi-select dropdown (PBI-stil) ───────────────────────────────── */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;min-width:140px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);
+  cursor:pointer;user-select:none;transition:border-color .13s;white-space:nowrap;
+}
+.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
+.ms-trigger-text{flex:1;overflow:hidden;text-overflow:ellipsis}
+.ms-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--green);color:#fff;font-size:10px;font-weight:700;
+}
+.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
+.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
+
+.ms-panel{
+  position:absolute;top:calc(100% + 4px);left:0;z-index:200;
+  min-width:200px;max-height:260px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);display:none;
+}
+.ms-panel.open{display:block}
+.ms-search{
+  padding:8px 10px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;position:sticky;top:0;
+  background:var(--surface);z-index:1;
+}
+.ms-search input{
+  flex:1;border:none;outline:none;font-family:var(--font);font-size:12px;
+  background:transparent;color:var(--ink);
+}
+.ms-list-header{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+  color:var(--ink-4);cursor:pointer;
+}
+.ms-list-header:hover{background:var(--green-light)}
+.ms-item{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  font-size:12px;color:var(--ink-2);cursor:pointer;transition:background .1s;
+}
+.ms-item:hover{background:var(--green-light)}
+.ms-item input[type=checkbox]{
+  accent-color:var(--green);width:14px;height:14px;cursor:pointer;flex-shrink:0;
+}
+.ms-item label{cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -191,55 +237,75 @@
 
         <!-- Filter-bar -->
         <div class="filter-bar">
-          <!-- Række 1: År, Pipeline, Dato-kolonne -->
-          <div class="filter-row">
-            <span class="filter-label">Filter</span>
-            <div class="filter-sep"></div>
-            <select class="filter-select" id="filter-year" onchange="loadData()">
-              <option value="">Indlæser år…</option>
-            </select>
-            <div class="filter-sep"></div>
-            <select class="filter-select" id="filter-pipeline" onchange="loadData()">
-              <option value="all">Alle pipelines</option>
-              <option value="Customer">Customer</option>
-              <option value="Newbizz">Newbizz</option>
-              <option value="Company Trial">Company Trial</option>
-              <option value="Cancellations">Opsigelser</option>
-            </select>
-            <div class="filter-sep"></div>
-            <select class="filter-select" id="filter-date-col" onchange="loadData()">
-              <option value="won_time">Vundet dato</option>
-              <option value="service_activation_date" selected>Aktiverings dato</option>
-            </select>
-          </div>
+          <span class="filter-label">Filter</span>
+          <div class="filter-sep"></div>
 
-          <!-- Række 2: Måneder (multi-select chips) -->
-          <div class="filter-row">
-            <span class="filter-label">Periode</span>
-            <div class="chip-group" id="monthChips">
-              <span class="chip active" data-val="">Hele Året</span>
-              <span class="chip" data-val="1">Jan</span>
-              <span class="chip" data-val="2">Feb</span>
-              <span class="chip" data-val="3">Mar</span>
-              <span class="chip" data-val="4">Apr</span>
-              <span class="chip" data-val="5">Maj</span>
-              <span class="chip" data-val="6">Jun</span>
-              <span class="chip" data-val="7">Jul</span>
-              <span class="chip" data-val="8">Aug</span>
-              <span class="chip" data-val="9">Sep</span>
-              <span class="chip" data-val="10">Okt</span>
-              <span class="chip" data-val="11">Nov</span>
-              <span class="chip" data-val="12">Dec</span>
+          <!-- År -->
+          <select class="filter-select" id="filter-year" onchange="loadData()">
+            <option value="">Indlæser år…</option>
+          </select>
+
+          <!-- Periode multi-select dropdown -->
+          <div class="ms-wrap" id="ms-month-wrap">
+            <div class="ms-trigger" id="ms-month-trigger" onclick="msToggle('month')">
+              <span class="ms-trigger-text" id="ms-month-label">Hele Året</span>
+              <span class="ms-badge" id="ms-month-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-month-panel">
+              <div class="ms-list-header" onclick="msClearAll('month')">
+                <input type="checkbox" id="ms-month-all" checked readonly onclick="event.preventDefault()">
+                <label for="ms-month-all" style="cursor:pointer" onclick="msClearAll('month')">Hele Året</label>
+              </div>
+              <div class="ms-item" onclick="msToggleItem('month','1','Januar')"><input type="checkbox" id="ms-m-1"><label for="ms-m-1">Januar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','2','Februar')"><input type="checkbox" id="ms-m-2"><label for="ms-m-2">Februar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','3','Marts')"><input type="checkbox" id="ms-m-3"><label for="ms-m-3">Marts</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','4','April')"><input type="checkbox" id="ms-m-4"><label for="ms-m-4">April</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','5','Maj')"><input type="checkbox" id="ms-m-5"><label for="ms-m-5">Maj</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','6','Juni')"><input type="checkbox" id="ms-m-6"><label for="ms-m-6">Juni</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','7','Juli')"><input type="checkbox" id="ms-m-7"><label for="ms-m-7">Juli</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','8','August')"><input type="checkbox" id="ms-m-8"><label for="ms-m-8">August</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','9','September')"><input type="checkbox" id="ms-m-9"><label for="ms-m-9">September</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','10','Oktober')"><input type="checkbox" id="ms-m-10"><label for="ms-m-10">Oktober</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','11','November')"><input type="checkbox" id="ms-m-11"><label for="ms-m-11">November</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','12','December')"><input type="checkbox" id="ms-m-12"><label for="ms-m-12">December</label></div>
             </div>
           </div>
 
-          <!-- Række 3: Teams (multi-select chips, populeres dynamisk) -->
-          <div class="filter-row">
-            <span class="filter-label">Team</span>
-            <div class="chip-group" id="teamChips">
-              <span class="chip active" data-val="">Alle teams</span>
+          <!-- Team multi-select dropdown -->
+          <div class="ms-wrap" id="ms-team-wrap">
+            <div class="ms-trigger" id="ms-team-trigger" onclick="msToggle('team')">
+              <span class="ms-trigger-text" id="ms-team-label">Alle teams</span>
+              <span class="ms-badge" id="ms-team-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-team-panel">
+              <div class="ms-list-header" onclick="msClearAll('team')">
+                <input type="checkbox" id="ms-team-all" checked readonly onclick="event.preventDefault()">
+                <label for="ms-team-all" style="cursor:pointer" onclick="msClearAll('team')">Alle teams</label>
+              </div>
+              <!-- Team items tilføjes dynamisk via buildTeamDropdown() -->
             </div>
           </div>
+
+          <div class="filter-sep"></div>
+
+          <!-- Pipeline -->
+          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+            <option value="all">Alle pipelines</option>
+            <option value="Customer">Customer</option>
+            <option value="Newbizz">Newbizz</option>
+            <option value="Company Trial">Company Trial</option>
+            <option value="Cancellations">Opsigelser</option>
+          </select>
+
+          <div class="filter-sep"></div>
+
+          <!-- Dato-kolonne -->
+          <select class="filter-select" id="filter-date-col" onchange="loadData()">
+            <option value="won_time">Vundet dato</option>
+            <option value="service_activation_date" selected>Aktiverings dato</option>
+          </select>
         </div>
 
         <!-- Loading state -->
@@ -363,51 +429,102 @@ let lbSortDir  = 'desc';
 let teamMode   = 'salg'; // 'salg' | 'netto'
 let lastTeamData = null;
 
-// ── Chip multi-select state ───────────────────────────────────────────────
+// ── Multi-select dropdown state ───────────────────────────────────────────
 const selectedMonths = new Set();
 const selectedTeams  = new Set();
 
-function toggleChip(el, selSet, wrapId, cb) {
-  const val = el.dataset.val;
-  if (val === '') {
-    // "Alle" chip: clear selection
-    selSet.clear();
-    document.querySelectorAll(`#${wrapId} .chip`).forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
-  } else {
-    // Deaktiver "Alle" chip
-    document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.remove('active');
-    if (selSet.has(val)) { selSet.delete(val); el.classList.remove('active'); }
-    else                 { selSet.add(val);    el.classList.add('active');    }
-    // Hvis ingen valgt: aktiver "Alle" igen
-    if (selSet.size === 0) {
-      document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.add('active');
-    }
+// Navne til labels
+const MONTH_NAMES = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+
+// ── Dropdown åbn/luk ──────────────────────────────────────────────────────
+function msToggle(key) {
+  const panel   = document.getElementById(`ms-${key}-panel`);
+  const trigger = document.getElementById(`ms-${key}-trigger`);
+  const isOpen  = panel.classList.contains('open');
+  // Luk alle andre
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  if (!isOpen) {
+    panel.classList.add('open');
+    trigger.classList.add('open');
   }
-  cb();
 }
 
-// Bind month chips
-document.querySelectorAll('#monthChips .chip').forEach(chip => {
-  chip.addEventListener('click', () => toggleChip(chip, selectedMonths, 'monthChips', loadData));
+// Luk ved klik udenfor
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-wrap')) {
+    document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  }
 });
 
-function buildTeamChips(teams) {
-  const wrap = document.getElementById('teamChips');
-  // Bevar "Alle teams" chip
-  [...wrap.querySelectorAll('.chip:not([data-val=""])')].forEach(c => c.remove());
+// ── Toggle enkelt item ────────────────────────────────────────────────────
+function msToggleItem(key, val, label) {
+  const sel = key === 'month' ? selectedMonths : selectedTeams;
+  const cb  = document.getElementById(key === 'month' ? `ms-m-${val}` : `ms-t-${val}`);
+  if (sel.has(val)) { sel.delete(val); if (cb) cb.checked = false; }
+  else              { sel.add(val);    if (cb) cb.checked = true;  }
+  msUpdateLabel(key);
+  loadData();
+}
+
+// ── Ryd alle (vælg "Alle") ────────────────────────────────────────────────
+function msClearAll(key) {
+  const sel = key === 'month' ? selectedMonths : selectedTeams;
+  sel.clear();
+  document.querySelectorAll(`#ms-${key}-panel input[type=checkbox]`).forEach(cb => cb.checked = false);
+  document.getElementById(`ms-${key}-all`).checked = true;
+  msUpdateLabel(key);
+  loadData();
+}
+
+// ── Opdater trigger-label og badge ────────────────────────────────────────
+function msUpdateLabel(key) {
+  const sel     = key === 'month' ? selectedMonths : selectedTeams;
+  const labelEl = document.getElementById(`ms-${key}-label`);
+  const badgeEl = document.getElementById(`ms-${key}-badge`);
+  const allCb   = document.getElementById(`ms-${key}-all`);
+
+  if (sel.size === 0) {
+    labelEl.textContent = key === 'month' ? 'Hele Året' : 'Alle teams';
+    badgeEl.style.display = 'none';
+    if (allCb) allCb.checked = true;
+  } else {
+    if (allCb) allCb.checked = false;
+    badgeEl.textContent   = sel.size;
+    badgeEl.style.display = '';
+    if (key === 'month') {
+      const names = [...sel].sort((a,b)=>+a-+b).map(m => MONTH_NAMES[+m-1].slice(0,3));
+      labelEl.textContent = names.length <= 3 ? names.join(', ') : `${names.length} måneder`;
+    } else {
+      const arr = [...sel];
+      labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} teams`;
+    }
+  }
+}
+
+// ── Byg team-dropdown dynamisk ────────────────────────────────────────────
+function buildTeamDropdown(teams) {
+  const panel = document.getElementById('ms-team-panel');
+  // Fjern eksisterende dynamiske items
+  panel.querySelectorAll('.ms-item').forEach(el => el.remove());
   teams.forEach(t => {
-    const s = document.createElement('span');
-    s.className = 'chip';
-    s.dataset.val = t;
-    s.textContent = t;
-    s.addEventListener('click', () => toggleChip(s, selectedTeams, 'teamChips', loadData));
-    wrap.appendChild(s);
+    const safeId = 'ms-t-' + t.replace(/\s+/g,'_');
+    const div = document.createElement('div');
+    div.className = 'ms-item';
+    div.innerHTML = `<input type="checkbox" id="${safeId}"><label for="${safeId}">${escHtml(t)}</label>`;
+    div.addEventListener('click', () => msToggleItem('team', t, t));
+    panel.appendChild(div);
   });
-  // Bind "Alle teams" chip
-  wrap.querySelector('.chip[data-val=""]').addEventListener('click', function() {
-    toggleChip(this, selectedTeams, 'teamChips', loadData);
-  });
+}
+
+// ── Sæt aktuel måned som default ─────────────────────────────────────────
+function msSetDefaultMonth(monthNum) {
+  const val = String(monthNum);
+  selectedMonths.add(val);
+  const cb = document.getElementById(`ms-m-${val}`);
+  if (cb) cb.checked = true;
+  msUpdateLabel('month');
 }
 
 function setTeamMode(mode) {
@@ -519,14 +636,8 @@ async function loadMeta() {
     if (y === today.getFullYear()) opt.selected = true;
     yearSel.appendChild(opt);
   }
-  // Sæt aktuel måned som default i chip multi-select
-  const curM = String(today.getMonth() + 1);
-  const chip = document.querySelector(`#monthChips .chip[data-val="${curM}"]`);
-  if (chip) {
-    document.querySelector('#monthChips .chip[data-val=""]').classList.remove('active');
-    chip.classList.add('active');
-    selectedMonths.add(curM);
-  }
+  // Sæt aktuel måned som default
+  msSetDefaultMonth(today.getMonth() + 1);
 }
 
 async function loadData() {
@@ -552,9 +663,9 @@ async function loadData() {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
 
-    // Populer team chips første gang
-    if (document.getElementById('teamChips').children.length === 1 && d.teams?.length) {
-      buildTeamChips(d.teams);
+    // Populer team dropdown første gang
+    if (document.getElementById('ms-team-panel').querySelectorAll('.ms-item').length === 0 && d.teams?.length) {
+      buildTeamDropdown(d.teams);
     }
 
     document.getElementById('page-sub').textContent = d.month_label;
