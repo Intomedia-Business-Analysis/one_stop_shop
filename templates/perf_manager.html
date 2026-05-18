@@ -77,6 +77,58 @@
 .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+/* ── Multi-select dropdown (PBI-stil) ───────────────────────────────── */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;min-width:140px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);
+  cursor:pointer;user-select:none;transition:border-color .13s;white-space:nowrap;
+}
+.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
+.ms-trigger-text{flex:1;overflow:hidden;text-overflow:ellipsis}
+.ms-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--green);color:#fff;font-size:10px;font-weight:700;
+}
+.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
+.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
+
+.ms-panel{
+  position:absolute;top:calc(100% + 4px);left:0;z-index:200;
+  min-width:200px;max-height:260px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);display:none;
+}
+.ms-panel.open{display:block}
+.ms-search{
+  padding:8px 10px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;position:sticky;top:0;
+  background:var(--surface);z-index:1;
+}
+.ms-search input{
+  flex:1;border:none;outline:none;font-family:var(--font);font-size:12px;
+  background:transparent;color:var(--ink);
+}
+.ms-list-header{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+  color:var(--ink-4);cursor:pointer;
+}
+.ms-list-header:hover{background:var(--green-light)}
+.ms-item{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  font-size:12px;color:var(--ink-2);cursor:pointer;transition:background .1s;
+}
+.ms-item:hover{background:var(--green-light)}
+.ms-item input[type=checkbox]{
+  accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none;
+}
+.ms-item label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -187,41 +239,83 @@
         <div class="filter-bar">
           <span class="filter-label">Filter</span>
           <div class="filter-sep"></div>
+
+          <!-- År -->
           <select class="filter-select" id="filter-year" onchange="loadData()">
             <option value="">Indlæser år…</option>
           </select>
-          <select class="filter-select" id="filter-month" onchange="loadData()">
-            <option value="">Hele Året</option>
-            <option value="Q1">Q1 (Jan–Mar)</option>
-            <option value="Q2">Q2 (Apr–Jun)</option>
-            <option value="Q3">Q3 (Jul–Sep)</option>
-            <option value="Q4">Q4 (Okt–Dec)</option>
-            <option disabled>──────────</option>
-            <option value="1">Januar</option>
-            <option value="2">Februar</option>
-            <option value="3">Marts</option>
-            <option value="4">April</option>
-            <option value="5">Maj</option>
-            <option value="6">Juni</option>
-            <option value="7">Juli</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">Oktober</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-          <select class="filter-select" id="team-select" onchange="loadData()">
-            <option value="">Alle teams</option>
-          </select>
+
+          <!-- Periode multi-select dropdown -->
+          <div class="ms-wrap" id="ms-month-wrap">
+            <div class="ms-trigger" id="ms-month-trigger" onclick="msToggle('month')">
+              <span class="ms-trigger-text" id="ms-month-label">Hele Året</span>
+              <span class="ms-badge" id="ms-month-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-month-panel">
+              <div class="ms-list-header" onclick="msClearAll('month')">
+                <input type="checkbox" id="ms-month-all" checked readonly onclick="event.preventDefault()">
+                <label for="ms-month-all" style="cursor:pointer" onclick="msClearAll('month')">Hele Året</label>
+              </div>
+              <div class="ms-item" onclick="msToggleQuarter('Q1')"><input type="checkbox" id="ms-m-Q1" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q1 (Jan–Mar)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q2')"><input type="checkbox" id="ms-m-Q2" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q2 (Apr–Jun)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q3')"><input type="checkbox" id="ms-m-Q3" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q3 (Jul–Sep)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q4')"><input type="checkbox" id="ms-m-Q4" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q4 (Okt–Dec)</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','1','Januar')"><input type="checkbox" id="ms-m-1"><label for="ms-m-1">Januar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','2','Februar')"><input type="checkbox" id="ms-m-2"><label for="ms-m-2">Februar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','3','Marts')"><input type="checkbox" id="ms-m-3"><label for="ms-m-3">Marts</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','4','April')"><input type="checkbox" id="ms-m-4"><label for="ms-m-4">April</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','5','Maj')"><input type="checkbox" id="ms-m-5"><label for="ms-m-5">Maj</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','6','Juni')"><input type="checkbox" id="ms-m-6"><label for="ms-m-6">Juni</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','7','Juli')"><input type="checkbox" id="ms-m-7"><label for="ms-m-7">Juli</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','8','August')"><input type="checkbox" id="ms-m-8"><label for="ms-m-8">August</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','9','September')"><input type="checkbox" id="ms-m-9"><label for="ms-m-9">September</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','10','Oktober')"><input type="checkbox" id="ms-m-10"><label for="ms-m-10">Oktober</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','11','November')"><input type="checkbox" id="ms-m-11"><label for="ms-m-11">November</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','12','December')"><input type="checkbox" id="ms-m-12"><label for="ms-m-12">December</label></div>
+            </div>
+          </div>
+
+          <!-- Team multi-select dropdown -->
+          <div class="ms-wrap" id="ms-team-wrap">
+            <div class="ms-trigger" id="ms-team-trigger" onclick="msToggle('team')">
+              <span class="ms-trigger-text" id="ms-team-label">Alle teams</span>
+              <span class="ms-badge" id="ms-team-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-team-panel">
+              <div class="ms-list-header" onclick="msClearAll('team')">
+                <input type="checkbox" id="ms-team-all" checked readonly onclick="event.preventDefault()">
+                <label for="ms-team-all" style="cursor:pointer" onclick="msClearAll('team')">Alle teams</label>
+              </div>
+              <!-- Team items tilføjes dynamisk via buildTeamDropdown() -->
+            </div>
+          </div>
+
           <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
-            <option value="all">Alle pipelines</option>
-            <option value="Customer">Customer</option>
-            <option value="Newbizz">Newbizz</option>
-            <option value="Company Trial">Company Trial</option>
-            <option value="Cancellations">Opsigelser</option>
-          </select>
+
+          <!-- Pipeline multi-select dropdown -->
+          <div class="ms-wrap" id="ms-pipeline-wrap">
+            <div class="ms-trigger" id="ms-pipeline-trigger" onclick="msToggle('pipeline')">
+              <span class="ms-trigger-text" id="ms-pipeline-label">Alle pipelines</span>
+              <span class="ms-badge" id="ms-pipeline-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-pipeline-panel">
+              <div class="ms-list-header" onclick="msClearAll('pipeline')">
+                <input type="checkbox" id="ms-pipeline-all" checked onclick="event.preventDefault();event.stopPropagation()">
+                <label>Alle pipelines</label>
+              </div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Customer','Customer')"><input type="checkbox" id="ms-p-Customer"><label>Customer</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Newbizz','Newbizz')"><input type="checkbox" id="ms-p-Newbizz"><label>Newbizz</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Company Trial','Company Trial')"><input type="checkbox" id="ms-p-Company Trial"><label>Company Trial</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Cancellations','Opsigelser')"><input type="checkbox" id="ms-p-Cancellations"><label>Opsigelser</label></div>
+            </div>
+          </div>
+
           <div class="filter-sep"></div>
+
+          <!-- Dato-kolonne -->
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
             <option value="won_time">Vundet dato</option>
             <option value="service_activation_date" selected>Aktiverings dato</option>
@@ -349,6 +443,144 @@ let lbSortDir  = 'desc';
 let teamMode   = 'salg'; // 'salg' | 'netto'
 let lastTeamData = null;
 
+// ── Multi-select dropdown state ───────────────────────────────────────────
+const selectedMonths    = new Set();
+const selectedTeams     = new Set();
+const selectedPipelines = new Set();
+
+// Navne til labels
+const MONTH_NAMES   = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+const QUARTER_MONTHS = { Q1:[1,2,3], Q2:[4,5,6], Q3:[7,8,9], Q4:[10,11,12] };
+
+// ── Dropdown åbn/luk ──────────────────────────────────────────────────────
+function msToggle(key) {
+  const panel   = document.getElementById(`ms-${key}-panel`);
+  const trigger = document.getElementById(`ms-${key}-trigger`);
+  const isOpen  = panel.classList.contains('open');
+  // Luk alle andre
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  if (!isOpen) {
+    panel.classList.add('open');
+    trigger.classList.add('open');
+  }
+}
+
+// Luk ved klik udenfor
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-wrap')) {
+    document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  }
+});
+
+// ── Toggle enkelt item ────────────────────────────────────────────────────
+function msToggleItem(key, val, label) {
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  // Find checkbox
+  let cb;
+  if (key === 'month') {
+    cb = document.getElementById(`ms-m-${val}`);
+  } else if (key === 'pipeline') {
+    cb = document.getElementById(`ms-p-${val}`);
+  } else {
+    const item = document.querySelector(`#ms-team-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
+    cb = item ? item.querySelector('input[type=checkbox]') : null;
+  }
+  if (sel.has(val)) { sel.delete(val); if (cb) cb.checked = false; }
+  else              { sel.add(val);    if (cb) cb.checked = true;  }
+  msUpdateLabel(key);
+  loadData();
+}
+
+// ── Toggle kvartal (Q1–Q4 genvej) ────────────────────────────────────────
+function msToggleQuarter(q) {
+  const months     = QUARTER_MONTHS[q];
+  const strMonths  = months.map(String);
+  const allSelected = strMonths.every(m => selectedMonths.has(m));
+  strMonths.forEach(m => {
+    const cb = document.getElementById(`ms-m-${m}`);
+    if (allSelected) { selectedMonths.delete(m); if (cb) cb.checked = false; }
+    else             { selectedMonths.add(m);    if (cb) cb.checked = true; }
+  });
+  msUpdateLabel('month');
+  loadData();
+}
+
+// ── Ryd alle (vælg "Alle") ────────────────────────────────────────────────
+function msClearAll(key) {
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  sel.clear();
+  document.querySelectorAll(`#ms-${key}-panel input[type=checkbox]`).forEach(cb => cb.checked = false);
+  document.getElementById(`ms-${key}-all`).checked = true;
+  msUpdateLabel(key);
+  loadData();
+}
+
+// ── Opdater trigger-label og badge ────────────────────────────────────────
+const MS_ALL_LABELS = { month: 'Hele Året', team: 'Alle teams', pipeline: 'Alle pipelines' };
+const PIPELINE_LABELS = { Customer: 'Customer', Newbizz: 'Newbizz', 'Company Trial': 'Company Trial', Cancellations: 'Opsigelser' };
+
+function msUpdateLabel(key) {
+  const sel     = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  const labelEl = document.getElementById(`ms-${key}-label`);
+  const badgeEl = document.getElementById(`ms-${key}-badge`);
+  const allCb   = document.getElementById(`ms-${key}-all`);
+
+  if (sel.size === 0) {
+    labelEl.textContent   = MS_ALL_LABELS[key];
+    badgeEl.style.display = 'none';
+    if (allCb) allCb.checked = true;
+  } else {
+    if (allCb) allCb.checked = false;
+    badgeEl.textContent   = sel.size;
+    badgeEl.style.display = '';
+    if (key === 'month') {
+      const names = [...sel].sort((a,b)=>+a-+b).map(m => MONTH_NAMES[+m-1].slice(0,3));
+      labelEl.textContent = names.length <= 3 ? names.join(', ') : `${names.length} måneder`;
+      // Synkroniser Q-checkboxes
+      Object.entries(QUARTER_MONTHS).forEach(([q, months]) => {
+        const qCb = document.getElementById(`ms-m-${q}`);
+        if (qCb) qCb.checked = months.every(m => sel.has(String(m)));
+      });
+    } else if (key === 'pipeline') {
+      const arr = [...sel].map(v => PIPELINE_LABELS[v] || v);
+      labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} pipelines`;
+    } else {
+      const arr = [...sel];
+      labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} teams`;
+    }
+  }
+}
+
+// ── Byg team-dropdown dynamisk ────────────────────────────────────────────
+function buildTeamDropdown(teams) {
+  const panel = document.getElementById('ms-team-panel');
+  panel.querySelectorAll('.ms-item').forEach(el => el.remove());
+  teams.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'ms-item';
+    div.dataset.val = t;  // brug data-val til opslag
+    const cb  = document.createElement('input');
+    cb.type   = 'checkbox';
+    const lbl = document.createElement('label');
+    lbl.textContent = t;
+    div.appendChild(cb);
+    div.appendChild(lbl);
+    div.addEventListener('click', () => msToggleItem('team', t, t));
+    panel.appendChild(div);
+  });
+}
+
+// ── Sæt aktuel måned som default ─────────────────────────────────────────
+function msSetDefaultMonth(monthNum) {
+  const val = String(monthNum);
+  selectedMonths.add(val);
+  const cb = document.getElementById(`ms-m-${val}`);
+  if (cb) cb.checked = true;
+  msUpdateLabel('month');
+}
+
 function setTeamMode(mode) {
   teamMode = mode;
   document.getElementById('btn-salg').classList.toggle('active', mode === 'salg');
@@ -459,22 +691,23 @@ async function loadMeta() {
     yearSel.appendChild(opt);
   }
   // Sæt aktuel måned som default
-  document.getElementById('filter-month').value = String(today.getMonth() + 1);
+  msSetDefaultMonth(today.getMonth() + 1);
 }
 
 async function loadData() {
   const year           = document.getElementById('filter-year').value;
-  const month          = document.getElementById('filter-month').value;
-  const team           = document.getElementById('team-select').value;
   const dateCol        = document.getElementById('filter-date-col').value;
-  const pipelineFilter = document.getElementById('filter-pipeline').value;
+  // Dropdown multi-select filtre
+  const month    = selectedMonths.size    ? [...selectedMonths].join(',')    : '';
+  const team     = selectedTeams.size     ? [...selectedTeams].join(',')     : '';
+  const pipeline = selectedPipelines.size ? [...selectedPipelines].join(',') : '';
 
   const params = new URLSearchParams();
-  if (year)                              params.set('year',            year);
-  if (month)                             params.set('month',           month);
-  if (team)                              params.set('team',            team);
-  if (dateCol)                           params.set('date_col',        dateCol);
-  if (pipelineFilter && pipelineFilter !== 'all') params.set('pipeline_filter', pipelineFilter);
+  if (year)     params.set('year',            year);
+  if (month)    params.set('month',           month);
+  if (team)     params.set('team',            team);
+  if (dateCol)  params.set('date_col',        dateCol);
+  if (pipeline) params.set('pipeline_filter', pipeline);
 
   try {
     const r = await fetch(`/tools/performance/manager-data?` + params);
@@ -484,15 +717,9 @@ async function loadData() {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
 
-    // Populer team-dropdown første gang
-    const select = document.getElementById('team-select');
-    if (select.options.length === 1 && d.teams) {
-      d.teams.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        select.appendChild(opt);
-      });
+    // Populer team dropdown første gang
+    if (document.getElementById('ms-team-panel').querySelectorAll('.ms-item').length === 0 && d.teams?.length) {
+      buildTeamDropdown(d.teams);
     }
 
     document.getElementById('page-sub').textContent = d.month_label;
@@ -546,9 +773,14 @@ function renderTeamTotal(d) {
 
   // Månedsoversigt
   const curMonth  = d.cur_month;
-  const refMonth  = d.ref_month || curMonth;
   const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
   const curYear   = parseInt(d.today.split('-')[0]);
+  // Highlightede måneder: brug ref_months (multi) eller ref_month (enkelt) eller cur_month
+  const refMonthSet = new Set(
+    d.ref_months?.length ? d.ref_months :
+    d.ref_month          ? [d.ref_month] :
+    [curMonth]
+  );
 
   document.getElementById('maaned-year-label').textContent = refYear;
 
@@ -573,7 +805,7 @@ function renderTeamTotal(d) {
 
   const spPoints = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
-    const isCur    = month === refMonth;
+    const isCur    = refMonthSet.has(month);
     const isFuture = refYear >= curYear && month > curMonth;
     const x = spPadX + i * spGap;
     const val  = m[visKey] || 0;
@@ -727,9 +959,10 @@ function renderWeeklyReport(d) {
 
 function visDealsModal(ownerName) {
   const year    = document.getElementById('filter-year').value;
-  const month   = document.getElementById('filter-month').value;
+  const month   = selectedMonths.size ? [...selectedMonths].join(',') : '';
   const dateCol = document.getElementById('filter-date-col').value;
-  const params  = new URLSearchParams({ owner_name: ownerName, year, month, date_col: dateCol });
+  const params  = new URLSearchParams({ owner_name: ownerName, year, date_col: dateCol });
+  if (month) params.set('month', month);
   window.location.href = '/tools/performance/manager-saelger?' + params;
 }
 
