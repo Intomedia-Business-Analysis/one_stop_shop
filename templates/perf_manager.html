@@ -257,6 +257,10 @@
                 <input type="checkbox" id="ms-month-all" checked readonly onclick="event.preventDefault()">
                 <label for="ms-month-all" style="cursor:pointer" onclick="msClearAll('month')">Hele Året</label>
               </div>
+              <div class="ms-item" onclick="msToggleQuarter('Q1')"><input type="checkbox" id="ms-m-Q1" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q1 (Jan–Mar)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q2')"><input type="checkbox" id="ms-m-Q2" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q2 (Apr–Jun)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q3')"><input type="checkbox" id="ms-m-Q3" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q3 (Jul–Sep)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q4')"><input type="checkbox" id="ms-m-Q4" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q4 (Okt–Dec)</label></div>
               <div class="ms-item" onclick="msToggleItem('month','1','Januar')"><input type="checkbox" id="ms-m-1"><label for="ms-m-1">Januar</label></div>
               <div class="ms-item" onclick="msToggleItem('month','2','Februar')"><input type="checkbox" id="ms-m-2"><label for="ms-m-2">Februar</label></div>
               <div class="ms-item" onclick="msToggleItem('month','3','Marts')"><input type="checkbox" id="ms-m-3"><label for="ms-m-3">Marts</label></div>
@@ -445,7 +449,8 @@ const selectedTeams     = new Set();
 const selectedPipelines = new Set();
 
 // Navne til labels
-const MONTH_NAMES = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+const MONTH_NAMES   = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+const QUARTER_MONTHS = { Q1:[1,2,3], Q2:[4,5,6], Q3:[7,8,9], Q4:[10,11,12] };
 
 // ── Dropdown åbn/luk ──────────────────────────────────────────────────────
 function msToggle(key) {
@@ -488,6 +493,20 @@ function msToggleItem(key, val, label) {
   loadData();
 }
 
+// ── Toggle kvartal (Q1–Q4 genvej) ────────────────────────────────────────
+function msToggleQuarter(q) {
+  const months     = QUARTER_MONTHS[q];
+  const strMonths  = months.map(String);
+  const allSelected = strMonths.every(m => selectedMonths.has(m));
+  strMonths.forEach(m => {
+    const cb = document.getElementById(`ms-m-${m}`);
+    if (allSelected) { selectedMonths.delete(m); if (cb) cb.checked = false; }
+    else             { selectedMonths.add(m);    if (cb) cb.checked = true; }
+  });
+  msUpdateLabel('month');
+  loadData();
+}
+
 // ── Ryd alle (vælg "Alle") ────────────────────────────────────────────────
 function msClearAll(key) {
   const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
@@ -519,6 +538,11 @@ function msUpdateLabel(key) {
     if (key === 'month') {
       const names = [...sel].sort((a,b)=>+a-+b).map(m => MONTH_NAMES[+m-1].slice(0,3));
       labelEl.textContent = names.length <= 3 ? names.join(', ') : `${names.length} måneder`;
+      // Synkroniser Q-checkboxes
+      Object.entries(QUARTER_MONTHS).forEach(([q, months]) => {
+        const qCb = document.getElementById(`ms-m-${q}`);
+        if (qCb) qCb.checked = months.every(m => sel.has(String(m)));
+      });
     } else if (key === 'pipeline') {
       const arr = [...sel].map(v => PIPELINE_LABELS[v] || v);
       labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} pipelines`;
