@@ -72,11 +72,17 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Filter-bar */
-.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
-.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-bar{display:flex;flex-direction:column;gap:10px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap;min-width:52px}
 .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+/* Chips */
+.chip-group{display:flex;gap:4px;flex-wrap:wrap}
+.chip{padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;color:var(--ink-2);background:var(--surface);transition:all .15s;white-space:nowrap}
+.chip:hover{border-color:var(--green);color:var(--green)}
+.chip.active{background:var(--green);color:#fff;border-color:var(--green)}
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -185,47 +191,55 @@
 
         <!-- Filter-bar -->
         <div class="filter-bar">
-          <span class="filter-label">Filter</span>
-          <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-year" onchange="loadData()">
-            <option value="">Indlæser år…</option>
-          </select>
-          <select class="filter-select" id="filter-month" onchange="loadData()">
-            <option value="">Hele Året</option>
-            <option value="Q1">Q1 (Jan–Mar)</option>
-            <option value="Q2">Q2 (Apr–Jun)</option>
-            <option value="Q3">Q3 (Jul–Sep)</option>
-            <option value="Q4">Q4 (Okt–Dec)</option>
-            <option disabled>──────────</option>
-            <option value="1">Januar</option>
-            <option value="2">Februar</option>
-            <option value="3">Marts</option>
-            <option value="4">April</option>
-            <option value="5">Maj</option>
-            <option value="6">Juni</option>
-            <option value="7">Juli</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">Oktober</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-          <select class="filter-select" id="team-select" onchange="loadData()">
-            <option value="">Alle teams</option>
-          </select>
-          <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
-            <option value="all">Alle pipelines</option>
-            <option value="Customer">Customer</option>
-            <option value="Newbizz">Newbizz</option>
-            <option value="Company Trial">Company Trial</option>
-            <option value="Cancellations">Opsigelser</option>
-          </select>
-          <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-date-col" onchange="loadData()">
-            <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date" selected>Aktiverings dato</option>
-          </select>
+          <!-- Række 1: År, Pipeline, Dato-kolonne -->
+          <div class="filter-row">
+            <span class="filter-label">Filter</span>
+            <div class="filter-sep"></div>
+            <select class="filter-select" id="filter-year" onchange="loadData()">
+              <option value="">Indlæser år…</option>
+            </select>
+            <div class="filter-sep"></div>
+            <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+              <option value="all">Alle pipelines</option>
+              <option value="Customer">Customer</option>
+              <option value="Newbizz">Newbizz</option>
+              <option value="Company Trial">Company Trial</option>
+              <option value="Cancellations">Opsigelser</option>
+            </select>
+            <div class="filter-sep"></div>
+            <select class="filter-select" id="filter-date-col" onchange="loadData()">
+              <option value="won_time">Vundet dato</option>
+              <option value="service_activation_date" selected>Aktiverings dato</option>
+            </select>
+          </div>
+
+          <!-- Række 2: Måneder (multi-select chips) -->
+          <div class="filter-row">
+            <span class="filter-label">Periode</span>
+            <div class="chip-group" id="monthChips">
+              <span class="chip active" data-val="">Hele Året</span>
+              <span class="chip" data-val="1">Jan</span>
+              <span class="chip" data-val="2">Feb</span>
+              <span class="chip" data-val="3">Mar</span>
+              <span class="chip" data-val="4">Apr</span>
+              <span class="chip" data-val="5">Maj</span>
+              <span class="chip" data-val="6">Jun</span>
+              <span class="chip" data-val="7">Jul</span>
+              <span class="chip" data-val="8">Aug</span>
+              <span class="chip" data-val="9">Sep</span>
+              <span class="chip" data-val="10">Okt</span>
+              <span class="chip" data-val="11">Nov</span>
+              <span class="chip" data-val="12">Dec</span>
+            </div>
+          </div>
+
+          <!-- Række 3: Teams (multi-select chips, populeres dynamisk) -->
+          <div class="filter-row">
+            <span class="filter-label">Team</span>
+            <div class="chip-group" id="teamChips">
+              <span class="chip active" data-val="">Alle teams</span>
+            </div>
+          </div>
         </div>
 
         <!-- Loading state -->
@@ -349,6 +363,53 @@ let lbSortDir  = 'desc';
 let teamMode   = 'salg'; // 'salg' | 'netto'
 let lastTeamData = null;
 
+// ── Chip multi-select state ───────────────────────────────────────────────
+const selectedMonths = new Set();
+const selectedTeams  = new Set();
+
+function toggleChip(el, selSet, wrapId, cb) {
+  const val = el.dataset.val;
+  if (val === '') {
+    // "Alle" chip: clear selection
+    selSet.clear();
+    document.querySelectorAll(`#${wrapId} .chip`).forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  } else {
+    // Deaktiver "Alle" chip
+    document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.remove('active');
+    if (selSet.has(val)) { selSet.delete(val); el.classList.remove('active'); }
+    else                 { selSet.add(val);    el.classList.add('active');    }
+    // Hvis ingen valgt: aktiver "Alle" igen
+    if (selSet.size === 0) {
+      document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.add('active');
+    }
+  }
+  cb();
+}
+
+// Bind month chips
+document.querySelectorAll('#monthChips .chip').forEach(chip => {
+  chip.addEventListener('click', () => toggleChip(chip, selectedMonths, 'monthChips', loadData));
+});
+
+function buildTeamChips(teams) {
+  const wrap = document.getElementById('teamChips');
+  // Bevar "Alle teams" chip
+  [...wrap.querySelectorAll('.chip:not([data-val=""])')].forEach(c => c.remove());
+  teams.forEach(t => {
+    const s = document.createElement('span');
+    s.className = 'chip';
+    s.dataset.val = t;
+    s.textContent = t;
+    s.addEventListener('click', () => toggleChip(s, selectedTeams, 'teamChips', loadData));
+    wrap.appendChild(s);
+  });
+  // Bind "Alle teams" chip
+  wrap.querySelector('.chip[data-val=""]').addEventListener('click', function() {
+    toggleChip(this, selectedTeams, 'teamChips', loadData);
+  });
+}
+
 function setTeamMode(mode) {
   teamMode = mode;
   document.getElementById('btn-salg').classList.toggle('active', mode === 'salg');
@@ -458,16 +519,23 @@ async function loadMeta() {
     if (y === today.getFullYear()) opt.selected = true;
     yearSel.appendChild(opt);
   }
-  // Sæt aktuel måned som default
-  document.getElementById('filter-month').value = String(today.getMonth() + 1);
+  // Sæt aktuel måned som default i chip multi-select
+  const curM = String(today.getMonth() + 1);
+  const chip = document.querySelector(`#monthChips .chip[data-val="${curM}"]`);
+  if (chip) {
+    document.querySelector('#monthChips .chip[data-val=""]').classList.remove('active');
+    chip.classList.add('active');
+    selectedMonths.add(curM);
+  }
 }
 
 async function loadData() {
   const year           = document.getElementById('filter-year').value;
-  const month          = document.getElementById('filter-month').value;
-  const team           = document.getElementById('team-select').value;
   const dateCol        = document.getElementById('filter-date-col').value;
   const pipelineFilter = document.getElementById('filter-pipeline').value;
+  // Chip-baserede filtre
+  const month = selectedMonths.size ? [...selectedMonths].join(',') : '';
+  const team  = selectedTeams.size  ? [...selectedTeams].join(',')  : '';
 
   const params = new URLSearchParams();
   if (year)                              params.set('year',            year);
@@ -484,15 +552,9 @@ async function loadData() {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
 
-    // Populer team-dropdown første gang
-    const select = document.getElementById('team-select');
-    if (select.options.length === 1 && d.teams) {
-      d.teams.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        select.appendChild(opt);
-      });
+    // Populer team chips første gang
+    if (document.getElementById('teamChips').children.length === 1 && d.teams?.length) {
+      buildTeamChips(d.teams);
     }
 
     document.getElementById('page-sub').textContent = d.month_label;
@@ -546,9 +608,14 @@ function renderTeamTotal(d) {
 
   // Månedsoversigt
   const curMonth  = d.cur_month;
-  const refMonth  = d.ref_month || curMonth;
   const refYear   = d.ref_year  || parseInt(d.today.split('-')[0]);
   const curYear   = parseInt(d.today.split('-')[0]);
+  // Highlightede måneder: brug ref_months (multi) eller ref_month (enkelt) eller cur_month
+  const refMonthSet = new Set(
+    d.ref_months?.length ? d.ref_months :
+    d.ref_month          ? [d.ref_month] :
+    [curMonth]
+  );
 
   document.getElementById('maaned-year-label').textContent = refYear;
 
@@ -573,7 +640,7 @@ function renderTeamTotal(d) {
 
   const spPoints = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
-    const isCur    = month === refMonth;
+    const isCur    = refMonthSet.has(month);
     const isFuture = refYear >= curYear && month > curMonth;
     const x = spPadX + i * spGap;
     const val  = m[visKey] || 0;
@@ -727,9 +794,10 @@ function renderWeeklyReport(d) {
 
 function visDealsModal(ownerName) {
   const year    = document.getElementById('filter-year').value;
-  const month   = document.getElementById('filter-month').value;
+  const month   = selectedMonths.size ? [...selectedMonths].join(',') : '';
   const dateCol = document.getElementById('filter-date-col').value;
-  const params  = new URLSearchParams({ owner_name: ownerName, year, month, date_col: dateCol });
+  const params  = new URLSearchParams({ owner_name: ownerName, year, date_col: dateCol });
+  if (month) params.set('month', month);
   window.location.href = '/tools/performance/manager-saelger?' + params;
 }
 
