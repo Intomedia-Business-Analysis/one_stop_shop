@@ -126,9 +126,9 @@
 }
 .ms-item:hover{background:var(--green-light)}
 .ms-item input[type=checkbox]{
-  accent-color:var(--green);width:14px;height:14px;cursor:pointer;flex-shrink:0;
+  accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none;
 }
-.ms-item label{cursor:pointer;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-item label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 /* Refresh knap */
 .refresh-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -290,14 +290,24 @@
 
           <div class="filter-sep"></div>
 
-          <!-- Pipeline -->
-          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
-            <option value="all">Alle pipelines</option>
-            <option value="Customer">Customer</option>
-            <option value="Newbizz">Newbizz</option>
-            <option value="Company Trial">Company Trial</option>
-            <option value="Cancellations">Opsigelser</option>
-          </select>
+          <!-- Pipeline multi-select dropdown -->
+          <div class="ms-wrap" id="ms-pipeline-wrap">
+            <div class="ms-trigger" id="ms-pipeline-trigger" onclick="msToggle('pipeline')">
+              <span class="ms-trigger-text" id="ms-pipeline-label">Alle pipelines</span>
+              <span class="ms-badge" id="ms-pipeline-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-pipeline-panel">
+              <div class="ms-list-header" onclick="msClearAll('pipeline')">
+                <input type="checkbox" id="ms-pipeline-all" checked onclick="event.preventDefault();event.stopPropagation()">
+                <label>Alle pipelines</label>
+              </div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Customer','Customer')"><input type="checkbox" id="ms-p-Customer"><label>Customer</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Newbizz','Newbizz')"><input type="checkbox" id="ms-p-Newbizz"><label>Newbizz</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Company Trial','Company Trial')"><input type="checkbox" id="ms-p-Company Trial"><label>Company Trial</label></div>
+              <div class="ms-item" onclick="msToggleItem('pipeline','Cancellations','Opsigelser')"><input type="checkbox" id="ms-p-Cancellations"><label>Opsigelser</label></div>
+            </div>
+          </div>
 
           <div class="filter-sep"></div>
 
@@ -430,8 +440,9 @@ let teamMode   = 'salg'; // 'salg' | 'netto'
 let lastTeamData = null;
 
 // ── Multi-select dropdown state ───────────────────────────────────────────
-const selectedMonths = new Set();
-const selectedTeams  = new Set();
+const selectedMonths    = new Set();
+const selectedTeams     = new Set();
+const selectedPipelines = new Set();
 
 // Navne til labels
 const MONTH_NAMES = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
@@ -460,8 +471,17 @@ document.addEventListener('click', e => {
 
 // ── Toggle enkelt item ────────────────────────────────────────────────────
 function msToggleItem(key, val, label) {
-  const sel = key === 'month' ? selectedMonths : selectedTeams;
-  const cb  = document.getElementById(key === 'month' ? `ms-m-${val}` : `ms-t-${val}`);
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  // Find checkbox
+  let cb;
+  if (key === 'month') {
+    cb = document.getElementById(`ms-m-${val}`);
+  } else if (key === 'pipeline') {
+    cb = document.getElementById(`ms-p-${val}`);
+  } else {
+    const item = document.querySelector(`#ms-team-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
+    cb = item ? item.querySelector('input[type=checkbox]') : null;
+  }
   if (sel.has(val)) { sel.delete(val); if (cb) cb.checked = false; }
   else              { sel.add(val);    if (cb) cb.checked = true;  }
   msUpdateLabel(key);
@@ -470,7 +490,7 @@ function msToggleItem(key, val, label) {
 
 // ── Ryd alle (vælg "Alle") ────────────────────────────────────────────────
 function msClearAll(key) {
-  const sel = key === 'month' ? selectedMonths : selectedTeams;
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
   sel.clear();
   document.querySelectorAll(`#ms-${key}-panel input[type=checkbox]`).forEach(cb => cb.checked = false);
   document.getElementById(`ms-${key}-all`).checked = true;
@@ -479,14 +499,17 @@ function msClearAll(key) {
 }
 
 // ── Opdater trigger-label og badge ────────────────────────────────────────
+const MS_ALL_LABELS = { month: 'Hele Året', team: 'Alle teams', pipeline: 'Alle pipelines' };
+const PIPELINE_LABELS = { Customer: 'Customer', Newbizz: 'Newbizz', 'Company Trial': 'Company Trial', Cancellations: 'Opsigelser' };
+
 function msUpdateLabel(key) {
-  const sel     = key === 'month' ? selectedMonths : selectedTeams;
+  const sel     = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
   const labelEl = document.getElementById(`ms-${key}-label`);
   const badgeEl = document.getElementById(`ms-${key}-badge`);
   const allCb   = document.getElementById(`ms-${key}-all`);
 
   if (sel.size === 0) {
-    labelEl.textContent = key === 'month' ? 'Hele Året' : 'Alle teams';
+    labelEl.textContent   = MS_ALL_LABELS[key];
     badgeEl.style.display = 'none';
     if (allCb) allCb.checked = true;
   } else {
@@ -496,6 +519,9 @@ function msUpdateLabel(key) {
     if (key === 'month') {
       const names = [...sel].sort((a,b)=>+a-+b).map(m => MONTH_NAMES[+m-1].slice(0,3));
       labelEl.textContent = names.length <= 3 ? names.join(', ') : `${names.length} måneder`;
+    } else if (key === 'pipeline') {
+      const arr = [...sel].map(v => PIPELINE_LABELS[v] || v);
+      labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} pipelines`;
     } else {
       const arr = [...sel];
       labelEl.textContent = arr.length === 1 ? arr[0] : `${arr.length} teams`;
@@ -506,13 +532,17 @@ function msUpdateLabel(key) {
 // ── Byg team-dropdown dynamisk ────────────────────────────────────────────
 function buildTeamDropdown(teams) {
   const panel = document.getElementById('ms-team-panel');
-  // Fjern eksisterende dynamiske items
   panel.querySelectorAll('.ms-item').forEach(el => el.remove());
   teams.forEach(t => {
-    const safeId = 'ms-t-' + t.replace(/\s+/g,'_');
     const div = document.createElement('div');
     div.className = 'ms-item';
-    div.innerHTML = `<input type="checkbox" id="${safeId}"><label for="${safeId}">${escHtml(t)}</label>`;
+    div.dataset.val = t;  // brug data-val til opslag
+    const cb  = document.createElement('input');
+    cb.type   = 'checkbox';
+    const lbl = document.createElement('label');
+    lbl.textContent = t;
+    div.appendChild(cb);
+    div.appendChild(lbl);
     div.addEventListener('click', () => msToggleItem('team', t, t));
     panel.appendChild(div);
   });
@@ -643,17 +673,17 @@ async function loadMeta() {
 async function loadData() {
   const year           = document.getElementById('filter-year').value;
   const dateCol        = document.getElementById('filter-date-col').value;
-  const pipelineFilter = document.getElementById('filter-pipeline').value;
-  // Chip-baserede filtre
-  const month = selectedMonths.size ? [...selectedMonths].join(',') : '';
-  const team  = selectedTeams.size  ? [...selectedTeams].join(',')  : '';
+  // Dropdown multi-select filtre
+  const month    = selectedMonths.size    ? [...selectedMonths].join(',')    : '';
+  const team     = selectedTeams.size     ? [...selectedTeams].join(',')     : '';
+  const pipeline = selectedPipelines.size ? [...selectedPipelines].join(',') : '';
 
   const params = new URLSearchParams();
-  if (year)                              params.set('year',            year);
-  if (month)                             params.set('month',           month);
-  if (team)                              params.set('team',            team);
-  if (dateCol)                           params.set('date_col',        dateCol);
-  if (pipelineFilter && pipelineFilter !== 'all') params.set('pipeline_filter', pipelineFilter);
+  if (year)     params.set('year',            year);
+  if (month)    params.set('month',           month);
+  if (team)     params.set('team',            team);
+  if (dateCol)  params.set('date_col',        dateCol);
+  if (pipeline) params.set('pipeline_filter', pipeline);
 
   try {
     const r = await fetch(`/tools/performance/manager-data?` + params);

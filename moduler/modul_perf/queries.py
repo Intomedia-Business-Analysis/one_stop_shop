@@ -347,8 +347,14 @@ def db_manager_data(today: date, team: str | None = None,
         non_finans_exclude = ""
         sites_filter = f"AND [sites] IN {brands_ph}"
 
-    # ── Pipeline filter ──────────────────────────────────────────────────────
-    if not pipeline_filter or pipeline_filter == 'all':
+    # ── Pipeline filter (understøtter komma-separerede værdier) ─────────────
+    _CANCEL_KEYS = {'Cancellations', 'Cancellation', 'Opsigelser'}
+    _sel_pipes   = [p.strip() for p in pipeline_filter.split(',')] if pipeline_filter and pipeline_filter != 'all' else []
+    _non_cancel  = [p for p in _sel_pipes if p not in _CANCEL_KEYS]
+    _has_cancel  = any(p in _CANCEL_KEYS for p in _sel_pipes)
+
+    if not _sel_pipes:
+        # Alle pipelines
         won_where      = f"AND [pipeline_name] NOT IN {_CANCEL_PH}"
         won_wparams    = tuple(CANCELLATION_PIPELINES)
         cancel_where   = f"AND [pipeline_name] IN {_CANCEL_PH}"
@@ -357,7 +363,8 @@ def db_manager_data(today: date, team: str | None = None,
         cancel_case    = f"[pipeline_name] IN {_CANCEL_PH}"
         won_cparams    = tuple(CANCELLATION_PIPELINES)
         cancel_cparams = tuple(CANCELLATION_PIPELINES)
-    elif pipeline_filter == 'Cancellations':
+    elif _has_cancel and not _non_cancel:
+        # Kun opsigelser
         won_where      = f"AND [pipeline_name] IN {_CANCEL_PH}"
         won_wparams    = tuple(CANCELLATION_PIPELINES)
         cancel_where   = "AND 1=0"
@@ -366,15 +373,28 @@ def db_manager_data(today: date, team: str | None = None,
         cancel_case    = "1=0"
         won_cparams    = tuple(CANCELLATION_PIPELINES)
         cancel_cparams = ()
-    else:
-        won_where      = "AND [pipeline_name] = %s"
-        won_wparams    = (pipeline_filter,)
+    elif _non_cancel and not _has_cancel:
+        # Specifikke ikke-opsigelse pipelines
+        _pipe_ph       = "(" + ",".join(["%s"] * len(_non_cancel)) + ")"
+        won_where      = f"AND [pipeline_name] IN {_pipe_ph}"
+        won_wparams    = tuple(_non_cancel)
         cancel_where   = "AND 1=0"
         cancel_wparams = ()
-        won_case       = "[pipeline_name] = %s"
+        won_case       = f"[pipeline_name] IN {_pipe_ph}"
         cancel_case    = "1=0"
-        won_cparams    = (pipeline_filter,)
+        won_cparams    = tuple(_non_cancel)
         cancel_cparams = ()
+    else:
+        # Mix: specifikke pipelines + opsigelser
+        _pipe_ph       = "(" + ",".join(["%s"] * len(_non_cancel)) + ")"
+        won_where      = f"AND [pipeline_name] IN {_pipe_ph}"
+        won_wparams    = tuple(_non_cancel)
+        cancel_where   = f"AND [pipeline_name] IN {_CANCEL_PH}"
+        cancel_wparams = tuple(CANCELLATION_PIPELINES)
+        won_case       = f"[pipeline_name] IN {_pipe_ph}"
+        cancel_case    = f"[pipeline_name] IN {_CANCEL_PH}"
+        won_cparams    = tuple(_non_cancel)
+        cancel_cparams = tuple(CANCELLATION_PIPELINES)
     # d.-prefixed variants for JOIN leaderboard queries
     won_case_d    = won_case.replace('[pipeline_name]', 'd.[pipeline_name]')
     cancel_case_d = cancel_case.replace('[pipeline_name]', 'd.[pipeline_name]')
@@ -774,22 +794,32 @@ def db_yoy_data(today: date, team: str | None = None,
     prev_year = compare_year if compare_year else ref_year - 1
 
     # ── Period label + month/quarter SQL clause ──────────────────────────────
+    months_list: list[int] = []
     if selected_month in ("Q1", "Q2", "Q3", "Q4"):
-        q = int(selected_month[1])
-        m_from = (q - 1) * 3 + 1
-        m_to   = q * 3
-        period_sql    = f"AND MONTH({{}}) BETWEEN %s AND %s"
-        period_params = (m_from, m_to)
-        period_label  = f"{selected_month} {ref_year} vs {selected_month} {prev_year}"
+        q           = int(selected_month[1])
+        months_list = list(range((q - 1) * 3 + 1, q * 3 + 1))
+        period_label = f"{selected_month} {ref_year} vs {selected_month} {prev_year}"
     elif selected_month:
-        ref_month = int(selected_month)
-        period_sql    = f"AND MONTH({{}}) = %s"
-        period_params = (ref_month,)
-        period_label  = f"{MONTH_NAMES_DA[ref_month - 1]} {ref_year} vs {MONTH_NAMES_DA[ref_month - 1]} {prev_year}"
+        raw = [p.strip() for p in selected_month.split(",") if p.strip().isdigit()]
+        months_list = sorted({int(p) for p in raw if 1 <= int(p) <= 12})
+        if len(months_list) == 1:
+            period_label = (f"{MONTH_NAMES_DA[months_list[0] - 1]} {ref_year} "
+                            f"vs {MONTH_NAMES_DA[months_list[0] - 1]} {prev_year}")
+        elif months_list:
+            lbl = ", ".join(MONTH_NAMES_DA[m - 1] for m in months_list)
+            period_label = f"{lbl} {ref_year} vs {prev_year}"
+        else:
+            period_label = f"Hele {ref_year} vs Hele {prev_year}"
+    else:
+        period_label = f"Hele {ref_year} vs Hele {prev_year}"
+
+    if months_list:
+        _months_ph    = "(" + ",".join(["%s"] * len(months_list)) + ")"
+        period_sql    = "AND MONTH({}) IN " + _months_ph
+        period_params = tuple(months_list)
     else:
         period_sql    = ""
         period_params = ()
-        period_label  = f"Hele {ref_year} vs Hele {prev_year}"
 
     # Date range spanning both years
     both_from = date(prev_year, 1, 1)
@@ -801,59 +831,94 @@ def db_yoy_data(today: date, team: str | None = None,
         date_col = "won_time"
     d_col = f"[{date_col}]"
 
+    # ── brands placeholder (needed by team block) ─────────────────────────────
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
     # ── Team clause ──────────────────────────────────────────────────────────
-    is_finans_team   = team and "FINANS" in team.upper()
-    is_watch_dk_team = team and "WATCH DK" in team.upper()
-    is_watch_int_team = team and "WATCH INT" in team.upper()
+    teams_list: list[str] = [t.strip() for t in team.split(",") if t.strip()] if team else []
+    multi_team = len(teams_list) > 1
 
-    if is_finans_team and team:
-        team_clause  = """AND [owner_name] IN (
-            SELECT u2.name FROM HubUsers u2
-            JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-            JOIN Teams t2 ON t2.id = tm2.team_id
-            WHERE t2.name = %s
-            AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-        ) AND COALESCE([sites],'') = 'FINANS DK'"""
-        team_params  = (team,)
-    elif team:
-        team_clause  = """AND [owner_name] IN (
-            SELECT u2.name FROM HubUsers u2
-            JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-            JOIN Teams t2 ON t2.id = tm2.team_id
-            WHERE t2.name = %s
-            AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-        ) AND ([team] = %s OR [team] IS NULL)"""
-        team_params  = (team, team)
-    else:
-        team_clause  = ""
-        team_params  = ()
-
-    if is_watch_int_team:
-        non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
-    elif is_watch_dk_team:
-        non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
-    else:
+    if multi_team:
+        _teams_ph          = "(" + ",".join(["%s"] * len(teams_list)) + ")"
+        team_clause        = f"AND [team] IN {_teams_ph}"
+        team_params        = tuple(teams_list)
+        is_finans_team     = False
+        is_watch_dk_team   = False
+        is_watch_int_team  = False
         non_finans_exclude = ""
+        sites_filter       = f"AND [sites] IN {brands_ph}"
+    elif teams_list:
+        team = teams_list[0]
+        is_finans_team    = "FINANS" in team.upper()
+        is_watch_dk_team  = "WATCH DK" in team.upper()
+        is_watch_int_team = "WATCH INT" in team.upper()
 
-    brands_ph    = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
-    sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)" if team else f"AND [sites] IN {brands_ph}"
+        if is_finans_team:
+            team_clause = """AND [owner_name] IN (
+                SELECT u2.name FROM HubUsers u2
+                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
+                JOIN Teams t2 ON t2.id = tm2.team_id
+                WHERE t2.name = %s
+                AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
+            ) AND COALESCE([sites],'') = 'FINANS DK'"""
+            team_params = (team,)
+        else:
+            team_clause = """AND [owner_name] IN (
+                SELECT u2.name FROM HubUsers u2
+                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
+                JOIN Teams t2 ON t2.id = tm2.team_id
+                WHERE t2.name = %s
+                AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+            ) AND ([team] = %s OR [team] IS NULL)"""
+            team_params = (team, team)
+
+        if is_watch_int_team:
+            non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
+        elif is_watch_dk_team:
+            non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
+        else:
+            non_finans_exclude = ""
+
+        sites_filter = f"AND ([sites] IN {brands_ph} OR [sites] IS NULL)"
+    else:
+        team               = None
+        team_clause        = ""
+        team_params        = ()
+        is_finans_team     = False
+        is_watch_dk_team   = False
+        is_watch_int_team  = False
+        non_finans_exclude = ""
+        sites_filter       = f"AND [sites] IN {brands_ph}"
 
     # ── Pipeline filter ──────────────────────────────────────────────────────
-    if not pipeline_filter or pipeline_filter == 'all':
-        won_case    = f"[pipeline_name] NOT IN {_CANCEL_PH}"
-        cancel_case = f"[pipeline_name] IN {_CANCEL_PH}"
+    _CANCEL_KEYS = {'Cancellations', 'Cancellation', 'Opsigelser'}
+    _sel_pipes   = ([p.strip() for p in pipeline_filter.split(',')]
+                    if pipeline_filter and pipeline_filter != 'all' else [])
+    _non_cancel  = [p for p in _sel_pipes if p not in _CANCEL_KEYS]
+    _has_cancel  = any(p in _CANCEL_KEYS for p in _sel_pipes)
+
+    if not _sel_pipes:
+        won_case       = f"[pipeline_name] NOT IN {_CANCEL_PH}"
+        cancel_case    = f"[pipeline_name] IN {_CANCEL_PH}"
         won_cparams    = tuple(CANCELLATION_PIPELINES)
         cancel_cparams = tuple(CANCELLATION_PIPELINES)
-    elif pipeline_filter == 'Cancellations':
-        won_case    = f"[pipeline_name] IN {_CANCEL_PH}"
-        cancel_case = "1=0"
+    elif _has_cancel and not _non_cancel:
+        won_case       = f"[pipeline_name] IN {_CANCEL_PH}"
+        cancel_case    = "1=0"
         won_cparams    = tuple(CANCELLATION_PIPELINES)
         cancel_cparams = ()
-    else:
-        won_case    = "[pipeline_name] = %s"
-        cancel_case = "1=0"
-        won_cparams    = (pipeline_filter,)
+    elif _non_cancel and not _has_cancel:
+        _pipe_ph       = "(" + ",".join(["%s"] * len(_non_cancel)) + ")"
+        won_case       = f"[pipeline_name] IN {_pipe_ph}"
+        cancel_case    = "1=0"
+        won_cparams    = tuple(_non_cancel)
         cancel_cparams = ()
+    else:  # mix: specific pipelines + cancellations
+        _pipe_ph       = "(" + ",".join(["%s"] * len(_non_cancel)) + ")"
+        won_case       = f"[pipeline_name] IN {_pipe_ph}"
+        cancel_case    = f"[pipeline_name] IN {_CANCEL_PH}"
+        won_cparams    = tuple(_non_cancel)
+        cancel_cparams = tuple(CANCELLATION_PIPELINES)
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
