@@ -415,6 +415,23 @@ def db_manager_data(today: date, team: str | None = None,
     """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
 
+    # Dagens won-deals pr. datokolonne (uafhængigt af globalt date_col-valg).
+    # Salg-mode bruger won_time, Tilvækst-mode bruger service_activation_date.
+    salg_dag_by_col = {}
+    for _col in ("won_time", "service_activation_date"):
+        cur.execute(f"""
+            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND [{_col}] >= %s AND [{_col}] < %s
+              {sites_filter}
+              {won_where}
+              {_ADM_EXCLUDE}
+              {non_finans_exclude}
+              {team_clause}
+        """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
+        salg_dag_by_col[_col] = float((cur.fetchone() or {}).get("total", 0) or 0)
+
     # Månedlig teamtotal for valgt periode
     _p_sql, _p_params = _period(d_col)
     cur.execute(f"""
@@ -438,6 +455,8 @@ def db_manager_data(today: date, team: str | None = None,
           AND {_p_sql}
           {sites_filter}
           {cancel_where}
+          {_ADM_EXCLUDE}
+          {non_finans_exclude}
           {team_clause}
     """, tuple(_p_params) + tuple(SUBSCRIPTION_BRANDS) + cancel_wparams + team_params)
     cancel_maaned = abs(float((cur.fetchone() or {}).get("total", 0) or 0))
@@ -463,10 +482,97 @@ def db_manager_data(today: date, team: str | None = None,
         ORDER BY maaned
     """, won_cparams + cancel_cparams + (year_from.isoformat(), year_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     maaned_raw = {r["maaned"]: (float(r["won"] or 0), abs(float(r["cancel"] or 0))) for r in cur.fetchall()}
-    maaned_chart = [{"maaned": MONTH_NAMES_DA[m - 1][:3],
-                     "won":    round(maaned_raw.get(m, (0,0))[0], 2),
-                     "cancel": round(maaned_raw.get(m, (0,0))[1], 2),
-                     "netto":  round(maaned_raw.get(m, (0,0))[0] - maaned_raw.get(m, (0,0))[1], 2)}
+
+    # Budget pr. måned for valgt år + valgte teams
+    # Bygges af SalespersonBudget for almindelige teams + BudgetsIntoMedia for Banner/Marketwire.
+    budget_per_month = {m: 0.0 for m in range(1, 13)}
+    if team:
+        cur.execute("""
+            SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
+            FROM [dbo].[SalespersonBudget]
+            WHERE YEAR([BudgetDate]) = %s AND [Team] = %s
+            GROUP BY MONTH([BudgetDate])
+        """, (ref_year, team))
+    elif multi_team:
+        _teams_ph_b = "(" + ",".join(["%s"] * len(teams_list)) + ")"
+        cur.execute(f"""
+            SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
+            FROM [dbo].[SalespersonBudget]
+            WHERE YEAR([BudgetDate]) = %s AND [Team] IN {_teams_ph_b}
+            GROUP BY MONTH([BudgetDate])
+        """, (ref_year,) + tuple(teams_list))
+    else:
+        cur.execute("""
+            SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
+            FROM [dbo].[SalespersonBudget]
+            WHERE YEAR([BudgetDate]) = %s
+            GROUP BY MONTH([BudgetDate])
+        """, (ref_year,))
+    for r in cur.fetchall():
+        if r["m"]:
+            budget_per_month[int(r["m"])] += float(r["bud"] or 0)
+
+    # Tilføj Banner/Marketwire budget fra BudgetsIntoMedia (pr. måned) når relevant
+    _selected_teams_mo = (
+        {team} if team else
+        set(teams_list) if multi_team else
+        {"Team Banner", "Team Marketwire"}
+    )
+    if "Team Banner" in _selected_teams_mo:
+        cur.execute("""
+            SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
+            FROM [dbo].[BudgetsIntoMedia]
+            WHERE YEAR([BudgetDate]) = %s AND [DealType]='Banner'
+            GROUP BY MONTH([BudgetDate])
+        """, (ref_year,))
+        for r in cur.fetchall():
+            if r["m"]:
+                budget_per_month[int(r["m"])] += float(r["bud"] or 0)
+    if "Team Marketwire" in _selected_teams_mo:
+        cur.execute("""
+            SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
+            FROM [dbo].[BudgetsIntoMedia]
+            WHERE YEAR([BudgetDate]) = %s AND [Brand]='marketwire'
+            GROUP BY MONTH([BudgetDate])
+        """, (ref_year,))
+        for r in cur.fetchall():
+            if r["m"]:
+                budget_per_month[int(r["m"])] += float(r["bud"] or 0)
+
+    # Forecast pr. måned for valgt år fra HubForecasts (level='team')
+    forecast_per_month = {m: 0.0 for m in range(1, 13)}
+    if team:
+        cur.execute("""
+            SELECT forecast_month AS m, SUM(forecast_amount) AS fc
+            FROM [dbo].[HubForecasts]
+            WHERE forecast_year = %s AND level = 'team' AND dimension_key = %s
+            GROUP BY forecast_month
+        """, (ref_year, team))
+    elif multi_team:
+        _teams_ph_f = "(" + ",".join(["%s"] * len(teams_list)) + ")"
+        cur.execute(f"""
+            SELECT forecast_month AS m, SUM(forecast_amount) AS fc
+            FROM [dbo].[HubForecasts]
+            WHERE forecast_year = %s AND level = 'team' AND dimension_key IN {_teams_ph_f}
+            GROUP BY forecast_month
+        """, (ref_year,) + tuple(teams_list))
+    else:
+        cur.execute("""
+            SELECT forecast_month AS m, SUM(forecast_amount) AS fc
+            FROM [dbo].[HubForecasts]
+            WHERE forecast_year = %s AND level = 'team'
+            GROUP BY forecast_month
+        """, (ref_year,))
+    for r in cur.fetchall():
+        if r["m"]:
+            forecast_per_month[int(r["m"])] += float(r["fc"] or 0)
+
+    maaned_chart = [{"maaned":   MONTH_NAMES_DA[m - 1][:3],
+                     "won":      round(maaned_raw.get(m, (0,0))[0], 2),
+                     "cancel":   round(maaned_raw.get(m, (0,0))[1], 2),
+                     "netto":    round(maaned_raw.get(m, (0,0))[0] - maaned_raw.get(m, (0,0))[1], 2),
+                     "budget":   round(budget_per_month.get(m, 0), 2),
+                     "forecast": round(forecast_per_month.get(m, 0), 2)}
                     for m in range(1, 13)]
     sparkline = maaned_chart  # bagudkompatibilitet
 
@@ -581,7 +687,31 @@ def db_manager_data(today: date, team: str | None = None,
             GROUP BY [Owner]
         """, tuple(_bp_params))
     budget_map  = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
-    team_budget = round(sum(budget_map.values()), 2)
+
+    # Banner og Marketwire har ikke per-sælger budget — kun team-budget i BudgetsIntoMedia.
+    # Tilføj til total budget når de relevante teams er valgt (single, multi eller alle).
+    _team_budget_extra = 0.0
+    _selected_team_names = (
+        {team} if team else
+        set(teams_list) if multi_team else
+        {"Team Banner", "Team Marketwire"}
+    )
+    if "Team Banner" in _selected_team_names:
+        cur.execute(f"""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+            FROM [dbo].[BudgetsIntoMedia]
+            WHERE [DealType]='Banner' AND {_bp_sql}
+        """, tuple(_bp_params))
+        _team_budget_extra += float((cur.fetchone() or {}).get("budget", 0) or 0)
+    if "Team Marketwire" in _selected_team_names:
+        cur.execute(f"""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+            FROM [dbo].[BudgetsIntoMedia]
+            WHERE [Brand]='marketwire' AND {_bp_sql}
+        """, tuple(_bp_params))
+        _team_budget_extra += float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+    team_budget = round(sum(budget_map.values()) + _team_budget_extra, 2)
     netto_vs_budget_pct = round(netto_maaned / team_budget * 100, 1) if team_budget > 0 else None
 
     for row in leaderboard:
@@ -756,6 +886,8 @@ def db_manager_data(today: date, team: str | None = None,
     conn.close()
     return {
         "salg_dag":           round(salg_dag, 2),
+        "salg_dag_won":       round(salg_dag_by_col["won_time"], 2),
+        "salg_dag_act":       round(salg_dag_by_col["service_activation_date"], 2),
         "salg_maaned":        round(salg_maaned, 2),
         "cancel_maaned":      round(cancel_maaned, 2),
         "netto_maaned":       round(netto_maaned, 2),
@@ -1439,7 +1571,14 @@ def db_manager_saelger_deals(owner_name: str, year: int, month: int,
                 [title], [sites], [org_name],
                 ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) AS value,
                 CONVERT(NVARCHAR(10), [{date_col}], 23) AS event_date,
-                [pipeline_name]
+                [pipeline_name],
+                CASE
+                    WHEN COALESCE([administrativ],'') = 'ja' THEN 1
+                    WHEN UPPER(LTRIM([title])) LIKE 'ADMINISTRATIV%' THEN 1
+                    WHEN UPPER(LTRIM([title])) LIKE 'ADM %' THEN 1
+                    WHEN COALESCE([deal_type],'') = 'Rapport' THEN 1
+                    ELSE 0
+                END AS is_admin
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'won'
               AND [pipeline_name] <> 'Web Sale'
@@ -1460,6 +1599,7 @@ def db_manager_saelger_deals(owner_name: str, year: int, month: int,
             "value":     float(r["value"] or 0),
             "dato":      r["event_date"] or "—",
             "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser'),
+            "is_admin":  bool(r["is_admin"]),
         } for r in (cur.fetchall() or [])]
         conn.close()
         return deals
