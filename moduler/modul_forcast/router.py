@@ -13,7 +13,8 @@ from moduler.modul_forcast.queries import (
 
 router = APIRouter(prefix="/tools/forecast", tags=["Forecast"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 
 ensure_schema()
 

@@ -118,31 +118,7 @@
 <body>
 <div class="shell">
 
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Sales Operations</div>
-      <a href="/tools/portfolio-alignment/" class="sbi active">
-        <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
-        Portfolio Alignment
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/sales-operations' %}{% include "_sidebar.html" %}{% endwith %}
 
   <div class="main">
     <div class="topbar">

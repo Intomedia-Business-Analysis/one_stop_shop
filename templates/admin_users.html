@@ -243,48 +243,7 @@
 <div class="shell">
 
   <!-- ── SIDEBAR ── -->
-  <aside class="sidebar">
-    <div class="sb-logo">
-      <div class="sb-logo-mark">:m</div>
-      <span class="sb-logo-text">intomedia</span>
-    </div>
-
-    <nav class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        {% include "icons/grid.svg" %} Hub
-      </a>
-    </nav>
-
-    <div class="sb-divider"></div>
-
-    <nav class="sb-nav">
-      <div class="sb-section-label">Administration</div>
-      <a href="/admin/users" class="sbi on">
-        {% include "icons/lock.svg" %} Brugerstyring
-      </a>
-      <a href="/admin/teams" class="sbi">
-        {% include "icons/users.svg" %} Hold
-      </a>
-      <a href="/settings" class="sbi">
-        {% include "icons/settings.svg" %} Indstillinger
-      </a>
-    </nav>
-
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS.get(user.role, user.role) }}</div>
-      </div>
-    </div>
-
-    <form method="post" action="/logout" style="padding: 0 .75rem .75rem;">
-      <button type="submit" style="width:100%;padding:.5rem;border:1px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:inherit;font-size:.8125rem;color:var(--text-muted);cursor:pointer;">
-        Log ud
-      </button>
-    </form>
-  </aside>
+  {% with active_url='/admin/users' %}{% include "_sidebar.html" %}{% endwith %}
 
   <!-- ── MAIN ── -->
   <div class="main">

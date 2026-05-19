@@ -16,7 +16,8 @@ from moduler.modul_perf.queries import (
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 
 @router.get("/filters")
 async def perf_filters(user=Depends(get_current_user)):
