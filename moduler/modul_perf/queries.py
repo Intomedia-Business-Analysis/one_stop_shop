@@ -567,12 +567,75 @@ def db_manager_data(today: date, team: str | None = None,
         if r["m"]:
             forecast_per_month[int(r["m"])] += float(r["fc"] or 0)
 
-    maaned_chart = [{"maaned":   MONTH_NAMES_DA[m - 1][:3],
-                     "won":      round(maaned_raw.get(m, (0,0))[0], 2),
-                     "cancel":   round(maaned_raw.get(m, (0,0))[1], 2),
-                     "netto":    round(maaned_raw.get(m, (0,0))[0] - maaned_raw.get(m, (0,0))[1], 2),
-                     "budget":   round(budget_per_month.get(m, 0), 2),
-                     "forecast": round(forecast_per_month.get(m, 0), 2)}
+    # ── Programmatic sales (kun naar Team Banner er i valgte teams) ───────
+    # ProgrammaticSales er site-tagget (FINANS DK m.fl.); ingen pipeline,
+    # ingen opsigelser. Indgaar i totalen for Banner-relaterede views.
+    programmatic_dag           = 0.0
+    programmatic_dag_won       = 0.0
+    programmatic_dag_act       = 0.0
+    programmatic_maaned        = 0.0
+    programmatic_budget_maaned = 0.0  # delmaengde af team_budget — Salestype='Programmatic'
+    programmatic_per_month: dict[int, float] = {m: 0.0 for m in range(1, 13)}
+    _progr_teams = (
+        {team} if team else
+        set(teams_list) if multi_team else
+        {"Team Banner", "Team Marketwire"}  # alle teams -> medregn Banner
+    )
+    _include_progr = "Team Banner" in _progr_teams and not _sel_pipes
+    if _include_progr:
+        # Dagens programmatic — bemaerk at data lander dagen efter kl 16
+        cur.execute("""
+            SELECT ISNULL(SUM([Amount]),0) AS total
+            FROM [dbo].[ProgrammaticSales]
+            WHERE [Date] >= %s AND [Date] < %s
+        """, (today.isoformat(), (today + timedelta(days=1)).isoformat()))
+        programmatic_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
+        # Begge varianter af "I dag" bruger samme Date-kolonne for programmatic
+        programmatic_dag_won = programmatic_dag
+        programmatic_dag_act = programmatic_dag
+
+        # Maaneds-total for valgt periode (samme periode som salg_maaned)
+        cur.execute(f"""
+            SELECT ISNULL(SUM([Amount]),0) AS total
+            FROM [dbo].[ProgrammaticSales]
+            WHERE {_period('[Date]')[0]}
+        """, tuple(_period('[Date]')[1]))
+        programmatic_maaned = float((cur.fetchone() or {}).get("total", 0) or 0)
+
+        # Pr. maaned for hele aaret (til chart)
+        cur.execute("""
+            SELECT MONTH([Date]) AS m, ISNULL(SUM([Amount]),0) AS total
+            FROM [dbo].[ProgrammaticSales]
+            WHERE YEAR([Date]) = %s
+            GROUP BY MONTH([Date])
+        """, (ref_year,))
+        for r in cur.fetchall():
+            if r["m"]:
+                programmatic_per_month[int(r["m"])] = float(r["total"] or 0)
+
+        # Programmatic-specifik budget (delmaengde af Banner-budgettet)
+        cur.execute(f"""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS total
+            FROM [dbo].[BudgetsIntoMedia]
+            WHERE [DealType]='Banner' AND [Salestype]='Programmatic' AND {_period('[BudgetDate]')[0]}
+        """, tuple(_period('[BudgetDate]')[1]))
+        programmatic_budget_maaned = float((cur.fetchone() or {}).get("total", 0) or 0)
+
+    # Tilfoej programmatic til top-line totals
+    salg_dag      += programmatic_dag
+    salg_dag_by_col["won_time"]                += programmatic_dag_won
+    salg_dag_by_col["service_activation_date"] += programmatic_dag_act
+    salg_maaned   += programmatic_maaned
+    netto_maaned  = round(salg_maaned - cancel_maaned, 2)  # genberegnet
+
+    maaned_chart = [{"maaned":      MONTH_NAMES_DA[m - 1][:3],
+                     "won":         round(maaned_raw.get(m, (0,0))[0] + programmatic_per_month.get(m, 0), 2),
+                     "won_pipe":    round(maaned_raw.get(m, (0,0))[0], 2),
+                     "programmatic":round(programmatic_per_month.get(m, 0), 2),
+                     "cancel":      round(maaned_raw.get(m, (0,0))[1], 2),
+                     "netto":       round(maaned_raw.get(m, (0,0))[0] + programmatic_per_month.get(m, 0) - maaned_raw.get(m, (0,0))[1], 2),
+                     "budget":      round(budget_per_month.get(m, 0), 2),
+                     "forecast":    round(forecast_per_month.get(m, 0), 2)}
                     for m in range(1, 13)]
     sparkline = maaned_chart  # bagudkompatibilitet
 
@@ -891,6 +954,9 @@ def db_manager_data(today: date, team: str | None = None,
         "salg_maaned":        round(salg_maaned, 2),
         "cancel_maaned":      round(cancel_maaned, 2),
         "netto_maaned":       round(netto_maaned, 2),
+        "programmatic_dag":   round(programmatic_dag, 2),
+        "programmatic_maaned": round(programmatic_maaned, 2),
+        "programmatic_budget_maaned": round(programmatic_budget_maaned, 2),
         "team_budget":        team_budget,
         "netto_vs_budget_pct": netto_vs_budget_pct,
         "maaned_chart":       maaned_chart,
