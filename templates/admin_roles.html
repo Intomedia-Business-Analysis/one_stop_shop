@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rollestyring — Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <style>
+    .page-header{margin-bottom:1.5rem}
+    .page-header h1{margin:0 0 .25rem 0}
+    .page-header p{margin:0;color:var(--text-muted)}
+    .roles-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:1.5rem}
+    .roles-card-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .roles-card-header h2{margin:0;font-size:.875rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);font-weight:700}
+    .roles-table{width:100%;border-collapse:collapse;font-size:.875rem}
+    .roles-table th{background:var(--bg);color:var(--text-muted);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:.625rem 1rem;text-align:left;border-bottom:1px solid var(--border)}
+    .roles-table td{padding:.875rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle}
+    .roles-table tr:last-child td{border-bottom:none}
+    .role-badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.6875rem;font-weight:700;background:var(--green-light,#E6F4ED);color:var(--green)}
+    .role-badge.sys{background:#EEF1F4;color:var(--text-muted)}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:.4rem .8rem;font-size:.75rem;font-weight:600;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);text-decoration:none;cursor:pointer;font-family:inherit}
+    .btn:hover{border-color:var(--green);color:var(--green)}
+    .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+    .btn.primary:hover{background:var(--green-mid,#1a7a4a);color:#fff}
+    .btn.danger{color:#B32E45;border-color:#FDE8EC}
+    .btn.danger:hover{background:#FDE8EC;border-color:#B32E45}
+    .btn[disabled]{opacity:.4;cursor:not-allowed;pointer-events:none}
+    .new-role-form{padding:1.25rem;background:var(--bg);border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 100px auto;gap:.75rem;align-items:end}
+    .form-field label{display:block;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px}
+    .form-field input{width:100%;padding:.5rem .75rem;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;font-size:.875rem;background:var(--surface)}
+    .form-field input:focus{outline:none;border-color:var(--green)}
+    .notif{padding:.75rem 1rem;border-radius:var(--r-sm);margin-bottom:1rem;font-size:.875rem}
+    .notif-success{background:#E6F4ED;color:var(--green);border:1px solid var(--green)}
+    .notif-error{background:#FDE8EC;color:#B32E45;border:1px solid #B32E45}
+  </style>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/admin/roles' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+    <div style="padding:2rem;max-width:1100px;">
+
+      <div class="page-header">
+        <h1>Rollestyring</h1>
+        <p>Definér roller og deres adgang til ressourcer kollektivt. Per-bruger overrides bevares som finkornet finjustering ovenpå.</p>
+      </div>
+
+      {% if success == 'created' %}
+      <div class="notif notif-success">Rolle oprettet</div>
+      {% elif success == 'deleted' %}
+      <div class="notif notif-success">Rolle slettet</div>
+      {% elif error %}
+      <div class="notif notif-error">{{ error }}</div>
+      {% endif %}
+
+      <div class="roles-card">
+        <div class="roles-card-header">
+          <h2>Roller</h2>
+          <span style="font-size:.75rem;color:var(--text-muted)">{{ roles | length }} roller</span>
+        </div>
+
+        <table class="roles-table">
+          <thead>
+            <tr>
+              <th>Navn (intern)</th>
+              <th>Label (vises)</th>
+              <th style="width:80px">Rang</th>
+              <th style="width:100px">Type</th>
+              <th style="width:90px">Brugere</th>
+              <th style="width:240px;text-align:right">Handlinger</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in roles %}
+            <tr>
+              <td><code style="font-size:.75rem;color:var(--text-muted)">{{ r.name }}</code></td>
+              <td><strong>{{ r.label }}</strong></td>
+              <td>{{ r.rank }}</td>
+              <td>
+                {% if r.is_system %}
+                <span class="role-badge sys">System</span>
+                {% else %}
+                <span class="role-badge">Custom</span>
+                {% endif %}
+              </td>
+              <td>{{ user_counts.get(r.name, 0) }}</td>
+              <td style="text-align:right;white-space:nowrap">
+                <a href="/admin/roles/{{ r.name }}/edit" class="btn">Rediger</a>
+                {% if not r.is_system %}
+                <form method="post" action="/admin/roles/{{ r.name }}/delete" style="display:inline"
+                      onsubmit="return confirm('Slet rollen {{ r.label }}? Brugere med denne rolle skal flyttes først.')">
+                  <button type="submit" class="btn danger">Slet</button>
+                </form>
+                {% else %}
+                <button class="btn danger" disabled title="System-roller kan ikke slettes">Slet</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <form method="post" action="/admin/roles/create" class="new-role-form">
+          <div class="form-field">
+            <label>Navn (intern)</label>
+            <input type="text" name="name" placeholder="fx team_lead" required pattern="[a-z0-9_]+">
+          </div>
+          <div class="form-field">
+            <label>Label</label>
+            <input type="text" name="label" placeholder="fx Team Lead" required>
+          </div>
+          <div class="form-field">
+            <label>Rang</label>
+            <input type="number" name="rank" min="1" max="99" value="3" required>
+          </div>
+          <div>
+            <button type="submit" class="btn primary">+ Opret rolle</button>
+          </div>
+        </form>
+      </div>
+
+      <p style="font-size:.75rem;color:var(--text-muted);margin-top:1rem">
+        <strong>Rang</strong> styrer hierarki — højere tal = højere rolle. Systemroller (Sælger 1, Sales Manager 2, … Admin 6) er ankerpunkter; tildel egne roller en rang derimellem efter behov.
+      </p>
+
+    </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

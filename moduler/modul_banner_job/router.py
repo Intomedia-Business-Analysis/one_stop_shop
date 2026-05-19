@@ -12,7 +12,8 @@ from moduler.modul_banner_job.queries import (
 
 router = APIRouter(prefix="/tools/banner-job", tags=["Banner & Job"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 
 VALID_PIPELINES = {"banner", "job"}
 

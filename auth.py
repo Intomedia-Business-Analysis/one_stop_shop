@@ -9,23 +9,23 @@ load_dotenv()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-ROLE_RANK = {
-    "salesperson":      1,
-    "sales_manager":    2,
-    "sales_operations": 3,
-    "marketing":        4,
-    "management":       5,
-    "admin":            6,
-}
+# Fallback-værdier — bruges hvis DB ikke kan kontaktes. De er også seed-værdier
+# der bliver indlæst i HubRoles ved første init_db. Alle 6 markeres is_system=1
+# så de ikke kan slettes via admin-UI.
+_DEFAULT_ROLES = [
+    {"name": "salesperson",      "label": "Sælger",            "rank": 1, "is_system": True},
+    {"name": "sales_manager",    "label": "Sales Manager",     "rank": 2, "is_system": True},
+    {"name": "sales_operations", "label": "Sales Operations",  "rank": 3, "is_system": True},
+    {"name": "marketing",        "label": "Marketing",         "rank": 4, "is_system": True},
+    {"name": "management",       "label": "Management",        "rank": 5, "is_system": True},
+    {"name": "admin",            "label": "Admin",             "rank": 6, "is_system": True},
+]
 
-ROLE_LABELS = {
-    "salesperson":      "Sælger",
-    "sales_manager":    "Sales Manager",
-    "sales_operations": "Sales Operations",
-    "marketing":        "Marketing",
-    "management":       "Management",
-    "admin":            "Admin",
-}
+# Disse dicts opdateres af reload_roles_cache() ved opstart og når admin ændrer
+# roller. Default-værdier sat så modulet er funktionelt selv før DB svarer.
+ROLE_RANK   = {r["name"]: r["rank"]  for r in _DEFAULT_ROLES}
+ROLE_LABELS = {r["name"]: r["label"] for r in _DEFAULT_ROLES}
+ROLES_META  = {r["name"]: dict(r)    for r in _DEFAULT_ROLES}
 
 
 class RequiresLoginException(Exception):
@@ -62,6 +62,25 @@ def init_db():
                brand         NVARCHAR(50)  NULL,
                is_active     BIT           NOT NULL DEFAULT 1,
                created_at    DATETIME      DEFAULT GETDATE()
+           )""",
+        # Roller (dynamisk — admin kan oprette egne)
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubRoles' AND xtype='U')
+           CREATE TABLE HubRoles (
+               name        NVARCHAR(50)  NOT NULL PRIMARY KEY,
+               label       NVARCHAR(100) NOT NULL,
+               rank        INT           NOT NULL,
+               is_system   BIT           NOT NULL DEFAULT 0,
+               created_at  DATETIME      DEFAULT GETDATE()
+           )""",
+        # Per-rolle, per-ressource adgangsstyring (kollektiv override)
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='RoleResourceAccess' AND xtype='U')
+           CREATE TABLE RoleResourceAccess (
+               id          INT IDENTITY(1,1) PRIMARY KEY,
+               role        NVARCHAR(50)  NOT NULL,
+               resource_id NVARCHAR(100) NOT NULL,
+               access      NVARCHAR(10)  NOT NULL,
+               created_at  DATETIME      DEFAULT GETDATE(),
+               CONSTRAINT UQ_RoleResourceAccess UNIQUE (role, resource_id)
            )""",
         # Per-bruger, per-ressource adgangsstyring
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='UserResourceAccess' AND xtype='U')
@@ -130,9 +149,169 @@ def init_db():
         for sql in stmts:
             cur.execute(sql)
         conn.commit()
+        # Seed system-roller hvis HubRoles er tom (idempotent)
+        cur.execute("SELECT COUNT(*) FROM HubRoles")
+        if (cur.fetchone() or [0])[0] == 0:
+            for r in _DEFAULT_ROLES:
+                cur.execute(
+                    "INSERT INTO HubRoles (name, label, rank, is_system) VALUES (%s, %s, %s, %s)",
+                    (r["name"], r["label"], r["rank"], 1 if r["is_system"] else 0),
+                )
+            conn.commit()
         conn.close()
     except Exception as e:
         print(f"[init_db] Advarsel — kunne ikke initialisere tabeller: {e}")
+
+    # Indlæs rolle-tabel i memory så ROLE_RANK / ROLE_LABELS afspejler DB
+    reload_roles_cache()
+
+
+# ---------------------------------------------------------------------------
+# Role management
+# ---------------------------------------------------------------------------
+
+def reload_roles_cache():
+    """Genopfrisk in-memory ROLE_RANK / ROLE_LABELS / ROLES_META fra DB.
+    Kaldes ved opstart og efter admin opretter/ændrer/sletter en rolle.
+    """
+    global ROLE_RANK, ROLE_LABELS, ROLES_META
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute("SELECT name, label, rank, is_system FROM HubRoles ORDER BY rank")
+        rows = cur.fetchall() or []
+        conn.close()
+        if rows:
+            ROLE_RANK.clear()
+            ROLE_LABELS.clear()
+            ROLES_META.clear()
+            for r in rows:
+                ROLE_RANK[r["name"]]   = int(r["rank"])
+                ROLE_LABELS[r["name"]] = r["label"]
+                ROLES_META[r["name"]]  = {
+                    "name": r["name"],
+                    "label": r["label"],
+                    "rank": int(r["rank"]),
+                    "is_system": bool(r["is_system"]),
+                }
+    except Exception as e:
+        # DB nede — behold default-værdier
+        print(f"[reload_roles_cache] Advarsel: {e}")
+
+
+def list_roles() -> list:
+    """Returnér roller sorteret efter rang (lavest først)."""
+    return sorted(ROLES_META.values(), key=lambda r: r["rank"])
+
+
+def get_role_resource_access(role: str) -> dict:
+    """Returnér {resource_id: access} for en rolles eksplicitte overrides."""
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute(
+            "SELECT resource_id, access FROM RoleResourceAccess WHERE role = %s",
+            (role,),
+        )
+        rows = cur.fetchall() or []
+        conn.close()
+        return {r["resource_id"]: r["access"] for r in rows}
+    except Exception:
+        return {}
+
+
+def set_role_resource_access(role: str, resource_id: str, access: str | None) -> None:
+    """Opret/opdater/slet en rolle-ressource-override.
+    access=None (eller 'default') sletter rækken så standard min_role gælder.
+    """
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        if not access or access == "default":
+            cur.execute(
+                "DELETE FROM RoleResourceAccess WHERE role = %s AND resource_id = %s",
+                (role, resource_id),
+            )
+        else:
+            # UPSERT — pymssql/SQL Server: brug MERGE eller IF EXISTS
+            cur.execute(
+                "DELETE FROM RoleResourceAccess WHERE role = %s AND resource_id = %s",
+                (role, resource_id),
+            )
+            cur.execute(
+                "INSERT INTO RoleResourceAccess (role, resource_id, access) VALUES (%s, %s, %s)",
+                (role, resource_id, access),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[set_role_resource_access] FEJL: {e}")
+
+
+def create_role(name: str, label: str, rank: int) -> tuple[bool, str]:
+    """Returner (success, error_message)."""
+    name = (name or "").strip().lower().replace(" ", "_")
+    label = (label or "").strip()
+    if not name or not label:
+        return False, "Navn og label er påkrævet"
+    if name in ROLES_META:
+        return False, f"Rolle '{name}' findes allerede"
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO HubRoles (name, label, rank, is_system) VALUES (%s, %s, %s, 0)",
+            (name, label, int(rank)),
+        )
+        conn.commit()
+        conn.close()
+        reload_roles_cache()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def update_role(name: str, label: str, rank: int) -> tuple[bool, str]:
+    if name not in ROLES_META:
+        return False, "Rolle findes ikke"
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        cur.execute(
+            "UPDATE HubRoles SET label = %s, rank = %s WHERE name = %s",
+            (label.strip(), int(rank), name),
+        )
+        conn.commit()
+        conn.close()
+        reload_roles_cache()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_role(name: str) -> tuple[bool, str]:
+    meta = ROLES_META.get(name)
+    if not meta:
+        return False, "Rolle findes ikke"
+    if meta["is_system"]:
+        return False, "System-roller kan ikke slettes"
+    # Tjek om nogen bruger denne rolle
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute("SELECT COUNT(*) AS n FROM HubUsers WHERE role = %s", (name,))
+        n = int((cur.fetchone() or {}).get("n", 0) or 0)
+        if n > 0:
+            conn.close()
+            return False, f"{n} brugere har stadig denne rolle — flyt dem først"
+        cur.execute("DELETE FROM RoleResourceAccess WHERE role = %s", (name,))
+        cur.execute("DELETE FROM HubRoles WHERE name = %s", (name,))
+        conn.commit()
+        conn.close()
+        reload_roles_cache()
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 # ---------------------------------------------------------------------------
@@ -196,17 +375,23 @@ def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=N
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
 
     Rækkefølge:
-    1. Eksplicit DB-override pr. bruger → brugt direkte (kan udvide ELLER begrænse).
-    2. Ingen override: tjek rolle + brand → 'none' hvis ikke kvalificeret, ellers 'write'.
-    3. Hvis required_team er sat: tjek holdmedlemskab (gælder salesperson + sales_manager).
-    4. Hvis exclude_roles er sat: bloker specifikke roller (admin undtaget).
+    1. Eksplicit per-bruger override → brugt direkte (finkornet finjustering).
+    2. Eksplicit per-rolle override → brugt direkte (kollektiv styring for alle med samme rolle).
+    3. Hardcoded min_role + brand → 'none' hvis ikke kvalificeret, ellers 'write'.
+    4. Hvis required_team er sat: tjek holdmedlemskab (gælder salesperson + sales_manager).
+    5. Hvis exclude_roles er sat: bloker specifikke roller (admin undtaget).
     """
-    # Eksplicit override?
+    # 1. Eksplicit per-bruger override?
     overrides = user.get("_resource_access", {})
     if resource_id in overrides:
         return overrides[resource_id]
 
-    # Rolletjek
+    # 2. Eksplicit per-rolle override?
+    role_overrides = user.get("_role_access", {})
+    if resource_id in role_overrides:
+        return role_overrides[resource_id]
+
+    # 3. Rolletjek (rang)
     user_rank = ROLE_RANK.get(user["role"], 0)
     req_rank  = ROLE_RANK.get(min_role, 99)
     if user_rank < req_rank:
@@ -246,6 +431,7 @@ def authenticate_user(username: str, password: str):
         if not user or not verify_password(password, user["password_hash"]):
             return None
         user["_resource_access"] = get_user_resource_access(user["id"])
+        user["_role_access"]     = get_role_resource_access(user["role"])
         user["_teams"] = get_user_teams(user["id"])
         return user
     except Exception as e:
@@ -265,6 +451,7 @@ def get_user_by_id(user_id: int):
         conn.close()
         if user:
             user["_resource_access"] = get_user_resource_access(user_id)
+            user["_role_access"]     = get_role_resource_access(user["role"])
             user["_teams"] = get_user_teams(user_id)
         return user
     except Exception:
@@ -280,6 +467,8 @@ _DEV_USER = {
     "brand": None,
     "is_active": 1,
     "_resource_access": {},
+    "_role_access": {},
+    "_teams": [],
 }
 
 

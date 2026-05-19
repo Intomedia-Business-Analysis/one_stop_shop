@@ -49,35 +49,7 @@
 </head>
 <body>
 <div class="shell">
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Subscription Sales</div>
-      <a href="/tools/performance/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Subscription Dashboard
-      </a>
-      <a href="/tools/performance/dashboards" class="sbi active">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-        KPI Dashboards
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
   <div class="main">
     <div class="topbar">
@@ -89,7 +61,7 @@
         <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
       </div>
       <div class="tb-right">
-        <a href="/category/subscription-sales" class="tb-btn">← Subscription Sales</a>
+        <a href="/category/kpi-dashboards" class="tb-btn">← Subscription Sales</a>
       </div>
     </div>
 
@@ -97,7 +69,7 @@
       <div class="tool-wrap">
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
-          <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
+          <a href="/category/kpi-dashboards" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
           <span>KPI Dashboards</span>
         </div>
 

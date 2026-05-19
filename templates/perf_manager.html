@@ -150,51 +150,7 @@
 <div class="shell">
 
   <!-- SIDEBAR -->
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Sales Operations</div>
-      <a href="/tools/budget/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        Budget
-      </a>
-      <a href="/tools/forecast/" class="sbi">
-        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-        Forecast
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Subscription Sales</div>
-      <a href="/tools/performance/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Subscription Dashboard
-      </a>
-      <a href="/tools/performance/manager" class="sbi active">
-        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Manager Dashboard
-      </a>
-      <a href="/tools/performance/overview" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-        Overblik
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
   <!-- MAIN -->
   <div class="main">
@@ -207,7 +163,7 @@
         <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
       </div>
       <div class="tb-right">
-        <a href="/category/subscription-sales" class="tb-btn">← Subscription Sales</a>
+        <a href="/category/kpi-dashboards" class="tb-btn">← Subscription Sales</a>
       </div>
     </div>
 
@@ -215,7 +171,7 @@
       <div class="tool-wrap">
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
-          <a href="/category/subscription-sales" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
+          <a href="/category/kpi-dashboards" class="bc-link">Subscription Sales</a><span class="bc-sep">/</span>
           <span>Manager Dashboard</span>
         </div>
         <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
@@ -317,8 +273,8 @@
 
           <!-- Dato-kolonne -->
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
-            <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date" selected>Aktiverings dato</option>
+            <option value="won_time">Won time</option>
+            <option value="service_activation_date" selected>Service activation date</option>
           </select>
         </div>
 
@@ -340,17 +296,25 @@
                 <span>Team Total</span>
                 <div style="display:flex;align-items:center;gap:10px">
                   <div class="pipeline-toggle">
-                    <button class="pipeline-btn active" id="btn-salg" onclick="setTeamMode('salg')">Salg</button>
+                    <button class="pipeline-btn active" id="btn-salg" onclick="setTeamMode('salg')">Won</button>
                     <button class="pipeline-btn" id="btn-netto" onclick="setTeamMode('netto')">Tilvækst</button>
                   </div>
                   <span id="last-updated" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
                 </div>
               </div>
-              <div class="big-number green" id="salg-maaned">—</div>
-              <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
-              <div style="margin-top:8px;display:flex;align-items:baseline;gap:6px">
-                <span style="font-size:12px;color:var(--ink-4);font-weight:500">I dag</span>
-                <span id="salg-dag" style="font-size:18px;font-weight:700;color:var(--ink)">—</span>
+              <div id="team-total-stats" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+                <div>
+                  <div class="big-number green" id="salg-maaned">—</div>
+                  <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
+                  <div style="margin-top:8px;display:flex;align-items:baseline;gap:6px">
+                    <span id="salg-dag-label" style="font-size:12px;color:var(--ink-4);font-weight:500">Won i dag</span>
+                    <span id="salg-dag" style="font-size:18px;font-weight:700;color:var(--ink)">—</span>
+                  </div>
+                </div>
+                <div id="team-budget-top" style="display:none">
+                  <div class="big-number" id="team-budget-amount" style="color:var(--ink)">—</div>
+                  <div class="dash-card-sub" id="team-budget-label">Budget</div>
+                </div>
               </div>
               <!-- Budget indeksering -->
               <div id="team-budget-wrap" style="margin-top:12px;display:none">
@@ -396,7 +360,7 @@
                     <th>Sælger</th>
                     <th class="num sortable" onclick="sortLb('won_amount')">Salg (måned)<i class="sort-arrow" id="arr-won_amount">↕</i></th>
                     <th class="num sortable" onclick="sortLb('won_count')">Deals<i class="sort-arrow" id="arr-won_count">↕</i></th>
-                    <th class="num sortable" onclick="sortLb('cancel_amount')">Afmeldinger<i class="sort-arrow" id="arr-cancel_amount">↕</i></th>
+                    <th class="num sortable" onclick="sortLb('cancel_amount')">Opsigelser<i class="sort-arrow" id="arr-cancel_amount">↕</i></th>
                     <th class="num sortable" style="min-width:180px" onclick="sortLb('vs_budget_pct')">Vs. budget<i class="sort-arrow" id="arr-vs_budget_pct">↕</i></th>
                   </tr>
                 </thead>
@@ -745,12 +709,27 @@ function renderTeamTotal(d) {
   const visKey  = isNetto ? 'netto' : 'won';
 
   document.getElementById('salg-maaned').textContent = fmtKr(visVal);
-  document.getElementById('salg-dag').textContent    = fmtKr(d.salg_dag);
+  // "I dag"-tal følger mode: Won → won_time, Tilvækst → service_activation_date
+  const dagVal = isNetto
+    ? (d.salg_dag_act ?? d.salg_dag)
+    : (d.salg_dag_won ?? d.salg_dag);
+  document.getElementById('salg-dag').textContent       = fmtKr(dagVal);
+  document.getElementById('salg-dag-label').textContent = isNetto ? 'Aktiveret i dag' : 'Won i dag';
   document.getElementById('salg-maaned-label').textContent =
     (isNetto ? 'Tilvækst ' : 'Salg ') + d.month_label;
   if (isNetto && d.cancel_maaned > 0) {
     document.getElementById('salg-maaned-label').textContent +=
-      ` (−${fmtKr(d.cancel_maaned)} afm.)`;
+      ` (−${fmtKr(d.cancel_maaned)} ops.)`;
+  }
+
+  // Budget peer-tal øverst (vises altid når der findes budget for valgte teams)
+  const budgetTop = document.getElementById('team-budget-top');
+  if (d.team_budget > 0) {
+    document.getElementById('team-budget-amount').textContent = fmtKr(d.team_budget);
+    document.getElementById('team-budget-label').textContent  = 'Budget ' + d.month_label;
+    budgetTop.style.display = '';
+  } else {
+    budgetTop.style.display = 'none';
   }
 
   // Budget indeksering (kun i tilvækst-mode og hvis budget findes)
@@ -784,15 +763,7 @@ function renderTeamTotal(d) {
 
   document.getElementById('maaned-year-label').textContent = refYear;
 
-  const max = Math.max(...d.maaned_chart.map(m => Math.abs(m[visKey] || 0)), 1);
-
-  // Sparkline (punkt-diagram) — gap beregnes dynamisk fra containerens faktiske bredde
-  const spPadX = 24, spPadY = 10, spH = 72;
-  const containerWidth = document.getElementById('month-bars').offsetWidth || 520;
-  const spGap = Math.floor((containerWidth - spPadX * 2) / 11);
-  const spW = spPadX * 2 + spGap * 11;
-
-  // Kompakt beløbsformat til sparkline (fx "973k", "1,1m", "0")
+  // Kompakt beløbsformat (fx "973k", "1,1m", "0")
   const fmtSpk = v => {
     const abs  = Math.abs(v);
     const sign = v < 0 ? '−' : '';
@@ -801,47 +772,88 @@ function renderTeamTotal(d) {
     return abs > 0 ? sign + Math.round(abs) : '0';
   };
 
-  const orange = '#5B9BD5';
+  // Grupperet søjlediagram: 3 søjler pr. måned (faktisk / budget / forecast).
+  // For fremtidige måneder vises kun budget + forecast (faktisk droppet).
+  const padX = 28, padY = 14, chartH = 96;
+  const containerWidth = document.getElementById('month-bars').offsetWidth || 520;
+  const groupW   = (containerWidth - padX * 2) / 12;  // bredde pr. måned
+  const barW     = Math.max(4, Math.floor(groupW / 4));  // bredde pr. søjle
+  const groupGap = groupW - barW * 3;                  // mellem grupperne
+  const chartW   = padX * 2 + groupW * 12;
 
-  const spPoints = d.maaned_chart.map((m, i) => {
+  // Find max på tværs af alle 3 serier — så alle bars deler samme y-skala
+  const allVals = d.maaned_chart.flatMap(m => [
+    Math.abs(m[visKey] || 0),
+    Math.abs(m.budget   || 0),
+    Math.abs(m.forecast || 0),
+  ]);
+  const max = Math.max(...allVals, 1);
+
+  const COL_ACTUAL_POS = 'var(--green)';
+  const COL_ACTUAL_NEG = '#B32E45';
+  const COL_BUDGET     = '#9CA3AF';
+  const COL_FORECAST   = '#5B9BD5';
+  const HILITE         = '#0F5E3C';  // mørk grøn til highlight af valgt måned
+
+  const bars = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
     const isCur    = refMonthSet.has(month);
     const isFuture = refYear >= curYear && month > curMonth;
-    const x = spPadX + i * spGap;
-    const val  = m[visKey] || 0;
-    const y = isFuture ? null : spPadY + (1 - Math.abs(val) / max) * spH;
-    return { x, y, m, val, isFuture, isCur };
-  });
 
-  const lineCoords = spPoints
-    .filter(p => !p.isFuture)
-    .map(p => `${p.x},${p.y.toFixed(1)}`).join(' ');
+    const gx = padX + i * groupW + groupGap / 2;
+    const yBase = padY + chartH;
 
-  const dots = spPoints.map(p => {
-    if (p.isFuture) return '';
-    const isNeg   = p.val < 0;
-    const col     = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--green)';
-    const lblCol  = p.isCur ? orange : isNeg ? '#B32E45' : 'var(--ink-4)';
-    const r       = p.isCur ? 6 : 4;
-    const fw      = p.isCur ? '700' : '400';
-    const yLbl    = spPadY + spH + 17;
-    const yAmt    = spPadY + spH + 31;
-    const lbl = `<text x="${p.x}" y="${yLbl}" font-size="13" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${p.m.maaned}</text>
-      <text x="${p.x}" y="${yAmt}" font-size="12" fill="${lblCol}" font-weight="${fw}" text-anchor="middle">${fmtSpk(p.val)}</text>`;
-    return `<circle cx="${p.x}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}"/>${lbl}`;
+    const actualVal   = m[visKey]    || 0;
+    const budgetVal   = m.budget     || 0;
+    const forecastVal = m.forecast   || 0;
+
+    const barFor = (val, x, color, opacity = 1) => {
+      if (!val) return '';
+      const h = Math.max(1, Math.abs(val) / max * chartH);
+      const y = yBase - h;
+      return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${color}" opacity="${opacity}" rx="1"/>`;
+    };
+
+    // Faktisk søjle skiftes til rød hvis negativ
+    const actualColor = (actualVal < 0) ? COL_ACTUAL_NEG : COL_ACTUAL_POS;
+    const actualBar   = isFuture ? '' : barFor(actualVal, gx,             actualColor, isCur ? 1 : 0.85);
+    const budgetBar   = barFor(budgetVal,   gx + barW,      COL_BUDGET,   0.7);
+    const forecastBar = barFor(forecastVal, gx + barW * 2,  COL_FORECAST, 0.8);
+
+    // Etiket: månedsnavn + faktisk beløb (eller "—" hvis fremtid)
+    const labelCol = isCur ? HILITE : 'var(--ink-4)';
+    const fw       = isCur ? '700' : '400';
+    const yLbl     = yBase + 16;
+    const yAmt     = yBase + 30;
+    const amtTxt   = isFuture ? '—' : fmtSpk(actualVal);
+    const cx       = gx + barW * 1.5;  // center af de 3 søjler
+    const labels   = `
+      <text x="${cx}" y="${yLbl}" font-size="13" fill="${labelCol}" font-weight="${fw}" text-anchor="middle"${isFuture ? ' opacity="0.4"' : ''}>${m.maaned}</text>
+      <text x="${cx}" y="${yAmt}" font-size="12" fill="${labelCol}" font-weight="${fw}" text-anchor="middle"${isFuture ? ' opacity="0.4"' : ''}>${amtTxt}</text>`;
+
+    return actualBar + budgetBar + forecastBar + labels;
   }).join('');
 
-  // Labels for future months (greyed)
-  const futureLabels = spPoints.filter(p => p.isFuture).map(p =>
-    `<text x="${p.x}" y="${spPadY + spH + 16}" font-size="13" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">${p.m.maaned}</text>
-     <text x="${p.x}" y="${spPadY + spH + 31}" font-size="12" fill="var(--ink-4)" opacity="0.35" text-anchor="middle">—</text>`
-  ).join('');
+  // 0-linje
+  const zeroY = padY + chartH;
+  const baseline = `<line x1="${padX}" x2="${chartW - padX}" y1="${zeroY}" y2="${zeroY}" stroke="var(--border)" stroke-width="1"/>`;
 
+  // Legende: lille colorbox + tekst
+  const legendY = padY + chartH + 48;
+  const legendItem = (x, color, label) =>
+    `<rect x="${x}" y="${legendY - 8}" width="10" height="10" fill="${color}" opacity="0.85" rx="1"/>
+     <text x="${x + 14}" y="${legendY}" font-size="11" fill="var(--ink-3)">${label}</text>`;
+  const lActual = isNetto ? 'Tilvækst' : 'Won';
+  const legend = legendItem(padX, COL_ACTUAL_POS, lActual)
+               + legendItem(padX + 90, COL_BUDGET, 'Budget')
+               + legendItem(padX + 170, COL_FORECAST, 'Forecast');
+
+  const svgH = padY + chartH + 60;
   document.getElementById('month-bars').innerHTML =
-    `<svg viewBox="0 0 ${spW} ${spPadY + spH + 46}" style="width:100%;overflow:visible">
-       <polyline points="${lineCoords}" fill="none" stroke="var(--green)" stroke-width="2"
-         stroke-linejoin="round" stroke-linecap="round"/>
-       ${dots}${futureLabels}
+    `<svg viewBox="0 0 ${chartW} ${svgH}" style="width:100%;overflow:visible">
+       ${baseline}
+       ${bars}
+       ${legend}
      </svg>`;
 }
 
@@ -891,7 +903,7 @@ function renderHero(d) {
     <div class="hero-name">${escHtml(hero.owner_name)}</div>
     <div class="hero-amount">${fmtKr(hero.netto_amount)}</div>
     <div class="hero-sub">${d.month_label}</div>
-    ${hero.cancel_amount > 0 ? `<div class="hero-sub" style="color:#B32E45">−${fmtKr(hero.cancel_amount)} afmeldinger</div>` : ''}
+    ${hero.cancel_amount > 0 ? `<div class="hero-sub" style="color:#B32E45">−${fmtKr(hero.cancel_amount)} opsigelser</div>` : ''}
     ${hasBudget ? `<div style="margin-top:8px;font-size:11px;font-weight:700;color:${pctColor};text-align:center">${pctTxt}</div>` : ''}
     ${hero.won_count ? `<div class="hero-sub">${hero.won_count} deals vundet</div>` : ''}
   `;

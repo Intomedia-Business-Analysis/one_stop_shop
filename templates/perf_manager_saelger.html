@@ -31,7 +31,7 @@
 .v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
-.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 
 .back-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink-3);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);transition:border-color .13s}
@@ -55,31 +55,7 @@
 <div class="shell">
 
   <!-- SIDEBAR -->
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Subscription Sales</div>
-      <a href="/tools/performance/manager" class="sbi active">
-        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Manager Dashboard
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
   <!-- MAIN -->
   <div class="main">
@@ -145,8 +121,8 @@
               </select>
               <div class="filter-sep"></div>
               <select class="filter-select" id="filter-date-col" onchange="loadDeals()">
-                <option value="won_time">Vundet dato</option>
-                <option value="service_activation_date">Aktiverings dato</option>
+                <option value="won_time">Won time</option>
+                <option value="service_activation_date">Service activation date</option>
               </select>
               <div class="filter-sep"></div>
               <select class="filter-select" id="filter-site" onchange="loadDeals()">
@@ -169,6 +145,29 @@
                 <tr><td colspan="5" class="empty">Henter…</td></tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Administrative deals -->
+          <div id="admin-deals-wrap" class="hidden">
+            <h2 class="section-title">Administrative deals</h2>
+            <div class="dash-card">
+              <p style="font-size:11px;color:var(--ink-4);margin:-4px 0 14px">
+                Disse deals indgår <strong>ikke</strong> i KPI-tallene ovenfor.
+              </p>
+              <table class="v-table" id="admin-deals-table">
+                <thead>
+                  <tr>
+                    <th>Medie/Site</th>
+                    <th>Virksomhed</th>
+                    <th>Titel</th>
+                    <th class="num">Beløb</th>
+                    <th>Dato</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-deals-tbody"></tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Åben Pipeline -->
@@ -300,13 +299,18 @@ async function loadDeals() {
     const r = await fetch('/tools/performance/manager-saelger-deals?' + p);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const deals = await r.json();
-    if (!deals.length) {
+    // Split: KPI'er og hovedtabel ekskluderer administrative deals;
+    // admin-deals vises i deres egen sektion nederst.
+    const businessDeals = deals.filter(d => !d.is_admin);
+    const adminDeals    = deals.filter(d =>  d.is_admin);
+    if (!businessDeals.length) {
       document.getElementById('deals-tbody').innerHTML = '<tr><td colspan="5" class="empty">Ingen deals denne periode</td></tr>';
       renderKpi([]);
     } else {
-      renderKpi(deals);
-      renderDeals(deals);
+      renderKpi(businessDeals);
+      renderDeals(businessDeals);
     }
+    renderAdminDeals(adminDeals);
   } catch(e) {
     document.getElementById('deals-tbody').innerHTML = `<tr><td colspan="5" class="empty" style="color:#B32E45">Fejl: ${escHtml(e.message)}</td></tr>`;
   }
@@ -413,6 +417,36 @@ function renderDeals(deals) {
     return `<tr>
       <td>${escHtml(deal.site)}</td>
       <td>${escHtml(deal.org_name)}</td>
+      <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
+      <td>${escHtml(deal.dato)}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAdminDeals(deals) {
+  const wrap  = document.getElementById('admin-deals-wrap');
+  const tbody = document.getElementById('admin-deals-tbody');
+  if (!deals.length) {
+    wrap.classList.add('hidden');
+    tbody.innerHTML = '';
+    return;
+  }
+  wrap.classList.remove('hidden');
+  const sorted = [...deals].sort((a, b) =>
+    String(b.dato).localeCompare(String(a.dato))
+  );
+  tbody.innerHTML = sorted.map(deal => {
+    const isCancel = deal.is_cancel;
+    const valCls   = isCancel ? 'color:#B32E45' : 'color:var(--ink-2)';
+    const sign     = isCancel ? '-' : '';
+    const badge    = isCancel
+      ? '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:#FDE8EC;color:#B32E45">Opsigelse</span>'
+      : '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:#EEE9F7;color:#5D4B8A">Administrativ</span>';
+    return `<tr>
+      <td>${escHtml(deal.site)}</td>
+      <td>${escHtml(deal.org_name)}</td>
+      <td>${escHtml(deal.title)}</td>
       <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
       <td>${escHtml(deal.dato)}</td>
       <td>${badge}</td>

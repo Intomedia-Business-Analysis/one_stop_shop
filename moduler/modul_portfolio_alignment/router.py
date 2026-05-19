@@ -28,7 +28,8 @@ from moduler.modul_portfolio_alignment.pipedrive_api import (
 
 router = APIRouter(prefix="/tools/portfolio-alignment", tags=["Portfolio Alignment"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 init_portfolio_notes_db()
 
 # Cache pr. scope (Pipedrive- og Zuora-load er ikke billige).

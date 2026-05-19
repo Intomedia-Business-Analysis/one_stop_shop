@@ -85,39 +85,7 @@
 </head>
 <body>
 <div class="shell">
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Subscription Sales</div>
-      <a href="/tools/performance/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Subscription Dashboard
-      </a>
-      <a href="/tools/performance/dashboards" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-        KPI Dashboards
-      </a>
-      <a href="/tools/performance/saelger" class="sbi active">
-        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Mit Dashboard
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
   <div class="main">
     <div class="topbar">
@@ -179,8 +147,8 @@
           </select>
           <div class="filter-sep"></div>
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
-            <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date" selected>Aktiverings dato</option>
+            <option value="won_time">Won time</option>
+            <option value="service_activation_date" selected>Service activation date</option>
           </select>
         </div>
 
