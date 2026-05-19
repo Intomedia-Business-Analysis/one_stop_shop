@@ -306,6 +306,11 @@
                 <div>
                   <div class="big-number green" id="salg-maaned">—</div>
                   <div class="dash-card-sub" id="salg-maaned-label">Salg denne måned</div>
+                  <div id="programmatic-sub" style="display:none;margin-top:4px;font-size:11px;color:var(--ink-4);line-height:1.5">
+                    <span style="display:inline-block;width:8px;height:8px;background:#7BB89A;border-radius:2px;margin-right:5px;vertical-align:middle"></span>
+                    heraf <strong id="programmatic-amount" style="color:var(--ink-2)"></strong> programmatic
+                    <span id="programmatic-vs-budget" style="margin-left:4px"></span>
+                  </div>
                   <div style="margin-top:8px;display:flex;align-items:baseline;gap:6px">
                     <span id="salg-dag-label" style="font-size:12px;color:var(--ink-4);font-weight:500">Won i dag</span>
                     <span id="salg-dag" style="font-size:18px;font-weight:700;color:var(--ink)">—</span>
@@ -722,6 +727,24 @@ function renderTeamTotal(d) {
       ` (−${fmtKr(d.cancel_maaned)} ops.)`;
   }
 
+  // Programmatic breakdown (vises kun naar Team Banner indgaar i valgte teams)
+  const progrSub = document.getElementById('programmatic-sub');
+  if (d.programmatic_maaned > 0) {
+    document.getElementById('programmatic-amount').textContent = fmtKr(d.programmatic_maaned);
+    const vsBudgetEl = document.getElementById('programmatic-vs-budget');
+    if (d.programmatic_budget_maaned > 0) {
+      const pct = Math.round(d.programmatic_maaned / d.programmatic_budget_maaned * 100);
+      const col = pct >= 100 ? 'var(--green)' : pct >= 70 ? 'var(--amber)' : '#B32E45';
+      vsBudgetEl.innerHTML = `/ <strong style="color:var(--ink-2)">${fmtKr(d.programmatic_budget_maaned)}</strong> budget <span style="color:${col};font-weight:700">(${pct}%)</span>`;
+    } else {
+      const pct = visVal !== 0 ? Math.round(d.programmatic_maaned / Math.abs(visVal) * 100) : 0;
+      vsBudgetEl.textContent = pct > 0 ? `(${pct}% af total)` : '';
+    }
+    progrSub.style.display = '';
+  } else {
+    progrSub.style.display = 'none';
+  }
+
   // Budget peer-tal øverst (vises altid når der findes budget for valgte teams)
   const budgetTop = document.getElementById('team-budget-top');
   if (d.team_budget > 0) {
@@ -791,9 +814,13 @@ function renderTeamTotal(d) {
 
   const COL_ACTUAL_POS = 'var(--green)';
   const COL_ACTUAL_NEG = '#B32E45';
+  const COL_PROGR      = '#7BB89A';  // lysere groen — stackes ovenpa pipedrive-delen
   const COL_BUDGET     = '#9CA3AF';
   const COL_FORECAST   = '#5B9BD5';
   const HILITE         = '#0F5E3C';  // mørk grøn til highlight af valgt måned
+
+  // Tjekker om programmatic indgaar i nogen maaned i datasaettet (saa stacker vi)
+  const hasProgrammatic = d.maaned_chart.some(m => (m.programmatic || 0) > 0);
 
   const bars = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
@@ -804,6 +831,7 @@ function renderTeamTotal(d) {
     const yBase = padY + chartH;
 
     const actualVal   = m[visKey]    || 0;
+    const progrVal    = m.programmatic || 0;
     const budgetVal   = m.budget     || 0;
     const forecastVal = m.forecast   || 0;
 
@@ -814,9 +842,26 @@ function renderTeamTotal(d) {
       return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${color}" opacity="${opacity}" rx="1"/>`;
     };
 
-    // Faktisk søjle skiftes til rød hvis negativ
+    // Faktisk soejle: stackes naar der er programmatic
+    // — pipedrive-del nederst i hovedfarven, programmatic ovenpaa i lysere farve
     const actualColor = (actualVal < 0) ? COL_ACTUAL_NEG : COL_ACTUAL_POS;
-    const actualBar   = isFuture ? '' : barFor(actualVal, gx,             actualColor, isCur ? 1 : 0.85);
+    let actualBar = '';
+    if (!isFuture && actualVal !== 0) {
+      if (progrVal > 0 && actualVal > 0) {
+        // Pipedrive-del = actualVal - progrVal (kan være won eller netto)
+        const pipePart = Math.max(0, actualVal - progrVal);
+        const hPipe = pipePart / max * chartH;
+        const hProgr = progrVal  / max * chartH;
+        const yPipe = yBase - hPipe;
+        const yProgr = yPipe - hProgr;
+        const op = isCur ? 1 : 0.85;
+        actualBar =
+          `<rect x="${gx}" y="${yPipe.toFixed(1)}" width="${barW}" height="${hPipe.toFixed(1)}" fill="${actualColor}" opacity="${op}" rx="1"/>` +
+          `<rect x="${gx}" y="${yProgr.toFixed(1)}" width="${barW}" height="${hProgr.toFixed(1)}" fill="${COL_PROGR}" opacity="${op}" rx="1"/>`;
+      } else {
+        actualBar = barFor(actualVal, gx, actualColor, isCur ? 1 : 0.85);
+      }
+    }
     const budgetBar   = barFor(budgetVal,   gx + barW,      COL_BUDGET,   0.7);
     const forecastBar = barFor(forecastVal, gx + barW * 2,  COL_FORECAST, 0.8);
 
@@ -844,9 +889,12 @@ function renderTeamTotal(d) {
     `<rect x="${x}" y="${legendY - 8}" width="10" height="10" fill="${color}" opacity="0.85" rx="1"/>
      <text x="${x + 14}" y="${legendY}" font-size="11" fill="var(--ink-3)">${label}</text>`;
   const lActual = isNetto ? 'Tilvækst' : 'Won';
-  const legend = legendItem(padX, COL_ACTUAL_POS, lActual)
-               + legendItem(padX + 90, COL_BUDGET, 'Budget')
-               + legendItem(padX + 170, COL_FORECAST, 'Forecast');
+  let legend = legendItem(padX, COL_ACTUAL_POS, lActual)
+             + legendItem(padX + 90, COL_BUDGET, 'Budget')
+             + legendItem(padX + 170, COL_FORECAST, 'Forecast');
+  if (hasProgrammatic) {
+    legend += legendItem(padX + 260, COL_PROGR, 'Programmatic');
+  }
 
   const svgH = padY + chartH + 60;
   document.getElementById('month-bars').innerHTML =
