@@ -53,6 +53,18 @@ CATEGORIES = [
         ],
     },
     {
+        "id": "marketing",
+        "title": "Marketing",
+        "description": "Lead-konvertering og deal source-analyse",
+        "icon": "pulse",
+        "color": "green",
+        "min_role": "marketing",
+        "subcategories": [],
+        "items": [
+            {"id": "marketing-deal-source", "title": "Deal Source Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "marketing", "url": "/tools/marketing/deal-source"},
+        ],
+    },
+    {
         "id": "hr",
         "title": "HR",
         "description": "HR-værktøjer",
