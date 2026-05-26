@@ -1335,6 +1335,11 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         date_col = "won_time"
     d_col = f"[{date_col}]"
 
+    # Sites-filter: tillad NULL så Marketwire/Banner-deals (uden site tag)
+    # ogsaa kommer med. Matcher modul_perf manager's single-team mønster
+    # (linje 339) — uden NULL-fallback'en forsvinder marketwire-deals helt.
+    _sites_filter = f"([sites] IN {brands_ph} OR [sites] IS NULL)"
+
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
 
@@ -1356,7 +1361,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
     """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
@@ -1391,7 +1396,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
         GROUP BY CAST({d_col} AS DATE)
     """, (week_start.isoformat(), week_end.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
@@ -1410,7 +1415,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
     """, (today.isoformat(), (today + timedelta(days=1)).isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
@@ -1422,7 +1427,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
           AND [expected_close_date] >= %s AND [expected_close_date] < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           AND COALESCE([value_dkk],[value]) > 0
           {_ADM_EXCLUDE}
           {team_clause}
@@ -1437,7 +1442,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
           AND [expected_close_date] >= %s AND [expected_close_date] < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           AND COALESCE([value_dkk],[value]) > 0
           {_ADM_EXCLUDE}
           {team_clause}
@@ -1460,7 +1465,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
     """, (ly_from.isoformat(), ly_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
@@ -1477,7 +1482,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
         GROUP BY MONTH({d_col})
@@ -1496,7 +1501,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {team_clause}
         GROUP BY [owner_name]
     """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
@@ -1520,7 +1525,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status] = 'won'
           AND [pipeline_name] <> 'Web Sale'
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           AND {d_col} >= %s AND {d_col} < %s
           {_ADM_EXCLUDE}
           {team_clause}
@@ -1552,7 +1557,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
         GROUP BY [team]
