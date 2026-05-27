@@ -31,8 +31,7 @@ MONTHS = [
 
 @router.get("/", response_class=HTMLResponse)
 async def budget_tool(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("budget_tool.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "budget_tool.html", {
         "user":       user,
         "sites":      db_get_distinct("BudgetsIntoMedia", "Site"),
         "brands":     db_get_distinct("BudgetsIntoMedia", "Brand"),

@@ -99,8 +99,7 @@ async def admin_db_init(request: Request, user=Depends(get_current_user)):
 async def admin_users(request: Request, user=Depends(get_current_user)):
     require_admin(user)
     users = db_get_all_users()
-    return templates.TemplateResponse("admin_users.html", {
-        "request":  request,
+    return templates.TemplateResponse(request, "admin_users.html", {
         "user":     user,
         "users":    users,
         "groups":   group_users(users),
@@ -157,8 +156,7 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
     except Exception:
         memberships, all_teams = [], []
 
-    return templates.TemplateResponse("admin_edit_user.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "admin_edit_user.html", {
         "user":            user,
         "target":          target,
         "roles":           _roles_tuples(),
@@ -268,8 +266,7 @@ async def admin_teams_list(request: Request, user=Depends(get_current_user)):
         print(traceback.format_exc())
         teams = []
 
-    return templates.TemplateResponse("admin_teams.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin_teams.html", {
         "user":    user,
         "teams":   teams,
         "brands":  BRANDS,
@@ -315,8 +312,7 @@ async def admin_edit_team(team_id: int, request: Request, user=Depends(get_curre
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Databasefejl")
 
-    return templates.TemplateResponse("admin_edit_team.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "admin_edit_team.html", {
         "user":        user,
         "team":        team,
         "memberships": memberships,
@@ -412,8 +408,7 @@ async def admin_roles_list(request: Request, user=Depends(get_current_user)):
             user_counts[u["role"]] = user_counts.get(u["role"], 0) + 1
     except Exception:
         pass
-    return templates.TemplateResponse("admin_roles.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "admin_roles.html", {
         "user":        user,
         "roles":       roles,
         "user_counts": user_counts,
@@ -447,8 +442,7 @@ async def admin_edit_role_page(role_name: str, request: Request, user=Depends(ge
     if not role:
         raise HTTPException(status_code=404, detail="Rolle ikke fundet")
     role_access = get_role_resource_access(role_name)
-    return templates.TemplateResponse("admin_edit_role.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "admin_edit_role.html", {
         "user":        user,
         "target_role": role,
         "categories":  CATEGORIES,

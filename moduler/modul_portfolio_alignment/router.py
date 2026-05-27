@@ -57,8 +57,7 @@ def _validate_scope(scope: str) -> str:
 async def alignment_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_operations"):
         raise HTTPException(403, "Kræver Sales Operations-adgang")
-    return templates.TemplateResponse("portfolio_alignment.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "portfolio_alignment.html", {
         "user":    user,
     })
 
