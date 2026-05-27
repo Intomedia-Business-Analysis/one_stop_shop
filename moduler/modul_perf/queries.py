@@ -1822,6 +1822,29 @@ def db_saelger_meta(owner_name: str):
     return {"years": years, "teams": teams}
 
 
+def db_saelger_available_owners():
+    """Returnér aktive brugere fra HubUsers — bruges af admin-vælgeren på
+    sælger-dashboardet. PipedriveDeals.owner_name indeholder også
+    fratrådte medarbejdere, så vi filtrerer på HubUsers.is_active=1 for kun at
+    vise nuværende ansatte."""
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute("""
+            SELECT [name]
+            FROM [dbo].[HubUsers]
+            WHERE [is_active] = 1
+              AND [name] IS NOT NULL AND [name] <> ''
+            ORDER BY [name]
+        """)
+        owners = [r["name"] for r in (cur.fetchall() or [])]
+        conn.close()
+        return owners
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
 #-----------------------------------------------------------------------------------------------------------------------
 #                                          DET NYE DASHBOARD FOR LEDER
 #-----------------------------------------------------------------------------------------------------------------------
