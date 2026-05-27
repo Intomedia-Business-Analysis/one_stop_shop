@@ -34,8 +34,7 @@ def _norm(v: str | None) -> str | None:
 @router.get("/deal-source", response_class=HTMLResponse)
 async def marketing_deal_source_page(request: Request, user=Depends(get_current_user)):
     _require_access(user)
-    return templates.TemplateResponse("marketing_deal_source.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "marketing_deal_source.html", {
         "user":    user,
     })
 

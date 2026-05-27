@@ -34,8 +34,7 @@ def require_forecast_access(user: dict):
 async def forecast_tool(request: Request, user=Depends(get_current_user)):
     require_forecast_access(user)
     today = date.today()
-    return templates.TemplateResponse("forecast_tool.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "forecast_tool.html", {
         "user":          user,
         "months":        MONTHS,
         "years":         list(range(today.year - 2, today.year + 3)),

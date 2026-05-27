@@ -11,6 +11,7 @@ from moduler.modul_perf.queries import (
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
     db_get_filters, db_manager_data, db_yoy_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
+    db_saelger_available_owners,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
 )
 
@@ -31,8 +32,7 @@ async def perf_manager_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Kun Sales Managers og derover har adgang")
     today = date.today()
-    return templates.TemplateResponse("perf_manager.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "perf_manager.html", {
         "user":          user,
         "current_year":  today.year,
         "current_month": today.month,
@@ -69,8 +69,7 @@ async def perf_yoy_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Kun Sales Managers og derover har adgang")
     today = date.today()
-    return templates.TemplateResponse("yoy_tool.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "yoy_tool.html", {
         "user":          user,
         "current_year":  today.year,
         "current_month": today.month,
@@ -108,7 +107,7 @@ async def perf_yoy_data(
 async def perf_manager_saelger_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Kun Sales Managers og derover har adgang")
-    return templates.TemplateResponse("perf_manager_saelger.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "perf_manager_saelger.html", {"user": user})
 
 @router.get("/manager-saelger-filters")
 async def manager_saelger_filters_endpoint(
@@ -166,8 +165,7 @@ async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_us
     if not has_access(user, "management"):
         raise HTTPException(403, "Kun Management og derover har adgang")
     today = date.today()
-    return templates.TemplateResponse("perf_afdelingsleder.html", {
-        "request":       request,
+    return templates.TemplateResponse(request, "perf_afdelingsleder.html", {
         "user":          user,
         "current_year":  today.year,
         "current_month": today.month,
@@ -194,17 +192,38 @@ async def perf_afdelingsleder_data(
 #                                        DET NYE DASHBOARD FOR SÆLGER
 #----------------------------------------------------------------------------------------------------------------------
 
+def _resolve_saelger_owner(user: dict, requested_owner: str | None) -> str:
+    """Bestem hvilken sælger der vises på saelger-dashboardet.
+
+    Admin må vælge en anden sælger via ?owner=... Alle andre roller låses til
+    deres egen brugerprofil. Senere kan sales_manager udvides til at vælge
+    blandt egne teammedlemmer.
+    """
+    if requested_owner and has_access(user, "admin"):
+        return requested_owner
+    return user["name"]
+
+
 @router.get("/saelger", response_class=HTMLResponse)
 async def perf_saelger_page(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("perf_saelger.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "perf_saelger.html", {
         "user":    user,
     })
 
 @router.get("/saelger-meta")
-async def perf_saelger_meta(user=Depends(get_current_user)):
+async def perf_saelger_meta(
+    owner: str | None = None,
+    user=Depends(get_current_user),
+):
     try:
-        return JSONResponse(db_saelger_meta(user["name"]))
+        target_owner    = _resolve_saelger_owner(user, owner)
+        can_pick_seller = has_access(user, "admin")
+        meta = db_saelger_meta(target_owner)
+        meta["owner_name"]      = target_owner
+        meta["can_pick_seller"] = can_pick_seller
+        if can_pick_seller:
+            meta["available_owners"] = db_saelger_available_owners()
+        return JSONResponse(meta)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -215,14 +234,34 @@ async def perf_saelger_data(
     year: int | None = None,
     month: int | None = None,
     date_col: str = "won_time",
+    owner: str | None = None,
     user=Depends(get_current_user)
 ):
     try:
+        target_owner = _resolve_saelger_owner(user, owner)
         return JSONResponse(db_saelger_data(
-            date.today(), user["name"],
+            date.today(), target_owner,
             team=team, selected_year=year, selected_month=month,
             date_col=date_col,
         ))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
+
+@router.get("/saelger-pipeline-deals")
+async def perf_saelger_pipeline_deals(
+    year:  int | None = None,
+    month: int | None = None,
+    owner: str | None = None,
+    user=Depends(get_current_user),
+):
+    """Detaljerede åbne pipeline-deals for sælgeren — bruges af 'Pipeline'-modalet
+    på /tools/performance/saelger. Genbruger db_manager_saelger_pipeline så
+    visningen matcher den sales managers ser pr. sælger."""
+    try:
+        target_owner = _resolve_saelger_owner(user, owner)
+        return JSONResponse(db_manager_saelger_pipeline(target_owner, year, month))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -233,8 +272,7 @@ async def perf_saelger_data(
 
 @router.get("/dashboards", response_class=HTMLResponse)
 async def perf_dashboards_page(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("perf_dashboards.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "perf_dashboards.html", {
         "user":       user,
         "is_manager": has_access(user, "sales_manager"),
         "is_management": has_access(user, "management"),

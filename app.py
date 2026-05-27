@@ -86,7 +86,7 @@ async def login_page(request: Request):
             return RedirectResponse("/", status_code=302)
         # Forældet session (DB nede eller bruger slettet) — ryd op
         request.session.clear()
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -96,8 +96,7 @@ async def login_post(request: Request):
     password = form.get("password", "")
     user = authenticate_user(username, password)
     if not user:
-        return templates.TemplateResponse("login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "login.html", {
             "error": "Forkert brugernavn eller adgangskode",
         })
     request.session["user_id"] = user["id"]
@@ -121,8 +120,7 @@ async def intomedia_redirect():
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("settings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "settings.html", {
         "user":    user,
     })
 
@@ -160,8 +158,7 @@ async def settings_change_password(request: Request, user=Depends(get_current_us
 
 @app.get("/dashboard/budget", response_class=HTMLResponse)
 async def budget_dashboard(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("budget_tool.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "budget_tool.html", {
         "user": user,
     })
 
@@ -181,8 +178,7 @@ async def hub(request: Request, user=Depends(get_current_user)):
                 "category": cat["title"],
                 "url":      item["url"],
             })
-    return templates.TemplateResponse("hub.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "hub.html", {
         "user":         user,
         "categories":   categories,
         "total_dash":   total_dash,
@@ -202,8 +198,7 @@ async def category_detail(cat_id: str, request: Request, user=Depends(get_curren
     for item in cat["items"]:
         key = item["subcategory"] or "Generelt"
         subs.setdefault(key, []).append(item)
-    return templates.TemplateResponse("category.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "category.html", {
         "user":       user,
         "categories": all_cats,
         "cat":        cat,
@@ -221,8 +216,7 @@ async def dashboard_view(dashboard_id: str, request: Request, user=Depends(get_c
 @app.get("/tool/barselsberegner", response_class=HTMLResponse)
 async def barselsberegner_view(request: Request, user=Depends(get_current_user)):
     categories = filter_categories(CATEGORIES, user)
-    return templates.TemplateResponse("tool_barselsberegner.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "tool_barselsberegner.html", {
         "user":       user,
         "categories": categories,
     })
@@ -232,8 +226,7 @@ async def barselsberegner_view(request: Request, user=Depends(get_current_user))
 async def barselsberegner_app(request: Request, user=Depends(get_current_user)):
     """Serverer selve beregner-appen i en iframe (kræver login)."""
     see_all = user["role"] == "admin"
-    return templates.TemplateResponse("barselsberegner_app.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "barselsberegner_app.html", {
         "user":    user,
         "see_all": see_all,
     })
