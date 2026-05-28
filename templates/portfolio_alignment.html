@@ -147,9 +147,14 @@
             <h1 class="page-title" style="margin-bottom:4px">Portfolio Alignment</h1>
             <p class="page-sub">Sammenligner Pipedrive ACV (live) med Zuora ARR fra ugentlig snapshot-fil — pr. kunde og site.</p>
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
             <span class="cached-info" id="snapshot-info"></span>
             <span class="cached-info" id="cached-info"></span>
+            <div id="cutoff-wrap" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 10px">
+              <label for="cutoff-input" style="font-weight:700;text-transform:uppercase;letter-spacing:1.5px;font-size:9px;color:var(--ink-4);white-space:nowrap" title="Øvre grænse på service_activation_date — deals aktiveret efter denne dato udelades. Default = datoen i Zuora-filnavnet.">Skæring (svc.act.date)</label>
+              <input type="date" id="cutoff-input" style="font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px 6px;outline:none">
+              <button type="button" id="cutoff-reset" onclick="resetCutoff()" style="display:none;font-size:10px;font-weight:700;color:var(--ink-3);background:transparent;border:none;cursor:pointer;text-decoration:underline" title="Stil tilbage til snapshot-fildatoen">Reset</button>
+            </div>
             <button class="bulk-btn" onclick="openBulkModal()" title="Opret afstemnings-deals i batch">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Bulk-opret deals
@@ -478,6 +483,41 @@ const STATUS_LABEL = {
   zuora_only: 'Kun Zuora',
 };
 
+// service_activation_date cutoff — default sættes fra snapshot-fildatoen ved
+// første dataindlæsning. Tom streng = brug default (sendes ikke som query-param).
+let currentCutoff = '';
+let snapshotDefaultCutoff = '';
+
+function getCutoffParam() {
+  return currentCutoff && currentCutoff !== snapshotDefaultCutoff ? currentCutoff : '';
+}
+
+function appendCutoff(url) {
+  const c = getCutoffParam();
+  return c ? url + (url.includes('?') ? '&' : '?') + 'cutoff_date=' + encodeURIComponent(c) : url;
+}
+
+function resetCutoff() {
+  if (!snapshotDefaultCutoff) return;
+  currentCutoff = snapshotDefaultCutoff;
+  document.getElementById('cutoff-input').value = snapshotDefaultCutoff;
+  _updateCutoffResetVisibility();
+  loadData(false);
+}
+
+function _updateCutoffResetVisibility() {
+  const overridden = currentCutoff && currentCutoff !== snapshotDefaultCutoff;
+  document.getElementById('cutoff-reset').style.display = overridden ? '' : 'none';
+}
+
+function _onCutoffChange() {
+  const v = document.getElementById('cutoff-input').value;
+  // Tom = falder tilbage til snapshot-default
+  currentCutoff = v || snapshotDefaultCutoff || '';
+  _updateCutoffResetVisibility();
+  loadData(false);
+}
+
 async function loadAccounts() {
   try {
     const r = await fetch('/tools/portfolio-alignment/accounts');
@@ -500,7 +540,8 @@ async function loadData(force) {
   document.getElementById('error-state').classList.add('hidden');
 
   try {
-    const compUrl    = '/tools/portfolio-alignment/comparison?scope=' + encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
+    let compUrl = '/tools/portfolio-alignment/comparison?scope=' + encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
+    compUrl = appendCutoff(compUrl);
     const handledUrl = '/tools/portfolio-alignment/handled-states?scope=' + encodeURIComponent(currentScope);
     const [compResp, handledResp] = await Promise.all([fetch(compUrl), fetch(handledUrl)]);
     if (!compResp.ok) {
@@ -524,6 +565,27 @@ async function loadData(force) {
       snapInfo.title = snap.path || '';
     } else {
       snapInfo.textContent = '';
+    }
+
+    // Cutoff-picker: initialisér default fra snapshot ved første load, bind change-event
+    const cutoffWrap   = document.getElementById('cutoff-wrap');
+    const cutoffInput  = document.getElementById('cutoff-input');
+    if (snap.snapshot_date) {
+      snapshotDefaultCutoff = snap.snapshot_date;
+      if (!currentCutoff) currentCutoff = snap.snapshot_date;
+      if (!cutoffInput.value || !cutoffInput.dataset.bound) {
+        cutoffInput.value = currentCutoff;
+      }
+      // Brug snapshot-fildatoen som naturligt loft — kan ikke vælge senere skæring end Zuora-fil
+      cutoffInput.max = snap.snapshot_date;
+      cutoffWrap.style.display = 'flex';
+      _updateCutoffResetVisibility();
+      if (!cutoffInput.dataset.bound) {
+        cutoffInput.addEventListener('change', _onCutoffChange);
+        cutoffInput.dataset.bound = '1';
+      }
+    } else {
+      cutoffWrap.style.display = 'none';
     }
 
     document.getElementById('cached-info').textContent =
@@ -648,7 +710,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
   overlay.classList.remove('hidden');
 
   try {
-    const url = `/tools/portfolio-alignment/customer-deals?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}${site ? '&site=' + encodeURIComponent(site) : ''}`;
+    const url = appendCutoff(`/tools/portfolio-alignment/customer-deals?scope=${encodeURIComponent(scope)}&org_id=${encodeURIComponent(orgId)}${site ? '&site=' + encodeURIComponent(site) : ''}`);
     const r = await fetch(url);
     if (!r.ok) {
       const t = await r.text();
@@ -849,7 +911,7 @@ async function openCreateDealModal(ds) {
 
   // Spørg backend hvad valutaen og det præcise beløb bliver.
   try {
-    const url = `/tools/portfolio-alignment/deal-preview?scope=${encodeURIComponent(ds.scope)}&org_id=${encodeURIComponent(ds.orgId)}&site=${encodeURIComponent(ds.site)}`;
+    const url = appendCutoff(`/tools/portfolio-alignment/deal-preview?scope=${encodeURIComponent(ds.scope)}&org_id=${encodeURIComponent(ds.orgId)}&site=${encodeURIComponent(ds.site)}`);
     const r = await fetch(url);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
@@ -892,9 +954,10 @@ async function submitCreateDeal() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        scope:  cdPending.scope,
-        org_id: cdPending.org_id,
-        site:   cdPending.site,
+        scope:       cdPending.scope,
+        org_id:      cdPending.org_id,
+        site:        cdPending.site,
+        cutoff_date: getCutoffParam() || undefined,
       }),
     });
     const d = await r.json().catch(() => ({}));
@@ -980,6 +1043,7 @@ function _bulkPayload(forceDryRun) {
     max_diff_abs:    maxV,
     include_handled: inclHandled,
     dry_run:         dryRun,
+    cutoff_date:     getCutoffParam() || undefined,
   };
 }
 
@@ -1149,7 +1213,7 @@ async function openWebSaleModal(scope, site) {
     '<div class="spin-wrap"><div class="spinner"></div><div>Henter deals…</div></div>';
   overlay.classList.remove('hidden');
   try {
-    const r = await fetch(`/tools/portfolio-alignment/web-sale-deals?scope=${encodeURIComponent(scope)}&site=${encodeURIComponent(site)}`);
+    const r = await fetch(appendCutoff(`/tools/portfolio-alignment/web-sale-deals?scope=${encodeURIComponent(scope)}&site=${encodeURIComponent(site)}`));
     if (!r.ok) {
       const t = await r.text();
       throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
