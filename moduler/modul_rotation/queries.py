@@ -135,20 +135,34 @@ SALES_PERF_TEAMS = [
 ]
 _SALES_PERF_TEAMS_PH = "(" + ",".join(["%s"] * len(SALES_PERF_TEAMS)) + ")"
 
+# Subquery der begrænser owner_name til aktive medlemmer af de relevante teams.
+# Watch DK og FINANS DK deler samme sælgere — ligesom Watch Int og FINANS Int.
+_OWNER_IN_TEAMS_SQL = f"""
+    AND [owner_name] IN (
+        SELECT u.name FROM [dbo].[HubUsers] u
+        JOIN [dbo].[TeamMemberships] tm ON tm.user_id = u.id
+        JOIN [dbo].[Teams] t ON t.id = tm.team_id
+        WHERE t.name IN {_SALES_PERF_TEAMS_PH}
+          AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+    )
+"""
 
-def _revenue_kpis(cur, today: date, pipeline_filter: str):
+
+def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_time"):
     week_start, week_end = _week_range(today)
     m_start, m_end = _month_range(today)
     y_start, y_end = _year_range(today)
 
     if pipeline_filter == "subscription":
-        # Gross Revenue — kun Monitor/Watch/FINANS teams på subscription sites
-        def _sum(date_from, date_to):
+        # Gross Revenue — kun Monitor/Watch/FINANS teams på subscription sites.
+        # dag/uge/måned bruger won_time; år bruger service_activation_date (aktiveringstidspunkt).
+        def _sum(date_from, date_to, expr="[won_time]"):
             cur.execute(f"""
                 SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
-                  AND [won_time] >= %s AND [won_time] < %s
+                  AND {expr} >= %s
+                  AND {expr} < %s
                   AND [pipeline_name] NOT IN {_CANCEL_PH}
                   AND [pipeline_name] NOT IN ('banner','job','Web Sale')
                   AND [sites] IN {_SALES_PERF_PH}
@@ -177,11 +191,12 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str):
             """, (date_from.isoformat(), date_to.isoformat()))
             return float((cur.fetchone() or {}).get("total", 0) or 0)
 
+    sad_expr = "COALESCE([service_activation_date],[won_time])"
     return {
         "dag":    round(_sum(today, today + timedelta(days=1)), 2),
         "uge":    round(_sum(week_start, week_end), 2),
         "maaned": round(_sum(m_start, m_end), 2),
-        "aar":    round(_sum(y_start, y_end), 2),
+        "aar":    round(_sum(y_start, y_end, expr=sad_expr), 2),
     }
 
 
@@ -189,12 +204,12 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str):
 #  DASHBOARD 1 — Sales Performance (Monitor, Watch & FINANS)
 # ════════════════════════════════════════════════════════════════════════════
 
-def db_sales_performance(today: date):
+def db_sales_performance(today: date, date_col: str = "won_time"):
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
 
-        kpis = _revenue_kpis(cur, today, "subscription")
+        kpis = _revenue_kpis(cur, today, "subscription", date_col=date_col)
         q_start, q_end = _quarter_range(today)
         m_start, m_end = _month_range(today)
 
@@ -232,7 +247,7 @@ def db_sales_performance(today: date):
         kvartal_chart = _team_netto_budget(q_start, q_end)
         maaned_chart  = _team_netto_budget(m_start, m_end)
 
-        # Deals oprettet — pipeline IN ('Company Trial','Customer','Newbizz') matcher Power BI
+        # Deals oprettet — kun sælgere på de relevante teams (ekskl. Norge)
         try:
             cur.execute(f"""
                 SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
@@ -240,14 +255,15 @@ def db_sales_performance(today: date):
                 WHERE [add_time] >= %s AND [add_time] < %s
                   AND [pipeline_name] IN {_SALES_PIPELINES_PH}
                   AND [sites] IN {_SALES_PERF_PH}
+                  {_OWNER_IN_TEAMS_SQL}
                   {_ADM_EXCLUDE}
                 GROUP BY [owner_name] ORDER BY deals DESC
-            """, (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PIPELINES) + tuple(SALES_PERF_BRANDS))
+            """, (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
             deals_oprettet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
         except Exception:
             deals_oprettet = []
 
-        # Deals vundet — bruger close_time (matcher Power BI) + pipeline IN
+        # Deals vundet — kun sælgere på de relevante teams (ekskl. Norge)
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
             FROM [dbo].[PipedriveDeals]
@@ -255,12 +271,13 @@ def db_sales_performance(today: date):
               AND [pipeline_name] IN {_SALES_PIPELINES_PH}
               AND [close_time] >= %s AND [close_time] < %s
               AND [sites] IN {_SALES_PERF_PH}
+              {_OWNER_IN_TEAMS_SQL}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY deals DESC
-        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS))
+        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
         deals_vundet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
 
-        # Deals omsætning — pipeline IN
+        # Deals omsætning — kun sælgere på de relevante teams (ekskl. Norge)
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
                    ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
@@ -269,9 +286,10 @@ def db_sales_performance(today: date):
               AND [pipeline_name] IN {_SALES_PIPELINES_PH}
               AND [won_time] >= %s AND [won_time] < %s
               AND [sites] IN {_SALES_PERF_PH}
+              {_OWNER_IN_TEAMS_SQL}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY revenue DESC
-        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS))
+        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
         deals_omsaetning = [{"owner_name": r["owner_name"], "revenue": round(float(r["revenue"] or 0), 2)} for r in cur.fetchall()]
 
         # Seneste deals vundet — kun subscription teams, ingen opsigelser
