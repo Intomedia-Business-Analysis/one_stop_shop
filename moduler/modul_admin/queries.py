@@ -21,7 +21,8 @@ def db_get_all_users():
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
         cur.execute(
-            "SELECT id, username, name, initials, role, brand, is_active, created_at "
+            "SELECT id, username, name, initials, role, brand, is_active, "
+            "manager_id, created_at "
             "FROM HubUsers ORDER BY name"
         )
         users = cur.fetchall()
@@ -50,20 +51,48 @@ def db_get_user_by_id(user_id):
     conn.close()
     return user
 
-def db_update_user(user_id, name, initials, role, brand, is_active, password_hash=None):
+def db_update_user(user_id, name, initials, role, brand, is_active,
+                   manager_id=None, password_hash=None):
     conn = get_conn()
     cur = conn.cursor()
     if password_hash:
         cur.execute(
             "UPDATE HubUsers SET name=%s, initials=%s, role=%s, brand=%s, "
-            "is_active=%s, password_hash=%s WHERE id=%s",
-            (name, initials, role, brand, is_active, password_hash, user_id),
+            "is_active=%s, manager_id=%s, password_hash=%s WHERE id=%s",
+            (name, initials, role, brand, is_active, manager_id, password_hash, user_id),
         )
     else:
         cur.execute(
             "UPDATE HubUsers SET name=%s, initials=%s, role=%s, brand=%s, "
-            "is_active=%s WHERE id=%s",
-            (name, initials, role, brand, is_active, user_id),
+            "is_active=%s, manager_id=%s WHERE id=%s",
+            (name, initials, role, brand, is_active, manager_id, user_id),
+        )
+    conn.commit()
+    conn.close()
+
+
+def db_set_manager_for(manager_id: int, managed_ids: list):
+    """Sætter manager_id=manager_id for de valgte brugere; nulstiller for
+    brugere som tidligere havde denne leder men ikke længere er på listen."""
+    conn = get_conn()
+    cur = conn.cursor()
+    # Fjern leder for brugere der ikke længere er valgt
+    if managed_ids:
+        placeholders = ",".join(["%s"] * len(managed_ids))
+        cur.execute(
+            f"UPDATE HubUsers SET manager_id = NULL "
+            f"WHERE manager_id = %s AND id NOT IN ({placeholders})",
+            tuple([manager_id] + list(managed_ids)),
+        )
+        cur.execute(
+            f"UPDATE HubUsers SET manager_id = %s "
+            f"WHERE id IN ({placeholders})",
+            tuple([manager_id] + list(managed_ids)),
+        )
+    else:
+        cur.execute(
+            "UPDATE HubUsers SET manager_id = NULL WHERE manager_id = %s",
+            (manager_id,),
         )
     conn.commit()
     conn.close()

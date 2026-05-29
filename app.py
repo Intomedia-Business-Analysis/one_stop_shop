@@ -225,10 +225,12 @@ async def barselsberegner_view(request: Request, user=Depends(get_current_user))
 @app.get("/tool/barselsberegner/app", response_class=HTMLResponse)
 async def barselsberegner_app(request: Request, user=Depends(get_current_user)):
     """Serverer selve beregner-appen i en iframe (kræver login)."""
-    see_all = user["role"] == "admin"
+    see_all  = user["role"] in ("admin", "management")
+    is_admin = user["role"] == "admin"
     return templates.TemplateResponse(request, "barselsberegner_app.html", {
-        "user":    user,
-        "see_all": see_all,
+        "user":     user,
+        "see_all":  see_all,
+        "is_admin": is_admin,
     })
 
 

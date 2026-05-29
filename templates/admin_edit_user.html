@@ -420,6 +420,34 @@
 
             <hr class="divider">
 
+            <div class="form-grid">
+              <div class="field">
+                <label>Nærmeste leder</label>
+                <select name="manager_id">
+                  <option value="">— Ingen leder —</option>
+                  {% for u in all_users %}
+                    {% if u.id != target.id %}
+                    <option value="{{ u.id }}" {% if target.manager_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <span class="hint">Den leder, der godkender medarbejderens barselsplan.</span>
+              </div>
+              <div class="field">
+                <label>Leder for ({{ managed_users | length }})</label>
+                <select name="managed_ids" multiple size="5">
+                  {% for u in all_users %}
+                    {% if u.id != target.id %}
+                    <option value="{{ u.id }}" {% if u.manager_id == target.id %}selected{% endif %}>{{ u.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <span class="hint">Hold Ctrl/Cmd nede for at vælge flere medarbejdere.</span>
+              </div>
+            </div>
+
+            <hr class="divider">
+
             <div class="toggle-field" style="margin-bottom: 1.25rem;">
               <label class="toggle-switch">
                 <input type="checkbox" name="is_active" {% if target.is_active %}checked{% endif %}>
