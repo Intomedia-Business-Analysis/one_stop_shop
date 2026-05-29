@@ -70,10 +70,10 @@ CATEGORIES = [
         "description": "HR-værktøjer",
         "icon": "users",
         "color": "green",
-        "min_role": "management",
+        "min_role": "salesperson",
         "subcategories": [],
         "items": [
-            {"id": "barselsberegner", "title": "Barselsplanlægger", "type": "tool", "subcategory": None, "brand": None, "min_role": "management", "url": "/tool/barselsberegner"},
+            {"id": "barselsberegner", "title": "Barselsplanlægger", "type": "tool", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tool/barselsberegner"},
         ],
     },
 ]

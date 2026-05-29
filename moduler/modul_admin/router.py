@@ -15,6 +15,7 @@ from moduler.modul_admin.queries import (
     db_get_user_memberships, db_add_membership, db_remove_membership,
     db_save_resource_access, db_get_all_teams, db_create_team,
     db_get_team_by_id, db_update_team, db_update_membership,
+    db_set_manager_for,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -156,6 +157,10 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
     except Exception:
         memberships, all_teams = [], []
 
+    # Hele brugerlisten — bruges til leder-dropdown og "leder for"-multiselect.
+    all_users = [u for u in db_get_all_users() if u["is_active"]]
+    managed_users = [u for u in all_users if u.get("manager_id") == user_id]
+
     return templates.TemplateResponse(request, "admin_edit_user.html", {
         "user":            user,
         "target":          target,
@@ -165,6 +170,8 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
         "resource_access": resource_access,
         "memberships":     memberships,
         "all_teams":       all_teams,
+        "all_users":       all_users,
+        "managed_users":   managed_users,
         "success":         request.query_params.get("success"),
         "error":           request.query_params.get("error"),
     })
@@ -184,12 +191,28 @@ async def admin_update_user(user_id: int, request: Request, user=Depends(get_cur
     brand     = form.get("brand", "") or None
     is_active = 1 if form.get("is_active") else 0
     new_pw    = form.get("password", "").strip()
+    manager_id_raw = form.get("manager_id", "")
+    try:
+        manager_id = int(manager_id_raw) if manager_id_raw else None
+    except ValueError:
+        manager_id = None
+
+    # Multi-select: de brugere som denne bruger er leder for
+    managed_raw = form.getlist("managed_ids") if hasattr(form, "getlist") else []
+    managed_ids = []
+    for v in managed_raw:
+        try:
+            managed_ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
 
     try:
         db_update_user(
             user_id, name, initials, role, brand, is_active,
-            password_hash=hash_password(new_pw) if new_pw else None
+            manager_id=manager_id,
+            password_hash=hash_password(new_pw) if new_pw else None,
         )
+        db_set_manager_for(user_id, managed_ids)
     except Exception:
         print(traceback.format_exc())
 
