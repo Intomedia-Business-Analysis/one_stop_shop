@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rediger rolle — Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <style>
+    .page-header{margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem}
+    .back-btn{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;font-weight:700;color:var(--text-muted);text-decoration:none;padding:.4rem .8rem;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface)}
+    .back-btn:hover{border-color:var(--green);color:var(--green)}
+    .page-header h1{margin:0;font-size:1.5rem}
+    .page-header .sub{margin:.25rem 0 0;color:var(--text-muted);font-size:.875rem}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.5rem}
+    .card-title{font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin:0 0 1rem 0}
+    .row{display:grid;grid-template-columns:1fr 1fr 120px;gap:1rem;align-items:end}
+    .form-field label{display:block;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px}
+    .form-field input,.form-field select{width:100%;padding:.5rem .75rem;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;font-size:.875rem;background:var(--surface)}
+    .form-field input:focus,.form-field select:focus{outline:none;border-color:var(--green)}
+    .form-field input[disabled]{background:var(--bg);color:var(--text-muted);cursor:not-allowed}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:.5rem 1rem;font-size:.8125rem;font-weight:600;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);color:var(--ink);text-decoration:none;cursor:pointer;font-family:inherit}
+    .btn:hover{border-color:var(--green);color:var(--green)}
+    .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+    .btn.primary:hover{background:var(--green-mid,#1a7a4a);color:#fff}
+    .perm-table{width:100%;border-collapse:collapse;font-size:.875rem}
+    .perm-table th{background:var(--bg);color:var(--text-muted);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:.625rem 1rem;text-align:left;border-bottom:1px solid var(--border)}
+    .perm-table td{padding:.75rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle}
+    .perm-table tr:last-child td{border-bottom:none}
+    .perm-table .cat-header td{background:var(--bg);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);padding:.625rem 1rem}
+    .perm-select{padding:.35rem .6rem;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;font-size:.8125rem;background:var(--surface);min-width:140px}
+    .perm-select:focus{outline:none;border-color:var(--green)}
+    .perm-select.access-write{border-color:var(--green);background:#E6F4ED}
+    .perm-select.access-read{border-color:#5B9BD5;background:#EAF3FB}
+    .perm-select.access-none{border-color:#B32E45;background:#FDE8EC}
+    .badge-default{font-size:.6875rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#EEF1F4;color:var(--text-muted);display:inline-block}
+    .badge-min-role{font-size:.6875rem;color:var(--text-muted)}
+    .notif{padding:.75rem 1rem;border-radius:var(--r-sm);margin-bottom:1rem;font-size:.875rem}
+    .notif-success{background:#E6F4ED;color:var(--green);border:1px solid var(--green)}
+    .notif-error{background:#FDE8EC;color:#B32E45;border:1px solid #B32E45}
+    .helptext{font-size:.75rem;color:var(--text-muted);margin-top:.5rem;line-height:1.5}
+  </style>
+  <script>
+    function colorize(sel){
+      sel.classList.remove('access-write','access-read','access-none');
+      if (sel.value==='write')      sel.classList.add('access-write');
+      else if (sel.value==='read')  sel.classList.add('access-read');
+      else if (sel.value==='none')  sel.classList.add('access-none');
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.perm-select').forEach(colorize);
+    });
+  </script>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/admin/roles' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+    <div style="padding:2rem;max-width:1100px;">
+
+      <div class="page-header">
+        <a href="/admin/roles" class="back-btn">← Alle roller</a>
+        <div>
+          <h1>{{ target_role.label }}</h1>
+          <p class="sub">
+            <code>{{ target_role.name }}</code> · Rang {{ target_role.rank }}
+            {% if target_role.is_system %} · <span class="badge-default">System-rolle</span>{% endif %}
+          </p>
+        </div>
+      </div>
+
+      {% if success == 'updated' %}
+      <div class="notif notif-success">Rolle opdateret</div>
+      {% elif success == 'perms_saved' %}
+      <div class="notif notif-success">Tilladelser gemt</div>
+      {% elif error %}
+      <div class="notif notif-error">{{ error }}</div>
+      {% endif %}
+
+      <!-- Rolle-info -->
+      <form method="post" action="/admin/roles/{{ target_role.name }}/update" class="card">
+        <h2 class="card-title">Rolle-info</h2>
+        <div class="row">
+          <div class="form-field">
+            <label>Navn (intern)</label>
+            <input type="text" value="{{ target_role.name }}" disabled>
+          </div>
+          <div class="form-field">
+            <label>Label</label>
+            <input type="text" name="label" value="{{ target_role.label }}" required>
+          </div>
+          <div class="form-field">
+            <label>Rang</label>
+            <input type="number" name="rank" min="1" max="99" value="{{ target_role.rank }}" required>
+          </div>
+        </div>
+        <div style="margin-top:1rem;text-align:right">
+          <button type="submit" class="btn primary">Gem ændringer</button>
+        </div>
+      </form>
+
+      <!-- Tilladelses-matrix -->
+      <form method="post" action="/admin/roles/{{ target_role.name }}/permissions" class="card">
+        <h2 class="card-title">Tilladelser pr. ressource</h2>
+        <p class="helptext">
+          <strong>Standard</strong> følger ressourcens hardcoded minimumsrolle baseret på rang. <strong>Write</strong>/<strong>Read</strong> giver eksplicit adgang (nyttigt hvis rollen har lavere rang end ressourcens krav). <strong>Ingen</strong> blokerer eksplicit (nyttigt hvis rollen ellers ville have adgang via rang).
+        </p>
+        <table class="perm-table" style="margin-top:1rem">
+          <thead>
+            <tr>
+              <th>Ressource</th>
+              <th style="width:140px">Krav (min. rolle)</th>
+              <th style="width:180px;text-align:right">Adgang for {{ target_role.label }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in categories %}
+            <tr class="cat-header"><td colspan="3">{{ cat.title }}</td></tr>
+            {% for item in cat['items'] %}
+            {% set cur = role_access.get(item.id, 'default') %}
+            <tr>
+              <td>
+                <strong>{{ item.title }}</strong>
+                <div style="font-size:.6875rem;color:var(--text-muted);margin-top:2px">{{ item.url }}</div>
+              </td>
+              <td><span class="badge-min-role">{{ item.min_role }}</span></td>
+              <td style="text-align:right">
+                <select name="perm_{{ item.id }}" class="perm-select" onchange="colorize(this)">
+                  <option value="default" {% if cur == 'default' %}selected{% endif %}>Standard</option>
+                  <option value="write"   {% if cur == 'write' %}selected{% endif %}>Write</option>
+                  <option value="read"    {% if cur == 'read' %}selected{% endif %}>Read</option>
+                  <option value="none"    {% if cur == 'none' %}selected{% endif %}>Ingen</option>
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+        <div style="margin-top:1rem;text-align:right">
+          <button type="submit" class="btn primary">Gem tilladelser</button>
+        </div>
+      </form>
+
+    </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -922,11 +922,16 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
 # Sammenligning
 # ---------------------------------------------------------------------------
 
-def compare_portfolios(scope: Optional[str] = None) -> dict:
+def compare_portfolios(scope: Optional[str] = None,
+                       cutoff_date: Optional[str] = None) -> dict:
     """Full outer join af Pipedrive-ACV mod Zuora-ARR pr. (scope, org_id, site).
 
     scope='all' (eller None) → sammenligner alle definerede accounts.
     scope='watch_no'/'watch_de' osv. → kun det ene.
+
+    cutoff_date (ISO YYYY-MM-DD) — øvre grænse på service_activation_date for
+    Pipedrive. Default = snapshot-datoen fra Zuora-filnavnet. Tillader brugeren
+    at sætte en tidligere skæring fx hvis Zuora er nyere end seneste B2B-import.
 
     Match-nøgle inkluderer scope, så samme org_id under to forskellige
     forretningsenheder ikke smelter sammen til én række.
@@ -935,10 +940,14 @@ def compare_portfolios(scope: Optional[str] = None) -> dict:
     """
     scope_ids = _scope_ids_for(scope)
     snap = load_zuora_snapshot()
-    snapshot_meta     = snap["meta"]
+    snapshot_meta     = dict(snap["meta"])  # kopi — vi tilføjer cutoff_date
     snap_date         = snapshot_meta.get("snapshot_date")
-    pd_rows, pd_currency_map = fetch_pipedrive_acv(scope, snapshot_date=snap_date)
-    pd_web  = fetch_pipedrive_web_sales(scope, snapshot_date=snap_date)
+    # cutoff_date sætter PD-skæringen; tom/None falder tilbage til snapshot-fildatoen
+    pd_cutoff         = (cutoff_date or "").strip() or snap_date
+    snapshot_meta["cutoff_date"]      = pd_cutoff
+    snapshot_meta["cutoff_overridden"] = bool(cutoff_date and pd_cutoff != snap_date)
+    pd_rows, pd_currency_map = fetch_pipedrive_acv(scope, snapshot_date=pd_cutoff)
+    pd_web  = fetch_pipedrive_web_sales(scope, snapshot_date=pd_cutoff)
     pd_all_org_names  = fetch_pipedrive_org_names(scope)  # permissiv lookup
     all_zu_rows       = snap["enterprise_rows"]
     all_web_sales     = snap["web_sales_by_site"]
@@ -1340,12 +1349,18 @@ def _select_currency_and_diff(pd_by_curr: dict, zu_by_curr: dict) -> dict:
     }
 
 
-def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
+def compute_local_diff(scope: str, org_id: str, site: str,
+                       cutoff_date: Optional[str] = None) -> dict:
     """Returnér foretrukken valuta og signed diff for én (scope, org_id, site).
 
     Bruges til at oprette afstemnings-deals i Pipedrive med samme valuta som
     kundens øvrige deals, hvis hele porteføljen ligger i én valuta. Falder
     tilbage til DKK hvis der er flere valutaer på kunden.
+
+    cutoff_date overstyrer øvre grænse på service_activation_date — default er
+    snapshot-fildatoen. Vigtigt at deal-oprettelse bruger samme skæring som
+    sammenligningen, ellers risikerer vi at oprette deals for et diff der ikke
+    matcher det brugeren ser i UI'et.
 
     Returnerer:
       {
@@ -1362,7 +1377,7 @@ def compute_local_diff(scope: str, org_id: str, site: str) -> dict:
     deal_types = cfg["pd_deal_types"]
     placeholders = ",".join(["%s"] * len(deal_types))
     snap = load_zuora_snapshot()
-    snap_date = snap["meta"].get("snapshot_date")
+    snap_date = (cutoff_date or "").strip() or snap["meta"].get("snapshot_date")
 
     pd_by_currency: dict[str, dict] = {}
     try:

@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deal Source Dashboard — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1400px;margin:0 auto}
+
+.dash-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:20px}
+@media(max-width:1100px){.dash-grid-4{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.dash-grid-4{grid-template-columns:1fr}}
+
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+.kpi-value{font-size:32px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.kpi-value.green{color:var(--green)}
+.kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
+.kpi-icon{font-size:22px;margin-bottom:8px}
+
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-date{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
+.filter-date:focus{border-color:var(--green)}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.date-group{display:inline-flex;align-items:center;gap:10px;flex-wrap:nowrap}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.reset-btn{padding:7px 14px;background:transparent;color:var(--ink-3);border:1px solid var(--border);border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer}
+.reset-btn:hover{border-color:var(--green);color:var(--green)}
+
+/* Multi-select dropdown */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 28px 6px 10px;cursor:pointer;outline:none;transition:border-color .13s;min-width:140px;max-width:240px;text-align:left;position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-trigger:hover{border-color:var(--green)}
+.ms-trigger.has-value{border-color:var(--green);background:var(--green-light,#f0f8f4)}
+.ms-trigger::after{content:'▾';position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--ink-4)}
+.ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:240px;max-width:320px;display:none}
+.ms-panel.open{display:block}
+.ms-search{width:100%;box-sizing:border-box;padding:8px 10px;border:none;border-bottom:1px solid var(--border);font-family:var(--font);font-size:12px;outline:none;background:transparent;color:var(--ink)}
+.ms-toolbar{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4)}
+.ms-toolbar button{background:none;border:none;cursor:pointer;color:var(--green);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--font);padding:0}
+.ms-toolbar button:hover{text-decoration:underline}
+.ms-list{max-height:260px;overflow-y:auto;padding:4px 0}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px;color:var(--ink)}
+.ms-opt:hover{background:var(--bg)}
+.ms-opt input{margin:0;cursor:pointer}
+.ms-opt.checked{background:var(--green-light,#f0f8f4);font-weight:600}
+.ms-opt.hidden{display:none}
+.ms-empty{padding:14px 12px;font-size:11px;color:var(--ink-4);text-align:center;font-style:italic}
+
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table th.sortable{cursor:pointer;user-select:none}
+.v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.v-table th .sort-arrow{margin-left:5px;opacity:.5;font-style:normal;font-size:12px}
+.v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+.bar-chart-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-chart-label{font-size:11px;font-weight:600;color:var(--ink);min-width:160px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.bar-chart-track{flex:1;height:20px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative}
+.bar-chart-fill{height:100%;background:var(--green);border-radius:4px;transition:width .4s;min-width:2px}
+.bar-chart-val{font-size:10px;font-weight:700;color:var(--ink-3);min-width:96px;text-align:right;white-space:nowrap}
+
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px}
+
+/* Status pills (won / open / lost) */
+.status-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.status-pill{flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden}
+.status-pill::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px}
+.status-pill.won::before{background:#2D8659}
+.status-pill.open::before{background:#D4A017}
+.status-pill.lost::before{background:#B32E45}
+.status-pill .sp-icon{font-size:20px;line-height:1}
+.status-pill .sp-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
+.status-pill .sp-count{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-.5px;line-height:1;margin-top:2px}
+.status-pill .sp-pct{font-size:10px;color:var(--ink-4);margin-top:2px}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:48px 24px;overflow-y:auto}
+.modal-box{background:var(--surface);border-radius:var(--r);width:min(1400px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 96px)}
+.modal-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0}
+.modal-title{font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px}
+.modal-title-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:3px 8px;border-radius:999px;color:#fff}
+.modal-title-badge.won{background:#2D8659}
+.modal-title-badge.open{background:#D4A017}
+.modal-title-badge.lost{background:#B32E45}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:22px;line-height:1;padding:4px}
+.modal-close:hover{color:var(--ink)}
+.modal-body{padding:20px 24px;overflow:auto;flex:1 1 auto}
+
+.cell-link{color:var(--ink-3);cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--ink-4);text-underline-offset:2px}
+.cell-link:hover{color:var(--green);text-decoration-color:var(--green)}
+
+
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/category/marketing' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/marketing" class="tb-btn">← Marketing</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/marketing" class="bc-link">Marketing</a><span class="bc-sep">/</span>
+          <span>Deal Source</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Deal Source Dashboard</h1>
+            <p class="page-sub">Hvor meget omsætning kommer fra hvilke leads/kilder — filtrér på account, site, kilde, sælger og periode.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="reset-btn" onclick="resetFilters()">Nulstil</button>
+            <button class="refresh-btn" onclick="loadAll()">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Opdater
+            </button>
+          </div>
+        </div>
+
+        <div class="filter-bar">
+          <span class="filter-label">Account</span>
+          <div class="ms-wrap" id="ms-account"></div>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Site</span>
+          <div class="ms-wrap" id="ms-site"></div>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Deal Source</span>
+          <div class="ms-wrap" id="ms-source"></div>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Sælger</span>
+          <div class="ms-wrap" id="ms-owner"></div>
+          <div class="filter-sep"></div>
+          <div class="date-group">
+            <span class="filter-label">Fra</span>
+            <input class="filter-date" type="date" id="filter-from">
+            <span class="filter-label">Til</span>
+            <input class="filter-date" type="date" id="filter-to">
+          </div>
+        </div>
+
+        <div id="loading-state" class="spin-wrap">
+          <div class="spinner"></div>
+          <div>Henter data…</div>
+        </div>
+
+        <div id="dash-content" class="hidden">
+
+          <!-- 1) KPI cards -->
+          <div class="dash-grid-4">
+            <div class="dash-card">
+              <div class="kpi-icon">💰</div>
+              <div class="dash-card-title">Total Omsætning</div>
+              <div class="kpi-value green" id="kpi-revenue">—</div>
+              <div class="kpi-sub">DKK, vundne deals</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">📊</div>
+              <div class="dash-card-title">Antal Deals</div>
+              <div class="kpi-value" id="kpi-deals">—</div>
+              <div class="kpi-sub">Konverterede leads</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">🏢</div>
+              <div class="dash-card-title">Unikke Kunder</div>
+              <div class="kpi-value" id="kpi-customers">—</div>
+              <div class="kpi-sub">Distinkte organisationer</div>
+            </div>
+            <div class="dash-card">
+              <div class="kpi-icon">🧮</div>
+              <div class="dash-card-title">Gns. Deal-størrelse</div>
+              <div class="kpi-value" id="kpi-avg">—</div>
+              <div class="kpi-sub">Omsætning ÷ antal deals</div>
+            </div>
+          </div>
+
+          <!-- 2) Status-pills (won / open / lost) -->
+          <div class="status-row">
+            <div class="status-pill won">
+              <div class="sp-icon">✅</div>
+              <div>
+                <div class="sp-label">Won</div>
+                <div class="sp-count" id="sc-won">—</div>
+                <div class="sp-pct" id="sc-won-pct"></div>
+              </div>
+            </div>
+            <div class="status-pill open">
+              <div class="sp-icon">⏳</div>
+              <div>
+                <div class="sp-label">Open</div>
+                <div class="sp-count" id="sc-open">—</div>
+                <div class="sp-pct" id="sc-open-pct"></div>
+              </div>
+            </div>
+            <div class="status-pill lost">
+              <div class="sp-icon">❌</div>
+              <div>
+                <div class="sp-label">Lost</div>
+                <div class="sp-count" id="sc-lost">—</div>
+                <div class="sp-pct" id="sc-lost-pct"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3) Per-account breakdown -->
+          <div class="dash-card" style="margin-bottom:20px">
+            <div class="dash-card-title">
+              <span>Performance pr. Account</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)" id="by-account-label"></span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="v-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th class="num">Won</th>
+                    <th class="num">Open</th>
+                    <th class="num">Lost</th>
+                    <th class="num">Win rate</th>
+                    <th class="num">Omsætning (Won)</th>
+                    <th class="num">Unikke kunder</th>
+                  </tr>
+                </thead>
+                <tbody id="by-account-tbody">
+                  <tr><td colspan="7" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 4) Underliggende deals (pagineret) -->
+          <div class="dash-card">
+            <div class="dash-card-title">
+              <span>Underliggende Deals</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)" id="deals-count"></span>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="v-table">
+                <thead>
+                  <tr>
+                    <th class="sortable" onclick="setSort('service_activation_date')">Dato<i class="sort-arrow" id="arr-service_activation_date">↓</i></th>
+                    <th class="sortable" onclick="setSort('org_name')">Kunde<i class="sort-arrow" id="arr-org_name">↕</i></th>
+                    <th>Titel</th>
+                    <th>Account</th>
+                    <th>Site(s)</th>
+                    <th class="sortable" onclick="setSort('deal_source')">Deal Source<i class="sort-arrow" id="arr-deal_source">↕</i></th>
+                    <th class="sortable" onclick="setSort('owner_name')">Sælger<i class="sort-arrow" id="arr-owner_name">↕</i></th>
+                    <th class="num sortable" onclick="setSort('value_dkk')">Værdi (DKK)<i class="sort-arrow" id="arr-value_dkk">↕</i></th>
+                  </tr>
+                </thead>
+                <tbody id="deals-tbody">
+                  <tr><td colspan="8" class="empty">Indlæser…</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagineringsfod -->
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-4)">
+                <span id="page-info">—</span>
+                <span style="margin-left:12px">Rækker pr. side:</span>
+                <select id="page-size" onchange="onPageSizeChange()" style="font-family:var(--font);font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);color:var(--ink)">
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="250">250</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <button class="reset-btn" onclick="gotoPage(1)" id="btn-first">«</button>
+                <button class="reset-btn" onclick="gotoPage(state.page-1)" id="btn-prev">‹ Forrige</button>
+                <span id="page-num" style="font-size:11px;color:var(--ink-3);font-weight:700;padding:0 8px">—</span>
+                <button class="reset-btn" onclick="gotoPage(state.page+1)" id="btn-next">Næste ›</button>
+                <button class="reset-btn" onclick="gotoPage(state.lastPage)" id="btn-last">»</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Drill-down modal -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span id="modal-account">—</span>
+        <span class="modal-title-badge" id="modal-status-badge">—</span>
+        <span style="font-weight:400;font-size:11px;color:var(--ink-4)" id="modal-count"></span>
+      </div>
+      <button class="modal-close" onclick="closeModal()" aria-label="Luk">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  page:     1,
+  pageSize: 50,
+  sortBy:   'service_activation_date',
+  sortDir:  'desc',
+  total:    0,
+  lastPage: 1,
+};
+let inflight = 0;  // bumpes pr. loadAll så vi kan ignorere forældede svar
+
+// --- Multi-select widget -----------------------------------------------------
+const MS = {}; // id -> { options:[], selected:Set, allLabel, onChange }
+
+function setupMultiSelect(wrapId, options, allLabel, onChange){
+  const wrap = document.getElementById(wrapId);
+  wrap.innerHTML = `
+    <button type="button" class="ms-trigger" data-allabel="${allLabel}"></button>
+    <div class="ms-panel">
+      <input type="text" class="ms-search" placeholder="Søg…">
+      <div class="ms-toolbar">
+        <button type="button" data-act="all">Vælg alle</button>
+        <button type="button" data-act="none">Ryd</button>
+      </div>
+      <div class="ms-list"></div>
+    </div>`;
+  MS[wrapId] = { options:[...options], selected:new Set(), allLabel, onChange };
+  renderMS(wrapId);
+
+  const trigger = wrap.querySelector('.ms-trigger');
+  const panel   = wrap.querySelector('.ms-panel');
+  const search  = wrap.querySelector('.ms-search');
+
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.ms-panel.open').forEach(p => { if(p !== panel) p.classList.remove('open'); });
+    panel.classList.toggle('open');
+    if(panel.classList.contains('open')){
+      search.value = ''; filterMSList(wrapId, '');
+      setTimeout(()=>search.focus(), 0);
+    }
+  });
+  panel.addEventListener('click', e => e.stopPropagation());
+  search.addEventListener('input', () => filterMSList(wrapId, search.value));
+  wrap.querySelector('[data-act="all"]').addEventListener('click', () => {
+    const filt = (search.value || '').toLowerCase();
+    MS[wrapId].options.forEach(o => {
+      if(!filt || o.toLowerCase().includes(filt)) MS[wrapId].selected.add(o);
+    });
+    renderMS(wrapId); MS[wrapId].onChange();
+  });
+  wrap.querySelector('[data-act="none"]').addEventListener('click', () => {
+    MS[wrapId].selected.clear();
+    renderMS(wrapId); MS[wrapId].onChange();
+  });
+}
+
+function renderMS(wrapId){
+  const state = MS[wrapId];
+  const wrap = document.getElementById(wrapId);
+  const trigger = wrap.querySelector('.ms-trigger');
+  const list = wrap.querySelector('.ms-list');
+
+  const sel = state.selected;
+  if(sel.size === 0){
+    trigger.textContent = state.allLabel;
+    trigger.classList.remove('has-value');
+  }else if(sel.size === 1){
+    trigger.textContent = [...sel][0];
+    trigger.classList.add('has-value');
+  }else{
+    trigger.textContent = `${sel.size} valgt`;
+    trigger.classList.add('has-value');
+  }
+
+  if(!state.options.length){
+    list.innerHTML = '<div class="ms-empty">Ingen muligheder</div>';
+    return;
+  }
+  list.innerHTML = state.options.map(o => {
+    const checked = sel.has(o);
+    return `<label class="ms-opt${checked ? ' checked' : ''}" data-val="${escAttr(o)}">
+      <input type="checkbox" ${checked ? 'checked' : ''}>
+      <span>${escHtml(o)}</span>
+    </label>`;
+  }).join('');
+  list.querySelectorAll('.ms-opt').forEach(el => {
+    el.addEventListener('click', ev => {
+      ev.preventDefault();
+      const v = el.dataset.val;
+      if(sel.has(v)) sel.delete(v); else sel.add(v);
+      renderMS(wrapId); state.onChange();
+    });
+  });
+}
+
+function filterMSList(wrapId, q){
+  q = (q || '').toLowerCase();
+  const wrap = document.getElementById(wrapId);
+  wrap.querySelectorAll('.ms-opt').forEach(el => {
+    const v = el.dataset.val.toLowerCase();
+    el.classList.toggle('hidden', !!q && !v.includes(q));
+  });
+}
+
+function getSelected(wrapId){ return [...(MS[wrapId]?.selected || [])]; }
+function clearSelected(wrapId){ MS[wrapId]?.selected.clear(); renderMS(wrapId); }
+
+// Klik udenfor lukker alle paneler
+document.addEventListener('click', () => {
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+});
+
+// --- Helpers -----------------------------------------------------------------
+function escHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escAttr(s){return escHtml(s);}
+function fmtKr(v){
+  const abs=Math.abs(v),sign=v<0?'-':'';
+  if(abs>=1000000) return sign+(abs/1000000).toFixed(2).replace('.',',')+' mio.';
+  if(abs>=1000)    return sign+Math.round(abs/1000).toLocaleString('da-DK')+'k kr.';
+  return sign+Math.round(abs).toLocaleString('da-DK')+' kr.';
+}
+function fmtFull(v){return Math.round(v).toLocaleString('da-DK')+' kr.';}
+
+function getFilters(){
+  return {
+    account:     getSelected('ms-account'),
+    site:        getSelected('ms-site'),
+    deal_source: getSelected('ms-source'),
+    owner:       getSelected('ms-owner'),
+    date_from:   document.getElementById('filter-from').value,
+    date_to:     document.getElementById('filter-to').value,
+  };
+}
+
+function buildParams(){
+  const f = getFilters();
+  const p = new URLSearchParams();
+  ['account','site','deal_source','owner'].forEach(k => {
+    (f[k] || []).forEach(v => p.append(k, v));
+  });
+  if(f.date_from) p.set('date_from', f.date_from);
+  if(f.date_to)   p.set('date_to',   f.date_to);
+  return p;
+}
+
+// onFilterChange fyrer når et filter ændres — nulstil til side 1 og hent.
+function onFilterChange(){
+  state.page = 1;
+  loadAll();
+}
+
+function resetFilters(){
+  ['ms-account','ms-site','ms-source','ms-owner'].forEach(clearSelected);
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value   = '';
+  onFilterChange();
+}
+
+async function loadFilterOptions(){
+  const r = await fetch('/tools/marketing/filters');
+  const d = await r.json();
+  setupMultiSelect('ms-account', d.accounts     || [], 'Alle accounts', onFilterChange);
+  setupMultiSelect('ms-site',    d.sites        || [], 'Alle sites',    onFilterChange);
+  setupMultiSelect('ms-source',  d.deal_sources || [], 'Alle kilder',   onFilterChange);
+  setupMultiSelect('ms-owner',   d.owners       || [], 'Alle sælgere',  onFilterChange);
+}
+
+async function loadAll(){
+  const myReq = ++inflight;
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('dash-content').classList.add('hidden');
+
+  try{
+    const filterParams = buildParams();
+    const dealsParams = new URLSearchParams(filterParams);
+    dealsParams.set('page',      state.page);
+    dealsParams.set('page_size', state.pageSize);
+    dealsParams.set('sort_by',   state.sortBy);
+    dealsParams.set('sort_dir',  state.sortDir);
+
+    // by-account ignorerer account-filteret — vi sammenligner kilden PÅ TVÆRS af accounts
+    const byAccountParams = new URLSearchParams();
+    for(const [k, v] of filterParams){
+      if(k === 'account') continue;
+      byAccountParams.append(k, v);
+    }
+
+    const [sumRes, dealsRes, byAccountRes] = await Promise.all([
+      fetch('/tools/marketing/summary?'    + filterParams),
+      fetch('/tools/marketing/deals?'      + dealsParams),
+      fetch('/tools/marketing/by-account?' + byAccountParams),
+    ]);
+    if(myReq !== inflight) return;  // forældet svar — kasser
+    const [sum, deals, byAccount] = await Promise.all([
+      sumRes.json(), dealsRes.json(), byAccountRes.json(),
+    ]);
+    if(myReq !== inflight) return;
+
+    renderKPIs(sum);
+    renderByAccount(byAccount.rows || []);
+    state.total    = deals.total || 0;
+    state.lastPage = Math.max(1, Math.ceil(state.total / state.pageSize));
+    if(state.page > state.lastPage) state.page = state.lastPage;
+    renderDeals(deals.rows || []);
+    renderPagination();
+
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('dash-content').classList.remove('hidden');
+  }catch(e){
+    if(myReq !== inflight) return;
+    console.error(e);
+    document.getElementById('loading-state').innerHTML =
+      '<div style="color:#B32E45;padding:40px;text-align:center">Fejl ved hentning af data</div>';
+  }
+}
+
+function renderKPIs(d){
+  document.getElementById('kpi-revenue').textContent   = fmtKr(d.total_value || 0);
+  document.getElementById('kpi-deals').textContent     = (d.total_deals || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-customers').textContent = (d.unique_customers || 0).toLocaleString('da-DK');
+  document.getElementById('kpi-avg').textContent       = fmtKr(d.avg_deal || 0);
+
+  const sc    = d.status_counts || {won:0, open:0, lost:0};
+  const total = (sc.won || 0) + (sc.open || 0) + (sc.lost || 0);
+  const pct   = n => total ? Math.round(n / total * 100) + '%' : '';
+  document.getElementById('sc-won').textContent      = (sc.won  || 0).toLocaleString('da-DK');
+  document.getElementById('sc-open').textContent     = (sc.open || 0).toLocaleString('da-DK');
+  document.getElementById('sc-lost').textContent     = (sc.lost || 0).toLocaleString('da-DK');
+  document.getElementById('sc-won-pct').textContent  = total ? `${pct(sc.won)} af alle deals`  : '';
+  document.getElementById('sc-open-pct').textContent = total ? `${pct(sc.open)} af alle deals` : '';
+  document.getElementById('sc-lost-pct').textContent = total ? `${pct(sc.lost)} af alle deals` : '';
+}
+
+function renderByAccount(rows){
+  const tbody = document.getElementById('by-account-tbody');
+  const label = document.getElementById('by-account-label');
+  label.textContent = rows.length ? `${rows.length} account${rows.length !== 1 ? 's' : ''}` : '';
+
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen data</td></tr>';
+    return;
+  }
+  const cell = (n, color, account, status) => {
+    n = n || 0;
+    if(!n) return `<td class="num" style="color:${color};font-weight:700">0</td>`;
+    return `<td class="num" style="color:${color};font-weight:700">
+      <span class="cell-link" style="color:${color}"
+        data-account="${escAttr(account)}" data-status="${status}"
+        title="Klik for at se ${status}-deals på ${escAttr(account)}">${n.toLocaleString('da-DK')}</span>
+    </td>`;
+  };
+
+  tbody.innerHTML = rows.map(r => {
+    const closed  = (r.won || 0) + (r.lost || 0);  // win rate på AFSLUTTEDE deals
+    const winRate = closed ? Math.round(r.won / closed * 100) + '%' : '—';
+    return `<tr>
+      <td style="font-weight:600;color:var(--ink)"><span class="tag">${escHtml(r.account)}</span></td>
+      ${cell(r.won,  '#2D8659', r.account, 'won')}
+      ${cell(r.open, '#D4A017', r.account, 'open')}
+      ${cell(r.lost, '#B32E45', r.account, 'lost')}
+      <td class="num" title="Won ÷ (Won + Lost)">${winRate}</td>
+      <td class="num">${fmtFull(r.won_revenue || 0)}</td>
+      <td class="num">${(r.won_customers || 0).toLocaleString('da-DK')}</td>
+    </tr>`;
+  }).join('');
+
+  // Event delegation — undgår onclick-attributter med citater i account-navne
+  tbody.querySelectorAll('.cell-link').forEach(el => {
+    el.addEventListener('click', () => {
+      openAccountDealsModal(el.dataset.account, el.dataset.status);
+    });
+  });
+}
+
+const STATUS_LABEL = { won: 'Won', open: 'Open', lost: 'Lost' };
+
+async function openAccountDealsModal(account, status){
+  const overlay = document.getElementById('modal-overlay');
+  const badge   = document.getElementById('modal-status-badge');
+  document.getElementById('modal-account').textContent = account;
+  badge.textContent = STATUS_LABEL[status] || status;
+  badge.className = 'modal-title-badge ' + status;
+  document.getElementById('modal-count').textContent = '';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>';
+  overlay.classList.remove('hidden');
+
+  // Brug samme filtre som dashboardet — men account er den I klikker på, ikke fra filteret.
+  const filterParams = buildParams();
+  const p = new URLSearchParams();
+  for(const [k, v] of filterParams){
+    if(k === 'account') continue;
+    p.append(k, v);
+  }
+  p.set('account', account);
+  p.set('status', status);
+
+  try{
+    const r = await fetch('/tools/marketing/account-deals?' + p);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    renderModalDeals(d.rows || [], status);
+  }catch(e){
+    console.error(e);
+    document.getElementById('modal-body').innerHTML =
+      '<div style="color:#B32E45;text-align:center;padding:30px">Fejl ved hentning af deals</div>';
+  }
+}
+
+// Definition af kolonner. type='num' giver numerisk sortering (på value_dkk
+// med fallback til local value); 'date' bruger ISO-string-sammenligning som
+// er chronologisk; 'text' bruger localeCompare(da).
+const MODAL_COLS = [
+  {key:'expected_close_date', label:'Expected close', cls:'',    type:'date'},
+  {key:'org_name',            label:'Kunde',          cls:'',    type:'text'},
+  {key:'title',               label:'Titel',          cls:'',    type:'text'},
+  {key:'pipeline',            label:'Pipeline',       cls:'',    type:'text'},
+  {key:'account',             label:'Account',        cls:'',    type:'text'},
+  {key:'sites',               label:'Site(s)',        cls:'',    type:'text'},
+  {key:'owner_name',          label:'Sælger',         cls:'',    type:'text'},
+  {key:'value',               label:'Værdi',          cls:'num', type:'num'},
+];
+let modalRows = [];
+let modalSortCol = 'expected_close_date';
+let modalSortDir = 'asc';  // default: tidligst første
+
+function modalValueText(r){
+  if(r.value_dkk) return fmtFull(r.value_dkk);
+  if(r.value)     return Math.round(r.value).toLocaleString('da-DK') + ' ' + (r.currency || '');
+  return '—';
+}
+
+function modalSortKey(r, key){
+  if(key === 'value')              return r.value_dkk || r.value || 0;
+  if(key === 'expected_close_date') return r.expected_close_date || '';
+  return (r[key] ?? '').toString();
+}
+
+function setModalSort(col){
+  if(modalSortCol === col){
+    modalSortDir = modalSortDir === 'asc' ? 'desc' : 'asc';
+  }else{
+    modalSortCol = col;
+    // numeriske/dato-kolonner starter med høj-til-lav, tekst med a→å
+    const meta = MODAL_COLS.find(c => c.key === col);
+    modalSortDir = (meta && (meta.type === 'num' || meta.type === 'date')) ? 'desc' : 'asc';
+  }
+  redrawModalTable();
+}
+
+function renderModalDeals(rows, status){
+  modalRows = rows;
+  modalSortCol = 'expected_close_date';
+  modalSortDir = 'asc';
+
+  const body = document.getElementById('modal-body');
+  if(!rows.length){
+    document.getElementById('modal-count').textContent = '0 deals';
+    body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--ink-4);font-style:italic">Ingen deals</div>';
+    return;
+  }
+
+  body.innerHTML = `
+    <table class="v-table">
+      <thead>
+        <tr>
+          ${MODAL_COLS.map(c => `
+            <th class="${c.cls} sortable" data-col="${c.key}">
+              ${c.label}<i class="sort-arrow" id="m-arr-${c.key}">↕</i>
+            </th>`).join('')}
+        </tr>
+      </thead>
+      <tbody id="modal-tbody"></tbody>
+    </table>`;
+
+  body.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => setModalSort(th.dataset.col));
+  });
+
+  redrawModalTable();
+}
+
+function redrawModalTable(){
+  const meta = MODAL_COLS.find(c => c.key === modalSortCol);
+  const numeric = meta && meta.type === 'num';
+  const dir = modalSortDir === 'desc' ? -1 : 1;
+
+  const sorted = [...modalRows].sort((a, b) => {
+    const av = modalSortKey(a, modalSortCol);
+    const bv = modalSortKey(b, modalSortCol);
+    if(numeric) return ((av || 0) - (bv || 0)) * dir;
+    return String(av).localeCompare(String(bv), 'da') * dir;
+  });
+
+  // Opdater pile + sort-active i headeren
+  MODAL_COLS.forEach(c => {
+    const a  = document.getElementById('m-arr-' + c.key);
+    const th = a?.closest('th');
+    if(!a) return;
+    if(c.key === modalSortCol){
+      a.textContent = modalSortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    }else{
+      a.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
+
+  document.getElementById('modal-count').textContent =
+    `${modalRows.length.toLocaleString('da-DK')} deal${modalRows.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('modal-tbody').innerHTML = sorted.map(r => `
+    <tr>
+      <td>${escHtml(r.expected_close_date || '—')}</td>
+      <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+      <td>${escHtml(r.title)}</td>
+      <td>${escHtml(r.pipeline)}</td>
+      <td><span class="tag">${escHtml(r.account)}</span></td>
+      <td>${escHtml(r.sites)}</td>
+      <td>${escHtml(r.owner_name)}</td>
+      <td class="num">${modalValueText(r)}</td>
+    </tr>`).join('');
+}
+
+function closeModal(e){
+  // Kaldt fra ✕-knappen (uden event) eller fra overlay-klik. Modal-box stopper
+  // propagation, så klik inde i boksen lukker ikke.
+  if(!e || e.target === document.getElementById('modal-overlay')){
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+}
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+});
+
+function setSort(col){
+  if(state.sortBy === col){
+    state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
+  }else{
+    state.sortBy  = col;
+    state.sortDir = (col === 'value_dkk' || col === 'service_activation_date') ? 'desc' : 'asc';
+  }
+  state.page = 1;
+  loadAll();
+}
+
+function gotoPage(p){
+  p = Math.max(1, Math.min(state.lastPage, p|0));
+  if(p === state.page) return;
+  state.page = p;
+  loadAll();
+}
+
+function onPageSizeChange(){
+  state.pageSize = parseInt(document.getElementById('page-size').value, 10) || 50;
+  state.page = 1;
+  loadAll();
+}
+
+function renderDeals(rows){
+  const tbody = document.getElementById('deals-tbody');
+  const cnt   = document.getElementById('deals-count');
+
+  ['service_activation_date','org_name','deal_source','owner_name','value_dkk'].forEach(c=>{
+    const a  = document.getElementById('arr-'+c);
+    const th = a?.closest('th');
+    if(!a) return;
+    if(c === state.sortBy){
+      a.textContent = state.sortDir === 'desc' ? '↓' : '↑';
+      th?.classList.add('sort-active');
+    }else{
+      a.textContent = '↕';
+      th?.classList.remove('sort-active');
+    }
+  });
+
+  cnt.textContent = `${state.total.toLocaleString('da-DK')} deal${state.total !== 1 ? 's' : ''}`;
+
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Ingen deals matcher filtrene</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escHtml(r.service_activation_date)}</td>
+      <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}</td>
+      <td>${escHtml(r.title)}</td>
+      <td><span class="tag">${escHtml(r.account)}</span></td>
+      <td>${escHtml(r.sites)}</td>
+      <td><span class="tag">${escHtml(r.deal_source)}</span></td>
+      <td>${escHtml(r.owner_name)}</td>
+      <td class="num" title="${escHtml(r.value)} ${escHtml(r.currency)}">${fmtFull(r.value_dkk)}</td>
+    </tr>`).join('');
+}
+
+function renderPagination(){
+  const info = document.getElementById('page-info');
+  const num  = document.getElementById('page-num');
+  if(state.total === 0){
+    info.textContent = 'Ingen rækker';
+    num.textContent  = '—';
+  }else{
+    const from = (state.page - 1) * state.pageSize + 1;
+    const to   = Math.min(state.page * state.pageSize, state.total);
+    info.textContent = `Viser ${from.toLocaleString('da-DK')}–${to.toLocaleString('da-DK')} af ${state.total.toLocaleString('da-DK')}`;
+    num.textContent  = `Side ${state.page} / ${state.lastPage}`;
+  }
+  document.getElementById('btn-first').disabled = state.page <= 1;
+  document.getElementById('btn-prev').disabled  = state.page <= 1;
+  document.getElementById('btn-next').disabled  = state.page >= state.lastPage;
+  document.getElementById('btn-last').disabled  = state.page >= state.lastPage;
+}
+
+// Re-trigger ved dato-ændringer skal også reset'e til side 1
+['filter-from','filter-to'].forEach(id => {
+  document.getElementById(id).addEventListener('change', onFilterChange);
+});
+
+// Init
+loadFilterOptions().then(() => loadAll());
+</script>
+</body>
+</html>

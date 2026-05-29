@@ -12,7 +12,8 @@ from moduler.modul_banner_job.queries import (
 
 router = APIRouter(prefix="/tools/banner-job", tags=["Banner & Job"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 
 VALID_PIPELINES = {"banner", "job"}
 
@@ -26,8 +27,7 @@ def _check_pipeline(pipeline: str):
 async def banner_job_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang")
-    return templates.TemplateResponse("banner_job_dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "banner_job_dashboard.html", {
         "user":    user,
     })
 
@@ -117,8 +117,7 @@ async def banner_job_kunde_page(
     _check_pipeline(pipeline)
     if not org_id:
         raise HTTPException(400, "org_id påkrævet")
-    return templates.TemplateResponse("banner_job_kunde.html", {
-        "request":  request,
+    return templates.TemplateResponse(request, "banner_job_kunde.html", {
         "user":     user,
         "pipeline": pipeline,
         "org_id":   org_id,

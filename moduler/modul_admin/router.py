@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import ROLE_LABELS, get_current_user, get_user_resource_access, hash_password, init_db
+from auth import (
+    ROLE_LABELS, get_current_user, get_user_resource_access, hash_password, init_db,
+    list_roles, get_role_resource_access, set_role_resource_access,
+    create_role, update_role, delete_role,
+)
 
 from moduler.modul_admin.queries import (
     db_get_all_users, db_create_user, db_get_user_by_id, db_update_user,
@@ -15,16 +19,13 @@ from moduler.modul_admin.queries import (
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals, CATEGORIES
+register_nav_globals(templates)
 
-ROLES = [
-    ("salesperson",      "Sælger"),
-    ("sales_manager",    "Sales Manager"),
-    ("sales_operations", "Sales Operations"),
-    ("marketing",        "Marketing"),
-    ("management",       "Management"),
-    ("admin",            "Admin"),
-]
+
+def _roles_tuples() -> list:
+    """Dynamisk ROLES-liste (tuple-format) bygget fra DB via auth.list_roles()."""
+    return [(r["name"], r["label"]) for r in list_roles()]
 
 BRANDS = [
     ("",           "Alle brands (tværgående hold)"),
@@ -42,7 +43,7 @@ BRANDS = [
 
 def group_users(users: list) -> list:
     brand_labels = dict(BRANDS)
-    role_labels_dict = dict(ROLES)
+    role_labels_dict = dict(_roles_tuples())
     brand_groups: dict = {}
     role_groups: dict = {}
 
@@ -98,12 +99,11 @@ async def admin_db_init(request: Request, user=Depends(get_current_user)):
 async def admin_users(request: Request, user=Depends(get_current_user)):
     require_admin(user)
     users = db_get_all_users()
-    return templates.TemplateResponse("admin_users.html", {
-        "request":  request,
+    return templates.TemplateResponse(request, "admin_users.html", {
         "user":     user,
         "users":    users,
         "groups":   group_users(users),
-        "roles":    ROLES,
+        "roles":    _roles_tuples(),
         "brands":   BRANDS,
         "success":  request.query_params.get("success"),
         "error":    request.query_params.get("error"),
@@ -144,7 +144,6 @@ async def admin_create_user(request: Request, user=Depends(get_current_user)):
 @router.get("/users/{user_id}/edit", response_class=HTMLResponse)
 async def admin_edit_page(user_id: int, request: Request, user=Depends(get_current_user)):
     require_admin(user)
-    from app import CATEGORIES
 
     target = db_get_user_by_id(user_id)
     if not target:
@@ -157,11 +156,10 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
     except Exception:
         memberships, all_teams = [], []
 
-    return templates.TemplateResponse("admin_edit_user.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "admin_edit_user.html", {
         "user":            user,
         "target":          target,
-        "roles":           ROLES,
+        "roles":           _roles_tuples(),
         "brands":          BRANDS,
         "categories":      CATEGORIES,
         "resource_access": resource_access,
@@ -206,7 +204,6 @@ async def admin_update_user(user_id: int, request: Request, user=Depends(get_cur
 async def admin_save_resource_access(user_id: int, request: Request, user=Depends(get_current_user)):
     require_admin(user)
     form = await request.form()
-    from app import CATEGORIES
     all_resource_ids = [item["id"] for cat in CATEGORIES for item in cat["items"]]
 
     try:
@@ -269,8 +266,7 @@ async def admin_teams_list(request: Request, user=Depends(get_current_user)):
         print(traceback.format_exc())
         teams = []
 
-    return templates.TemplateResponse("admin_teams.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "admin_teams.html", {
         "user":    user,
         "teams":   teams,
         "brands":  BRANDS,
@@ -316,8 +312,7 @@ async def admin_edit_team(team_id: int, request: Request, user=Depends(get_curre
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Databasefejl")
 
-    return templates.TemplateResponse("admin_edit_team.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "admin_edit_team.html", {
         "user":        user,
         "team":        team,
         "memberships": memberships,
@@ -396,3 +391,102 @@ async def admin_remove_team_membership(
         print(traceback.format_exc())
 
     return RedirectResponse(f"/admin/teams/{team_id}?success=member_removed", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Roles — liste, opret, rediger, slet, og tilladelses-matrix
+# ---------------------------------------------------------------------------
+
+@router.get("/roles", response_class=HTMLResponse)
+async def admin_roles_list(request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    roles = list_roles()
+    # Tæl brugere pr. rolle
+    user_counts: dict = {}
+    try:
+        for u in db_get_all_users():
+            user_counts[u["role"]] = user_counts.get(u["role"], 0) + 1
+    except Exception:
+        pass
+    return templates.TemplateResponse(request, "admin_roles.html", {
+        "user":        user,
+        "roles":       roles,
+        "user_counts": user_counts,
+        "success":     request.query_params.get("success"),
+        "error":       request.query_params.get("error"),
+    })
+
+
+@router.post("/roles/create")
+async def admin_create_role(request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    form  = await request.form()
+    name  = form.get("name", "")
+    label = form.get("label", "")
+    rank  = form.get("rank", "1")
+    try:
+        rank_int = int(rank)
+    except ValueError:
+        return RedirectResponse("/admin/roles?error=invalid_rank", status_code=302)
+    ok, err = create_role(name, label, rank_int)
+    if not ok:
+        return RedirectResponse(f"/admin/roles?error={err}", status_code=302)
+    return RedirectResponse("/admin/roles?success=created", status_code=302)
+
+
+@router.get("/roles/{role_name}/edit", response_class=HTMLResponse)
+async def admin_edit_role_page(role_name: str, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    from auth import ROLES_META
+    role = ROLES_META.get(role_name)
+    if not role:
+        raise HTTPException(status_code=404, detail="Rolle ikke fundet")
+    role_access = get_role_resource_access(role_name)
+    return templates.TemplateResponse(request, "admin_edit_role.html", {
+        "user":        user,
+        "target_role": role,
+        "categories":  CATEGORIES,
+        "role_access": role_access,
+        "success":     request.query_params.get("success"),
+        "error":       request.query_params.get("error"),
+    })
+
+
+@router.post("/roles/{role_name}/update")
+async def admin_update_role(role_name: str, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    form  = await request.form()
+    label = form.get("label", "")
+    rank  = form.get("rank", "1")
+    try:
+        rank_int = int(rank)
+    except ValueError:
+        return RedirectResponse(f"/admin/roles/{role_name}/edit?error=invalid_rank", status_code=302)
+    ok, err = update_role(role_name, label, rank_int)
+    if not ok:
+        return RedirectResponse(f"/admin/roles/{role_name}/edit?error={err}", status_code=302)
+    return RedirectResponse(f"/admin/roles/{role_name}/edit?success=updated", status_code=302)
+
+
+@router.post("/roles/{role_name}/permissions")
+async def admin_save_role_permissions(role_name: str, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    from auth import ROLES_META
+    if role_name not in ROLES_META:
+        raise HTTPException(status_code=404, detail="Rolle ikke fundet")
+    form = await request.form()
+    for cat in CATEGORIES:
+        for item in cat["items"]:
+            rid = item["id"]
+            val = form.get(f"perm_{rid}", "default")
+            set_role_resource_access(role_name, rid, val)
+    return RedirectResponse(f"/admin/roles/{role_name}/edit?success=perms_saved", status_code=302)
+
+
+@router.post("/roles/{role_name}/delete")
+async def admin_delete_role(role_name: str, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    ok, err = delete_role(role_name)
+    if not ok:
+        return RedirectResponse(f"/admin/roles?error={err}", status_code=302)
+    return RedirectResponse("/admin/roles?success=deleted", status_code=302)

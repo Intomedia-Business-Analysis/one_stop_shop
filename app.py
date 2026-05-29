@@ -19,6 +19,7 @@ from auth import (
     resolve_resource_access,
     init_db,
 )
+from nav_utils import CATEGORIES, filter_categories, register_nav_globals
 from moduler.modul_budget.router import router as budget_router
 from moduler.modul_admin.router import router as admin_router
 from moduler.modul_forcast.router import router as forecast_router
@@ -28,6 +29,7 @@ from moduler.modul_barsel.queries import init_barsel_db
 from moduler.modul_banner_job.router import router as banner_job_router
 from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
 from moduler.modul_rotation.router import router as rotation_router
+from moduler.modul_marketing.router import router as marketing_router
 
 load_dotenv()
 
@@ -49,9 +51,10 @@ app.include_router(barsel_router)
 app.include_router(banner_job_router)
 app.include_router(portfolio_alignment_router)
 app.include_router(rotation_router)
+app.include_router(marketing_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+register_nav_globals(templates)
 
 # ---------------------------------------------------------------------------
 # Exception handlers
@@ -66,114 +69,7 @@ async def requires_login_handler(request: Request, exc: RequiresLoginException):
 # Tool & Dashboard Registry
 # ---------------------------------------------------------------------------
 
-CATEGORIES = [
-    {
-        "id": "kpi-dashboards",
-        "title": "KPI'er og Dashboards",
-        "description": "Personlige og team-baserede performance dashboards",
-        "icon": "activity",
-        "color": "green",
-        "min_role": "salesperson",
-        "subcategories": [],
-        "items": [
-            {"id": "kpi-saelger",       "title": "Sælger Dashboard",        "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",    "exclude_roles": ["sales_operations", "management"], "url": "/tools/performance/saelger"},
-            {"id": "kpi-manager",       "title": "Manager Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager",  "url": "/tools/performance/manager"},
-            {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations","url": "/tools/performance/afdelingsleder"},
-    ],
-},
-
-    {
-        "id": "sales-operations",
-        "title": "Sales Operations",
-        "description": "Budget og forecast",
-        "icon": "settings",
-        "color": "amber",
-        "min_role": "sales_manager",
-        "subcategories": [
-            {"id": "budget",    "title": "Budget",    "description": "Budget upload og dashboard",       "brand": None, "min_role": "sales_manager"},
-            {"id": "forecast",  "title": "Forecast",  "description": "Salgsprognoser",                   "brand": None, "min_role": "sales_manager"},
-            {"id": "alignment", "title": "Alignment", "description": "Pipedrive vs. Zuora ACV-kontrol",  "brand": None, "min_role": "sales_operations"},
-        ],
-        "items": [
-            {"id": "budget-upload-tool",      "title": "Budget",              "type": "tool",      "subcategory": "budget",    "brand": None, "min_role": "sales_manager", "url": "/tools/budget/"},
-            {"id": "forecast-tool",           "title": "Forecast",            "type": "tool",      "subcategory": "forecast",  "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
-            {"id": "portfolio-alignment",     "title": "Portfolio Alignment", "type": "dashboard", "subcategory": "alignment", "brand": None, "min_role": "sales_operations", "url": "/tools/portfolio-alignment/"},
-        ],
-    },
-
-    {
-        "id": "banner-job",
-        "title": "Banner & Job",
-        "description": "Kunde-dashboards for Banner og Job pipeline",
-        "icon": "activity",
-        "color": "green",
-        "min_role": "salesperson",
-        "required_team": "Banner og Job",
-        "subcategories": [],
-        "items": [
-            {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "exclude_roles": ["sales_operations"], "url": "/tools/banner-job/"},
-        ],
-    },
-
-    {
-        "id": "rotation-dashboards",
-        "title": "Rotation Dashboards",
-        "description": "Performance dashboards til kontorskærme — Sales, Department, Banner, Advertising og Media",
-        "icon": "activity",
-        "color": "green",
-        "min_role": "salesperson",
-        "subcategories": [],
-        "items": [
-            {"id": "rotation-autoplay",    "title": "Rotation",                "type": "tool",      "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/"},
-            {"id": "rotation-sales",       "title": "Sales Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/sales-performance"},
-            {"id": "rotation-department",  "title": "Department Performance",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/department-performance"},
-            {"id": "rotation-banner",      "title": "Banner Performance",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/banner-performance"},
-            {"id": "rotation-advertising", "title": "Advertising Performance", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/advertising-performance"},
-            {"id": "rotation-media",       "title": "Media Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/media-performance"},
-        ],
-    },
-
-    {
-        "id": "hr",
-        "title": "HR",
-        "description": "HR-værktøjer",
-        "icon": "users",
-        "color": "green",
-        "min_role": "management",
-        "subcategories": [],
-        "items": [
-            {"id": "barselsberegner", "title": "Barselsplanlægger", "type": "tool", "subcategory": None, "brand": None, "min_role": "management", "url": "/tool/barselsberegner"},
-        ],
-    },
-]
-
-
-def filter_categories(categories: list, user: dict) -> list:
-    result = []
-    for cat in categories:
-        if not has_access(user, cat["min_role"]):
-            continue
-        visible_items = []
-        for item in cat["items"]:
-            access = resolve_resource_access(user, item["id"], item["min_role"], item.get("brand"), item.get("required_team"), item.get("exclude_roles"))
-            if access != "none":
-                visible_items.append({**item, "access": access})
-        visible_subs = [
-            sub for sub in cat.get("subcategories", [])
-            if has_access(user, sub["min_role"], sub.get("brand"))
-        ]
-        dashboard_count = sum(1 for i in visible_items if i["type"] == "dashboard")
-        tool_count      = sum(1 for i in visible_items if i["type"] == "tool")
-        if not visible_items and not visible_subs:
-            continue
-        result.append({
-            **cat,
-            "items":           visible_items,
-            "subcategories":   visible_subs,
-            "dashboard_count": dashboard_count,
-            "tool_count":      tool_count,
-        })
-    return result
+# CATEGORIES og filter_categories er i nav_utils.py
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +87,7 @@ async def login_page(request: Request):
             return RedirectResponse("/", status_code=302)
         # Forældet session (DB nede eller bruger slettet) — ryd op
         request.session.clear()
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -201,8 +97,7 @@ async def login_post(request: Request):
     password = form.get("password", "")
     user = authenticate_user(username, password)
     if not user:
-        return templates.TemplateResponse("login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "login.html", {
             "error": "Forkert brugernavn eller adgangskode",
         })
     request.session["user_id"] = user["id"]
@@ -226,8 +121,7 @@ async def intomedia_redirect():
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("settings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "settings.html", {
         "user":    user,
     })
 
@@ -265,8 +159,7 @@ async def settings_change_password(request: Request, user=Depends(get_current_us
 
 @app.get("/dashboard/budget", response_class=HTMLResponse)
 async def budget_dashboard(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("budget_tool.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "budget_tool.html", {
         "user": user,
     })
 
@@ -286,8 +179,7 @@ async def hub(request: Request, user=Depends(get_current_user)):
                 "category": cat["title"],
                 "url":      item["url"],
             })
-    return templates.TemplateResponse("hub.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "hub.html", {
         "user":         user,
         "categories":   categories,
         "total_dash":   total_dash,
@@ -307,8 +199,7 @@ async def category_detail(cat_id: str, request: Request, user=Depends(get_curren
     for item in cat["items"]:
         key = item["subcategory"] or "Generelt"
         subs.setdefault(key, []).append(item)
-    return templates.TemplateResponse("category.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "category.html", {
         "user":       user,
         "categories": all_cats,
         "cat":        cat,
@@ -326,8 +217,7 @@ async def dashboard_view(dashboard_id: str, request: Request, user=Depends(get_c
 @app.get("/tool/barselsberegner", response_class=HTMLResponse)
 async def barselsberegner_view(request: Request, user=Depends(get_current_user)):
     categories = filter_categories(CATEGORIES, user)
-    return templates.TemplateResponse("tool_barselsberegner.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "tool_barselsberegner.html", {
         "user":       user,
         "categories": categories,
     })
@@ -337,8 +227,7 @@ async def barselsberegner_view(request: Request, user=Depends(get_current_user))
 async def barselsberegner_app(request: Request, user=Depends(get_current_user)):
     """Serverer selve beregner-appen i en iframe (kræver login)."""
     see_all = user["role"] == "admin"
-    return templates.TemplateResponse("barselsberegner_app.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "barselsberegner_app.html", {
         "user":    user,
         "see_all": see_all,
     })

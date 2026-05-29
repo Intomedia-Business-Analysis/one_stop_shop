@@ -28,22 +28,43 @@ from moduler.modul_portfolio_alignment.pipedrive_api import (
 
 router = APIRouter(prefix="/tools/portfolio-alignment", tags=["Portfolio Alignment"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 init_portfolio_notes_db()
 
-# Cache pr. scope (Pipedrive- og Zuora-load er ikke billige).
-_CACHE: dict[str, dict] = {}
+# Cache pr. (scope, cutoff_date) — Pipedrive- og Zuora-load er ikke billige,
+# og forskellige cutoffs har forskellige resultatsæt så de må have hver sin cache-entry.
+_CACHE: dict[tuple, dict] = {}
 _CACHE_TTL_SEC = 300  # 5 min
 
 
-def _get_comparison(scope: str, force: bool = False) -> dict:
+def _normalize_cutoff(cutoff_date: str | None) -> str | None:
+    """Tom streng → None. Validér ISO YYYY-MM-DD."""
+    if not cutoff_date:
+        return None
+    c = cutoff_date.strip()
+    if not c:
+        return None
+    # Tillader brugeren skriver fx '2026-05-15'. Vi gør ikke andet end at validere
+    # at det parser; SQL-laget håndterer resten.
+    import datetime as _dt
+    try:
+        _dt.date.fromisoformat(c)
+    except ValueError:
+        raise HTTPException(400, f"cutoff_date skal være ISO YYYY-MM-DD, fik {cutoff_date!r}")
+    return c
+
+
+def _get_comparison(scope: str, force: bool = False,
+                    cutoff_date: str | None = None) -> dict:
     now = time.time()
-    cached = _CACHE.get(scope)
+    key = (scope, cutoff_date or "")
+    cached = _CACHE.get(key)
     if not force and cached and (now - cached["ts"]) < _CACHE_TTL_SEC:
         return cached
-    data = compare_portfolios(scope)
-    _CACHE[scope] = {"data": data, "ts": now}
-    return _CACHE[scope]
+    data = compare_portfolios(scope, cutoff_date=cutoff_date)
+    _CACHE[key] = {"data": data, "ts": now}
+    return _CACHE[key]
 
 
 def _validate_scope(scope: str) -> str:
@@ -56,8 +77,7 @@ def _validate_scope(scope: str) -> str:
 async def alignment_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_operations"):
         raise HTTPException(403, "Kræver Sales Operations-adgang")
-    return templates.TemplateResponse("portfolio_alignment.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "portfolio_alignment.html", {
         "user":    user,
     })
 
@@ -75,13 +95,15 @@ async def alignment_accounts(user=Depends(get_current_user)):
 async def alignment_comparison(
     scope: str = "all",
     refresh: int = 0,
+    cutoff_date: str | None = None,
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_operations"):
         raise HTTPException(403, "Kræver Sales Operations-adgang")
     scope = _validate_scope(scope)
+    cutoff = _normalize_cutoff(cutoff_date)
     try:
-        cached = _get_comparison(scope, force=bool(refresh))
+        cached = _get_comparison(scope, force=bool(refresh), cutoff_date=cutoff)
         return JSONResponse({
             **cached["data"],
             "cached_at": cached["ts"],
@@ -95,6 +117,7 @@ async def alignment_comparison(
 async def alignment_web_sale_deals(
     scope: str,
     site: str,
+    cutoff_date: str | None = None,
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_operations"):
@@ -103,8 +126,9 @@ async def alignment_web_sale_deals(
         raise HTTPException(400, "Konkret scope kræves (ikke 'all')")
     if not site:
         raise HTTPException(400, "site er påkrævet")
+    cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_web_sale_deals(scope, site))
+        return JSONResponse(fetch_web_sale_deals(scope, site, snapshot_date=cutoff))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -115,6 +139,7 @@ async def alignment_customer_deals(
     scope: str,
     org_id: str,
     site: str = "",
+    cutoff_date: str | None = None,
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_operations"):
@@ -123,8 +148,10 @@ async def alignment_customer_deals(
         raise HTTPException(400, "Konkret scope kræves (ikke 'all')")
     if not org_id:
         raise HTTPException(400, "org_id er påkrævet")
+    cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_customer_deals(scope, org_id, site=site or None))
+        return JSONResponse(fetch_customer_deals(scope, org_id, site=site or None,
+                                                 snapshot_date=cutoff))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -207,14 +234,16 @@ async def alignment_deal_preview(
     scope: str,
     org_id: str,
     site: str,
+    cutoff_date: str | None = None,
     user=Depends(get_current_user),
 ):
     """Returnér valuta + value der vil blive brugt ved deal-oprettelse, uden at POSTe."""
     if not has_access(user, "sales_operations"):
         raise HTTPException(403, "Kræver Sales Operations-adgang")
+    cutoff = _normalize_cutoff(cutoff_date)
     try:
         scope_v, org_id_v, site_v = _resolve_create_args({"scope": scope, "org_id": org_id, "site": site})
-        local = compute_local_diff(scope_v, str(org_id_v), site_v)
+        local = compute_local_diff(scope_v, str(org_id_v), site_v, cutoff_date=cutoff)
         if abs(local["value"]) < 1:
             raise HTTPException(400, "diff er nul (eller for lille) — der er intet at afstemme")
         prev = preview_alignment_deal(
@@ -252,8 +281,9 @@ async def alignment_create_deal(
         raise HTTPException(403, "Kræver Sales Operations-adgang")
     dry_run = bool(payload.get("dry_run"))
     scope, org_id_int, site = _resolve_create_args(payload)
+    cutoff = _normalize_cutoff(payload.get("cutoff_date"))
     try:
-        local = compute_local_diff(scope, str(org_id_int), site)
+        local = compute_local_diff(scope, str(org_id_int), site, cutoff_date=cutoff)
         if abs(local["value"]) < 1:
             raise HTTPException(400, "diff er nul (eller for lille) — der er intet at afstemme")
         result = create_alignment_deal(
@@ -400,6 +430,7 @@ async def alignment_create_deals_bulk(
         min_diff_abs = 1.0
     include_handled = bool(payload.get("include_handled"))
     dry_run         = bool(payload.get("dry_run"))
+    cutoff          = _normalize_cutoff(payload.get("cutoff_date"))
 
     if scope_filter != "all" and scope_filter not in ACCOUNT_SCOPES:
         raise HTTPException(400, f"Ukendt scope: {scope_filter!r}")
@@ -407,7 +438,8 @@ async def alignment_create_deals_bulk(
         raise HTTPException(400, "sites og statuses skal være lister")
     statuses_set = set(statuses)
 
-    cmp_data = compare_portfolios(scope_filter if scope_filter != "all" else None)
+    cmp_data = compare_portfolios(scope_filter if scope_filter != "all" else None,
+                                  cutoff_date=cutoff)
     rows = cmp_data.get("rows", [])
     handled = set()
     if not include_handled:

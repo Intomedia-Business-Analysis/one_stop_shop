@@ -19,7 +19,8 @@ from moduler.modul_budget.queries import (
 
 router = APIRouter(prefix="/tools/budget", tags=["Budget"])
 templates = Jinja2Templates(directory="templates")
-templates.env.globals["ROLE_LABELS"] = ROLE_LABELS
+from nav_utils import register_nav_globals
+register_nav_globals(templates)
 
 MONTHS = [
     (1,"Januar"),(2,"Februar"),(3,"Marts"),(4,"April"),
@@ -30,8 +31,7 @@ MONTHS = [
 
 @router.get("/", response_class=HTMLResponse)
 async def budget_tool(request: Request, user=Depends(get_current_user)):
-    return templates.TemplateResponse("budget_tool.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "budget_tool.html", {
         "user":       user,
         "sites":      db_get_distinct("BudgetsIntoMedia", "Site"),
         "brands":     db_get_distinct("BudgetsIntoMedia", "Brand"),

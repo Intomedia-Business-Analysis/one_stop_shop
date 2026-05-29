@@ -85,39 +85,7 @@
 </head>
 <body>
 <div class="shell">
-  <nav class="sidebar">
-    <div class="sb-logo"><div class="sb-logo-mark">:m</div><div class="sb-logo-text">intomedia</div></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Navigation</div>
-      <a href="/" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-        Hub
-      </a>
-    </div>
-    <div class="sb-divider"></div>
-    <div class="sb-nav">
-      <div class="sb-section-label">Subscription Sales</div>
-      <a href="/tools/performance/" class="sbi">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Subscription Dashboard
-      </a>
-      <a href="/tools/performance/dashboards" class="sbi">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-        KPI Dashboards
-      </a>
-      <a href="/tools/performance/saelger" class="sbi active">
-        <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Mit Dashboard
-      </a>
-    </div>
-    <div class="sb-user">
-      <div class="sb-avatar">{{ user.initials }}</div>
-      <div>
-        <div class="sb-user-name">{{ user.name }}</div>
-        <div class="sb-user-role">{{ ROLE_LABELS[user.role] }}</div>
-      </div>
-    </div>
-  </nav>
+  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
   <div class="main">
     <div class="topbar">
@@ -156,6 +124,9 @@
         <div class="filter-bar">
           <span class="filter-label">Filter</span>
           <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-owner" onchange="onOwnerChange()" style="display:none">
+            <option value="">Indlæser sælgere…</option>
+          </select>
           <select class="filter-select" id="filter-year" onchange="loadData()">
             <option value="">Indlæser år…</option>
           </select>
@@ -179,8 +150,8 @@
           </select>
           <div class="filter-sep"></div>
           <select class="filter-select" id="filter-date-col" onchange="loadData()">
-            <option value="won_time">Vundet dato</option>
-            <option value="service_activation_date" selected>Aktiverings dato</option>
+            <option value="won_time">Won time</option>
+            <option value="service_activation_date" selected>Service activation date</option>
           </select>
         </div>
 
@@ -248,14 +219,33 @@
               </div>
             </div>
 
-            <!-- Pipeline fordeling modal -->
-            <div id="pipeline-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center">
-              <div style="background:#fff;border-radius:12px;padding:28px 32px;min-width:280px;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+            <!-- Pipeline deals modal -->
+            <div id="pipeline-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px">
+              <div style="background:var(--surface,#fff);border-radius:12px;padding:24px 28px;width:100%;max-width:1100px;box-shadow:0 8px 32px rgba(0,0,0,0.18);margin:auto">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                  <div style="font-weight:700;font-size:15px">Pipeline fordeling</div>
-                  <span onclick="document.getElementById('pipeline-modal').style.display='none'" style="cursor:pointer;font-size:20px;color:var(--ink-4);line-height:1">&times;</span>
+                  <div>
+                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4)">Åben pipeline</div>
+                    <div id="pipeline-modal-title" style="font-weight:700;font-size:16px;color:var(--ink);margin-top:2px">Pipeline deals</div>
+                  </div>
+                  <span onclick="document.getElementById('pipeline-modal').style.display='none'" style="cursor:pointer;font-size:24px;color:var(--ink-4);line-height:1">&times;</span>
                 </div>
-                <div id="pipeline-modal-body"></div>
+                <div style="overflow-x:auto">
+                  <table class="v-table" style="width:100%;border-collapse:collapse;font-size:12px">
+                    <thead>
+                      <tr>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Medie/Site</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Virksomhed</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Deal</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:right;cursor:pointer;user-select:none" onclick="sortPipelineModal('value')">Beløb<i id="arr-pm-value" style="margin-left:5px;opacity:0.5;font-style:normal;font-size:12px">↕</i></th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Pipeline</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;cursor:pointer;user-select:none" onclick="sortPipelineModal('expected_close')">Forventet close<i id="arr-pm-expected_close" style="margin-left:5px;opacity:0.5;font-style:normal;font-size:12px">↕</i></th>
+                      </tr>
+                    </thead>
+                    <tbody id="pipeline-modal-tbody">
+                      <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Henter…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
@@ -330,28 +320,72 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-async function loadMeta() {
+let _currentOwner = null;
+
+async function loadMeta(opts = {}) {
+  // opts.preserveSelection: bevar valgt år/måned hvis muligt (bruges ved owner-skift)
+  const preserve = !!opts.preserveSelection;
+  const prevYear  = preserve ? document.getElementById('filter-year').value  : null;
+  const prevMonth = preserve ? document.getElementById('filter-month').value : null;
   try {
-    const r = await fetch('/tools/performance/saelger-meta');
+    const params = new URLSearchParams();
+    if (_currentOwner) params.set('owner', _currentOwner);
+    const r = await fetch('/tools/performance/saelger-meta?' + params);
     const m = await r.json();
+
+    // Owner-vælger (kun synlig for admin)
+    const ownerSel = document.getElementById('filter-owner');
+    if (m.can_pick_seller && Array.isArray(m.available_owners) && m.available_owners.length) {
+      if (!_currentOwner) _currentOwner = m.owner_name;
+      ownerSel.innerHTML = m.available_owners.map(name =>
+        `<option value="${encodeURIComponent(name)}"${name === _currentOwner ? ' selected' : ''}>${name}</option>`
+      ).join('');
+      ownerSel.style.display = '';
+    } else {
+      ownerSel.style.display = 'none';
+      _currentOwner = m.owner_name || _currentOwner;
+    }
 
     const yearSel = document.getElementById('filter-year');
     const today   = new Date();
-    yearSel.innerHTML = m.years.map(y =>
-      `<option value="${y}"${y === today.getFullYear() ? ' selected' : ''}>${y}</option>`
-    ).join('');
-    // Sæt aktuel måned som default
-    document.getElementById('filter-month').value = String(today.getMonth() + 1);
+    const years   = m.years && m.years.length ? m.years : [today.getFullYear()];
+    yearSel.innerHTML = years.map(y => {
+      const selected = preserve && prevYear === String(y)
+        ? true
+        : (!preserve && y === today.getFullYear());
+      return `<option value="${y}"${selected ? ' selected' : ''}>${y}</option>`;
+    }).join('');
+
+    const monthSel = document.getElementById('filter-month');
+    if (preserve && prevMonth !== null && prevMonth !== undefined) {
+      monthSel.value = prevMonth;
+    } else {
+      // Sæt aktuel måned som default
+      monthSel.value = String(today.getMonth() + 1);
+    }
 
     const teamSel = document.getElementById('filter-team');
     if (m.teams && m.teams.length > 1) {
+      const prevTeam = preserve ? teamSel.value : '';
       teamSel.innerHTML = '<option value="">Alle teams</option>' +
-        m.teams.map(t => `<option value="${encodeURIComponent(t)}">${t}</option>`).join('');
+        m.teams.map(t => `<option value="${encodeURIComponent(t)}"${encodeURIComponent(t) === prevTeam ? ' selected' : ''}>${t}</option>`).join('');
       teamSel.style.display = '';
+    } else {
+      teamSel.innerHTML = '<option value="">Alle teams</option>';
+      teamSel.style.display = 'none';
     }
   } catch(e) {
     console.error(e);
   }
+}
+
+async function onOwnerChange() {
+  const raw = document.getElementById('filter-owner').value;
+  _currentOwner = raw ? decodeURIComponent(raw) : null;
+  document.getElementById('loading-state').style.display = '';
+  document.getElementById('dash-content').style.display  = 'none';
+  await loadMeta({ preserveSelection: true });
+  await loadData();
 }
 
 async function loadData() {
@@ -362,10 +396,11 @@ async function loadData() {
     const dateCol = document.getElementById('filter-date-col').value;
 
     const params = new URLSearchParams();
-    if (year)    params.set('year',     year);
-    if (month)   params.set('month',    month);
-    if (team)    params.set('team',     decodeURIComponent(team));
-    if (dateCol) params.set('date_col', dateCol);
+    if (year)           params.set('year',     year);
+    if (month)          params.set('month',    month);
+    if (team)           params.set('team',     decodeURIComponent(team));
+    if (dateCol)        params.set('date_col', dateCol);
+    if (_currentOwner)  params.set('owner',    _currentOwner);
 
     const r = await fetch('/tools/performance/saelger-data?' + params);
     const d = await r.json();
@@ -444,12 +479,12 @@ function renderTeamBudget(d) {
   </table>`;
 }
 
-let _pipelineFordeling = [];
+let _lastDashData = null;
 
 function renderPipeline(d) {
   document.getElementById('pipe-value').textContent = fmtKr(d.pipeline_value);
   document.getElementById('pipe-count').textContent = `${d.pipeline_count} åbne deal${d.pipeline_count !== 1 ? 's' : ''}`;
-  _pipelineFordeling = d.pipeline_fordeling || [];
+  _lastDashData = d;
 
   const resterende = Math.max((d.budget || 0) - d.won_amount, 0);
   const pipeSeg    = document.getElementById('pipe-seg-pipe');
@@ -489,18 +524,101 @@ function renderPipeline(d) {
   }
 }
 
-function visPipelineModal() {
-  const body = document.getElementById('pipeline-modal-body');
-  if (!_pipelineFordeling.length) {
-    body.innerHTML = '<p style="color:var(--ink-4);font-style:italic">Ingen åbne deals denne måned</p>';
-  } else {
-    body.innerHTML = _pipelineFordeling.map(p => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:14px">${escHtml(p.navn)}</span>
-        <span style="font-weight:700;font-size:14px;background:#EFF6FF;color:#1D4ED8;padding:2px 10px;border-radius:20px">${p.antal}</span>
-      </div>`).join('');
+const MONTH_NAMES_FULL = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+
+let _pipelineDeals  = [];
+let _pmSortCol      = null;   // null = default (asc expected_close)
+let _pmSortDir      = 'desc';
+
+async function visPipelineModal() {
+  const modal = document.getElementById('pipeline-modal');
+  const tbody = document.getElementById('pipeline-modal-tbody');
+  const title = document.getElementById('pipeline-modal-title');
+
+  // Sæt titel ud fra dashboardets aktuelle valg
+  const ownerName = _lastDashData?.owner_name || '';
+  const monthLbl  = _lastDashData?.month_label || '';
+  title.textContent = ownerName
+    ? `${ownerName} — ${monthLbl}`
+    : 'Pipeline deals';
+
+  modal.style.display = 'flex';
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Henter…</td></tr>';
+
+  try {
+    const year    = document.getElementById('filter-year').value;
+    const month   = document.getElementById('filter-month').value;
+    const params  = new URLSearchParams();
+    if (year)          params.set('year',  year);
+    if (month)         params.set('month', month);
+    if (_currentOwner) params.set('owner', _currentOwner);
+
+    const r = await fetch('/tools/performance/saelger-pipeline-deals?' + params);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _pipelineDeals = await r.json();
+    _pmSortCol = null;
+    _pmSortDir = 'desc';
+    renderPipelineModalRows();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:#B32E45">Fejl: ${escHtml(e.message)}</td></tr>`;
   }
-  document.getElementById('pipeline-modal').style.display = 'flex';
+}
+
+function sortPipelineModal(col) {
+  if (_pmSortCol === col) {
+    if (_pmSortDir === 'desc') _pmSortDir = 'asc';
+    else { _pmSortCol = null; _pmSortDir = 'desc'; }
+  } else {
+    _pmSortCol = col;
+    _pmSortDir = 'desc';
+  }
+  renderPipelineModalRows();
+}
+
+function renderPipelineModalRows() {
+  const tbody = document.getElementById('pipeline-modal-tbody');
+  if (!_pipelineDeals.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Ingen åbne pipeline-deals i den valgte periode</td></tr>';
+    [['arr-pm-value','value'],['arr-pm-expected_close','expected_close']].forEach(([id]) => {
+      const a = document.getElementById(id);
+      if (a) { a.textContent = '↕'; a.style.opacity = '0.5'; }
+    });
+    return;
+  }
+
+  // Lokal "YYYY-MM-DD" til overdue-sammenligning (matcher manager-visningens logik)
+  const t = new Date();
+  const todayStr = t.getFullYear() + '-' +
+    String(t.getMonth() + 1).padStart(2,'0') + '-' +
+    String(t.getDate()).padStart(2,'0');
+
+  const effectiveCol = _pmSortCol || 'expected_close';
+  const effectiveDir = _pmSortCol ? _pmSortDir : 'asc';
+  const sorted = [..._pipelineDeals].sort((a, b) => {
+    const av = a[effectiveCol] ?? '', bv = b[effectiveCol] ?? '';
+    if (effectiveCol === 'value') return effectiveDir === 'desc' ? bv - av : av - bv;
+    return effectiveDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+  });
+
+  [['arr-pm-value','value'],['arr-pm-expected_close','expected_close']].forEach(([id, key]) => {
+    const arrow = document.getElementById(id);
+    if (!arrow) return;
+    if (key === _pmSortCol) { arrow.textContent = _pmSortDir === 'desc' ? '↓' : '↑'; arrow.style.opacity = '1'; }
+    else                    { arrow.textContent = '↕'; arrow.style.opacity = '0.5'; }
+  });
+
+  tbody.innerHTML = sorted.map(deal => {
+    const isOverdue = deal.expected_close !== '—' && deal.expected_close < todayStr;
+    const dateStyle = isOverdue ? 'color:#B32E45;font-weight:700' : 'color:var(--ink-2)';
+    return `<tr>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2)">${escHtml(deal.site)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2)">${escHtml(deal.org_name)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);max-width:240px;white-space:normal;font-size:11px">${escHtml(deal.title)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;color:var(--green);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtFull(deal.value)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--green-light);color:var(--green)">${escHtml(deal.pipeline)}</span></td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);${dateStyle}">${escHtml(deal.expected_close)}${isOverdue ? ' ⚠' : ''}</td>
+    </tr>`;
+  }).join('');
 }
 
 document.getElementById('pipeline-modal').addEventListener('click', function(e) {
