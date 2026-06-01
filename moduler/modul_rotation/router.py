@@ -11,7 +11,7 @@ from .queries import (
     db_sales_performance,
     db_department_performance,
     db_banner_performance,
-    db_advertising_performance,
+    db_job_performance,
     db_media_performance,
 )
 
@@ -89,19 +89,19 @@ async def banner_performance_data(request: Request, user=Depends(get_current_use
 
 
 # ════════════════════════════════════════════════════════════════════════════
-#  DASHBOARD 4 — Advertising Performance
+#  DASHBOARD 4 — Job Performance
 # ════════════════════════════════════════════════════════════════════════════
 
-@router.get("/tools/rotation/advertising-performance", response_class=HTMLResponse)
-async def advertising_performance_page(request: Request, user=Depends(get_current_user)):
+@router.get("/tools/rotation/job-performance", response_class=HTMLResponse)
+async def job_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_advertising_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse("rotation_job_performance.html", {"request": request, "user": user})
 
 
-@router.get("/tools/rotation/advertising-performance-data")
-async def advertising_performance_data(request: Request, user=Depends(get_current_user)):
+@router.get("/tools/rotation/job-performance-data")
+async def job_performance_data(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    data = db_advertising_performance(date.today())
+    data = db_job_performance(date.today())
     return JSONResponse(content=data)
 
 
@@ -121,9 +121,10 @@ async def media_performance_data(
     user=Depends(get_current_user),
     brands: Optional[str] = None,
     years: Optional[str] = None,
+    mode: Optional[str] = None,
 ):
     _require(user, "salesperson")
     selected_brands = [b.strip() for b in brands.split(",")] if brands else None
     selected_years  = [y.strip() for y in years.split(",")]  if years  else None
-    data = db_media_performance(selected_brands, selected_years)
+    data = db_media_performance(selected_brands, selected_years, mode or "abonnement")
     return JSONResponse(content=data)

@@ -66,10 +66,10 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   flex: 1; min-height: 0;
 }
 .chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
-.chart-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
-.legend-row { display:flex; gap:12px; margin-bottom:3px; flex-shrink:0; }
-.legend-item { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--ink-3); }
-.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.chart-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:5px; flex-shrink:0; }
+.legend-row { display:flex; gap:16px; margin-bottom:5px; flex-shrink:0; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-2); }
+.legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
 .chart-wrap { flex:1; position:relative; min-height:0; }
 
 /* ── HØJRE KOLONNE ───────────────────────────────────────────────────── */
@@ -106,14 +106,71 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .dt tr:last-child td { border-bottom:none; }
 .dt tr:hover td { background:var(--green-light); }
 
-/* Seneste deals-kort */
-.seneste-card {
+/* Bullet-row liste i index-kort */
+.bullet-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
+.bullet-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 70px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--border);
+  min-height: 22px;
+}
+.bullet-row:last-child { border-bottom: none; }
+.bullet-name { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bullet-track {
+  position: relative; height: 16px; background: #EDF2F0; border-radius: 8px; overflow: hidden;
+}
+.bullet-fill {
+  position: absolute; top: 0; left: 0; bottom: 0; border-radius: 8px;
+  transition: width 0.3s ease;
+}
+/* 100% (budget) markør */
+.bullet-target {
+  position: absolute; top: -2px; bottom: -2px;
+  width: 2px; background: #1F3D33; left: 66.66%;  /* 100/150 = 66.66% i 150%-skala */
+  border-radius: 1px;
+  z-index: 2;
+}
+/* Negativ tilvækst: rødt skraveret venstre-marker */
+.bullet-negative {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 6px;
+  background: repeating-linear-gradient(45deg, #C25450 0 4px, #A73E3A 4px 8px);
+  border-radius: 8px 0 0 8px;
+}
+.bullet-amount {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 11px; font-weight: 700; color: #fff;
+  white-space: nowrap; pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  padding: 0 7px;
+  z-index: 3;
+}
+.bullet-amount.outside { color: var(--ink-2); text-shadow: none; padding-left: 4px; }
+.bullet-amount.negative { color: #A73E3A; text-shadow: none; padding-left: 12px; }
+.bullet-idx {
+  text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 700;
+}
+.idx-good { color: #2E7A64; }
+.idx-mid  { color: #B58A2E; }
+.idx-low  { color: #B23A48; }
+.idx-na   { color: var(--ink-4); font-style: italic; font-weight: 600; }
+
+/* Index-kort */
+.index-card, .seneste-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
   padding: 8px 10px; position: relative; overflow: hidden;
   display: flex; flex-direction: column;
   flex: 1; min-height: 0;
 }
-.seneste-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.index-card::before, .seneste-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.index-scroll { overflow-y: auto; flex: 1; }
+.bullet-legend { display:flex; gap:14px; margin-bottom:5px; flex-shrink:0; font-size:11px; color:var(--ink-3); }
+.bullet-legend-item { display:flex; align-items:center; gap:5px; }
+.bullet-legend-dot { width:10px; height:10px; border-radius:50%; }
+.bullet-legend-bar { width:18px; height:3px; background:#1F3D33; border-radius:1px; }
 </style>
 </head>
 <body>
@@ -204,6 +261,19 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
         </div>
       </div>
 
+      <div class="index-card">
+        <div class="card-title">Tilvækst pr. sælger — index (måned)</div>
+        <div class="bullet-legend">
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#2E7A64"></div>≥ 100 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#D4A547"></div>70–99 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#C25450"></div>&lt; 70 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-bar"></div>Budget (100 %)</div>
+        </div>
+        <div class="index-scroll">
+          <div class="bullet-list" id="tblIndex"></div>
+        </div>
+      </div>
+
       <div class="seneste-card">
         <div class="card-title">Seneste deals vundet — Uden opsigelser</div>
         <div class="tbl-scroll">
@@ -236,7 +306,8 @@ function fmtAxis(v) {
   return v;
 }
 function fmtLabel(v) {
-  if (!v) return '';
+  if (v == null) return '';
+  if (v === 0) return '0 kr.';
   const a = Math.abs(v);
   if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. kr.';
   if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. kr.';
@@ -252,8 +323,8 @@ function buildChart(id, rows, labelKey, existing) {
     data: {
       labels: rows.map(r => r[labelKey]),
       datasets: [
-        { label:'Net Revenue, Business', data:rows.map(r=>r.netto??r.revenue??0), backgroundColor:'#2E7A64', borderRadius:2 },
-        { label:'Budget',               data:rows.map(r=>r.budget??0),            backgroundColor:'#B4C8C0', borderRadius:2 },
+        { label:'Net Revenue, Business', data:rows.map(r=>r.netto??r.revenue??0), backgroundColor:'#2E7A64', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
+        { label:'Budget',               data:rows.map(r=>r.budget??0),            backgroundColor:'#B4C8C0', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
       ]
     },
     options: {
@@ -262,17 +333,17 @@ function buildChart(id, rows, labelKey, existing) {
         legend: { display:false },
         tooltip: { callbacks:{ label:c=>' '+fmt(c.raw) } },
         datalabels: {
-          anchor:'end', align:'end', offset:1,
-          font:{ family:'Montserrat', size:8, weight:'600' },
-          color:'#3D5249',
+          anchor:'end', align:'end', offset:2,
+          font:{ family:'Montserrat', size:13, weight:'700' },
+          color:'#1F3D33',
           formatter: v => fmtLabel(v),
           clip:false,
         }
       },
-      layout:{ padding:{ top:18 } },
+      layout:{ padding:{ top:26 } },
       scales: {
-        x:{ ticks:{ font:{ family:'Montserrat', size:8 }, maxRotation:25 }, grid:{ display:false } },
-        y:{ ticks:{ font:{ family:'Montserrat', size:8 }, callback:fmtAxis }, grid:{ color:'#E4EDEA' } }
+        x:{ ticks:{ font:{ family:'Montserrat', size:13, weight:'600' }, color:'#1F3D33', maxRotation:25, autoSkip:false }, grid:{ display:false } },
+        y:{ ticks:{ font:{ family:'Montserrat', size:12, weight:'600' }, color:'#3D5249', callback:fmtAxis }, grid:{ color:'#E4EDEA' } }
       }
     }
   });
@@ -318,6 +389,75 @@ async function loadData() {
     {key:'value',      cls:'r', fmt:fmt},
     {key:'won_time',   fmt:v=>v?v.substring(0,16):'—'},
   ]);
+
+  renderIndexBullets(d.seller_index || []);
+}
+
+function idxClass(v) {
+  if (v == null) return 'idx-na';
+  if (v >= 100) return 'idx-good';
+  if (v >= 70)  return 'idx-mid';
+  return 'idx-low';
+}
+function idxFill(v) {
+  if (v == null) return '#C9D2CD';
+  if (v >= 100) return '#2E7A64';
+  if (v >= 70)  return '#D4A547';
+  return '#C25450';
+}
+function renderIndexBullets(rows) {
+  const host = document.getElementById('tblIndex');
+  if (!rows.length) {
+    host.innerHTML = '<div style="text-align:center;color:var(--ink-4);padding:8px;font-style:italic;font-size:11px">Ingen data</div>';
+    return;
+  }
+  // Sortér: dem med index først (høj→lav), så dem uden budget (sorteret efter tilvækst)
+  rows = rows.slice().sort((a,b) => {
+    if (a.index == null && b.index == null) return (b.tilvaekst||0) - (a.tilvaekst||0);
+    if (a.index == null) return 1;
+    if (b.index == null) return -1;
+    return b.index - a.index;
+  });
+  // Skala: 0–150% i søjlebredden (over 150% klippes visuelt, men tal vises)
+  const SCALE_MAX = 150;
+  host.innerHTML = rows.map(r => {
+    const hasBudget = r.index != null;
+    const isNegative = r.tilvaekst < 0;
+    const pct = hasBudget && !isNegative ? Math.min(r.index, SCALE_MAX) : 0;
+    const widthPct = (pct / SCALE_MAX) * 100;
+    const fill = idxFill(r.index);
+    const idxTxt = hasBudget
+      ? r.index.toLocaleString('da-DK',{maximumFractionDigits:0}) + ' %'
+      : '—';
+    const amountTxt = fmt(r.tilvaekst);
+
+    // Tre rendering-cases:
+    // 1) Negativ tilvækst → rød skraveret kant + beløb i rødt inde i sporet
+    // 2) Positiv tilvækst med plads i baren (>28%) → hvidt beløb inde i baren
+    // 3) Positiv tilvækst med smal bar (<28%) → beløb lige til højre for baren
+    let amountHtml;
+    if (isNegative) {
+      amountHtml = `<div class="bullet-amount negative" style="left:0">${amountTxt}</div>`;
+    } else if (widthPct >= 28) {
+      amountHtml = `<div class="bullet-amount" style="left:6px">${amountTxt}</div>`;
+    } else {
+      // Sørg for at left aldrig overskrider 70% så teksten ikke ryger ud af tracken
+      const leftPct = Math.min(widthPct + 1, 70);
+      amountHtml = `<div class="bullet-amount outside" style="left:${leftPct}%">${amountTxt}</div>`;
+    }
+
+    return `
+      <div class="bullet-row">
+        <div class="bullet-name" title="${r.owner_name}">${r.owner_name}</div>
+        <div class="bullet-track">
+          ${hasBudget ? '<div class="bullet-target"></div>' : ''}
+          ${isNegative ? '<div class="bullet-negative"></div>' : ''}
+          ${!isNegative ? `<div class="bullet-fill" style="width:${widthPct}%;background:${fill}"></div>` : ''}
+          ${amountHtml}
+        </div>
+        <div class="bullet-idx ${idxClass(r.index)}">${idxTxt}</div>
+      </div>`;
+  }).join('');
 }
 
 loadData();

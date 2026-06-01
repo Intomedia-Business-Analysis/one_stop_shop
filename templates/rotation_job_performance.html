@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Advertising Performance</title>
+<title>Job Performance</title>
 <link rel="stylesheet" href="/static/hub.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -72,7 +72,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .card-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; white-space:nowrap; }
 .tbl-scroll { overflow-y:auto; flex:1; }
 
-.budget-strip { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex:1.5; min-height:0; }
+.budget-strip { display:grid; grid-template-columns:1fr; gap:6px; flex:1.5; min-height:0; }
 
 .seneste-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
@@ -97,8 +97,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 
   <!-- HEADER -->
   <div class="header">
-    <div class="header-icon">📢</div>
-    <h1>Advertising Performance — Banner &amp; Job</h1>
+    <div class="header-icon">💼</div>
+    <h1>Job Performance</h1>
     <span class="header-sub" id="lblPeriod"></span>
   </div>
 
@@ -137,7 +137,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 
     </div>
 
-    <!-- HØJRE: 3 deals + 2 budget charts + seneste deals -->
+    <!-- HØJRE: 3 deals + budget chart + seneste deals -->
     <div class="right-col">
 
       <div class="deals-strip">
@@ -171,14 +171,6 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       </div>
 
       <div class="budget-strip">
-        <div class="chart-card">
-          <div class="chart-title">Banner — Omsætning vs. budget</div>
-          <div class="legend-row">
-            <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
-          </div>
-          <div class="chart-wrap"><canvas id="chartBanner"></canvas></div>
-        </div>
         <div class="chart-card">
           <div class="chart-title">Job — Omsætning vs. budget</div>
           <div class="legend-row">
@@ -221,7 +213,8 @@ function fmtAxis(v) {
   return v;
 }
 function fmtLabel(v) {
-  if (!v) return '';
+  if (v == null) return '';
+  if (v === 0) return '0 kr.';
   const a = Math.abs(v);
   if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. kr.';
   if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t. kr.';
@@ -311,7 +304,7 @@ function fillTable(id, rows, cols) {
 }
 
 async function loadData() {
-  const r = await fetch('/tools/rotation/advertising-performance-data');
+  const r = await fetch('/tools/rotation/job-performance-data');
   if (!r.ok) return;
   const d = await r.json();
 
@@ -322,9 +315,8 @@ async function loadData() {
   document.getElementById('lblPeriod').textContent = d.maaned_label || '';
   document.getElementById('lblKvartal').textContent = 'Omsætning — ' + (d.kvartal_label || 'Indeværende kvartal');
 
-  buildVBar('chartKvartal', d.kvartal_chart        || [], 'brand', 'revenue');
-  buildHBar('chartBanner',  d.banner_budget_chart  || [], 'brand', 'revenue', 'budget');
-  buildHBar('chartJob',     d.job_budget_chart     || [], 'brand', 'revenue', 'budget');
+  buildVBar('chartKvartal', d.kvartal_chart || [], 'brand', 'revenue');
+  buildHBar('chartJob',     d.budget_chart  || [], 'brand', 'revenue', 'budget');
 
   fillTable('tblOprettet',   d.deals_oprettet   ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
   fillTable('tblVundet',     d.deals_vundet     ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);

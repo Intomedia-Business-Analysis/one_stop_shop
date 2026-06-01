@@ -81,8 +81,29 @@
   overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Dashboard-vælger (settings) */
+.settings-wrap { position: relative; margin-left: auto; }
+.settings-panel {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); padding: 10px; min-width: 230px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.14); z-index: 60; display: none;
+}
+.settings-panel.open { display: block; }
+.settings-panel h4 {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--ink-4); margin-bottom: 8px; font-weight: 700;
+}
+.settings-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 6px; border-radius: 6px; cursor: pointer;
+  font-size: 12px; color: var(--ink-2); user-select: none;
+}
+.settings-row:hover { background: var(--green-light); }
+.settings-row input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--green); }
+
 /* Fullscreen-knap */
-.btn-fs { margin-left: auto; }
+.btn-fs { flex-shrink: 0; }
 
 /* iframe-container */
 .iframe-wrap {
@@ -132,6 +153,14 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; b
     <option value="120">2 min</option>
   </select>
 
+  <div class="settings-wrap">
+    <button class="btn" id="btnSettings" title="Vælg dashboards i rotation">⚙ Dashboards</button>
+    <div class="settings-panel" id="settingsPanel">
+      <h4>Vis i rotation</h4>
+      <div id="settingsList"></div>
+    </div>
+  </div>
+
   <button class="btn btn-fs" id="btnFs" title="Fuld skærm">⛶ Fuld skærm</button>
 </div>
 
@@ -143,15 +172,18 @@ const DASHBOARDS = [
   { title: 'Sales Performance',       url: '/tools/rotation/sales-performance'       },
   { title: 'Department Performance',  url: '/tools/rotation/department-performance'  },
   { title: 'Banner Performance',      url: '/tools/rotation/banner-performance'      },
-  { title: 'Advertising Performance', url: '/tools/rotation/advertising-performance' },
+  { title: 'Job Performance',         url: '/tools/rotation/job-performance'         },
   { title: 'Media Performance',       url: '/tools/rotation/media-performance'       },
 ];
 
-let current   = 0;
+const LS_KEY = 'rotation_enabled_v1';
+
+let enabled   = loadEnabled();   // Set af dashboard-indeks der er aktive
+let order     = [];              // aktive indeks i DASHBOARDS-rækkefølge
+let pos       = 0;               // pointer ind i order
 let playing   = true;
-let interval  = 30; // sekunder
+let interval  = 30;              // sekunder
 let timer     = null;
-let progTimer = null;
 
 const wrap       = document.getElementById('iframeWrap');
 const dotWrap    = document.getElementById('tabDots');
@@ -162,31 +194,68 @@ const btnPrev    = document.getElementById('btnPrev');
 const btnNext    = document.getElementById('btnNext');
 const speedSel   = document.getElementById('speedSelect');
 const btnFs      = document.getElementById('btnFs');
+const btnSettings= document.getElementById('btnSettings');
+const settingsPanel = document.getElementById('settingsPanel');
+const settingsList  = document.getElementById('settingsList');
 
-// Opret iframes + dots
-const frames = DASHBOARDS.map((d, i) => {
+// ── localStorage for valgte dashboards ────────────────────────────────
+function loadEnabled() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY));
+    if (Array.isArray(raw)) {
+      const s = new Set(raw.filter(i => Number.isInteger(i) && i >= 0 && i < DASHBOARDS.length));
+      if (s.size) return s;
+    }
+  } catch (e) {}
+  return new Set(DASHBOARDS.map((_, i) => i));
+}
+function saveEnabled() {
+  localStorage.setItem(LS_KEY, JSON.stringify([...enabled].sort((a, b) => a - b)));
+}
+
+// ── Opret ALLE iframes (preloades) ─────────────────────────────────────
+const frameEls = DASHBOARDS.map(d => {
   const fr = document.createElement('iframe');
   fr.className = 'dash-frame';
   fr.src = d.url;
   fr.title = d.title;
   wrap.appendChild(fr);
-
-  const dot = document.createElement('div');
-  dot.className = 'tab-dot';
-  dot.title = d.title;
-  dot.addEventListener('click', () => { goTo(i); if (!playing) startPlay(); });
-  dotWrap.appendChild(dot);
-
-  return { frame: fr, dot };
+  return fr;
 });
 
-function goTo(idx) {
-  frames[current].frame.classList.remove('visible');
-  frames[current].dot.classList.remove('active');
-  current = (idx + DASHBOARDS.length) % DASHBOARDS.length;
-  frames[current].frame.classList.add('visible');
-  frames[current].dot.classList.add('active');
-  lblCurrent.textContent = DASHBOARDS[current].title;
+// ── Byg rotationsrækkefølge + dots ud fra enabled ──────────────────────
+function rebuildOrder(preferIdx) {
+  order = DASHBOARDS.map((_, i) => i).filter(i => enabled.has(i));
+  if (!order.length) order = DASHBOARDS.map((_, i) => i); // aldrig tom
+
+  dotWrap.innerHTML = '';
+  order.forEach((di, k) => {
+    const dot = document.createElement('div');
+    dot.className = 'tab-dot';
+    dot.title = DASHBOARDS[di].title;
+    dot.addEventListener('click', () => { show(k); if (!playing) startPlay(); });
+    dotWrap.appendChild(dot);
+  });
+
+  // Behold nuværende dashboard hvis muligt, ellers gå til starten
+  let newPos = 0;
+  if (preferIdx != null) {
+    const found = order.indexOf(preferIdx);
+    if (found >= 0) newPos = found;
+  }
+  show(newPos);
+}
+
+// ── Vis k'te dashboard i order ─────────────────────────────────────────
+function show(k) {
+  frameEls.forEach(f => f.classList.remove('visible'));
+  [...dotWrap.children].forEach(d => d.classList.remove('active'));
+
+  pos = ((k % order.length) + order.length) % order.length;
+  const di = order[pos];
+  frameEls[di].classList.add('visible');
+  if (dotWrap.children[pos]) dotWrap.children[pos].classList.add('active');
+  lblCurrent.textContent = DASHBOARDS[di].title;
   resetProgress();
 }
 
@@ -207,7 +276,7 @@ function startPlay() {
   btnPlay.textContent = '⏸ Pause';
   btnPlay.classList.add('active');
   resetProgress();
-  timer = setInterval(() => goTo(current + 1), interval * 1000);
+  timer = setInterval(() => show(pos + 1), interval * 1000);
 }
 
 function stopPlay() {
@@ -219,12 +288,50 @@ function stopPlay() {
 }
 
 btnPlay.addEventListener('click', () => playing ? stopPlay() : startPlay());
-btnPrev.addEventListener('click', () => { goTo(current - 1); if (playing) startPlay(); });
-btnNext.addEventListener('click', () => { goTo(current + 1); if (playing) startPlay(); });
+btnPrev.addEventListener('click', () => { show(pos - 1); if (playing) startPlay(); });
+btnNext.addEventListener('click', () => { show(pos + 1); if (playing) startPlay(); });
 
 speedSel.addEventListener('change', () => {
   interval = parseInt(speedSel.value);
   if (playing) startPlay();
+});
+
+// ── Dashboard-vælger ───────────────────────────────────────────────────
+function buildSettingsList() {
+  settingsList.innerHTML = '';
+  DASHBOARDS.forEach((d, i) => {
+    const row = document.createElement('label');
+    row.className = 'settings-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = enabled.has(i);
+    cb.addEventListener('change', () => {
+      if (cb.checked) enabled.add(i);
+      else if (enabled.size > 1) enabled.delete(i);   // mindst ét skal være valgt
+      else cb.checked = true;
+      saveEnabled();
+      const currentDi = order[pos];
+      rebuildOrder(currentDi);
+      if (playing) startPlay();
+    });
+    const txt = document.createElement('span');
+    txt.textContent = d.title;
+    row.appendChild(cb);
+    row.appendChild(txt);
+    settingsList.appendChild(row);
+  });
+}
+
+btnSettings.addEventListener('click', e => {
+  e.stopPropagation();
+  settingsPanel.classList.toggle('open');
+  btnSettings.classList.toggle('active', settingsPanel.classList.contains('open'));
+});
+document.addEventListener('click', e => {
+  if (!settingsPanel.contains(e.target) && e.target !== btnSettings) {
+    settingsPanel.classList.remove('open');
+    btnSettings.classList.remove('active');
+  }
 });
 
 // Fuld skærm
@@ -248,14 +355,15 @@ document.addEventListener('fullscreenchange', () => {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { goTo(current + 1); if (playing) startPlay(); }
-  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { goTo(current - 1); if (playing) startPlay(); }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { show(pos + 1); if (playing) startPlay(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { show(pos - 1); if (playing) startPlay(); }
   if (e.key === ' ')  { e.preventDefault(); playing ? stopPlay() : startPlay(); }
   if (e.key === 'f' || e.key === 'F') btnFs.click();
 });
 
 // Start
-goTo(0);
+buildSettingsList();
+rebuildOrder();
 startPlay();
 </script>
 </body>

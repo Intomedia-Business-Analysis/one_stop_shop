@@ -67,7 +67,7 @@ CATEGORIES = [
     {
         "id": "rotation-dashboards",
         "title": "Rotation Dashboards",
-        "description": "Performance dashboards til kontorskærme — Sales, Department, Banner, Advertising og Media",
+        "description": "Performance dashboards til kontorskærme — Sales, Department, Banner, Job og Media",
         "icon": "activity",
         "color": "green",
         "min_role": "salesperson",
@@ -77,7 +77,7 @@ CATEGORIES = [
             {"id": "rotation-sales",       "title": "Sales Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/sales-performance"},
             {"id": "rotation-department",  "title": "Department Performance",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/department-performance"},
             {"id": "rotation-banner",      "title": "Banner Performance",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/banner-performance"},
-            {"id": "rotation-advertising", "title": "Advertising Performance", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/advertising-performance"},
+            {"id": "rotation-job",         "title": "Job Performance",         "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/job-performance"},
             {"id": "rotation-media",       "title": "Media Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/media-performance"},
         ],
     },
