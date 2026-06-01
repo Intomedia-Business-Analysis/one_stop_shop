@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Media Performance</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
+.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
+.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+
+/* ── FILTER-BAR ──────────────────────────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 12px;
+  flex-wrap: wrap;
+}
+.filter-group { display:flex; align-items:center; gap:6px; }
+.filter-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); white-space:nowrap; }
+.filter-chips { display:flex; gap:4px; flex-wrap:wrap; }
+.chip {
+  padding:3px 10px; border:1px solid var(--border); border-radius:20px;
+  font-size:10px; font-weight:500; cursor:pointer; color:var(--ink-2);
+  background:var(--surface); transition:all .15s;
+}
+.chip:hover { border-color:var(--green); color:var(--green); }
+.chip.active { background:var(--green); color:#fff; border-color:var(--green); }
+.filter-sep { width:1px; align-self:stretch; background:var(--border); }
+
+/* Mode-chips lidt kraftigere (radio-agtig) */
+.mode-chip { font-weight:700; }
+
+/* ── TABEL-KORT ──────────────────────────────────────────────────────── */
+.table-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.table-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; z-index:1; }
+.tbl-scroll { overflow-y:auto; flex:1; }
+
+/* Tabel */
+.dt { width:100%; border-collapse:collapse; font-size:12px; }
+.dt thead th {
+  background:var(--green); color:#fff; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:1.5px; padding:8px 12px;
+  text-align:left; white-space:nowrap; cursor:pointer; user-select:none;
+  position:sticky; top:0; z-index:2;
+}
+.dt thead th:hover { filter:brightness(1.1); }
+.dt thead th.r { text-align:right; }
+.dt tbody td { padding:7px 12px; border-bottom:1px solid var(--border); color:var(--ink-2); }
+.dt tbody tr:hover td { background:var(--green-light); }
+.dt tbody .r { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
+.dt tbody .ws { color:var(--ink-4); font-weight:500; }
+.dt tfoot td {
+  padding:8px 12px; background:var(--green-light);
+  border-top:2px solid var(--border-strong);
+  font-weight:700; color:var(--ink); font-size:12px;
+  position:sticky; bottom:0;
+}
+.dt tfoot .r { text-align:right; font-variant-numeric:tabular-nums; }
+.dt .empty { text-align:center; padding:40px; color:var(--ink-4); font-style:italic; }
+
+/* Index badge */
+.idx { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
+.idx.high { background:#D4EDDA; color:#155724; }
+.idx.mid  { background:#FFF3CD; color:#856404; }
+.idx.low  { background:#F8D7DA; color:#721c24; }
+.idx.none { color:var(--ink-4); font-style:italic; font-weight:400; }
+
+.sort-arrow { margin-left:3px; opacity:.6; font-size:10px; }
+.sort-active .sort-arrow { opacity:1; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📰</div>
+    <h1>Media Performance</h1>
+    <span class="header-sub" id="lblStatus">Henter data…</span>
+  </div>
+
+  <!-- FILTER-BAR -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <div class="filter-label">Visning</div>
+      <div class="filter-chips" id="modeChips">
+        <span class="chip mode-chip active" data-val="abonnement">Abonnement</span>
+        <span class="chip mode-chip" data-val="banner">Banner</span>
+        <span class="chip mode-chip" data-val="job">Job</span>
+      </div>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group">
+      <div class="filter-label">Brands</div>
+      <div class="filter-chips" id="brandChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Periode</div>
+      <div class="filter-chips" id="yearChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABEL -->
+  <div class="table-card">
+    <div class="tbl-scroll">
+      <table class="dt" id="mainTable">
+        <thead id="tblHead"></thead>
+        <tbody id="tblBody"><tr><td class="empty">Henter…</td></tr></tbody>
+        <tfoot id="tblFoot" style="display:none"></tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let selectedMode   = 'abonnement';
+let selectedBrands = new Set();
+let selectedYears  = new Set();
+let sortCol = 'net', sortDir = -1;
+let lastData = null;
+
+function fmt(v, dec=0) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {minimumFractionDigits:dec,maximumFractionDigits:dec}).format(v);
+}
+function fmtKr(v)    { return v == null ? '—' : fmt(v, 0) + ' kr.'; }
+function fmtKr0(v)   { return v ? fmtKr(v) : '0 kr.'; }
+function fmtBudget(v){ return v ? fmtKr(v) : ''; }
+function fmtNeg(v)   { return v ? '-' + fmtKr(v) : '0 kr.'; }
+function fmtIdx(v) {
+  if (v == null) return '<span class="idx none">—</span>';
+  const cls = v >= 150 ? 'high' : v >= 80 ? 'mid' : 'low';
+  return `<span class="idx ${cls}">${fmt(v,1)} %</span>`;
+}
+
+// ── Kolonne-definitioner pr. mode ──────────────────────────────────────
+const COLS = {
+  abonnement: [
+    {key:'site',    label:'Site',                     cls:''},
+    {key:'gross',   label:'Gross Revenue',            cls:'r', fmt:fmtKr},
+    {key:'cancel',  label:'Cancellations',            cls:'r', fmt:fmtNeg},
+    {key:'net',     label:'Net Revenue',              cls:'r', fmt:fmtKr},
+    {key:'websale', label:'Heraf web salg',           cls:'r ws', fmt:fmtKr0},
+    {key:'budget',  label:'Budget',                   cls:'r', fmt:fmtBudget},
+    {key:'index',   label:'Index, budget',            cls:'r', fmt:fmtIdx, html:true},
+  ],
+  banner: [
+    {key:'site',   label:'Site',              cls:''},
+    {key:'net',    label:'Banner-omsætning',  cls:'r', fmt:fmtKr},
+    {key:'budget', label:'Budget',            cls:'r', fmt:fmtBudget},
+    {key:'index',  label:'Index, budget',     cls:'r', fmt:fmtIdx, html:true},
+  ],
+  job: [
+    {key:'site',   label:'Site',           cls:''},
+    {key:'net',    label:'Job-omsætning',  cls:'r', fmt:fmtKr},
+    {key:'budget', label:'Budget',         cls:'r', fmt:fmtBudget},
+    {key:'index',  label:'Index, budget',  cls:'r', fmt:fmtIdx, html:true},
+  ],
+};
+
+function cols() { return COLS[selectedMode] || COLS.abonnement; }
+
+// ── Chip-bygning ───────────────────────────────────────────────────────
+function buildBrandChips(brands) {
+  const wrap = document.getElementById('brandChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
+  brands.forEach(b => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = b; s.textContent = b;
+    s.addEventListener('click', () => toggleChip(s, selectedBrands, 'brandChips', loadData));
+    wrap.appendChild(s);
+  });
+}
+
+function buildYearChips(years) {
+  const wrap = document.getElementById('yearChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedYears, 'yearChips', loadData));
+  years.forEach(y => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = String(y); s.textContent = String(y);
+    s.addEventListener('click', () => toggleChip(s, selectedYears, 'yearChips', loadData));
+    wrap.appendChild(s);
+  });
+}
+
+function toggleChip(el, selSet, wrapId, cb) {
+  const val = el.dataset.val;
+  if (val === '') {
+    selSet.clear();
+    document.querySelectorAll(`#${wrapId} .chip`).forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  } else {
+    document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.remove('active');
+    if (selSet.has(val)) { selSet.delete(val); el.classList.remove('active'); }
+    else { selSet.add(val); el.classList.add('active'); }
+    if (selSet.size === 0) {
+      document.querySelector(`#${wrapId} .chip[data-val=""]`).classList.add('active');
+    }
+  }
+  cb();
+}
+
+// Mode-chips (single-select)
+document.querySelectorAll('#modeChips .chip').forEach(c => {
+  c.addEventListener('click', () => {
+    if (selectedMode === c.dataset.val) return;
+    selectedMode = c.dataset.val;
+    document.querySelectorAll('#modeChips .chip').forEach(x => x.classList.remove('active'));
+    c.classList.add('active');
+    if (sortCol === 'websale' || sortCol === 'gross' || sortCol === 'cancel') sortCol = 'net';
+    loadData();
+  });
+});
+
+// ── Tabel-render ───────────────────────────────────────────────────────
+function buildHead() {
+  const tr = cols().map(col => {
+    const active = (col.key === sortCol) ? ' sort-active' : '';
+    const arrow  = (col.key === sortCol) ? (sortDir === -1 ? '↓' : '↑') : '↕';
+    return `<th data-col="${col.key}" class="${col.cls}${active}">${col.label} <span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+  const head = document.getElementById('tblHead');
+  head.innerHTML = `<tr>${tr}</tr>`;
+  head.querySelectorAll('th').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (!col) return;
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = -1; }
+      if (lastData) renderTable(lastData);
+    });
+  });
+}
+
+function renderTable(d) {
+  lastData = d;
+  buildHead();
+  const C = cols();
+  const rows = [...(d.rows || [])];
+  rows.sort((a, b) => {
+    const va = a[sortCol], vb = b[sortCol];
+    if (typeof va === 'string' || typeof vb === 'string')
+      return sortDir * String(va ?? '').localeCompare(String(vb ?? ''));
+    return sortDir * ((va ?? -Infinity) - (vb ?? -Infinity));
+  });
+
+  const tb = document.getElementById('tblBody');
+  if (!rows.length) {
+    tb.innerHTML = `<tr><td colspan="${C.length}" class="empty">Ingen data for valgte filtre</td></tr>`;
+    document.getElementById('tblFoot').style.display = 'none';
+    return;
+  }
+
+  tb.innerHTML = rows.map(r => '<tr>' + C.map(col => {
+    const raw = r[col.key];
+    const val = col.fmt ? col.fmt(raw) : (raw ?? '');
+    return `<td class="${col.cls}">${val}</td>`;
+  }).join('') + '</tr>').join('');
+
+  const t = d.total || {};
+  const foot = document.getElementById('tblFoot');
+  foot.innerHTML = '<tr>' + C.map((col, i) => {
+    if (i === 0) return '<td><strong>Total</strong></td>';
+    const raw = t[col.key];
+    const val = col.fmt ? col.fmt(raw) : (raw ?? '');
+    return `<td class="${col.cls}">${val}</td>`;
+  }).join('') + '</tr>';
+  foot.style.display = '';
+}
+
+async function loadData() {
+  const params = new URLSearchParams();
+  params.set('mode', selectedMode);
+  if (selectedBrands.size) params.set('brands', [...selectedBrands].join(','));
+  if (selectedYears.size)  params.set('years',  [...selectedYears].join(','));
+
+  document.getElementById('lblStatus').textContent = 'Henter…';
+  let r;
+  try { r = await fetch('/tools/rotation/media-performance-data?' + params); }
+  catch (e) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
+  if (!r.ok) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
+  const d = await r.json();
+
+  document.getElementById('lblStatus').textContent = `${(d.rows||[]).length} sites`;
+
+  if (document.getElementById('brandChips').children.length === 1 && d.available_brands?.length) {
+    buildBrandChips(d.available_brands);
+  }
+  if (document.getElementById('yearChips').children.length === 1 && d.available_years?.length) {
+    buildYearChips(d.available_years);
+  }
+
+  renderTable(d);
+}
+
+// "Alle"-chip click-handlere (initialt i markup)
+document.querySelector('#brandChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
+document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedYears, 'yearChips', loadData));
+
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

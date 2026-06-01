@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rotation — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Kontrol-bar øverst */
+.ctrl-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  flex-shrink: 0;
+}
+.ctrl-logo {
+  width: 28px; height: 28px;
+  background: var(--green);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 13px; flex-shrink: 0;
+}
+.ctrl-title { font-size: 13px; font-weight: 700; color: var(--ink); flex: 1; }
+
+/* Tab-indikatorer */
+.tabs { display: flex; gap: 6px; }
+.tab-dot {
+  height: 6px; border-radius: 3px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: all .3s;
+  width: 24px;
+}
+.tab-dot.active { background: var(--green); width: 36px; }
+
+/* Progress bar */
+.progress-wrap {
+  width: 120px; height: 4px;
+  background: var(--border);
+  border-radius: 2px; overflow: hidden; flex-shrink: 0;
+}
+.progress-bar {
+  height: 100%; background: var(--green);
+  border-radius: 2px;
+  transition: width linear;
+  width: 0%;
+}
+
+/* Knapper */
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--font);
+  font-size: 11px; font-weight: 600;
+  cursor: pointer; color: var(--ink-2);
+  display: flex; align-items: center; gap: 5px;
+  transition: all .15s;
+}
+.btn:hover { border-color: var(--green); color: var(--green); }
+.btn.active { background: var(--green); color: #fff; border-color: var(--green); }
+
+.speed-select {
+  font-family: var(--font); font-size: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 5px 8px; color: var(--ink-2);
+  background: var(--surface); cursor: pointer;
+}
+
+.lbl-current {
+  font-size: 11px; font-weight: 600; color: var(--ink-3);
+  white-space: nowrap; max-width: 200px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Dashboard-vælger (settings) */
+.settings-wrap { position: relative; margin-left: auto; }
+.settings-panel {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); padding: 10px; min-width: 230px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.14); z-index: 60; display: none;
+}
+.settings-panel.open { display: block; }
+.settings-panel h4 {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--ink-4); margin-bottom: 8px; font-weight: 700;
+}
+.settings-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 6px; border-radius: 6px; cursor: pointer;
+  font-size: 12px; color: var(--ink-2); user-select: none;
+}
+.settings-row:hover { background: var(--green-light); }
+.settings-row input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--green); }
+
+/* Fullscreen-knap */
+.btn-fs { flex-shrink: 0; }
+
+/* iframe-container */
+.iframe-wrap {
+  flex: 1; position: relative; overflow: hidden;
+}
+.dash-frame {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: none;
+  opacity: 0;
+  transition: opacity .4s;
+  pointer-events: none;
+}
+.dash-frame.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Fullscreen mode — skjul ctrl-bar */
+body.fs-mode .ctrl-bar { display: none; }
+body.fs-mode .iframe-wrap { height: 100vh; }
+
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--bg); }
+</style>
+</head>
+<body>
+
+<!-- Kontrol-bar -->
+<div class="ctrl-bar">
+  <div class="ctrl-logo">▶</div>
+  <div class="ctrl-title">Rotation Dashboards</div>
+
+  <div class="tabs" id="tabDots"></div>
+  <span class="lbl-current" id="lblCurrent">—</span>
+
+  <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+
+  <button class="btn" id="btnPrev" title="Forrige">◀ Forrige</button>
+  <button class="btn active" id="btnPlay">⏸ Pause</button>
+  <button class="btn" id="btnNext" title="Næste">Næste ▶</button>
+
+  <select class="speed-select" id="speedSelect" title="Interval">
+    <option value="10">10 sek</option>
+    <option value="20">20 sek</option>
+    <option value="30" selected>30 sek</option>
+    <option value="60">1 min</option>
+    <option value="120">2 min</option>
+  </select>
+
+  <div class="settings-wrap">
+    <button class="btn" id="btnSettings" title="Vælg dashboards i rotation">⚙ Dashboards</button>
+    <div class="settings-panel" id="settingsPanel">
+      <h4>Vis i rotation</h4>
+      <div id="settingsList"></div>
+    </div>
+  </div>
+
+  <button class="btn btn-fs" id="btnFs" title="Fuld skærm">⛶ Fuld skærm</button>
+</div>
+
+<!-- iframes -->
+<div class="iframe-wrap" id="iframeWrap"></div>
+
+<script>
+const DASHBOARDS = [
+  { title: 'Sales Performance',       url: '/tools/rotation/sales-performance'       },
+  { title: 'Department Performance',  url: '/tools/rotation/department-performance'  },
+  { title: 'Banner Performance',      url: '/tools/rotation/banner-performance'      },
+  { title: 'Job Performance',         url: '/tools/rotation/job-performance'         },
+  { title: 'Media Performance',       url: '/tools/rotation/media-performance'       },
+];
+
+const LS_KEY = 'rotation_enabled_v1';
+
+let enabled   = loadEnabled();   // Set af dashboard-indeks der er aktive
+let order     = [];              // aktive indeks i DASHBOARDS-rækkefølge
+let pos       = 0;               // pointer ind i order
+let playing   = true;
+let interval  = 30;              // sekunder
+let timer     = null;
+
+const wrap       = document.getElementById('iframeWrap');
+const dotWrap    = document.getElementById('tabDots');
+const lblCurrent = document.getElementById('lblCurrent');
+const progressBar= document.getElementById('progressBar');
+const btnPlay    = document.getElementById('btnPlay');
+const btnPrev    = document.getElementById('btnPrev');
+const btnNext    = document.getElementById('btnNext');
+const speedSel   = document.getElementById('speedSelect');
+const btnFs      = document.getElementById('btnFs');
+const btnSettings= document.getElementById('btnSettings');
+const settingsPanel = document.getElementById('settingsPanel');
+const settingsList  = document.getElementById('settingsList');
+
+// ── localStorage for valgte dashboards ────────────────────────────────
+function loadEnabled() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LS_KEY));
+    if (Array.isArray(raw)) {
+      const s = new Set(raw.filter(i => Number.isInteger(i) && i >= 0 && i < DASHBOARDS.length));
+      if (s.size) return s;
+    }
+  } catch (e) {}
+  return new Set(DASHBOARDS.map((_, i) => i));
+}
+function saveEnabled() {
+  localStorage.setItem(LS_KEY, JSON.stringify([...enabled].sort((a, b) => a - b)));
+}
+
+// ── Opret ALLE iframes (preloades) ─────────────────────────────────────
+const frameEls = DASHBOARDS.map(d => {
+  const fr = document.createElement('iframe');
+  fr.className = 'dash-frame';
+  fr.src = d.url;
+  fr.title = d.title;
+  wrap.appendChild(fr);
+  return fr;
+});
+
+// ── Byg rotationsrækkefølge + dots ud fra enabled ──────────────────────
+function rebuildOrder(preferIdx) {
+  order = DASHBOARDS.map((_, i) => i).filter(i => enabled.has(i));
+  if (!order.length) order = DASHBOARDS.map((_, i) => i); // aldrig tom
+
+  dotWrap.innerHTML = '';
+  order.forEach((di, k) => {
+    const dot = document.createElement('div');
+    dot.className = 'tab-dot';
+    dot.title = DASHBOARDS[di].title;
+    dot.addEventListener('click', () => { show(k); if (!playing) startPlay(); });
+    dotWrap.appendChild(dot);
+  });
+
+  // Behold nuværende dashboard hvis muligt, ellers gå til starten
+  let newPos = 0;
+  if (preferIdx != null) {
+    const found = order.indexOf(preferIdx);
+    if (found >= 0) newPos = found;
+  }
+  show(newPos);
+}
+
+// ── Vis k'te dashboard i order ─────────────────────────────────────────
+function show(k) {
+  frameEls.forEach(f => f.classList.remove('visible'));
+  [...dotWrap.children].forEach(d => d.classList.remove('active'));
+
+  pos = ((k % order.length) + order.length) % order.length;
+  const di = order[pos];
+  frameEls[di].classList.add('visible');
+  if (dotWrap.children[pos]) dotWrap.children[pos].classList.add('active');
+  lblCurrent.textContent = DASHBOARDS[di].title;
+  resetProgress();
+}
+
+function resetProgress() {
+  progressBar.style.transition = 'none';
+  progressBar.style.width = '0%';
+  if (playing) {
+    requestAnimationFrame(() => {
+      progressBar.style.transition = `width ${interval}s linear`;
+      progressBar.style.width = '100%';
+    });
+  }
+}
+
+function startPlay() {
+  clearInterval(timer);
+  playing = true;
+  btnPlay.textContent = '⏸ Pause';
+  btnPlay.classList.add('active');
+  resetProgress();
+  timer = setInterval(() => show(pos + 1), interval * 1000);
+}
+
+function stopPlay() {
+  clearInterval(timer);
+  playing = false;
+  btnPlay.textContent = '▶ Afspil';
+  btnPlay.classList.remove('active');
+  progressBar.style.transition = 'none';
+}
+
+btnPlay.addEventListener('click', () => playing ? stopPlay() : startPlay());
+btnPrev.addEventListener('click', () => { show(pos - 1); if (playing) startPlay(); });
+btnNext.addEventListener('click', () => { show(pos + 1); if (playing) startPlay(); });
+
+speedSel.addEventListener('change', () => {
+  interval = parseInt(speedSel.value);
+  if (playing) startPlay();
+});
+
+// ── Dashboard-vælger ───────────────────────────────────────────────────
+function buildSettingsList() {
+  settingsList.innerHTML = '';
+  DASHBOARDS.forEach((d, i) => {
+    const row = document.createElement('label');
+    row.className = 'settings-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = enabled.has(i);
+    cb.addEventListener('change', () => {
+      if (cb.checked) enabled.add(i);
+      else if (enabled.size > 1) enabled.delete(i);   // mindst ét skal være valgt
+      else cb.checked = true;
+      saveEnabled();
+      const currentDi = order[pos];
+      rebuildOrder(currentDi);
+      if (playing) startPlay();
+    });
+    const txt = document.createElement('span');
+    txt.textContent = d.title;
+    row.appendChild(cb);
+    row.appendChild(txt);
+    settingsList.appendChild(row);
+  });
+}
+
+btnSettings.addEventListener('click', e => {
+  e.stopPropagation();
+  settingsPanel.classList.toggle('open');
+  btnSettings.classList.toggle('active', settingsPanel.classList.contains('open'));
+});
+document.addEventListener('click', e => {
+  if (!settingsPanel.contains(e.target) && e.target !== btnSettings) {
+    settingsPanel.classList.remove('open');
+    btnSettings.classList.remove('active');
+  }
+});
+
+// Fuld skærm
+btnFs.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+    document.body.classList.add('fs-mode');
+    btnFs.textContent = '✕ Afslut fuld skærm';
+  } else {
+    document.exitFullscreen();
+    document.body.classList.remove('fs-mode');
+    btnFs.textContent = '⛶ Fuld skærm';
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    document.body.classList.remove('fs-mode');
+    btnFs.textContent = '⛶ Fuld skærm';
+  }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { show(pos + 1); if (playing) startPlay(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { show(pos - 1); if (playing) startPlay(); }
+  if (e.key === ' ')  { e.preventDefault(); playing ? stopPlay() : startPlay(); }
+  if (e.key === 'f' || e.key === 'F') btnFs.click();
+});
+
+// Start
+buildSettingsList();
+rebuildOrder();
+startPlay();
+</script>
+</body>
+</html>

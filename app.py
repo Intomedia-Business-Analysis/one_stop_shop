@@ -28,6 +28,7 @@ from moduler.modul_barsel.router import router as barsel_router
 from moduler.modul_barsel.queries import init_barsel_db
 from moduler.modul_banner_job.router import router as banner_job_router
 from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
+from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_marketing.router import router as marketing_router
 
 load_dotenv()
@@ -49,6 +50,7 @@ app.include_router(perf_router)
 app.include_router(barsel_router)
 app.include_router(banner_job_router)
 app.include_router(portfolio_alignment_router)
+app.include_router(rotation_router)
 app.include_router(marketing_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
@@ -67,8 +69,7 @@ async def requires_login_handler(request: Request, exc: RequiresLoginException):
 # Tool & Dashboard Registry
 # ---------------------------------------------------------------------------
 
-# CATEGORIES og filter_categories er flyttet til nav_utils.py så ALLE moduler
-# kan dele dem (og _sidebar.html kan rendere dynamisk).
+# CATEGORIES og filter_categories er i nav_utils.py
 
 
 # ---------------------------------------------------------------------------

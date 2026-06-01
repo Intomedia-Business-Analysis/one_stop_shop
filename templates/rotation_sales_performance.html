@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Performance — Monitor, Watch & FINANS</title>
+<link rel="stylesheet" href="/static/hub.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
+
+/* ── Ydre wrapper ────────────────────────────────────────────────────── */
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
+.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
+.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+
+/* ── INDHOLD: venstre + højre kolonne ───────────────────────────────── */
+.content {
+  display: grid;
+  grid-template-columns: 55fr 45fr;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── VENSTRE KOLONNE ─────────────────────────────────────────────────── */
+.left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* KPI-strip */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  flex-shrink: 0;
+}
+.kpi-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 12px; position: relative; overflow: hidden;
+}
+.kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; }
+.kpi-value { font-size:20px; font-weight:800; color:var(--ink); letter-spacing:-0.5px; line-height:1.1; }
+
+/* Chart-kort */
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 12px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.chart-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:5px; flex-shrink:0; }
+.legend-row { display:flex; gap:16px; margin-bottom:5px; flex-shrink:0; }
+.legend-item { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-2); }
+.legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+.chart-wrap { flex:1; position:relative; min-height:0; }
+
+/* ── HØJRE KOLONNE ───────────────────────────────────────────────────── */
+.right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* 3 mini-deals-tabeller side om side */
+.deals-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+.mini-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.mini-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.card-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; white-space:nowrap; }
+.tbl-scroll { overflow-y:auto; flex:1; }
+
+/* Tabel-fælles */
+.dt { width:100%; border-collapse:collapse; font-size:11px; }
+.dt th { font-size:9px; font-weight:700; color:var(--ink-4); text-transform:uppercase; letter-spacing:1px; padding:2px 4px 3px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; position:sticky; top:0; background:var(--surface); }
+.dt th.r { text-align:right; }
+.dt td { padding:3px 4px; color:var(--ink-2); border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dt td.r { text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
+.dt tr:last-child td { border-bottom:none; }
+.dt tr:hover td { background:var(--green-light); }
+
+/* Bullet-row liste i index-kort */
+.bullet-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
+.bullet-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 70px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--border);
+  min-height: 22px;
+}
+.bullet-row:last-child { border-bottom: none; }
+.bullet-name { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bullet-track {
+  position: relative; height: 16px; background: #EDF2F0; border-radius: 8px; overflow: hidden;
+}
+.bullet-fill {
+  position: absolute; top: 0; left: 0; bottom: 0; border-radius: 8px;
+  transition: width 0.3s ease;
+}
+/* 100% (budget) markør */
+.bullet-target {
+  position: absolute; top: -2px; bottom: -2px;
+  width: 2px; background: #1F3D33; left: 66.66%;  /* 100/150 = 66.66% i 150%-skala */
+  border-radius: 1px;
+  z-index: 2;
+}
+/* Negativ tilvækst: rødt skraveret venstre-marker */
+.bullet-negative {
+  position: absolute; top: 0; left: 0; bottom: 0; width: 6px;
+  background: repeating-linear-gradient(45deg, #C25450 0 4px, #A73E3A 4px 8px);
+  border-radius: 8px 0 0 8px;
+}
+.bullet-amount {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 11px; font-weight: 700; color: #fff;
+  white-space: nowrap; pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  padding: 0 7px;
+  z-index: 3;
+}
+.bullet-amount.outside { color: var(--ink-2); text-shadow: none; padding-left: 4px; }
+.bullet-amount.negative { color: #A73E3A; text-shadow: none; padding-left: 12px; }
+.bullet-idx {
+  text-align: right; font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 700;
+}
+.idx-good { color: #2E7A64; }
+.idx-mid  { color: #B58A2E; }
+.idx-low  { color: #B23A48; }
+.idx-na   { color: var(--ink-4); font-style: italic; font-weight: 600; }
+
+/* Index-kort */
+.index-card, .seneste-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 10px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.index-card::before, .seneste-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
+.index-scroll { overflow-y: auto; flex: 1; }
+.bullet-legend { display:flex; gap:14px; margin-bottom:5px; flex-shrink:0; font-size:11px; color:var(--ink-3); }
+.bullet-legend-item { display:flex; align-items:center; gap:5px; }
+.bullet-legend-dot { width:10px; height:10px; border-radius:50%; }
+.bullet-legend-bar { width:18px; height:3px; background:#1F3D33; border-radius:1px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📊</div>
+    <h1>Sales Performance — Monitor, Watch &amp; FINANS</h1>
+    <span class="header-sub" id="lblPeriod"></span>
+  </div>
+
+  <!-- INDHOLD -->
+  <div class="content">
+
+    <!-- VENSTRE: KPI + 2 charts -->
+    <div class="left-col">
+
+      <div class="kpi-strip">
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — dag</div>
+          <div class="kpi-value" id="kpiDag">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — uge</div>
+          <div class="kpi-value" id="kpiUge">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — måned</div>
+          <div class="kpi-value" id="kpiMaaned">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Omsætning — år</div>
+          <div class="kpi-value" id="kpiAar">—</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title" id="lblKvartal">Tilvækst vs. budget — Indeværende kvartal</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Net Revenue, Business</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartKvartal"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title" id="lblMaaned">Tilvækst vs. budget — Indeværende måned</div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Net Revenue, Business</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chartMaaned"></canvas></div>
+      </div>
+
+    </div>
+
+    <!-- HØJRE: 3 deals-tabeller + seneste deals -->
+    <div class="right-col">
+
+      <div class="deals-strip">
+        <div class="mini-card">
+          <div class="card-title">Deals — Oprettet</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Deals</th></tr></thead>
+              <tbody id="tblOprettet"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="card-title">Deals — Vundet</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Deals Won</th></tr></thead>
+              <tbody id="tblVundet"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="card-title">Deals omsætning — indeværende måned</div>
+          <div class="tbl-scroll">
+            <table class="dt">
+              <thead><tr><th>Sælger</th><th class="r">Gross Revenue, Business</th></tr></thead>
+              <tbody id="tblOmsaetning"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="index-card">
+        <div class="card-title">Tilvækst pr. sælger — index (måned)</div>
+        <div class="bullet-legend">
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#2E7A64"></div>≥ 100 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#D4A547"></div>70–99 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#C25450"></div>&lt; 70 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-bar"></div>Budget (100 %)</div>
+        </div>
+        <div class="index-scroll">
+          <div class="bullet-list" id="tblIndex"></div>
+        </div>
+      </div>
+
+      <div class="seneste-card">
+        <div class="card-title">Seneste deals vundet — Uden opsigelser</div>
+        <div class="tbl-scroll">
+          <table class="dt">
+            <thead><tr>
+              <th>Sælger</th><th>Organisation</th><th>Team</th>
+              <th>Sites</th><th class="r">Værdi</th><th>Won time</th>
+            </tr></thead>
+            <tbody id="tblSeneste"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+Chart.register(ChartDataLabels);
+let chartK = null, chartM = null;
+
+function fmt(v) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' kr.';
+}
+function fmtAxis(v) {
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:0})+'mio. kr.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. kr.';
+  return v;
+}
+function fmtLabel(v) {
+  if (v == null) return '';
+  if (v === 0) return '0 kr.';
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. kr.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. kr.';
+  return fmt(v);
+}
+function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…' : (n||'—'); }
+
+function buildChart(id, rows, labelKey, existing) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (existing) existing.destroy();
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r[labelKey]),
+      datasets: [
+        { label:'Net Revenue, Business', data:rows.map(r=>r.netto??r.revenue??0), backgroundColor:'#2E7A64', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
+        { label:'Budget',               data:rows.map(r=>r.budget??0),            backgroundColor:'#B4C8C0', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks:{ label:c=>' '+fmt(c.raw) } },
+        datalabels: {
+          anchor:'end', align:'end', offset:2,
+          font:{ family:'Montserrat', size:13, weight:'700' },
+          color:'#1F3D33',
+          formatter: v => fmtLabel(v),
+          clip:false,
+        }
+      },
+      layout:{ padding:{ top:26 } },
+      scales: {
+        x:{ ticks:{ font:{ family:'Montserrat', size:13, weight:'600' }, color:'#1F3D33', maxRotation:25, autoSkip:false }, grid:{ display:false } },
+        y:{ ticks:{ font:{ family:'Montserrat', size:12, weight:'600' }, color:'#3D5249', callback:fmtAxis }, grid:{ color:'#E4EDEA' } }
+      }
+    }
+  });
+}
+
+function fillTable(id, rows, cols) {
+  const tb = document.getElementById(id);
+  if (!rows?.length) {
+    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--ink-4);padding:6px;font-style:italic;font-size:10px">Ingen data</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
+    const v = r[c.key];
+    const d = c.fmt ? c.fmt(v) : (v!=null ? String(v) : '—');
+    return `<td class="${c.cls||''}" title="${v!=null?String(v):''}">${d}</td>`;
+  }).join('') + '</tr>').join('');
+}
+
+async function loadData() {
+  const r = await fetch('/tools/rotation/sales-performance-data');
+  if (!r.ok) return;
+  const d = await r.json();
+
+  document.getElementById('kpiDag').textContent    = fmt(d.kpis?.dag);
+  document.getElementById('kpiUge').textContent    = fmt(d.kpis?.uge);
+  document.getElementById('kpiMaaned').textContent = fmt(d.kpis?.maaned);
+  document.getElementById('kpiAar').textContent    = fmt(d.kpis?.aar);
+  document.getElementById('lblPeriod').textContent = d.maaned_label || '';
+  document.getElementById('lblKvartal').textContent = 'Tilvækst vs. budget — '+(d.kvartal_label||'Indeværende kvartal');
+  document.getElementById('lblMaaned').textContent  = 'Tilvækst vs. budget — '+(d.maaned_label ||'Indeværende måned');
+
+  chartK = buildChart('chartKvartal', d.kvartal_chart||[], 'team', chartK);
+  chartM = buildChart('chartMaaned',  d.maaned_chart ||[], 'team', chartM);
+
+  fillTable('tblOprettet',   d.deals_oprettet   ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
+  fillTable('tblVundet',     d.deals_vundet     ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
+  fillTable('tblOmsaetning', d.deals_omsaetning ||[], [{key:'owner_name',fmt:n=>short(n,16)},{key:'revenue',cls:'r',fmt:fmt}]);
+  fillTable('tblSeneste',    d.seneste_deals    ||[], [
+    {key:'owner_name', fmt:n=>short(n,14)},
+    {key:'org_name',   fmt:n=>short(n,20)},
+    {key:'team',       fmt:n=>short(n,14)},
+    {key:'sites',      fmt:n=>short(n,16)},
+    {key:'value',      cls:'r', fmt:fmt},
+    {key:'won_time',   fmt:v=>v?v.substring(0,16):'—'},
+  ]);
+
+  renderIndexBullets(d.seller_index || []);
+}
+
+function idxClass(v) {
+  if (v == null) return 'idx-na';
+  if (v >= 100) return 'idx-good';
+  if (v >= 70)  return 'idx-mid';
+  return 'idx-low';
+}
+function idxFill(v) {
+  if (v == null) return '#C9D2CD';
+  if (v >= 100) return '#2E7A64';
+  if (v >= 70)  return '#D4A547';
+  return '#C25450';
+}
+function renderIndexBullets(rows) {
+  const host = document.getElementById('tblIndex');
+  if (!rows.length) {
+    host.innerHTML = '<div style="text-align:center;color:var(--ink-4);padding:8px;font-style:italic;font-size:11px">Ingen data</div>';
+    return;
+  }
+  // Sortér: dem med index først (høj→lav), så dem uden budget (sorteret efter tilvækst)
+  rows = rows.slice().sort((a,b) => {
+    if (a.index == null && b.index == null) return (b.tilvaekst||0) - (a.tilvaekst||0);
+    if (a.index == null) return 1;
+    if (b.index == null) return -1;
+    return b.index - a.index;
+  });
+  // Skala: 0–150% i søjlebredden (over 150% klippes visuelt, men tal vises)
+  const SCALE_MAX = 150;
+  host.innerHTML = rows.map(r => {
+    const hasBudget = r.index != null;
+    const isNegative = r.tilvaekst < 0;
+    const pct = hasBudget && !isNegative ? Math.min(r.index, SCALE_MAX) : 0;
+    const widthPct = (pct / SCALE_MAX) * 100;
+    const fill = idxFill(r.index);
+    const idxTxt = hasBudget
+      ? r.index.toLocaleString('da-DK',{maximumFractionDigits:0}) + ' %'
+      : '—';
+    const amountTxt = fmt(r.tilvaekst);
+
+    // Tre rendering-cases:
+    // 1) Negativ tilvækst → rød skraveret kant + beløb i rødt inde i sporet
+    // 2) Positiv tilvækst med plads i baren (>28%) → hvidt beløb inde i baren
+    // 3) Positiv tilvækst med smal bar (<28%) → beløb lige til højre for baren
+    let amountHtml;
+    if (isNegative) {
+      amountHtml = `<div class="bullet-amount negative" style="left:0">${amountTxt}</div>`;
+    } else if (widthPct >= 28) {
+      amountHtml = `<div class="bullet-amount" style="left:6px">${amountTxt}</div>`;
+    } else {
+      // Sørg for at left aldrig overskrider 70% så teksten ikke ryger ud af tracken
+      const leftPct = Math.min(widthPct + 1, 70);
+      amountHtml = `<div class="bullet-amount outside" style="left:${leftPct}%">${amountTxt}</div>`;
+    }
+
+    return `
+      <div class="bullet-row">
+        <div class="bullet-name" title="${r.owner_name}">${r.owner_name}</div>
+        <div class="bullet-track">
+          ${hasBudget ? '<div class="bullet-target"></div>' : ''}
+          ${isNegative ? '<div class="bullet-negative"></div>' : ''}
+          ${!isNegative ? `<div class="bullet-fill" style="width:${widthPct}%;background:${fill}"></div>` : ''}
+          ${amountHtml}
+        </div>
+        <div class="bullet-idx ${idxClass(r.index)}">${idxTxt}</div>
+      </div>`;
+  }).join('');
+}
+
+loadData();
+setInterval(loadData, 5*60*1000);
+</script>
+</body>
+</html>
