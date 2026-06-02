@@ -77,6 +77,7 @@ WATCH_INT_SITES = [
     "EnergiWatch NO", "TechWatch NO", "AdvokatWatch NO", "MatvareWatch NO",
     "MedWatch NO", "FinansWatch NO", "EiendomsWatch NO", "Kom24 NO",
     "HandelsWatch NO", "Medier24 NO", "All Watch Sites NO", "FinansWatch SE",
+    "Energywatch.com",
 ]
 FINANS_SITES = ["FINANS DK"]
 MARKETWIRE_SITES = ["MarketWire"]
@@ -594,19 +595,71 @@ def db_department_performance(today: date):
 #  Fælles hjælpere til Dashboard 3 + 4 (reklame)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _adv_kvartal_by_brand(cur, today, pipeline):
-    q_start, q_end = _quarter_range(today)
-    pipeline_clause = f"[pipeline_name] IN ('banner','job')" if pipeline == "advertising" else f"[pipeline_name] = '{pipeline}'"
+# Site → hovedbrand. Bruges til at samle de mange sites i få, læsbare serier.
+# Watch Int-sites lægges under Watch DK (samlet Watch-gruppe).
+_SITE_TO_BRAND = {}
+for _s in WATCH_DK_SITES:   _SITE_TO_BRAND[_s] = "Watch DK"
+for _s in WATCH_INT_SITES:  _SITE_TO_BRAND[_s] = "Watch DK"
+for _s in MONITOR_SITES:    _SITE_TO_BRAND[_s] = "Monitor"
+for _s in FINANS_SITES:     _SITE_TO_BRAND[_s] = "FINANS DK"
+for _s in MARKETWIRE_SITES: _SITE_TO_BRAND[_s] = "Marketwire"
+
+# Fast farve pr. hovedbrand, så samme brand har samme farve i begge charts.
+BRAND_ORDER = ["Watch DK", "FINANS DK", "Monitor", "Marketwire", "Øvrige"]
+
+
+def _adv_series_by_brand(cur, today, pipeline, granularity):
+    """Stablet tidsserie: omsætning pr. hovedbrand fordelt over enten måneder
+    (Jan–Dec) eller kvartaler (Q1–Q4) for indeværende år.
+
+    De mange enkelt-sites grupperes i hovedbrands (Watch DK, FINANS DK, Monitor,
+    Watch Int, Marketwire) — alt andet havner i 'Øvrige' — så stablen bliver
+    læsbar med få serier.
+
+    granularity: 'month' → 12 punkter, 'quarter' → 4 punkter.
+    Returnerer {labels:[...], series:[{brand, data:[...]}, ...]}.
+    """
+    y_start, y_end = _year_range(today)
+    pipeline_clause = "[pipeline_name] IN ('banner','job')" if pipeline == "advertising" else f"[pipeline_name] = '{pipeline}'"
+    period_expr = "MONTH([won_time])" if granularity == "month" else "DATEPART(QUARTER, [won_time])"
     cur.execute(f"""
-        SELECT COALESCE([sites],'Ukendt') AS brand, [pipeline_name] AS pipeline,
+        SELECT COALESCE([sites],'Ukendt') AS site,
+               {period_expr} AS period,
                ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND {pipeline_clause} AND [account]='jppol_advertising'
           AND [won_time] >= %s AND [won_time] < %s
           AND [sites] IS NOT NULL AND [sites] <> ''
-        GROUP BY [sites], [pipeline_name] ORDER BY revenue DESC
-    """, (q_start.isoformat(), q_end.isoformat()))
-    return [{"brand": r["brand"], "pipeline": r["pipeline"], "revenue": round(float(r["revenue"] or 0), 2)} for r in cur.fetchall()]
+        GROUP BY [sites], {period_expr}
+    """, (y_start.isoformat(), y_end.isoformat()))
+
+    n = 12 if granularity == "month" else 4
+    labels = (["Jan", "Feb", "Mar", "Apr", "Maj", "Jun",
+               "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
+              if granularity == "month" else ["Q1", "Q2", "Q3", "Q4"])
+
+    # hovedbrand -> [0]*n
+    by_brand: dict = {}
+    for r in cur.fetchall():
+        idx = int(r["period"]) - 1
+        if idx < 0 or idx >= n:
+            continue
+        brand = _SITE_TO_BRAND.get(r["site"], "Øvrige")
+        rev = round(float(r["revenue"] or 0), 2)
+        by_brand.setdefault(brand, [0.0] * n)
+        by_brand[brand][idx] = round(by_brand[brand][idx] + rev, 2)
+
+    # Fast rækkefølge (kun brands der har data)
+    series = [{"brand": b, "data": by_brand[b]} for b in BRAND_ORDER if b in by_brand]
+    return {"labels": labels, "series": series}
+
+
+def _adv_maaned_series_by_brand(cur, today, pipeline):
+    return _adv_series_by_brand(cur, today, pipeline, "month")
+
+
+def _adv_kvartal_series_by_brand(cur, today, pipeline):
+    return _adv_series_by_brand(cur, today, pipeline, "quarter")
 
 
 def _adv_deals_oprettet(cur, m_start, m_end, pipeline):
@@ -734,7 +787,8 @@ def db_banner_performance(today: date):
 
         result = {
             "kpis":             _revenue_kpis(cur, today, "banner"),
-            "kvartal_chart":    _adv_kvartal_by_brand(cur, today, "banner"),
+            "maaned_chart":     _adv_maaned_series_by_brand(cur, today, "banner"),
+            "kvartal_chart":    _adv_kvartal_series_by_brand(cur, today, "banner"),
             "deals_oprettet":   _adv_deals_oprettet(cur, m_start, m_end, "banner"),
             "deals_vundet":     _adv_deals_vundet(cur, m_start, m_end, "banner"),
             "deals_omsaetning": _adv_omsaetning_by_owner(cur, m_start, m_end, "banner"),
@@ -784,7 +838,8 @@ def db_job_performance(today: date):
 
         result = {
             "kpis":             _revenue_kpis(cur, today, "job"),
-            "kvartal_chart":    _adv_kvartal_by_brand(cur, today, "job"),
+            "maaned_chart":     _adv_maaned_series_by_brand(cur, today, "job"),
+            "kvartal_chart":    _adv_kvartal_series_by_brand(cur, today, "job"),
             "deals_oprettet":   _adv_deals_oprettet(cur, m_start, m_end, "job"),
             "deals_vundet":     _adv_deals_vundet(cur, m_start, m_end, "job"),
             "deals_omsaetning": _adv_omsaetning_by_owner(cur, m_start, m_end, "job"),
