@@ -1304,27 +1304,36 @@ def db_yoy_data(today: date, team: str | None = None,
 #-----------------------------------------------------------------------------------------------------------------------
 
 def db_saelger_data(today: date, owner_name: str, team: str | None = None,
-                     selected_year: int | None = None, selected_month: int | None = None,
+                     selected_year: int | None = None, selected_month: str | None = None,
                      date_col: str = "won_time"):
-    # Reference period — brug valgte år/måned hvis angivet, ellers aktuel dato
-    ref_year  = selected_year  or today.year
-    ref_month = selected_month or today.month
+    # Reference period — brug valgt år hvis angivet, ellers aktuelt år
+    ref_year = selected_year or today.year
 
-    month_from = date(ref_year, ref_month, 1)
-    next_month = ref_month % 12 + 1
-    next_year  = ref_year + (1 if ref_month == 12 else 0)
-    month_to   = date(next_year, next_month, 1)
+    # ── Periode-parsing (samme som manager): enkelt måned, multi (komma-sep) eller Q1-Q4 ──
+    months_list: list[int] = []
+    if selected_month in ("Q1", "Q2", "Q3", "Q4"):
+        q = int(selected_month[1])
+        months_list = list(range((q - 1) * 3 + 1, q * 3 + 1))
+    elif selected_month:
+        raw = [p.strip() for p in str(selected_month).split(",") if p.strip().isdigit()]
+        months_list = sorted({int(p) for p in raw if 1 <= int(p) <= 12})
 
     year_from  = date(ref_year, 1, 1)
     year_to    = date(ref_year + 1, 1, 1)
 
+    # _period(col) → WHERE-fragment + params. Ved multi-måned bruges MONTH(col) IN (...),
+    # ellers hele året. Bruges af alle periode-afhængige queries herunder.
+    if months_list:
+        _months_ph = "(" + ",".join(["%s"] * len(months_list)) + ")"
+        def _period(col: str):
+            return f"YEAR({col}) = %s AND MONTH({col}) IN {_months_ph}", (ref_year, *months_list)
+    else:
+        def _period(col: str):
+            return f"{col} >= %s AND {col} < %s", (year_from.isoformat(), year_to.isoformat())
+
     # Sparkline/salg i dag bruger altid rigtig today
     week_start = today - timedelta(days=today.weekday())
     week_end   = week_start + timedelta(days=7)
-
-    # Deals-tabel: vis kun valgte måned, eller hele året hvis ingen måned valgt
-    deals_from = month_from if selected_month else year_from
-    deals_to   = month_to   if selected_month else year_to
 
     brands_ph   = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
     team_clause = "AND [team] = %s" if team else ""
@@ -1334,6 +1343,19 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     if date_col not in _VALID_DATE_COLS:
         date_col = "won_time"
     d_col = f"[{date_col}]"
+
+    # Forudberegnede periode-fragmenter for de kolonner queries herunder bruger.
+    _p_dcol_clause,   _p_dcol_params   = _period(d_col)
+    _p_budget_clause, _p_budget_params = _period("[BudgetDate]")
+    _p_close_clause,  _p_close_params  = _period("[expected_close_date]")
+
+    # Samme periode sidste år (til YoY-sammenligning).
+    if months_list:
+        _ly_clause = f"YEAR({d_col}) = %s AND MONTH({d_col}) IN {_months_ph}"
+        _ly_params = (ref_year - 1, *months_list)
+    else:
+        _ly_clause = f"{d_col} >= %s AND {d_col} < %s"
+        _ly_params = (date(ref_year - 1, 1, 1).isoformat(), date(ref_year, 1, 1).isoformat())
 
     # Sites-filter: tillad NULL så Marketwire/Banner-deals (uden site tag)
     # ogsaa kommer med. Matcher modul_perf manager's single-team mønster
@@ -1359,25 +1381,25 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                 THEN ABS(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))) ELSE 0 END) AS cancel_amount
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND {d_col} >= %s AND {d_col} < %s
+          AND {_p_dcol_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     res           = cur.fetchone() or {}
     won_amount    = float(res.get("net_amount", 0) or 0)
     won_count     = int(res.get("won_count", 0) or 0)
     cancel_amount = abs(float(res.get("cancel_amount", 0) or 0))
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT [Team], ISNULL(SUM([BudgetAmount]),0) AS budget
         FROM [dbo].[SalespersonBudget]
-        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+        WHERE {_p_budget_clause}
           AND [Owner] = %s
         GROUP BY [Team]
         ORDER BY [Team]
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name))
+    """, _p_budget_params + (owner_name,))
     budget_rows = cur.fetchall()
     budget_by_team_raw = {r["Team"]: float(r["budget"] or 0) for r in budget_rows if r["Team"]}
     # Filtrér på valgt team hvis sat
@@ -1425,13 +1447,13 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                COUNT(*) AS pipeline_count
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
-          AND [expected_close_date] >= %s AND [expected_close_date] < %s
+          AND {_p_close_clause}
           AND [owner_name] = %s
-          AND {_sites_filter}
+          AND [sites] IN {brands_ph}
           AND COALESCE([value_dkk],[value]) > 0
           {_ADM_EXCLUDE}
           {team_clause}
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_close_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     pipe_row       = cur.fetchone() or {}
     pipeline_value = float(pipe_row.get("pipeline_value", 0) or 0)
     pipeline_count = int(pipe_row.get("pipeline_count", 0) or 0)
@@ -1440,7 +1462,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         SELECT [pipeline_name], COUNT(*) AS antal
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
-          AND [expected_close_date] >= %s AND [expected_close_date] < %s
+          AND {_p_close_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
           AND COALESCE([value_dkk],[value]) > 0
@@ -1448,13 +1470,9 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           {team_clause}
         GROUP BY [pipeline_name]
         ORDER BY antal DESC
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_close_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     pipeline_fordeling = [{"navn": r["pipeline_name"] or "Ukendt", "antal": int(r["antal"])} for r in (cur.fetchall() or [])]
 
-    ly_from = date(ref_year - 1, ref_month, 1)
-    ly_next = ref_month % 12 + 1
-    ly_ny   = ref_year - 1 + (1 if ref_month == 12 else 0)
-    ly_to   = date(ly_ny, ly_next, 1)
     cur.execute(f"""
         SELECT ISNULL(SUM(CASE
             WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
@@ -1463,12 +1481,12 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         END),0) AS won
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND {d_col} >= %s AND {d_col} < %s
+          AND {_ly_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
-    """, (ly_from.isoformat(), ly_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _ly_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     ly_won = float((cur.fetchone() or {}).get("won", 0) or 0)
 
     cur.execute(f"""
@@ -1500,11 +1518,11 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND {d_col} >= %s AND {d_col} < %s
+          AND {_p_dcol_clause}
           AND {_sites_filter}
           {team_clause}
         GROUP BY [owner_name]
-    """, (month_from.isoformat(), month_to.isoformat()) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_dcol_params + tuple(SUBSCRIPTION_BRANDS) + team_params)
     leaderboard = sorted([
         {"owner_name": r["owner_name"],
          "won_amount":    float(r["won"]    or 0),
@@ -1526,11 +1544,11 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [pipeline_name] <> 'Web Sale'
           AND [owner_name] = %s
           AND {_sites_filter}
-          AND {d_col} >= %s AND {d_col} < %s
+          AND {_p_dcol_clause}
           {_ADM_EXCLUDE}
           {team_clause}
         ORDER BY {d_col} DESC
-    """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + (deals_from.isoformat(), deals_to.isoformat()) + team_params)
+    """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + _p_dcol_params + team_params)
 
     seneste_deals = [{
         "title": r["title"] or "(Uden titel)",
@@ -1555,13 +1573,13 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                END) * (CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN -1 ELSE 1 END)),0) AS won
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND {d_col} >= %s AND {d_col} < %s
+          AND {_p_dcol_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
           {team_clause}
         GROUP BY [team]
-    """, (month_from.isoformat(), month_to.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     won_by_team_raw = {r["team"]: float(r["won"] or 0) for r in cur.fetchall() if r["team"]}
 
     # Saml alle kendte teams fra budget + salg
@@ -1582,10 +1600,14 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     vs_budget_pct = round(won_amount / budget * 100, 1) if budget > 0 else None
     yoy_pct       = round((won_amount - ly_won) / abs(ly_won) * 100, 1) if ly_won else None
 
-    if selected_month:
-        month_label = f"{MONTH_NAMES_DA[ref_month-1]} {ref_year}"
+    if selected_month in ("Q1", "Q2", "Q3", "Q4"):
+        month_label = f"{selected_month} {ref_year}"
+    elif len(months_list) == 1:
+        month_label = f"{MONTH_NAMES_DA[months_list[0] - 1]} {ref_year}"
+    elif months_list:
+        month_label = ", ".join(MONTH_NAMES_DA[m - 1] for m in months_list) + f" {ref_year}"
     else:
-        month_label = str(ref_year)
+        month_label = f"Hele Året {ref_year}"
 
     return {
         "won_amount":      round(won_amount, 2),
@@ -1606,7 +1628,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "budget_by_team":  budget_by_team,
         "owner_name":      owner_name,
         "month_label":     month_label,
-        "ref_month":       ref_month,
+        "ref_months":      months_list,
         "ref_year":        ref_year,
         "today":           today.isoformat(),
     }
@@ -1731,23 +1753,31 @@ def db_manager_saelger_filters(owner_name: str):
 
 
 def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
-                                 month: int | None = None, site: str | None = None,
+                                 month: str | int | None = None, site: str | None = None,
                                  pipeline_type: str | None = None):
-    """Hent åbne pipeline deals for en sælger (til manager-visning)."""
+    """Hent åbne pipeline deals for en sælger (til manager-visning).
+
+    month understøtter enkelt måned (3), multi (komma-sep "1,2,3") og Q1-Q4.
+    """
     brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
+    # ── Periode-parsing (samme mønster som db_saelger_data) ──
+    months_list: list[int] = []
+    if month in ("Q1", "Q2", "Q3", "Q4"):
+        q = int(str(month)[1])
+        months_list = list(range((q - 1) * 3 + 1, q * 3 + 1))
+    elif month not in (None, ""):
+        raw = [p.strip() for p in str(month).split(",") if p.strip().isdigit()]
+        months_list = sorted({int(p) for p in raw if 1 <= int(p) <= 12})
 
     # Bygger valgfrie klausuler
     extra_clauses = []
     extra_params  = []
 
-    if year and month:
-        from datetime import date as _date
-        m_from = _date(year, month, 1)
-        next_m = month % 12 + 1
-        next_y = year + (1 if month == 12 else 0)
-        m_to   = _date(next_y, next_m, 1)
-        extra_clauses.append("[expected_close_date] >= %s AND [expected_close_date] < %s")
-        extra_params += [m_from.isoformat(), m_to.isoformat()]
+    if year and months_list:
+        _mph = "(" + ",".join(["%s"] * len(months_list)) + ")"
+        extra_clauses.append(f"YEAR([expected_close_date]) = %s AND MONTH([expected_close_date]) IN {_mph}")
+        extra_params += [year, *months_list]
     elif year:
         extra_clauses.append("YEAR([expected_close_date]) = %s")
         extra_params.append(year)

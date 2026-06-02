@@ -127,7 +127,7 @@ async def manager_saelger_filters_endpoint(
 async def manager_saelger_pipeline(
     owner_name: str,
     year: int | None = None,
-    month: int | None = None,
+    month: str | None = None,
     site: str | None = None,
     pipeline_type: str | None = None,
     user=Depends(get_current_user)
@@ -232,7 +232,7 @@ async def perf_saelger_meta(
 async def perf_saelger_data(
     team: str | None = None,
     year: int | None = None,
-    month: int | None = None,
+    month: str | None = None,
     date_col: str = "won_time",
     owner: str | None = None,
     user=Depends(get_current_user)
@@ -252,7 +252,7 @@ async def perf_saelger_data(
 @router.get("/saelger-pipeline-deals")
 async def perf_saelger_pipeline_deals(
     year:  int | None = None,
-    month: int | None = None,
+    month: str | None = None,
     owner: str | None = None,
     user=Depends(get_current_user),
 ):
