@@ -13,6 +13,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # der bliver indlæst i HubRoles ved første init_db. Alle 6 markeres is_system=1
 # så de ikke kan slettes via admin-UI.
 _DEFAULT_ROLES = [
+    # Kontorskærm-bruger — laveste rang. Har KUN adgang til rotationen via en
+    # RoleResourceAccess-override (seedes i init_db), ikke resten af hubben.
+    {"name": "screen",           "label": "Skærm",             "rank": 0, "is_system": True},
     {"name": "salesperson",      "label": "Sælger",            "rank": 1, "is_system": True},
     {"name": "sales_manager",    "label": "Sales Manager",     "rank": 2, "is_system": True},
     {"name": "sales_operations", "label": "Sales Operations",  "rank": 3, "is_system": True},
@@ -158,6 +161,26 @@ def init_db():
                     (r["name"], r["label"], r["rank"], 1 if r["is_system"] else 0),
                 )
             conn.commit()
+
+        # Sikr at 'screen'-rollen findes også på eksisterende installationer
+        # (seedet ovenfor kører kun når HubRoles er helt tom). Idempotent.
+        cur.execute(
+            "IF NOT EXISTS (SELECT 1 FROM HubRoles WHERE name='screen') "
+            "INSERT INTO HubRoles (name, label, rank, is_system) "
+            "VALUES ('screen', 'Skærm', 0, 1)"
+        )
+        # 'screen' må KUN se rotationen: åbn rotations-ruterne ('rotation'),
+        # selve rotations-kategorien og autoplay-menupunktet — alt andet spærres
+        # af rang-tjekket (rank 0). Idempotent.
+        for rid in ("rotation", "rotation-dashboards", "rotation-autoplay"):
+            cur.execute(
+                "IF NOT EXISTS (SELECT 1 FROM RoleResourceAccess "
+                "WHERE role='screen' AND resource_id=%s) "
+                "INSERT INTO RoleResourceAccess (role, resource_id, access) "
+                "VALUES ('screen', %s, 'read')",
+                (rid, rid),
+            )
+        conn.commit()
         conn.close()
     except Exception as e:
         print(f"[init_db] Advarsel — kunne ikke initialisere tabeller: {e}")

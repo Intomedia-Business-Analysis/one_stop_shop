@@ -101,6 +101,9 @@ async def login_post(request: Request):
             "error": "Forkert brugernavn eller adgangskode",
         })
     request.session["user_id"] = user["id"]
+    # Skærm-brugere lander direkte på rotationen — de skal kun se den.
+    if user.get("role") == "screen":
+        return RedirectResponse("/tools/rotation/", status_code=302)
     return RedirectResponse("/", status_code=302)
 
 
@@ -166,6 +169,9 @@ async def budget_dashboard(request: Request, user=Depends(get_current_user)):
 
 @app.get("/", response_class=HTMLResponse)
 async def hub(request: Request, user=Depends(get_current_user)):
+    # Skærm-brugere har kun rotationen — send dem direkte derhen.
+    if user.get("role") == "screen":
+        return RedirectResponse("/tools/rotation/", status_code=302)
     categories   = filter_categories(CATEGORIES, user)
     total_dash   = sum(c["dashboard_count"] for c in categories)
     total_tools  = sum(c["tool_count"]      for c in categories)

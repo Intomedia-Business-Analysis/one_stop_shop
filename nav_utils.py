@@ -99,7 +99,10 @@ CATEGORIES = [
 def filter_categories(categories: list, user: dict) -> list:
     result = []
     for cat in categories:
-        if not has_access(user, cat["min_role"]):
+        # Ressource-baseret kategori-gate: normale roller falder igennem til
+        # rang-tjekket (uændret adgang), men en eksplicit RoleResourceAccess-
+        # override på kategori-id'et kan åbne kategorien for fx 'screen'-rollen.
+        if resolve_resource_access(user, cat["id"], cat["min_role"]) == "none":
             continue
         visible_items = []
         for item in cat["items"]:

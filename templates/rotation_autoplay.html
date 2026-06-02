@@ -168,13 +168,30 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; b
 <div class="iframe-wrap" id="iframeWrap"></div>
 
 <script>
+// URL-konfiguration pr. skærm (bookmark). Eksempler:
+//   /tools/rotation/?dashboards=media&mode=abonnement&accounts=watch_no&years=2026&months=1,2,3&interval=30
+//   /tools/rotation/?dashboards=sales,media&interval=20
+const QS = new URLSearchParams(location.search);
+
 const DASHBOARDS = [
-  { title: 'Sales Performance',       url: '/tools/rotation/sales-performance'       },
-  { title: 'Department Performance',  url: '/tools/rotation/department-performance'  },
-  { title: 'Banner Performance',      url: '/tools/rotation/banner-performance'      },
-  { title: 'Job Performance',         url: '/tools/rotation/job-performance'         },
-  { title: 'Media Performance',       url: '/tools/rotation/media-performance'       },
+  { key: 'sales',      title: 'Sales Performance',       url: '/tools/rotation/sales-performance'       },
+  { key: 'department', title: 'Department Performance',  url: '/tools/rotation/department-performance'  },
+  { key: 'banner',     title: 'Banner Performance',      url: '/tools/rotation/banner-performance'      },
+  { key: 'job',        title: 'Job Performance',         url: '/tools/rotation/job-performance'         },
+  { key: 'media',      title: 'Media Performance',       url: '/tools/rotation/media-performance'       },
 ];
+
+// Byg iframe-URL. Media-dashboardet får account/periode/mode med fra URL'en.
+// Filter-baren vises som standard (med URL-valgene markeret). Vil man have den
+// skjult til ren signage, tilføjes &embed=1 på rotations-URL'en — så føres den
+// videre til Media-rammen.
+function frameUrl(d) {
+  if (d.key !== 'media') return d.url;
+  const p = new URLSearchParams();
+  ['mode', 'accounts', 'years', 'months', 'embed'].forEach(k => { if (QS.get(k)) p.set(k, QS.get(k)); });
+  const qs = p.toString();
+  return qs ? d.url + '?' + qs : d.url;
+}
 
 const LS_KEY = 'rotation_enabled_v1';
 
@@ -184,6 +201,12 @@ let pos       = 0;               // pointer ind i order
 let playing   = true;
 let interval  = 30;              // sekunder
 let timer     = null;
+
+// Interval fra URL (?interval=20) — bookmark pr. skærm.
+(function () {
+  const iv = parseInt(QS.get('interval'), 10);
+  if (Number.isFinite(iv) && iv >= 5 && iv <= 3600) interval = iv;
+})();
 
 const wrap       = document.getElementById('iframeWrap');
 const dotWrap    = document.getElementById('tabDots');
@@ -200,6 +223,15 @@ const settingsList  = document.getElementById('settingsList');
 
 // ── localStorage for valgte dashboards ────────────────────────────────
 function loadEnabled() {
+  // 1) Eksplicit ?dashboards=media,sales i URL'en vinder (bookmark pr. skærm).
+  const dParam = QS.get('dashboards');
+  if (dParam) {
+    const keys = dParam.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const s = new Set();
+    DASHBOARDS.forEach((d, i) => { if (keys.includes(d.key)) s.add(i); });
+    if (s.size) return s;
+  }
+  // 2) Ellers det der er gemt lokalt på skærmen.
   try {
     const raw = JSON.parse(localStorage.getItem(LS_KEY));
     if (Array.isArray(raw)) {
@@ -207,6 +239,7 @@ function loadEnabled() {
       if (s.size) return s;
     }
   } catch (e) {}
+  // 3) Standard: alle dashboards.
   return new Set(DASHBOARDS.map((_, i) => i));
 }
 function saveEnabled() {
@@ -217,7 +250,7 @@ function saveEnabled() {
 const frameEls = DASHBOARDS.map(d => {
   const fr = document.createElement('iframe');
   fr.className = 'dash-frame';
-  fr.src = d.url;
+  fr.src = frameUrl(d);
   fr.title = d.title;
   wrap.appendChild(fr);
   return fr;
@@ -362,6 +395,15 @@ document.addEventListener('keydown', e => {
 });
 
 // Start
+// Synkronisér speed-dropdown med (evt. URL-styret) interval.
+if (![...speedSel.options].some(o => o.value === String(interval))) {
+  const opt = document.createElement('option');
+  opt.value = String(interval);
+  opt.textContent = interval < 60 ? interval + ' sek' : (interval / 60) + ' min';
+  speedSel.appendChild(opt);
+}
+speedSel.value = String(interval);
+
 buildSettingsList();
 rebuildOrder();
 startPlay();

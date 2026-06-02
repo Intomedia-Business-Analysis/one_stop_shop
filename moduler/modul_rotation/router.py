@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import get_current_user, has_access, RequiresLoginException
+from auth import get_current_user, resolve_resource_access, RequiresLoginException
 
 from .queries import (
     db_sales_performance,
@@ -19,10 +19,18 @@ router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
-def _require(user, min_role: str = "salesperson"):
+def _require(user, min_role: str = "salesperson", resource_id: str = "rotation"):
+    """Adgangstjek for rotations-ruterne.
+
+    Bruger ressource-baseret access (resource_id='rotation') i stedet for rent
+    rang-tjek, så lav-rang 'screen'-brugere kan få adgang til netop rotationen
+    via en RoleResourceAccess-override — uden at få adgang til resten af hubben.
+    Normale roller (salesperson og opefter) falder igennem til rang-tjekket og
+    bevarer uændret adgang.
+    """
     if not user:
         raise RequiresLoginException()
-    if not has_access(user, min_role):
+    if resolve_resource_access(user, resource_id, min_role) == "none":
         raise RequiresLoginException()
     return user
 
@@ -119,12 +127,15 @@ async def media_performance_page(request: Request, user=Depends(get_current_user
 async def media_performance_data(
     request: Request,
     user=Depends(get_current_user),
-    brands: Optional[str] = None,
+    accounts: Optional[str] = None,
     years: Optional[str] = None,
     mode: Optional[str] = None,
+    months: Optional[str] = None,
 ):
     _require(user, "salesperson")
-    selected_brands = [b.strip() for b in brands.split(",")] if brands else None
-    selected_years  = [y.strip() for y in years.split(",")]  if years  else None
-    data = db_media_performance(selected_brands, selected_years, mode or "abonnement")
+    selected_accounts = [a.strip() for a in accounts.split(",")] if accounts else None
+    selected_years    = [y.strip() for y in years.split(",")]    if years    else None
+    selected_months   = [m.strip() for m in months.split(",")]   if months   else None
+    data = db_media_performance(selected_accounts, selected_years,
+                                mode or "abonnement", selected_months)
     return JSONResponse(content=data)
