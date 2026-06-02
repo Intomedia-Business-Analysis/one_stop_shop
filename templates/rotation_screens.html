@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skærm-konfiguration — Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <style>
+    body { padding: 32px; max-width: 900px; margin: 0 auto; }
+
+    h1 { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+    .subtitle { font-size: 13px; color: var(--ink-muted); margin-bottom: 32px; }
+
+    /* Skærm-kort */
+    .screen-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+    .screen-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .screen-card .screen-info { flex: 1; }
+    .screen-card .screen-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .screen-card .screen-meta { font-size: 12px; color: var(--ink-muted); margin-top: 3px; }
+    .screen-card .screen-url {
+      font-size: 11px;
+      color: var(--green);
+      font-family: monospace;
+      margin-top: 4px;
+      cursor: pointer;
+    }
+    .screen-card .screen-url:hover { text-decoration: underline; }
+    .btn { padding: 7px 16px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+    .btn-primary { background: var(--green); color: #fff; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--ink); }
+    .btn-secondary:hover { background: var(--bg); }
+    .btn-danger { background: #fee2e2; color: #dc2626; }
+    .btn-danger:hover { background: #fecaca; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 28px;
+      width: 480px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    }
+    .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 20px; color: var(--ink); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-muted); margin-bottom: 6px; }
+    .form-group input {
+      width: 100%; padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 14px;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    .form-group input:focus { outline: none; border-color: var(--green); }
+
+    /* Dashboard checkboxes */
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .dashboard-option {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .dashboard-option input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; }
+    .dashboard-option.selected { border-color: var(--green); background: #f0fdf4; }
+
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+
+    /* Tom liste */
+    .empty { text-align: center; padding: 48px; color: var(--ink-muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <a href="/tools/rotation/" style="font-size:13px; color:var(--ink-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-bottom:20px;">
+    ← Tilbage til rotation
+  </a>
+
+  <h1>Skærm-konfiguration</h1>
+  <p class="subtitle">Opret og administrer faste skærm-indstillinger til rotations-dashboards.</p>
+
+  <div class="screen-list" id="screenList">
+    {% if screens %}
+      {% for s in screens %}
+      <div class="screen-card">
+        <div class="screen-info">
+          <div class="screen-name">{{ s.name }}</div>
+          <div class="screen-meta">
+            {{ s.dashboards | length }} dashboard(s) &nbsp;·&nbsp; {{ s.interval }}s interval
+          </div>
+          <div class="screen-url" onclick="copyUrl('{{ s.id }}')">
+            /tools/rotation/screen/{{ s.id }} &nbsp;📋
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="editScreen({{ s | tojson }})">Rediger</button>
+        <button class="btn btn-danger" onclick="deleteScreen('{{ s.id }}', '{{ s.name }}')">Slet</button>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">Ingen skærme oprettet endnu. Klik "Ny skærm" for at komme i gang.</div>
+    {% endif %}
+  </div>
+
+  <button class="btn btn-primary" onclick="openModal()">+ Ny skærm</button>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2 id="modalTitle">Ny skærm</h2>
+      <input type="hidden" id="screenId">
+
+      <div class="form-group">
+        <label>Navn på skærm</label>
+        <input type="text" id="screenName" placeholder="F.eks. Reception, Møderum 1...">
+      </div>
+
+      <div class="form-group">
+        <label>Interval (sekunder)</label>
+        <input type="number" id="screenInterval" value="60" min="10" max="3600">
+      </div>
+
+      <div class="form-group">
+        <label>Dashboards i rotation</label>
+        <div class="dashboard-grid">
+          <label class="dashboard-option" id="opt-sales">
+            <input type="checkbox" value="sales"> Sales Performance
+          </label>
+          <label class="dashboard-option" id="opt-department">
+            <input type="checkbox" value="department"> Department Performance
+          </label>
+          <label class="dashboard-option" id="opt-banner">
+            <input type="checkbox" value="banner"> Banner Performance
+          </label>
+          <label class="dashboard-option" id="opt-job">
+            <input type="checkbox" value="job"> Job Performance
+          </label>
+          <label class="dashboard-option" id="opt-media">
+            <input type="checkbox" value="media"> Media Performance
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">Annuller</button>
+        <button class="btn btn-primary" onclick="saveScreen()">Gem</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Highlight valgte checkboxes
+    document.querySelectorAll('.dashboard-option input').forEach(cb => {
+      cb.addEventListener('change', () => {
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
+    });
+
+    function openModal(screen = null) {
+      document.getElementById('modalTitle').textContent = screen ? 'Rediger skærm' : 'Ny skærm';
+      document.getElementById('screenId').value = screen ? screen.id : '';
+      document.getElementById('screenName').value = screen ? screen.name : '';
+      document.getElementById('screenInterval').value = screen ? screen.interval : 60;
+
+      // Nulstil checkboxes
+      document.querySelectorAll('.dashboard-option input').forEach(cb => {
+        cb.checked = screen ? screen.dashboards.includes(cb.value) : false;
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
+
+      document.getElementById('modalOverlay').classList.add('open');
+      document.getElementById('screenName').focus();
+    }
+
+    function editScreen(screen) { openModal(screen); }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+
+    async function saveScreen() {
+      const name = document.getElementById('screenName').value.trim();
+      const interval = parseInt(document.getElementById('screenInterval').value);
+      const dashboards = [...document.querySelectorAll('.dashboard-option input:checked')].map(cb => cb.value);
+      const id = document.getElementById('screenId').value;
+
+      if (!name) { alert('Angiv et navn til skærmen'); return; }
+      if (dashboards.length === 0) { alert('Vælg mindst ét dashboard'); return; }
+
+      const res = await fetch('/tools/rotation/screens/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id || null, name, dashboards, interval })
+      });
+      if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
+    }
+
+    async function deleteScreen(id, name) {
+      if (!confirm(`Slet skærmen "${name}"?`)) return;
+      const res = await fetch('/tools/rotation/screens/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
+    }
+
+    function copyUrl(id) {
+      const url = window.location.origin + '/tools/rotation/screen/' + id;
+      navigator.clipboard.writeText(url).then(() => alert('URL kopieret: ' + url));
+    }
+
+    // Luk modal ved klik udenfor
+    document.getElementById('modalOverlay').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeModal();
+    });
+  </script>
+
+</body>
+</html>

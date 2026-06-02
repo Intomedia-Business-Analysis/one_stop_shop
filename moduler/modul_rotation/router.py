@@ -1,11 +1,30 @@
+import json
+import os
+import uuid
 from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import get_current_user, resolve_resource_access, RequiresLoginException
+
+# ════════════════════════════════════════════════════════════════════════════
+#  SCREEN CONFIG — hjælpefunktioner
+# ════════════════════════════════════════════════════════════════════════════
+
+SCREEN_CONFIGS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "screen_configs.json")
+
+def _load_configs() -> dict:
+    if not os.path.exists(SCREEN_CONFIGS_PATH):
+        return {"screens": []}
+    with open(SCREEN_CONFIGS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def _save_configs(data: dict):
+    with open(SCREEN_CONFIGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 from .queries import (
     db_sales_performance,
@@ -42,7 +61,7 @@ def _require(user, min_role: str = "salesperson", resource_id: str = "rotation")
 @router.get("/tools/rotation/", response_class=HTMLResponse)
 async def rotation_autoplay(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_autoplay.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_autoplay.html", {"user": user})
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -52,7 +71,7 @@ async def rotation_autoplay(request: Request, user=Depends(get_current_user)):
 @router.get("/tools/rotation/sales-performance", response_class=HTMLResponse)
 async def sales_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_sales_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_sales_performance.html", {"user": user})
 
 
 @router.get("/tools/rotation/sales-performance-data")
@@ -69,7 +88,7 @@ async def sales_performance_data(request: Request, user=Depends(get_current_user
 @router.get("/tools/rotation/department-performance", response_class=HTMLResponse)
 async def dept_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_dept_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_dept_performance.html", {"user": user})
 
 
 @router.get("/tools/rotation/department-performance-data")
@@ -86,7 +105,7 @@ async def dept_performance_data(request: Request, user=Depends(get_current_user)
 @router.get("/tools/rotation/banner-performance", response_class=HTMLResponse)
 async def banner_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_banner_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_banner_performance.html", {"user": user})
 
 
 @router.get("/tools/rotation/banner-performance-data")
@@ -103,7 +122,7 @@ async def banner_performance_data(request: Request, user=Depends(get_current_use
 @router.get("/tools/rotation/job-performance", response_class=HTMLResponse)
 async def job_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_job_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_job_performance.html", {"user": user})
 
 
 @router.get("/tools/rotation/job-performance-data")
@@ -120,7 +139,7 @@ async def job_performance_data(request: Request, user=Depends(get_current_user))
 @router.get("/tools/rotation/media-performance", response_class=HTMLResponse)
 async def media_performance_page(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse("rotation_media_performance.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "rotation_media_performance.html", {"user": user})
 
 
 @router.get("/tools/rotation/media-performance-data")
@@ -139,3 +158,67 @@ async def media_performance_data(
     data = db_media_performance(selected_accounts, selected_years,
                                 mode or "abonnement", selected_months)
     return JSONResponse(content=data)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  SCREEN CONFIG — admin-side
+# ════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tools/rotation/screens", response_class=HTMLResponse)
+async def screens_admin(request: Request, user=Depends(get_current_user)):
+    _require(user, "sales_manager")
+    configs = _load_configs()
+    return templates.TemplateResponse(request, "rotation_screens.html", {
+        "user": user,
+        "screens": configs["screens"],
+    })
+
+
+@router.post("/tools/rotation/screens/save")
+async def screens_save(request: Request, user=Depends(get_current_user)):
+    _require(user, "sales_manager")
+    body = await request.json()
+    configs = _load_configs()
+
+    screen_id = body.get("id")
+    if screen_id:
+        # Opdater eksisterende
+        for s in configs["screens"]:
+            if s["id"] == screen_id:
+                s["name"] = body["name"]
+                s["dashboards"] = body["dashboards"]
+                s["interval"] = body["interval"]
+                break
+    else:
+        # Opret ny
+        configs["screens"].append({
+            "id": str(uuid.uuid4())[:8],
+            "name": body["name"],
+            "dashboards": body["dashboards"],
+            "interval": body["interval"],
+        })
+
+    _save_configs(configs)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/tools/rotation/screens/delete")
+async def screens_delete(request: Request, user=Depends(get_current_user)):
+    _require(user, "sales_manager")
+    body = await request.json()
+    configs = _load_configs()
+    configs["screens"] = [s for s in configs["screens"] if s["id"] != body["id"]]
+    _save_configs(configs)
+    return JSONResponse({"ok": True})
+
+
+@router.get("/tools/rotation/screen/{screen_id}", response_class=HTMLResponse)
+async def screen_player(screen_id: str, request: Request, user=Depends(get_current_user)):
+    _require(user, "salesperson")
+    configs = _load_configs()
+    screen = next((s for s in configs["screens"] if s["id"] == screen_id), None)
+    if not screen:
+        return HTMLResponse("Skærm ikke fundet", status_code=404)
+    dashboards = ",".join(screen["dashboards"])
+    interval = screen["interval"]
+    return RedirectResponse(f"/tools/rotation/?dashboards={dashboards}&interval={interval}")
