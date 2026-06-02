@@ -76,7 +76,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   display: flex; flex-direction: column; min-height: 0;
 }
 .mini-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
-.card-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; white-space:nowrap; }
+.card-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; line-height:1.2; }
 .tbl-scroll { overflow-y:auto; flex:1; }
 
 /* Budget chart strip (2 små charts) */
@@ -138,10 +138,12 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       </div>
 
       <div class="chart-card">
-        <div class="chart-title" id="lblKvartal">Omsætning — Indeværende kvartal</div>
-        <div class="legend-row">
-          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-        </div>
+        <div class="chart-title" id="lblMaaned">Omsætning pr. måned</div>
+        <div class="chart-wrap"><canvas id="chartMaaned"></canvas></div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title" id="lblKvartal">Omsætning pr. kvartal</div>
         <div class="chart-wrap"><canvas id="chartKvartal"></canvas></div>
       </div>
 
@@ -239,6 +241,88 @@ function fmtLabel(v) {
 }
 function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…' : (n||'—'); }
 
+// Fast farve pr. hovedbrand (samme farve i måneds- og kvartals-chartet)
+const BRAND_COLORS = {
+  'Watch DK':'#2E7A64', 'FINANS DK':'#D4A95C', 'Monitor':'#81A4CD',
+  'Watch Int':'#E07A5F', 'Marketwire':'#8FCBB4', 'Øvrige':'#B4C8C0'
+};
+
+function buildStackedBar(id, payload) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  const labels = payload?.labels || [];
+  const series = payload?.series || [];
+  const nPts = labels.length;
+  const totals = Array.from({length:nPts}, (_, i) =>
+    series.reduce((sum, s) => sum + (s.data?.[i] || 0), 0));
+  const maxTotal = Math.max(1, ...totals);
+
+  // Per søjle: er den så lav at segment-labels ikke kan være der? Find i så
+  // fald den øverste serie med data, som så bærer ét samlet totalbeløb.
+  const SMALL_COL = 0.12;   // søjle-total < 12% af højeste → "lille søjle"
+  const THIN_SEG  = 0.07;   // segment < 7% af højeste → "tyndt segment"
+  const smallCol = totals.map(t => t > 0 && t < maxTotal * SMALL_COL);
+  const topIdx   = Array.from({length:nPts}, (_, i) => {
+    let idx = -1;
+    series.forEach((s, di) => { if ((s.data?.[i] || 0) > 0) idx = di; });
+    return idx;
+  });
+
+  const datasets = series.map((s, di) => ({
+    label: s.brand,
+    data: s.data || [],
+    backgroundColor: BRAND_COLORS[s.brand] || '#B4C8C0',
+    borderRadius: 2,
+    stack: 'total',
+    datalabels: {
+      // Lille søjle → kun øverste segment viser ét samlet total over baren.
+      // Ellers: alle segmenter med data viser deres eget beløb.
+      display: ctx => {
+        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
+        if (v <= 0) return false;
+        return smallCol[i] ? di === topIdx[i] : true;
+      },
+      anchor: ctx => {
+        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
+        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'end' : 'center';
+      },
+      align: ctx => {
+        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
+        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'top' : 'center';
+      },
+      offset: 2,
+      font:{family:'Montserrat',size:12,weight:'700'},
+      color: ctx => {
+        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
+        return (smallCol[i] || v < maxTotal * THIN_SEG) ? '#1F3A30' : '#fff';
+      },
+      textStrokeColor:'rgba(255,255,255,0.9)',
+      textStrokeWidth: ctx => {
+        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
+        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 3 : 0;
+      },
+      formatter:(v, ctx) => smallCol[ctx.dataIndex] ? fmtLabel(totals[ctx.dataIndex]) : fmtLabel(v),
+      clip:false,
+    },
+  }));
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top:18 } },
+      plugins: {
+        legend:{ display:true, position:'top', labels:{font:{family:'Montserrat',size:12}, boxWidth:12, padding:8} },
+        tooltip:{ callbacks:{ label:c=>' '+c.dataset.label+': '+fmt(c.raw) } },
+      },
+      scales:{
+        x:{ stacked:true, ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} },
+        y:{ stacked:true, ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} }
+      }
+    }
+  });
+}
+
 function buildVBar(id, rows, labelKey, revenueKey, budgetKey, existing) {
   const ctx = document.getElementById(id).getContext('2d');
   if (charts[id]) charts[id].destroy();
@@ -331,9 +415,12 @@ async function loadData() {
   document.getElementById('kpiMaaned').textContent = fmt(d.kpis?.maaned);
   document.getElementById('kpiAar').textContent    = fmt(d.kpis?.aar);
   document.getElementById('lblPeriod').textContent = d.maaned_label || '';
-  document.getElementById('lblKvartal').textContent = 'Omsætning — ' + (d.kvartal_label || 'Indeværende kvartal');
+  const year = d.today ? d.today.substring(0,4) : '';
+  document.getElementById('lblMaaned').textContent  = 'Omsætning pr. måned — ' + year;
+  document.getElementById('lblKvartal').textContent = 'Omsætning pr. kvartal — ' + year;
 
-  buildVBar('chartKvartal', d.kvartal_chart || [], 'brand', 'revenue', null);
+  buildStackedBar('chartMaaned',  d.maaned_chart);
+  buildStackedBar('chartKvartal', d.kvartal_chart);
   buildHBar('chartBudget',  d.budget_chart  || [], 'brand', 'revenue', 'budget');
   buildHBar('chartProg',    d.programmatisk || [], 'brand', 'revenue', 'budget');
 
