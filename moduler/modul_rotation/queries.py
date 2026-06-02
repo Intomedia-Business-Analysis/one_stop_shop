@@ -97,6 +97,21 @@ MEDIA_BRAND_GROUPS = {
     "Watch SE": ["FinansWatch SE"],
 }
 
+# Media Performance afgrænses pr. account (ikke brand). Rækker vises stadig pr. site.
+# Abonnement og annonce (banner/job) ligger i FORSKELLIGE accounts:
+#   abonnement → subscription-accounts; banner/job → advertising-accounts.
+MEDIA_ACCOUNTS_SUB = ["watch_medier", "monitor", "watch_no", "watch_se", "watch_de"]
+MEDIA_ACCOUNTS_ADS = ["jppol_advertising", "watch_no_advertising", "watch_de"]
+MEDIA_ACCOUNT_LABELS = {
+    "watch_medier":         "Watch Medier",
+    "monitor":              "Monitor",
+    "watch_no":             "Watch NO",
+    "watch_se":             "Watch SE",
+    "watch_de":             "Watch DE",
+    "jppol_advertising":    "JP/Pol Annoncer",
+    "watch_no_advertising": "Watch NO Annoncer",
+}
+
 
 def get_conn():
     return pymssql.connect(
@@ -790,54 +805,57 @@ def db_job_performance(today: date):
 #  DASHBOARD 5 — Media Performance
 # ════════════════════════════════════════════════════════════════════════════
 
-def db_media_performance(selected_brands: list | None = None,
+def db_media_performance(selected_accounts: list | None = None,
                          selected_years: list | None = None,
-                         mode: str = "abonnement"):
-    """Media Performance pr. site.
+                         mode: str = "abonnement",
+                         selected_months: list | None = None):
+    """Media Performance pr. site, afgrænset på account.
 
     mode:
       "abonnement" — abonnementsomsætning (deal_type abonnement/subscription)
-                     INKL. Web Sale. Viser cancellations, net og 'heraf web salg'.
+                     INKL. Web Sale. Placeres på året via [service_activation_date]
+                     (tilvækst). Viser cancellations, net og 'heraf web salg'.
                      Budget = BudgetsIntoMedia DealType=Subscription (alle salestypes,
                      dvs. inkl. websale-budget) pr. Site.
-      "banner"     — kun banner-omsætning (pipeline Banner/Bannerads) pr. site.
+      "banner"     — kun banner-omsætning (pipeline Banner/Bannerads), [won_time].
                      Budget = BudgetsIntoMedia DealType=Banner pr. Site.
-      "job"        — kun job-omsætning (pipeline Job/Jobmarked/Jobads) pr. site.
+      "job"        — kun job-omsætning (pipeline Job/Jobmarked/Jobads), [won_time].
                      Budget = BudgetsIntoMedia DealType=Job pr. Site.
 
-    Budget matches på [Site] (ikke [Brand]) — budgettet ligger pr. enkelt-site.
+    selected_accounts: liste af accounts (watch_medier/monitor/watch_no/...).
+    Site-universet udledes dynamisk af de valgte accounts. Budget matches på
+    [Site] (BudgetsIntoMedia har ingen account-kolonne).
     """
     mode = (mode or "abonnement").lower()
     if mode not in ("abonnement", "banner", "job"):
         mode = "abonnement"
+    # Abonnement og annonce ligger i forskellige accounts.
+    mode_accounts = MEDIA_ACCOUNTS_SUB if mode == "abonnement" else MEDIA_ACCOUNTS_ADS
     empty = {"mode": mode, "rows": [], "total": {}, "available_years": [],
-             "available_brands": list(MEDIA_BRAND_GROUPS.keys())}
+             "available_accounts": list(mode_accounts),
+             "account_labels": dict(MEDIA_ACCOUNT_LABELS)}
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
 
-        if selected_brands:
-            sites: list = []
-            seen: set = set()
-            for b in selected_brands:
-                for s in MEDIA_BRAND_GROUPS.get(b, []):
-                    if s not in seen:
-                        sites.append(s)
-                        seen.add(s)
+        if selected_accounts:
+            accounts = [a for a in selected_accounts if a in mode_accounts]
         else:
-            sites = list(SUBSCRIPTION_BRANDS)
-
-        if not sites:
+            accounts = list(mode_accounts)
+        if not accounts:
             conn.close()
             return empty
+        acc_ph = "(" + ",".join(["%s"] * len(accounts)) + ")"
 
-        sites_ph = "(" + ",".join(["%s"] * len(sites)) + ")"
+        # Abonnement = tilvækst → placeres på service_activation_date.
+        # Annonce (banner/job) → placeres på won_time.
+        date_col = "service_activation_date" if mode == "abonnement" else "won_time"
 
         year_clause = ""
         year_params: tuple = ()
         if selected_years:
             year_ph = "(" + ",".join(["%s"] * len(selected_years)) + ")"
-            year_clause = f"AND YEAR([won_time]) IN {year_ph}"
+            year_clause = f"AND YEAR([{date_col}]) IN {year_ph}"
             year_params = tuple(int(y) for y in selected_years)
 
         year_budget_clause = ""
@@ -847,9 +865,35 @@ def db_media_performance(selected_brands: list | None = None,
             year_budget_clause = f"AND YEAR([BudgetDate]) IN {year_ph2}"
             year_budget_params = tuple(int(y) for y in selected_years)
 
+        # Måneds-filter (flervalg) — afgrænser både omsætning og budget på måned.
+        month_clause = ""
+        month_params: tuple = ()
+        month_budget_clause = ""
+        month_budget_params: tuple = ()
+        if selected_months:
+            months = [int(m) for m in selected_months if str(m).strip().isdigit()
+                      and 1 <= int(m) <= 12]
+            if months:
+                m_ph = "(" + ",".join(["%s"] * len(months)) + ")"
+                month_clause = f"AND MONTH([{date_col}]) IN {m_ph}"
+                month_params = tuple(months)
+                month_budget_clause = f"AND MONTH([BudgetDate]) IN {m_ph}"
+                month_budget_params = tuple(months)
+
         # Case-insensitiv site-nøgle, så 'idrætsmonitor' matcher 'Idrætsmonitor' osv.
         def _norm(s):
             return (s or "").strip().lower()
+
+        # Site-univers for de valgte accounts (så budget-only sites også kan vises).
+        cur.execute(f"""
+            SELECT DISTINCT [sites] AS s FROM [dbo].[PipedriveDeals]
+            WHERE [account] IN {acc_ph} AND [sites] IS NOT NULL AND [sites] <> ''
+        """, tuple(accounts))
+        sites = [r["s"] for r in cur.fetchall()]
+        if not sites:
+            conn.close()
+            return empty
+        sites_ph = "(" + ",".join(["%s"] * len(sites)) + ")"
 
         cancel_map: dict = {}
         ws_map: dict = {}
@@ -861,12 +905,13 @@ def db_media_performance(selected_brands: list | None = None,
                        ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
+                  AND [account] IN {acc_ph}
                   AND [pipeline_name] NOT IN {_CANCEL_PH}
                   AND [pipeline_name] NOT IN ('banner','job','Bannerads','Jobads','Jobmarked')
                   AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [pipeline_name]='Web Sale')
-                  AND [sites] IN {sites_ph} {year_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
+                  {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
                 GROUP BY [sites]
-            """, tuple(CANCELLATION_PIPELINES) + tuple(sites) + year_params)
+            """, tuple(accounts) + tuple(CANCELLATION_PIPELINES) + year_params + month_params)
             gross_map = {_norm(r["sites"]): float(r["gross"] or 0) for r in cur.fetchall()}
 
             # Heraf web salg (pipeline Web Sale).
@@ -875,28 +920,29 @@ def db_media_performance(selected_brands: list | None = None,
                        ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS ws
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name]='Web Sale'
-                  AND [sites] IN {sites_ph} {year_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
+                  AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
                 GROUP BY [sites]
-            """, tuple(sites) + year_params)
+            """, tuple(accounts) + year_params + month_params)
             ws_map = {_norm(r["sites"]): float(r["ws"] or 0) for r in cur.fetchall()}
 
-            # Cancellations.
+            # Cancellations — SAMME ADM/System-Admin-hygiene som gross (symmetrisk),
+            # ellers overdrives churn og net bliver kunstigt lavt.
             cur.execute(f"""
                 SELECT [sites],
                        ABS(ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0)) AS cancel
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {_CANCEL_PH}
-                  AND [sites] IN {sites_ph} {year_clause}
+                  AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
                 GROUP BY [sites]
-            """, tuple(CANCELLATION_PIPELINES) + tuple(sites) + year_params)
+            """, tuple(CANCELLATION_PIPELINES) + tuple(accounts) + year_params + month_params)
             cancel_map = {_norm(r["sites"]): float(r["cancel"] or 0) for r in cur.fetchall()}
 
             cur.execute(f"""
                 SELECT [Site] AS site, ISNULL(SUM([BudgetAmount]),0) AS budget
                 FROM [dbo].[BudgetsIntoMedia]
-                WHERE LOWER([DealType])='subscription' AND [Site] IN {sites_ph} {year_budget_clause}
+                WHERE LOWER([DealType])='subscription' AND [Site] IN {sites_ph} {year_budget_clause} {month_budget_clause}
                 GROUP BY [Site]
-            """, tuple(sites) + year_budget_params)
+            """, tuple(sites) + year_budget_params + month_budget_params)
             budget_map = {_norm(r["site"]): float(r["budget"] or 0) for r in cur.fetchall()}
 
         else:
@@ -909,24 +955,24 @@ def db_media_performance(selected_brands: list | None = None,
                        ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {pipes_ph}
-                  AND [sites] IN {sites_ph} {year_clause} {_ADM_EXCLUDE}
+                  AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
                 GROUP BY [sites]
-            """, tuple(pipes) + tuple(sites) + year_params)
+            """, tuple(pipes) + tuple(accounts) + year_params + month_params)
             gross_map = {_norm(r["sites"]): float(r["gross"] or 0) for r in cur.fetchall()}
 
             cur.execute(f"""
                 SELECT [Site] AS site, ISNULL(SUM([BudgetAmount]),0) AS budget
                 FROM [dbo].[BudgetsIntoMedia]
-                WHERE LOWER([DealType])=LOWER(%s) AND [Site] IN {sites_ph} {year_budget_clause}
+                WHERE LOWER([DealType])=LOWER(%s) AND [Site] IN {sites_ph} {year_budget_clause} {month_budget_clause}
                 GROUP BY [Site]
-            """, (deal_type,) + tuple(sites) + year_budget_params)
+            """, (deal_type,) + tuple(sites) + year_budget_params + month_budget_params)
             budget_map = {_norm(r["site"]): float(r["budget"] or 0) for r in cur.fetchall()}
 
         cur.execute(f"""
-            SELECT DISTINCT YEAR([won_time]) AS aar FROM [dbo].[PipedriveDeals]
-            WHERE [status]='won' AND [sites] IN {sites_ph} AND [won_time] IS NOT NULL
+            SELECT DISTINCT YEAR([{date_col}]) AS aar FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [account] IN {acc_ph} AND [{date_col}] IS NOT NULL
             ORDER BY aar DESC
-        """, tuple(sites))
+        """, tuple(accounts))
         available_years = [int(r["aar"]) for r in cur.fetchall() if r["aar"]]
 
         conn.close()
@@ -959,8 +1005,9 @@ def db_media_performance(selected_brands: list | None = None,
             "rows":             rows,
             "total":            {"gross": tg, "cancel": tc, "net": tn, "websale": tw,
                                  "budget": tb, "index": round(tn / tb * 100, 2) if tb > 0 else None},
-            "available_years":  available_years,
-            "available_brands": list(MEDIA_BRAND_GROUPS.keys()),
+            "available_years":   available_years,
+            "available_accounts": list(mode_accounts),
+            "account_labels":     dict(MEDIA_ACCOUNT_LABELS),
         }
     except Exception:
         traceback.print_exc()

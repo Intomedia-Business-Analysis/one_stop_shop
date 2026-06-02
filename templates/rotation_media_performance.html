@@ -12,7 +12,12 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: top left;
+  position: absolute;
+  top: 0;
+  left: 0;
   padding: 8px 10px;
   gap: 6px;
 }
@@ -92,6 +97,9 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 
 .sort-arrow { margin-left:3px; opacity:.6; font-size:10px; }
 .sort-active .sort-arrow { opacity:1; }
+
+/* embed=1 (signage pr. skærm) — skjul den interaktive filter-bar. */
+body.embed .filter-bar { display:none; }
 </style>
 </head>
 <body>
@@ -116,14 +124,20 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
     </div>
     <div class="filter-sep"></div>
     <div class="filter-group">
-      <div class="filter-label">Brands</div>
-      <div class="filter-chips" id="brandChips">
+      <div class="filter-label">Account</div>
+      <div class="filter-chips" id="accountChips">
         <span class="chip active" data-val="">Alle</span>
       </div>
     </div>
     <div class="filter-group">
       <div class="filter-label">Periode</div>
       <div class="filter-chips" id="yearChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">Måned</div>
+      <div class="filter-chips" id="monthChips">
         <span class="chip active" data-val="">Alle</span>
       </div>
     </div>
@@ -143,11 +157,14 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 </div>
 
 <script>
-let selectedMode   = 'abonnement';
-let selectedBrands = new Set();
-let selectedYears  = new Set();
+let selectedMode     = 'abonnement';
+let selectedAccounts = new Set();
+let selectedYears    = new Set();
+let selectedMonths   = new Set();
 let sortCol = 'net', sortDir = -1;
 let lastData = null;
+
+const MONTHS_DA = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
 
 function fmt(v, dec=0) {
   if (v == null) return '—';
@@ -191,16 +208,17 @@ const COLS = {
 function cols() { return COLS[selectedMode] || COLS.abonnement; }
 
 // ── Chip-bygning ───────────────────────────────────────────────────────
-function buildBrandChips(brands) {
-  const wrap = document.getElementById('brandChips');
+function buildAccountChips(accounts, labels) {
+  const wrap = document.getElementById('accountChips');
   wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
-  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
-  brands.forEach(b => {
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedAccounts, 'accountChips', loadData));
+  accounts.forEach(a => {
     const s = document.createElement('span');
-    s.className = 'chip'; s.dataset.val = b; s.textContent = b;
-    s.addEventListener('click', () => toggleChip(s, selectedBrands, 'brandChips', loadData));
+    s.className = 'chip'; s.dataset.val = a; s.textContent = (labels && labels[a]) || a;
+    s.addEventListener('click', () => toggleChip(s, selectedAccounts, 'accountChips', loadData));
     wrap.appendChild(s);
   });
+  syncChipActive('accountChips', selectedAccounts);
 }
 
 function buildYearChips(years) {
@@ -213,6 +231,37 @@ function buildYearChips(years) {
     s.addEventListener('click', () => toggleChip(s, selectedYears, 'yearChips', loadData));
     wrap.appendChild(s);
   });
+  syncChipActive('yearChips', selectedYears);
+}
+
+// Måneds-chips er statiske (1-12) — afhænger ikke af data.
+function buildMonthChips() {
+  const wrap = document.getElementById('monthChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedMonths, 'monthChips', loadData));
+  MONTHS_DA.forEach((navn, i) => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = String(i + 1); s.textContent = navn;
+    s.addEventListener('click', () => toggleChip(s, selectedMonths, 'monthChips', loadData));
+    wrap.appendChild(s);
+  });
+  syncChipActive('monthChips', selectedMonths);
+}
+
+// Sæt .active på chips hvis deres data-val er i settet; "Alle" aktiv når tomt.
+function syncChipActive(wrapId, selSet) {
+  document.querySelectorAll(`#${wrapId} .chip`).forEach(c => {
+    const v = c.dataset.val;
+    if (v === '') c.classList.toggle('active', selSet.size === 0);
+    else          c.classList.toggle('active', selSet.has(v));
+  });
+}
+
+// Nulstil en chip-gruppe til kun "Alle" (så loadData genopbygger den for ny mode)
+function resetChipGroup(wrapId, selSet) {
+  const wrap = document.getElementById(wrapId);
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selSet, wrapId, loadData));
 }
 
 function toggleChip(el, selSet, wrapId, cb) {
@@ -240,6 +289,12 @@ document.querySelectorAll('#modeChips .chip').forEach(c => {
     document.querySelectorAll('#modeChips .chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     if (sortCol === 'websale' || sortCol === 'gross' || sortCol === 'cancel') sortCol = 'net';
+    // Account- og periode-valg nulstilles ved mode-skift, da de tilgængelige
+    // accounts/år varierer pr. mode (abonnement vs. annonce-accounts).
+    selectedAccounts.clear();
+    selectedYears.clear();
+    resetChipGroup('accountChips', selectedAccounts);
+    resetChipGroup('yearChips', selectedYears);
     loadData();
   });
 });
@@ -303,8 +358,9 @@ function renderTable(d) {
 async function loadData() {
   const params = new URLSearchParams();
   params.set('mode', selectedMode);
-  if (selectedBrands.size) params.set('brands', [...selectedBrands].join(','));
-  if (selectedYears.size)  params.set('years',  [...selectedYears].join(','));
+  if (selectedAccounts.size) params.set('accounts', [...selectedAccounts].join(','));
+  if (selectedYears.size)    params.set('years',    [...selectedYears].join(','));
+  if (selectedMonths.size)   params.set('months',   [...selectedMonths].join(','));
 
   document.getElementById('lblStatus').textContent = 'Henter…';
   let r;
@@ -315,8 +371,8 @@ async function loadData() {
 
   document.getElementById('lblStatus').textContent = `${(d.rows||[]).length} sites`;
 
-  if (document.getElementById('brandChips').children.length === 1 && d.available_brands?.length) {
-    buildBrandChips(d.available_brands);
+  if (document.getElementById('accountChips').children.length === 1 && d.available_accounts?.length) {
+    buildAccountChips(d.available_accounts, d.account_labels);
   }
   if (document.getElementById('yearChips').children.length === 1 && d.available_years?.length) {
     buildYearChips(d.available_years);
@@ -326,11 +382,49 @@ async function loadData() {
 }
 
 // "Alle"-chip click-handlere (initialt i markup)
-document.querySelector('#brandChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
+document.querySelector('#accountChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedAccounts, 'accountChips', loadData));
 document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedYears, 'yearChips', loadData));
 
+// ── Forudfyld filtre fra URL (bruges af rotation/signage pr. skærm) ────
+// Fx: /tools/rotation/media-performance?mode=abonnement&accounts=watch_no&years=2026&months=1,2,3&embed=1
+(function applyUrlFilters() {
+  const q = new URLSearchParams(location.search);
+  const mode = (q.get('mode') || '').toLowerCase();
+  if (['abonnement', 'banner', 'job'].includes(mode)) {
+    selectedMode = mode;
+    document.querySelectorAll('#modeChips .chip').forEach(c =>
+      c.classList.toggle('active', c.dataset.val === mode));
+    if (sortCol === 'websale' && mode !== 'abonnement') sortCol = 'net';
+  }
+  const fill = (key, set) => (q.get(key) || '').split(',')
+    .map(s => s.trim()).filter(Boolean).forEach(v => set.add(v));
+  fill('accounts', selectedAccounts);
+  fill('years',    selectedYears);
+  fill('months',   selectedMonths);
+
+  // embed=1 → ren signage-visning uden interaktiv filter-bar.
+  if (q.get('embed') === '1') document.body.classList.add('embed');
+})();
+
+buildMonthChips();
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
+</script>
+<script>
+/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9).
+   Gør visningen uafhængig af remotens opløsning og Windows-skalering. */
+(function () {
+  var stage = document.querySelector('.page');
+  if (!stage) return;
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    var x = (window.innerWidth  - 1920 * s) / 2;
+    var y = (window.innerHeight - 1080 * s) / 2;
+    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+})();
 </script>
 </body>
 </html>

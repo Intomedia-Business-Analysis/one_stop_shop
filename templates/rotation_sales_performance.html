@@ -15,7 +15,12 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: top left;
+  position: absolute;
+  top: 0;
+  left: 0;
   padding: 8px 10px;
   gap: 6px;
 }
@@ -462,6 +467,22 @@ function renderIndexBullets(rows) {
 
 loadData();
 setInterval(loadData, 5*60*1000);
+</script>
+<script>
+/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9).
+   Gør visningen uafhængig af remotens opløsning og Windows-skalering. */
+(function () {
+  var stage = document.querySelector('.page');
+  if (!stage) return;
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    var x = (window.innerWidth  - 1920 * s) / 2;
+    var y = (window.innerHeight - 1080 * s) / 2;
+    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+  }
+  fit();
+  window.addEventListener('resize', fit);
+})();
 </script>
 </body>
 </html>
