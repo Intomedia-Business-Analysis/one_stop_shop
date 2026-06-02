@@ -28,6 +28,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 /* ── HEADER ──────────────────────────────────────────────────────────── */
 .header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
 .header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
+.btn { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; }
 .header h1 { font-size:16px; font-weight:700; color:var(--ink); }
 .header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
 
@@ -183,6 +184,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 
   <!-- HEADER -->
   <div class="header">
+    <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
     <div class="header-icon">📊</div>
     <h1>Sales Performance — Monitor, Watch &amp; FINANS</h1>
     <span class="header-sub" id="lblPeriod"></span>

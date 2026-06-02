@@ -89,13 +89,12 @@
 
     /* Tom liste */
     .empty { text-align: center; padding: 48px; color: var(--ink-muted); font-size: 14px; }
+    .btn-back { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; display:inline-block; margin-bottom:20px; }
   </style>
 </head>
 <body>
 
-  <a href="/tools/rotation/" style="font-size:13px; color:var(--ink-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-bottom:20px;">
-    ← Tilbage til rotation
-  </a>
+  <a href="/category/rotation-dashboards" class="btn-back">← Tilbage</a>
 
   <h1>Skærm-konfiguration</h1>
   <p class="subtitle">Opret og administrer faste skærm-indstillinger til rotations-dashboards.</p>
@@ -113,7 +112,7 @@
             /tools/rotation/screen/{{ s.id }} &nbsp;📋
           </div>
         </div>
-        <button class="btn btn-secondary" onclick="editScreen({{ s | tojson }})">Rediger</button>
+        <button class="btn btn-secondary" data-screen='{"id":"{{ s.id }}","name":"{{ s.name }}","dashboards":{{ s.dashboards | tojson }},"interval":{{ s.interval }}}' onclick="editScreen(JSON.parse(this.dataset.screen))">Rediger</button>
         <button class="btn btn-danger" onclick="deleteScreen('{{ s.id }}', '{{ s.name }}')">Slet</button>
       </div>
       {% endfor %}

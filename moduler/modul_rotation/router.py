@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import get_current_user, resolve_resource_access, RequiresLoginException
+from auth import get_current_user, resolve_resource_access, RequiresLoginException, ROLE_RANK
 
 # ════════════════════════════════════════════════════════════════════════════
 #  SCREEN CONFIG — hjælpefunktioner
@@ -61,7 +61,8 @@ def _require(user, min_role: str = "salesperson", resource_id: str = "rotation")
 @router.get("/tools/rotation/", response_class=HTMLResponse)
 async def rotation_autoplay(request: Request, user=Depends(get_current_user)):
     _require(user, "salesperson")
-    return templates.TemplateResponse(request, "rotation_autoplay.html", {"user": user})
+    user_rank = ROLE_RANK.get(user["role"], 0) if user else 0
+    return templates.TemplateResponse(request, "rotation_autoplay.html", {"user": user, "user_rank": user_rank})
 
 
 # ════════════════════════════════════════════════════════════════════════════
