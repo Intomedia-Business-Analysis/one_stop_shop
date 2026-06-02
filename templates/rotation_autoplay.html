@@ -133,6 +133,7 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; b
 
 <!-- Kontrol-bar -->
 <div class="ctrl-bar">
+  <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
   <div class="ctrl-logo">▶</div>
   <div class="ctrl-title">Rotation Dashboards</div>
 
@@ -160,6 +161,10 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; b
       <div id="settingsList"></div>
     </div>
   </div>
+
+  {% if user_rank >= 2 %}
+  <a href="/tools/rotation/screens" class="btn" title="Administrer skærme">🖥 Skærme</a>
+  {% endif %}
 
   <button class="btn btn-fs" id="btnFs" title="Fuld skærm">⛶ Fuld skærm</button>
 </div>
