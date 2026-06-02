@@ -182,6 +182,12 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
     configs = _load_configs()
 
     screen_id = body.get("id")
+    media = {
+        "mode":     body.get("media_mode", ""),
+        "accounts": body.get("media_accounts", ""),
+        "years":    body.get("media_years", ""),
+        "months":   body.get("media_months", ""),
+    }
     if screen_id:
         # Opdater eksisterende
         for s in configs["screens"]:
@@ -189,6 +195,7 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
                 s["name"] = body["name"]
                 s["dashboards"] = body["dashboards"]
                 s["interval"] = body["interval"]
+                s["media"] = media
                 break
     else:
         # Opret ny
@@ -197,6 +204,7 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
             "name": body["name"],
             "dashboards": body["dashboards"],
             "interval": body["interval"],
+            "media": media,
         })
 
     _save_configs(configs)
@@ -222,4 +230,14 @@ async def screen_player(screen_id: str, request: Request, user=Depends(get_curre
         return HTMLResponse("Skærm ikke fundet", status_code=404)
     dashboards = ",".join(screen["dashboards"])
     interval = screen["interval"]
-    return RedirectResponse(f"/tools/rotation/?dashboards={dashboards}&interval={interval}")
+    url = f"/tools/rotation/?dashboards={dashboards}&interval={interval}"
+    media = screen.get("media", {})
+    if media.get("mode"):
+        url += f"&mode={media['mode']}"
+    if media.get("accounts"):
+        url += f"&accounts={media['accounts']}"
+    if media.get("years"):
+        url += f"&years={media['years']}"
+    if media.get("months"):
+        url += f"&months={media['months']}"
+    return RedirectResponse(url)

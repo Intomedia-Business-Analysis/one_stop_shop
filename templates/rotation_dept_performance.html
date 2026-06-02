@@ -49,9 +49,9 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   min-height: 0;
 }
 .chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
-.chart-title { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
+.chart-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
 .legend-row { display:flex; gap:12px; margin-bottom:3px; flex-shrink:0; }
-.legend-item { display:flex; align-items:center; gap:4px; font-size:9px; color:var(--ink-3); }
+.legend-item { display:flex; align-items:center; gap:4px; font-size:13px; color:var(--ink-3); }
 .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .chart-wrap { flex:1; position:relative; min-height:0; }
 </style>
@@ -169,16 +169,16 @@ function buildHBar(id, rows, labelKey, val1Key, val2Key) {
         tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } },
         datalabels: {
           anchor:'end', align:'right', offset:2,
-          font:{ family:'Montserrat', size:8, weight:'600' },
+          font:{ family:'Montserrat', size:14, weight:'600' },
           color:'#3D5249',
           formatter: v => fmtLabel(v),
           clip:false,
         }
       },
-      layout:{ padding:{ right:70 } },
+      layout:{ padding:{ right:90 } },
       scales: {
-        x:{ ticks:{font:{family:'Montserrat',size:8},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
-        y:{ ticks:{font:{family:'Montserrat',size:8}}, grid:{display:false} }
+        x:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
+        y:{ ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} }
       }
     }
   });
