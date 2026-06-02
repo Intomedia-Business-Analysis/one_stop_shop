@@ -57,6 +57,8 @@
       padding: 28px;
       width: 480px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      max-height: 90vh;
+      overflow-y: auto;
     }
     .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 20px; color: var(--ink); }
     .form-group { margin-bottom: 16px; }
@@ -112,7 +114,7 @@
             /tools/rotation/screen/{{ s.id }} &nbsp;📋
           </div>
         </div>
-        <button class="btn btn-secondary" data-screen='{"id":"{{ s.id }}","name":"{{ s.name }}","dashboards":{{ s.dashboards | tojson }},"interval":{{ s.interval }}}' onclick="editScreen(JSON.parse(this.dataset.screen))">Rediger</button>
+        <button class="btn btn-secondary" data-screen='{"id":"{{ s.id }}","name":"{{ s.name }}","dashboards":{{ s.dashboards | tojson }},"interval":{{ s.interval }},"media":{{ s.get("media", {}) | tojson }}}' onclick="editScreen(JSON.parse(this.dataset.screen))">Rediger</button>
         <button class="btn btn-danger" onclick="deleteScreen('{{ s.id }}', '{{ s.name }}')">Slet</button>
       </div>
       {% endfor %}
@@ -141,7 +143,7 @@
 
       <div class="form-group">
         <label>Dashboards i rotation</label>
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" id="dashboardsGrid">
           <label class="dashboard-option" id="opt-sales">
             <input type="checkbox" value="sales"> Sales Performance
           </label>
@@ -160,6 +162,61 @@
         </div>
       </div>
 
+      <div class="form-group" id="mediaSettings" style="display:none; border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--bg);">
+        <label style="font-size:13px; font-weight:700; color:var(--ink); display:block; margin-bottom:12px;">🎛 Media Performance indstillinger</label>
+
+        <div class="form-group">
+          <label>Visning</label>
+          <div class="dashboard-grid">
+            <label class="dashboard-option"><input type="radio" name="mediaMode" value=""> Alle</label>
+            <label class="dashboard-option"><input type="radio" name="mediaMode" value="abonnement"> Abonnement</label>
+            <label class="dashboard-option"><input type="radio" name="mediaMode" value="banner"> Banner</label>
+            <label class="dashboard-option"><input type="radio" name="mediaMode" value="job"> Job</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Account(s) <span style="font-weight:400; color:var(--ink-muted)">— tom = alle</span></label>
+          <div class="dashboard-grid" id="mediaAccountsGrid">
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="watch_medier"> Watch Medier</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="monitor"> Monitor</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="watch_no"> Watch NO</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="watch_se"> Watch SE</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="watch_de"> Watch DE</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="jppol_advertising"> JP/Pol Annoncer</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaAccounts" value="watch_no_advertising"> Watch NO Annoncer</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>År <span style="font-weight:400; color:var(--ink-muted)">— tom = alle</span></label>
+          <div class="dashboard-grid" id="mediaYearsGrid">
+            <label class="dashboard-option"><input type="checkbox" name="mediaYears" value="2026"> 2026</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaYears" value="2025"> 2025</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaYears" value="2024"> 2024</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaYears" value="2023"> 2023</label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Måneder <span style="font-weight:400; color:var(--ink-muted)">— tom = alle</span></label>
+          <div class="dashboard-grid" id="mediaMonthsGrid">
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="1"> Januar</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="2"> Februar</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="3"> Marts</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="4"> April</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="5"> Maj</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="6"> Juni</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="7"> Juli</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="8"> August</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="9"> September</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="10"> Oktober</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="11"> November</label>
+            <label class="dashboard-option"><input type="checkbox" name="mediaMonths" value="12"> December</label>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal()">Annuller</button>
         <button class="btn btn-primary" onclick="saveScreen()">Gem</button>
@@ -168,12 +225,31 @@
   </div>
 
   <script>
-    // Highlight valgte checkboxes
-    document.querySelectorAll('.dashboard-option input').forEach(cb => {
-      cb.addEventListener('change', () => {
-        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+    // Highlight dashboard-checkboxes + vis/skjul media-indstillinger
+    document.querySelectorAll('#dashboardsGrid .dashboard-option input').forEach(inp => {
+      inp.addEventListener('change', () => {
+        inp.closest('.dashboard-option').classList.toggle('selected', inp.checked);
+        toggleMediaSettings();
       });
     });
+
+    // Highlight media-indstillinger checkboxes og radio buttons
+    document.querySelectorAll('#mediaSettings .dashboard-option input').forEach(inp => {
+      inp.addEventListener('change', () => {
+        if (inp.type === 'radio') {
+          document.querySelectorAll(`input[name="${inp.name}"]`).forEach(r => {
+            r.closest('.dashboard-option').classList.toggle('selected', r.checked);
+          });
+        } else {
+          inp.closest('.dashboard-option').classList.toggle('selected', inp.checked);
+        }
+      });
+    });
+
+    function toggleMediaSettings() {
+      const mediaChecked = document.querySelector('.dashboard-option input[value="media"]').checked;
+      document.getElementById('mediaSettings').style.display = mediaChecked ? 'block' : 'none';
+    }
 
     function openModal(screen = null) {
       document.getElementById('modalTitle').textContent = screen ? 'Rediger skærm' : 'Ny skærm';
@@ -181,11 +257,39 @@
       document.getElementById('screenName').value = screen ? screen.name : '';
       document.getElementById('screenInterval').value = screen ? screen.interval : 60;
 
-      // Nulstil checkboxes
-      document.querySelectorAll('.dashboard-option input').forEach(cb => {
+      // Nulstil dashboard checkboxes
+      document.querySelectorAll('#dashboardsGrid .dashboard-option input').forEach(cb => {
         cb.checked = screen ? screen.dashboards.includes(cb.value) : false;
         cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
       });
+
+      // Media indstillinger
+      const media = screen ? (screen.media || {}) : {};
+      // Mode (radio)
+      const modeVal = media.mode || '';
+      document.querySelectorAll('input[name="mediaMode"]').forEach(r => {
+        r.checked = r.value === modeVal;
+        r.closest('.dashboard-option').classList.toggle('selected', r.checked);
+      });
+      // Accounts (checkboxes)
+      const accounts = media.accounts ? media.accounts.split(',') : [];
+      document.querySelectorAll('input[name="mediaAccounts"]').forEach(cb => {
+        cb.checked = accounts.includes(cb.value);
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
+      // År (checkboxes)
+      const years = media.years ? media.years.split(',') : [];
+      document.querySelectorAll('input[name="mediaYears"]').forEach(cb => {
+        cb.checked = years.includes(cb.value);
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
+      // Måneder (checkboxes)
+      const months = media.months ? media.months.split(',') : [];
+      document.querySelectorAll('input[name="mediaMonths"]').forEach(cb => {
+        cb.checked = months.includes(cb.value);
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
+      toggleMediaSettings();
 
       document.getElementById('modalOverlay').classList.add('open');
       document.getElementById('screenName').focus();
@@ -200,16 +304,24 @@
     async function saveScreen() {
       const name = document.getElementById('screenName').value.trim();
       const interval = parseInt(document.getElementById('screenInterval').value);
-      const dashboards = [...document.querySelectorAll('.dashboard-option input:checked')].map(cb => cb.value);
+      const dashboards = [...document.querySelectorAll('#dashboardsGrid .dashboard-option input:checked')].map(cb => cb.value);
       const id = document.getElementById('screenId').value;
 
       if (!name) { alert('Angiv et navn til skærmen'); return; }
       if (dashboards.length === 0) { alert('Vælg mindst ét dashboard'); return; }
 
+      const media = {
+        mode:     document.querySelector('input[name="mediaMode"]:checked')?.value || '',
+        accounts: [...document.querySelectorAll('input[name="mediaAccounts"]:checked')].map(c => c.value).join(','),
+        years:    [...document.querySelectorAll('input[name="mediaYears"]:checked')].map(c => c.value).join(','),
+        months:   [...document.querySelectorAll('input[name="mediaMonths"]:checked')].map(c => c.value).join(','),
+      };
       const res = await fetch('/tools/rotation/screens/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: id || null, name, dashboards, interval })
+        body: JSON.stringify({ id: id || null, name, dashboards, interval,
+          media_mode: media.mode, media_accounts: media.accounts,
+          media_years: media.years, media_months: media.months })
       });
       if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
     }
