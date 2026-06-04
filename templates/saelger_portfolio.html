@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sælger Portefølje – Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <style>
+  .tool-wrap{max-width:1200px;margin:0 auto}
+
+  .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+  .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+  .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px}
+
+  .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+  @media(max-width:900px){.dash-grid{grid-template-columns:1fr}}
+
+  .v-table{width:100%;border-collapse:collapse;font-size:12px}
+  .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+  .v-table th.num{text-align:right}
+  .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+  .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
+  .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+  .filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+  .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+  .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none}
+  .filter-select:focus{border-color:var(--green)}
+  .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+  .v-table th.sortable{cursor:pointer;user-select:none}
+  .v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+  .v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+  .v-table th.sort-active .sort-arrow{opacity:1}
+
+  .deal-filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .deal-filter-bar .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+  .deal-filter-bar .filter-reset{font-size:11px;font-weight:600;color:var(--ink-4);background:none;border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 10px;cursor:pointer}
+  .deal-filter-bar .filter-reset:hover{border-color:var(--green);color:var(--green)}
+  .deal-filter-count{font-size:11px;color:var(--ink-4);margin-left:auto}
+
+  /* Kundeudvikling bar chart */
+  .bar-chart{display:flex;align-items:flex-end;gap:8px;height:160px;margin-top:8px}
+  .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .bar-fill{width:100%;border-radius:4px 4px 0 0;background:var(--green);min-height:2px;transition:height .4s}
+  .bar-label{font-size:12px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+  .bar-value{font-size:12px;color:var(--ink);font-weight:800}
+
+  /* Donut */
+  .donut-wrap{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+  .donut-svg-wrap{position:relative;flex-shrink:0}
+  .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  .donut-center-val{font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-0.5px;line-height:1}
+  .donut-center-sub{font-size:10px;color:var(--ink-4);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  .donut-legend{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px}
+  .donut-legend-item{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2);padding:8px 0;border-bottom:1px solid var(--border)}
+  .donut-legend-item:last-child{border-bottom:none}
+  .donut-legend-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+  .donut-legend-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .donut-legend-pct{font-size:12px;font-weight:700;color:var(--ink-3);margin-right:8px;min-width:36px;text-align:right}
+  .donut-legend-val{font-weight:800;font-size:14px;color:var(--ink);white-space:nowrap}
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/tools/saelger-portfolio/' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <span>Sælger Portefølje</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Sælger Portefølje</h1>
+            <p class="page-sub">{{ target_owner }} — {{ dato }}</p>
+          </div>
+        </div>
+
+        {% if is_admin %}
+        <div class="filter-bar">
+          <span class="filter-label">Sælger</span>
+          <div class="filter-sep"></div>
+          <select class="filter-select" onchange="window.location='/tools/saelger-portfolio/?owner=' + encodeURIComponent(this.value)">
+            {% for name in available_owners %}
+            <option value="{{ name }}" {% if name == target_owner %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <!-- Grafer -->
+        <div class="dash-grid">
+
+          <!-- Graf 1: Kundeudvikling over tid -->
+          <div class="dash-card">
+            <div class="dash-card-title">Kundeudvikling — nye kunder pr. år</div>
+            <div class="bar-chart" id="bar-chart"></div>
+            <div id="bar-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
+          </div>
+
+          <!-- Graf 2: ACV fordeling som donut -->
+          <div class="dash-card">
+            <div class="dash-card-title">ACV fordeling pr. brand</div>
+            <div class="donut-wrap">
+              <div class="donut-svg-wrap">
+                <svg id="donut-svg" width="180" height="180" viewBox="0 0 180 180"></svg>
+                <div class="donut-center">
+                  <div class="donut-center-val" id="donut-total"></div>
+                  <div class="donut-center-sub">total ACV</div>
+                </div>
+              </div>
+              <div class="donut-legend" id="donut-legend"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Tabel -->
+        <div class="dash-card">
+          <div class="dash-card-title">Kundeportefølje (ACV)</div>
+
+          <div class="deal-filter-bar">
+            <span class="filter-label">Filtrer</span>
+            <select class="filter-select" id="filter-team" onchange="filterTable()">
+              <option value="">Alle teams</option>
+            </select>
+            <select class="filter-select" id="filter-site" onchange="filterTable()">
+              <option value="">Alle sites</option>
+            </select>
+            <select class="filter-select" id="filter-brand" onchange="filterTable()">
+              <option value="">Alle brands</option>
+            </select>
+            <input type="text" class="filter-select" id="filter-kunde" placeholder="Søg kunde…" oninput="filterTable()" autocomplete="off" style="min-width:180px">
+            <button class="filter-reset" onclick="resetFilters()">Nulstil</button>
+            <span class="deal-filter-count" id="filter-count"></span>
+          </div>
+
+          {% if kunder %}
+          <table class="v-table">
+            <thead>
+              <tr>
+                <th class="sortable" onclick="sortTable('org_name')">Kunde<i class="sort-arrow" id="arr-org_name">↕</i></th>
+                <th class="sortable" onclick="sortTable('team')">Team<i class="sort-arrow" id="arr-team">↕</i></th>
+                <th class="sortable" onclick="sortTable('site')">Site<i class="sort-arrow" id="arr-site">↕</i></th>
+                <th class="sortable" onclick="sortTable('brand')">Brand<i class="sort-arrow" id="arr-brand">↕</i></th>
+                <th class="num sortable" onclick="sortTable('acv_value_dkk')">ACV (DKK)<i class="sort-arrow" id="arr-acv_value_dkk">↕</i></th>
+                <th class="sortable" onclick="sortTable('first_activation')">Første aktivering<i class="sort-arrow" id="arr-first_activation">↕</i></th>
+                <th class="sortable" onclick="sortTable('last_activation')">Seneste aktivering<i class="sort-arrow" id="arr-last_activation">↕</i></th>
+              </tr>
+            </thead>
+            <tbody id="kunde-tbody"></tbody>
+          </table>
+          {% else %}
+          <div class="v-table"><div class="empty">Ingen kunder fundet for {{ target_owner }}.</div></div>
+          {% endif %}
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const kunder = {{ kunder | tojson }};
+let sortCol = 'acv_value_dkk';
+let sortDir = 'desc';
+
+const COLORS = [
+  '#1a6b3c','#2171b5','#e05c2a','#9e4fa0','#f6a623',
+  '#b32e45','#3d6b9e','#5c8a3c','#7b4fa0','#c47a2a'
+];
+
+// Fælles brand→farve mapping bygget fra ACV-sorteret rækkefølge (samme som donut)
+const BRAND_COLOR = {};
+(function() {
+  const byBrand = {};
+  kunder.forEach(k => {
+    const b = k.brand || 'Ukendt';
+    byBrand[b] = (byBrand[b] || 0) + (k.acv_value_dkk || 0);
+  });
+  Object.entries(byBrand)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .forEach(([brand], i) => { BRAND_COLOR[brand] = COLORS[i % COLORS.length]; });
+})();
+
+function fmtKr(v) {
+  if (v == null) return '—';
+  return Math.round(v).toLocaleString('da-DK');
+}
+function fmtKrShort(v) {
+  if (!v) return '0';
+  if (v >= 1000000) return (v/1000000).toFixed(1).replace('.',',') + ' mio.';
+  if (v >= 1000)    return Math.round(v/1000) + 'k';
+  return Math.round(v);
+}
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Graf 1: Stablet søjlediagram — nye kunder pr. år pr. brand ──────────
+function renderBarChart() {
+  // Saml alle brands og år
+  const allBrands = [...new Set(kunder.map(k => k.brand).filter(Boolean))].sort();
+  const byYearBrand = {};
+  kunder.forEach(k => {
+    const yr = (k.first_activation || '').slice(0, 4);
+    if (!yr || yr < '2015') return;
+    if (!byYearBrand[yr]) byYearBrand[yr] = {};
+    const b = k.brand || 'Ukendt';
+    byYearBrand[yr][b] = (byYearBrand[yr][b] || 0) + 1;
+  });
+  const years  = Object.keys(byYearBrand).sort();
+  const totals = years.map(yr => Object.values(byYearBrand[yr]).reduce((s, v) => s + v, 0));
+  const max    = Math.max(...totals, 1);
+  const CHART_H = 140;
+
+  // Legende
+  const legendHtml = allBrands.map((b) => `
+    <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3);white-space:nowrap">
+      <div style="width:10px;height:10px;border-radius:2px;background:${BRAND_COLOR[b] || '#ccc'};flex-shrink:0"></div>
+      ${escHtml(b)}
+    </div>`).join('');
+
+  const barsHtml = years.map((yr, yi) => {
+    const total = totals[yi];
+    const totalH = Math.max(Math.round((total / max) * CHART_H), 4);
+    const segments = allBrands.map((b) => {
+      const count = byYearBrand[yr][b] || 0;
+      if (!count) return '';
+      const h = Math.round((count / total) * totalH);
+      return `<div style="width:100%;height:${h}px;background:${BRAND_COLOR[b] || '#ccc'}" title="${escHtml(b)}: ${count}"></div>`;
+    }).reverse().join('');
+    return `<div class="bar-col">
+      <div class="bar-value">${total}</div>
+      <div style="height:${totalH}px;width:100%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:4px 4px 0 0;overflow:hidden">${segments}</div>
+      <div class="bar-label">${yr}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('bar-chart').innerHTML = barsHtml;
+  document.getElementById('bar-legend').innerHTML = legendHtml;
+}
+
+// ── Graf 2: Donut — ACV pr. brand ──────────────────────────────────────
+function polarToXY(cx, cy, r, angleDeg) {
+  const rad = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function renderDonut() {
+  const byBrand = {};
+  kunder.forEach(k => {
+    const b = k.brand || 'Ukendt';
+    byBrand[b] = (byBrand[b] || 0) + (k.acv_value_dkk || 0);
+  });
+
+  const entries = Object.entries(byBrand).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const total   = entries.reduce((s, [, v]) => s + v, 0);
+  const cx = 90, cy = 90, rOuter = 72, rInner = 44;
+  const GAP = 1.5; // grader mellemrum mellem segmenter
+
+  let startAngle = 0;
+  let paths = '';
+
+  entries.forEach(([brand, val], i) => {
+    const sweep = (val / total) * 360 - GAP;
+    const end   = startAngle + sweep;
+    const color = BRAND_COLOR[brand] || COLORS[i % COLORS.length];
+
+    const p1 = polarToXY(cx, cy, rOuter, startAngle);
+    const p2 = polarToXY(cx, cy, rOuter, end);
+    const p3 = polarToXY(cx, cy, rInner, end);
+    const p4 = polarToXY(cx, cy, rInner, startAngle);
+    const large = sweep > 180 ? 1 : 0;
+
+    paths += `<path d="
+      M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}
+      A ${rOuter} ${rOuter} 0 ${large} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}
+      L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}
+      A ${rInner} ${rInner} 0 ${large} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)}
+      Z" fill="${color}" opacity="0.92"/>`;
+
+    startAngle += sweep + GAP;
+  });
+
+  document.getElementById('donut-svg').innerHTML = paths;
+  document.getElementById('donut-total').textContent = fmtKrShort(total);
+
+  document.getElementById('donut-legend').innerHTML = entries.map(([brand, val], i) => {
+    const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+    return `<div class="donut-legend-item">
+      <div class="donut-legend-dot" style="background:${BRAND_COLOR[brand] || COLORS[i % COLORS.length]}"></div>
+      <span class="donut-legend-name" title="${escHtml(brand)}">${escHtml(brand)}</span>
+      <span class="donut-legend-pct">${pct}%</span>
+      <span class="donut-legend-val">${fmtKrShort(val)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Filtre ──────────────────────────────────────────────────────────────
+function unique(key) {
+  return [...new Set(kunder.map(k => k[key]).filter(Boolean))].sort();
+}
+
+function populateFilters() {
+  unique('team').forEach(v  => { const o = document.createElement('option'); o.value = v; o.textContent = v; document.getElementById('filter-team').appendChild(o); });
+  unique('site').forEach(v  => { const o = document.createElement('option'); o.value = v; o.textContent = v; document.getElementById('filter-site').appendChild(o); });
+  unique('brand').forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; document.getElementById('filter-brand').appendChild(o); });
+}
+
+function getFiltered() {
+  const team  = document.getElementById('filter-team').value;
+  const site  = document.getElementById('filter-site').value;
+  const brand = document.getElementById('filter-brand').value;
+  const kunde = document.getElementById('filter-kunde').value;
+  return kunder.filter(k => {
+    if (team  && k.team  !== team)  return false;
+    if (site  && k.site  !== site)  return false;
+    if (brand && k.brand !== brand) return false;
+    if (kunde && !k.org_name?.toLowerCase().includes(kunde.toLowerCase())) return false;
+    return true;
+  });
+}
+
+function filterTable() { render(); }
+
+function resetFilters() {
+  ['filter-team','filter-site','filter-brand'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('filter-kunde').value = '';
+  render();
+}
+
+function sortTable(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+  } else {
+    sortCol = col;
+    sortDir = col === 'acv_value_dkk' ? 'desc' : 'asc';
+  }
+  render();
+}
+
+function render() {
+  const filtered = getFiltered();
+  const sorted = [...filtered].sort((a, b) => {
+    const av = a[sortCol] ?? '', bv = b[sortCol] ?? '';
+    if (sortCol === 'acv_value_dkk') return sortDir === 'desc' ? (bv - av) : (av - bv);
+    return sortDir === 'desc'
+      ? String(bv).localeCompare(String(av))
+      : String(av).localeCompare(String(bv));
+  });
+
+  ['org_name','team','site','brand','acv_value_dkk','first_activation','last_activation'].forEach(col => {
+    const el = document.getElementById('arr-' + col);
+    const th = el?.closest('th');
+    if (!el) return;
+    if (col === sortCol) {
+      el.textContent = sortDir === 'desc' ? '↓' : '↑';
+      el.style.opacity = '1';
+      th?.classList.add('sort-active');
+    } else {
+      el.textContent = '↕';
+      el.style.opacity = '0.5';
+      th?.classList.remove('sort-active');
+    }
+  });
+
+  document.getElementById('filter-count').textContent =
+    sorted.length < kunder.length ? `Viser ${sorted.length} af ${kunder.length} kunder` : `${kunder.length} kunder`;
+
+  const tbody = document.getElementById('kunde-tbody');
+  if (!sorted.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen kunder matcher filteret.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map(k => `
+    <tr>
+      <td>${escHtml(k.org_name)}</td>
+      <td>${escHtml(k.team)}</td>
+      <td>${escHtml(k.site)}</td>
+      <td>${escHtml(k.brand)}</td>
+      <td class="num">${fmtKr(k.acv_value_dkk)}</td>
+      <td>${escHtml(k.first_activation)}</td>
+      <td>${escHtml(k.last_activation)}</td>
+    </tr>
+  `).join('');
+}
+
+renderBarChart();
+renderDonut();
+populateFilters();
+render();
+</script>
+</body>
+</html>
