@@ -6,3 +6,4 @@ __pycache__/
 screen_configs.json
 .claude/worktrees/
 .claude/settings.local.json
+.vscode/
