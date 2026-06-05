@@ -50,6 +50,7 @@ CATEGORIES = [
         "subcategories": [],
         "items": [
             {"id": "banner-job-dashboard", "title": "Banner & Job Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "exclude_roles": ["sales_operations"], "url": "/tools/banner-job/"},
+            {"id": "klippekort-overblik", "title": "Klippekort Overblik", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "required_team": "Banner og Job", "exclude_roles": ["sales_operations"], "url": "/tools/klippekort/"},
         ],
     },
     {

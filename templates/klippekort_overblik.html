@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Klippekort Overblik — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1680px;margin:0 auto}
+
+/* Dashboard cards */
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+/* Filter bar */
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.toggle-group{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;gap:3px}
+.toggle-btn{padding:6px 16px;border:none;border-radius:4px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;background:transparent;color:var(--ink-3)}
+.toggle-btn.active{background:var(--green);color:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s;margin-left:auto}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Spinner */
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Tables */
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table th.sortable{cursor:pointer;user-select:none}
+.v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
+.v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table tbody tr.clickable:hover td{background:var(--green-light,#f0f8f4);cursor:pointer}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+
+/* Badge for dage til udløb */
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums}
+.pill-red{background:#FCE4E4;color:#A52222}
+.pill-amber{background:#FDF3D0;color:#856404}
+.pill-green{background:#C8E6D8;color:#0F5132}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal-box{background:var(--surface);border-radius:var(--r);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:16px;font-weight:800;color:var(--ink)}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:20px;line-height:1;padding:4px}
+.modal-body{padding:24px}
+.form-row{margin-bottom:16px}
+.form-label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px}
+.form-input,.form-select{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;outline:none;box-sizing:border-box}
+.form-input:focus,.form-select:focus{border-color:var(--green)}
+.deal-meta{background:var(--bg);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:18px;font-size:12px;color:var(--ink-3);line-height:1.6}
+.deal-meta b{color:var(--ink)}
+.btn-primary{width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer}
+.btn-primary:hover{background:var(--green-mid)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.form-msg{margin-top:12px;font-size:12px;font-weight:600;display:none}
+.form-msg.ok{color:#0F5132;display:block}
+.form-msg.warn{color:#856404;display:block}
+.form-msg.err{color:#A52222;display:block}
+.hidden{display:none}
+
+/* Eksisterende jobs i modal */
+.jobs-section{margin-top:22px;border-top:1px solid var(--border);padding-top:18px}
+.jobs-section h4{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin:0 0 10px}
+.job-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px;font-size:12px}
+.job-row .job-main{flex:1;min-width:0}
+.job-row .job-stilling{font-weight:700;color:var(--ink)}
+.job-row .job-sub{font-size:11px;color:var(--ink-4)}
+.job-row .job-pris{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-3);white-space:nowrap}
+.job-del{background:none;border:1px solid var(--border);color:#A52222;border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
+.job-del:hover{background:#FCE4E4;border-color:#A52222}
+.jobs-empty{font-size:12px;color:var(--ink-4);font-style:italic;padding:4px 0}
+
+/* Multi-site vælger */
+.site-picker{max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 8px;background:var(--bg)}
+.site-opt{display:flex;align-items:center;gap:8px;padding:4px 4px;font-size:13px;color:var(--ink);cursor:pointer;border-radius:4px}
+.site-opt:hover{background:var(--green-light,#f0f8f4)}
+.site-opt input{accent-color:var(--green);width:15px;height:15px;cursor:pointer}
+.site-grouphdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);padding:8px 4px 3px;border-top:1px solid var(--border);margin-top:4px}
+.site-grouphdr:first-child{border-top:none;margin-top:0}
+.form-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.klip-hint{font-size:11px;color:var(--ink-4);margin:-6px 0 16px}
+.klip-hint b{color:var(--ink-2)}
+.deal-link{color:var(--green);font-weight:600;text-decoration:none}
+.deal-link:hover{text-decoration:underline}
+.eff-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin:0 0 16px;cursor:pointer}
+.eff-row input{accent-color:var(--green);width:15px;height:15px;cursor:pointer}
+.badge-eff{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:#E3F0FA;color:#1A5C8A;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  {% with active_url='/category/banner-job' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/banner-job" class="tb-btn">← Banner &amp; Job</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/banner-job" class="bc-link">Banner &amp; Job</a><span class="bc-sep">/</span>
+          <span>Klippekort Overblik</span>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <h1 class="page-title" style="margin-bottom:4px">Klippekort Overblik</h1>
+          <p class="page-sub">Aktive job-klippekort: købte og brugte klip, samt tid til udløb. Opret et job for at trække et klip.</p>
+        </div>
+
+        <!-- Filter-bar -->
+        <div class="filter-bar">
+          <span class="filter-label">Vis</span>
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="btn-alle" onclick="setMine(false)">Alle</button>
+            <button class="toggle-btn" id="btn-mine" onclick="setMine(true)">Kun mine</button>
+          </div>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Status</span>
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="btn-aktive" onclick="setStatus('aktive')">Aktive</button>
+            <button class="toggle-btn" id="btn-udloebne" onclick="setStatus('udloebne')">Udløbne</button>
+          </div>
+          <button class="refresh-btn" onclick="loadAll()">
+            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+            Opdater
+          </button>
+        </div>
+
+        <!-- Overblik -->
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span id="overblik-title">Aktive Klippekort</span>
+            <span id="overblik-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th class="sortable" onclick="sortBy('org_name')">Kunde<i class="sort-arrow" id="arr-org_name">↕</i></th>
+                  <th class="sortable" onclick="sortBy('owner_name')">Sælger (deal)<i class="sort-arrow" id="arr-owner_name">↕</i></th>
+                  <th class="sortable" onclick="sortBy('org_owner')">Ejer (kunde)<i class="sort-arrow" id="arr-org_owner">↕</i></th>
+                  <th class="sortable" onclick="sortBy('sites')">Site<i class="sort-arrow" id="arr-sites">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('pd_deal_id')">Deal<i class="sort-arrow" id="arr-pd_deal_id">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('clip_card_size')">Købt<i class="sort-arrow" id="arr-clip_card_size">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('brugt')">Brugt<i class="sort-arrow" id="arr-brugt">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('rest')">Rest<i class="sort-arrow" id="arr-rest">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('value_dkk')">Værdi<i class="sort-arrow" id="arr-value_dkk">↕</i></th>
+                  <th class="sortable" onclick="sortBy('periode_slut')">Udløber<i class="sort-arrow" id="arr-periode_slut">↕</i></th>
+                  <th class="num sortable sort-active" onclick="sortBy('dage_til_udloeb')">Dage til udløb<i class="sort-arrow" id="arr-dage_til_udloeb">↑</i></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="overblik-tbody">
+                <tr><td colspan="12" class="empty"><div class="spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Stillinger der skal følges op på -->
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span>Stillinger der skal følges op på — snart udløbet</span>
+            <span id="udloeb-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th class="sortable" onclick="sortUdl('org_name')">Kunde<i class="sort-arrow" id="uarr-org_name">↕</i></th>
+                  <th class="sortable" onclick="sortUdl('stilling')">Stilling<i class="sort-arrow" id="uarr-stilling">↕</i></th>
+                  <th class="sortable" onclick="sortUdl('sites')">Sites<i class="sort-arrow" id="uarr-sites">↕</i></th>
+                  <th class="sortable" onclick="sortUdl('org_owner')">Ejer (kunde)<i class="sort-arrow" id="uarr-org_owner">↕</i></th>
+                  <th class="sortable" onclick="sortUdl('deal_owner')">Sælger (deal)<i class="sort-arrow" id="uarr-deal_owner">↕</i></th>
+                  <th class="sortable" onclick="sortUdl('slutdato')">Slutdato<i class="sort-arrow" id="uarr-slutdato">↕</i></th>
+                  <th class="num sortable sort-active" onclick="sortUdl('dage_til_slut')">Dage til udløb<i class="sort-arrow" id="uarr-dage_til_slut">↑</i></th>
+                </tr>
+              </thead>
+              <tbody id="udloeb-tbody">
+                <tr><td colspan="7" class="empty">Indlæser…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Klippekort økonomi -->
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span>Klippekort Økonomi — omsætning pr. site</span>
+            <span id="oekonomi-total" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th class="sortable" onclick="sortOek('site')">Site<i class="sort-arrow" id="oarr-site">↕</i></th>
+                  <th class="num sortable" onclick="sortOek('antal_klip')">Klip brugt<i class="sort-arrow" id="oarr-antal_klip">↕</i></th>
+                  <th class="num sortable sort-active" onclick="sortOek('omsaetning')">Omsætning<i class="sort-arrow" id="oarr-omsaetning">↓</i></th>
+                </tr>
+              </thead>
+              <tbody id="oekonomi-tbody">
+                <tr><td colspan="3" class="empty">Indlæser…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Opret job Modal -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">Opret job — træk et klip</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="deal-meta" id="modal-deal-meta"></div>
+      <div class="form-row">
+        <label class="form-label" for="f-stilling">Stilling</label>
+        <input class="form-input" id="f-stilling" type="text" placeholder="fx Erhvervsjournalist">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Sites (vælg ét eller flere)</label>
+        <div id="f-sites" class="site-picker"></div>
+      </div>
+      <div class="form-grid2">
+        <div class="form-row" style="margin-bottom:0">
+          <label class="form-label" for="f-tidspunkt">Tidspunkt (publicering)</label>
+          <input class="form-input" id="f-tidspunkt" type="date">
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <label class="form-label" for="f-slutdato">Slutdato (stilling udløber)</label>
+          <input class="form-input" id="f-slutdato" type="date">
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="f-klip">Antal klip (i alt for pakken)</label>
+        <input class="form-input" id="f-klip" type="number" min="1" step="1" value="1" oninput="updateKlipHint()">
+      </div>
+      <div id="f-klip-hint" class="klip-hint"></div>
+      <label class="eff-row"><input type="checkbox" id="f-effektgaranti"> Effektgaranti — stillingen må køre videre efter slutdato</label>
+      <button class="btn-primary" id="f-submit" onclick="submitJob()">Opret job &amp; træk klip</button>
+      <div class="form-msg" id="f-msg"></div>
+
+      <div class="jobs-section">
+        <h4>Oprettede jobs på denne kunde</h4>
+        <div id="jobs-list"><div class="jobs-empty">Indlæser…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let overblikRows = [];
+let oekRows      = [];
+let mineOnly     = false;
+let statusFilter = 'aktive';   // 'aktive' | 'udloebne'
+let siteGroups   = {watch_dk:[], monitor:[]};
+const PD_DEAL_BASE = 'https://jppoladvertising.pipedrive.com/deal/';
+let sortCol      = 'dage_til_udloeb';
+let sortDir      = 'asc';
+let oekSortCol   = 'omsaetning';
+let oekSortDir   = 'desc';
+let udlRows      = [];
+let udlSortCol   = 'dage_til_slut';
+let udlSortDir   = 'asc';
+let activeDeal   = null;
+
+function escHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmtFull(v){return Math.round(v).toLocaleString('da-DK') + ' kr.';}
+
+function udloebPill(dage){
+  if (dage < 0) return '<span class="pill pill-red">udløbet for '+Math.abs(dage)+' dage siden</span>';
+  let cls = 'pill-green';
+  if (dage <= 30) cls = 'pill-red';
+  else if (dage <= 90) cls = 'pill-amber';
+  return '<span class="pill '+cls+'">'+dage+' dage</span>';
+}
+
+function setMine(v){
+  mineOnly = v;
+  document.getElementById('btn-alle').classList.toggle('active', !v);
+  document.getElementById('btn-mine').classList.toggle('active', v);
+  loadOverblik();
+  loadUdloeb();
+}
+
+function setStatus(s){
+  statusFilter = s;
+  document.getElementById('btn-aktive').classList.toggle('active', s==='aktive');
+  document.getElementById('btn-udloebne').classList.toggle('active', s==='udloebne');
+  document.getElementById('overblik-title').textContent =
+    s==='udloebne' ? 'Udløbne Klippekort' : 'Aktive Klippekort';
+  loadOverblik();
+}
+
+/* ---------- Sortering (overblik) ---------- */
+function setArrows(){
+  document.querySelectorAll('#overblik-tbody').length; // no-op
+  ['org_name','owner_name','org_owner','sites','pd_deal_id','clip_card_size','brugt','rest','value_dkk','periode_slut','dage_til_udloeb'].forEach(c=>{
+    const th = document.querySelector('[onclick="sortBy(\''+c+'\')"]');
+    const arr = document.getElementById('arr-'+c);
+    if(!th||!arr) return;
+    if(c===sortCol){ th.classList.add('sort-active'); arr.textContent = sortDir==='asc'?'↑':'↓'; }
+    else { th.classList.remove('sort-active'); arr.textContent='↕'; }
+  });
+}
+function sortBy(col){
+  if(sortCol===col) sortDir = sortDir==='asc'?'desc':'asc';
+  else { sortCol=col; sortDir = (col==='org_name'||col==='owner_name'||col==='sites'||col==='periode_slut')?'asc':'desc'; }
+  drawOverblik();
+}
+function cmp(a,b,col){
+  const va=a[col], vb=b[col];
+  if(typeof va==='number' && typeof vb==='number') return va-vb;
+  return String(va).localeCompare(String(vb),'da-DK');
+}
+function drawOverblik(){
+  const tb=document.getElementById('overblik-tbody');
+  const rows=[...overblikRows].sort((a,b)=>{const d=cmp(a,b,sortCol);return sortDir==='asc'?d:-d;});
+  document.getElementById('overblik-count').textContent = overblikRows.length + ' klippekort';
+  if(!rows.length){ const t = statusFilter==='udloebne' ? 'Ingen udløbne klippekort.' : 'Ingen aktive klippekort.'; tb.innerHTML='<tr><td colspan="12" class="empty">'+t+'</td></tr>'; setArrows(); return; }
+  tb.innerHTML = rows.map(r=>`
+    <tr class="clickable" onclick='openModal(${r.pd_deal_id})'>
+      <td>${escHtml(r.org_name)}</td>
+      <td>${escHtml(r.owner_name)}</td>
+      <td>${escHtml(r.org_owner)}</td>
+      <td>${escHtml(r.sites || '—')}</td>
+      <td class="num"><a class="deal-link" href="${PD_DEAL_BASE}${r.pd_deal_id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.pd_deal_id}</a></td>
+      <td class="num">${r.clip_card_size}</td>
+      <td class="num">${r.brugt}</td>
+      <td class="num">${r.rest}</td>
+      <td class="num">${fmtFull(r.value_dkk)}</td>
+      <td>${escHtml(r.periode_slut)}</td>
+      <td class="num">${udloebPill(r.dage_til_udloeb)}</td>
+      <td style="text-align:right"><span style="font-size:11px;font-weight:700;color:var(--green)">+ Opret job</span></td>
+    </tr>`).join('');
+  setArrows();
+}
+
+/* ---------- Sortering (økonomi) ---------- */
+function setOekArrows(){
+  ['site','antal_klip','omsaetning'].forEach(c=>{
+    const th=document.querySelector('[onclick="sortOek(\''+c+'\')"]');
+    const arr=document.getElementById('oarr-'+c);
+    if(!th||!arr) return;
+    if(c===oekSortCol){ th.classList.add('sort-active'); arr.textContent=oekSortDir==='asc'?'↑':'↓'; }
+    else { th.classList.remove('sort-active'); arr.textContent='↕'; }
+  });
+}
+function sortOek(col){
+  if(oekSortCol===col) oekSortDir=oekSortDir==='asc'?'desc':'asc';
+  else { oekSortCol=col; oekSortDir = col==='site'?'asc':'desc'; }
+  drawOek();
+}
+function drawOek(){
+  const tb=document.getElementById('oekonomi-tbody');
+  const rows=[...oekRows].sort((a,b)=>{const d=cmp(a,b,oekSortCol);return oekSortDir==='asc'?d:-d;});
+  const total=oekRows.reduce((s,r)=>s+r.omsaetning,0);
+  document.getElementById('oekonomi-total').textContent = total>0 ? ('I alt: '+fmtFull(total)) : '';
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="3" class="empty">Ingen klip brugt endnu.</td></tr>'; setOekArrows(); return; }
+  tb.innerHTML = rows.map(r=>`
+    <tr><td>${escHtml(r.site)}</td><td class="num">${r.antal_klip}</td><td class="num">${fmtFull(r.omsaetning)}</td></tr>`).join('');
+  setOekArrows();
+}
+
+/* ---------- Data ---------- */
+async function loadOverblik(){
+  const tb=document.getElementById('overblik-tbody');
+  tb.innerHTML='<tr><td colspan="12" class="empty"><div class="spinner"></div></td></tr>';
+  try{
+    const res=await fetch('/tools/klippekort/overblik?mine='+(mineOnly?1:0)+'&status='+statusFilter);
+    if(!res.ok) throw new Error(await res.text());
+    overblikRows=(await res.json()).rows||[];
+    drawOverblik();
+  }catch(e){ tb.innerHTML='<tr><td colspan="12" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+}
+async function loadOek(){
+  const tb=document.getElementById('oekonomi-tbody');
+  try{
+    const res=await fetch('/tools/klippekort/oekonomi');
+    if(!res.ok) throw new Error(await res.text());
+    oekRows=(await res.json()).rows||[];
+    drawOek();
+  }catch(e){ tb.innerHTML='<tr><td colspan="3" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+}
+async function loadSites(){
+  try{
+    const res=await fetch('/tools/klippekort/sites');
+    if(res.ok) siteGroups=await res.json();
+  }catch(e){ /* dropdown falder tilbage til deal'ens egne sites */ }
+}
+function udloebPillSmall(dage){
+  let cls='pill-green';
+  if(dage<0) return '<span class="pill pill-red">udløbet</span>';
+  if(dage<=14) cls='pill-red'; else if(dage<=30) cls='pill-amber';
+  return '<span class="pill '+cls+'">'+dage+' dage</span>';
+}
+function setUdlArrows(){
+  ['org_name','stilling','sites','org_owner','deal_owner','slutdato','dage_til_slut'].forEach(c=>{
+    const th=document.querySelector('[onclick="sortUdl(\''+c+'\')"]');
+    const arr=document.getElementById('uarr-'+c);
+    if(!th||!arr) return;
+    if(c===udlSortCol){ th.classList.add('sort-active'); arr.textContent=udlSortDir==='asc'?'↑':'↓'; }
+    else { th.classList.remove('sort-active'); arr.textContent='↕'; }
+  });
+}
+function sortUdl(col){
+  if(udlSortCol===col) udlSortDir=udlSortDir==='asc'?'desc':'asc';
+  else { udlSortCol=col; udlSortDir = (col==='dage_til_slut')?'desc':'asc'; }
+  drawUdloeb();
+}
+function drawUdloeb(){
+  const tb=document.getElementById('udloeb-tbody');
+  document.getElementById('udloeb-count').textContent = udlRows.length + ' stilling(er)';
+  if(!udlRows.length){ tb.innerHTML='<tr><td colspan="7" class="empty">Ingen stillinger med slutdato til opfølgning.</td></tr>'; setUdlArrows(); return; }
+  const val=(j,c)=> c==='sites' ? (j.sites||[]).join(', ') : j[c];
+  const rows=[...udlRows].sort((a,b)=>{
+    const va=val(a,udlSortCol), vb=val(b,udlSortCol);
+    const d=(typeof va==='number'&&typeof vb==='number')?va-vb:String(va).localeCompare(String(vb),'da-DK');
+    return udlSortDir==='asc'?d:-d;
+  });
+  tb.innerHTML=rows.map(j=>`
+      <tr>
+        <td>${escHtml(j.org_name)}</td>
+        <td>${escHtml(j.stilling)}${j.effektgaranti?'<span class="badge-eff">Effektgaranti</span>':''}</td>
+        <td>${escHtml((j.sites||[]).join(', '))}</td>
+        <td>${escHtml(j.org_owner)}</td>
+        <td>${escHtml(j.deal_owner)}</td>
+        <td>${escHtml(j.slutdato)}</td>
+        <td class="num">${j.effektgaranti?'<span class="pill pill-green">kører videre</span>':udloebPillSmall(j.dage_til_slut)}</td>
+      </tr>`).join('');
+  setUdlArrows();
+}
+async function loadUdloeb(){
+  const tb=document.getElementById('udloeb-tbody');
+  tb.innerHTML='<tr><td colspan="7" class="empty"><div class="spinner"></div></td></tr>';
+  try{
+    const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0));
+    if(!res.ok) throw new Error(await res.text());
+    udlRows=(await res.json()).rows||[];
+    drawUdloeb();
+  }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+}
+function loadAll(){ loadOverblik(); loadUdloeb(); loadOek(); }
+
+/* ---------- Modal ---------- */
+function openModal(dealId){
+  const r=overblikRows.find(x=>x.pd_deal_id===dealId);
+  if(!r) return;
+  activeDeal=r;
+  document.getElementById('modal-deal-meta').innerHTML =
+    `<b>${escHtml(r.org_name)}</b> — ${escHtml(r.title)}<br>`+
+    `Klippekort: <b>${r.clip_card_size}</b> købt · <b>${r.brugt}</b> brugt · <b>${r.rest}</b> rest<br>`+
+    `Værdi: <b>${fmtFull(r.value_dkk)}</b> · Pris pr. klip: <b>${r.clip_card_size>0?fmtFull(r.value_dkk/r.clip_card_size):'—'}</b>`;
+  // Multi-site: alle Watch DK- OG Monitor-sites kan vælges (et klip kan bruges
+  // på fx EjendomsWatch + Byrummonitor). Deal'ens egne sites er forvalgt.
+  const box=document.getElementById('f-sites');
+  const dealSites=(r.sites||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const checked=new Set(dealSites);
+  const watch=siteGroups.watch_dk||[], monitor=siteGroups.monitor||[];
+  const extra=dealSites.filter(s=>!watch.includes(s)&&!monitor.includes(s));
+  const opt=s=>`<label class="site-opt"><input type="checkbox" value="${escHtml(s)}"${checked.has(s)?' checked':''} onchange="updateKlipHint()"> ${escHtml(s)}</label>`;
+  let html='';
+  if(extra.length) html+=extra.map(opt).join('');
+  if(watch.length) html+='<div class="site-grouphdr">Watch DK</div>'+watch.map(opt).join('');
+  if(monitor.length) html+='<div class="site-grouphdr">Monitor</div>'+monitor.map(opt).join('');
+  box.innerHTML = html || '<div class="jobs-empty">Ingen sites tilgængelige</div>';
+  document.getElementById('f-stilling').value='';
+  document.getElementById('f-klip').value=1;
+  document.getElementById('f-tidspunkt').value=new Date().toISOString().slice(0,10);
+  document.getElementById('f-slutdato').value='';
+  document.getElementById('f-effektgaranti').checked=false;
+  const msg=document.getElementById('f-msg'); msg.className='form-msg'; msg.textContent='';
+  document.getElementById('f-submit').disabled = r.rest<=0;
+  document.getElementById('f-submit').textContent = r.rest<=0 ? 'Ingen klip tilbage' : 'Opret job & træk klip';
+  updateKlipHint();
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  loadForbrug(r.pd_deal_id);
+}
+
+function selectedSites(){
+  return [...document.querySelectorAll('#f-sites input:checked')].map(c=>c.value);
+}
+function updateKlipHint(){
+  const hint=document.getElementById('f-klip-hint');
+  if(!activeDeal){ hint.textContent=''; return; }
+  const sites=selectedSites();
+  const klip=Math.max(1, parseInt(document.getElementById('f-klip').value||'1',10));
+  const pris=activeDeal.clip_card_size>0 ? activeDeal.value_dkk/activeDeal.clip_card_size : 0;
+  if(!sites.length){ hint.textContent='Vælg mindst ét site.'; return; }
+  const perSite=(klip*pris)/sites.length;
+  hint.innerHTML = `Trækker <b>${klip}</b> klip · fordeles på <b>${sites.length}</b> site(r) = `+
+                   `<b>${fmtFull(perSite)}</b> pr. site (i alt ${fmtFull(klip*pris)}).`;
+}
+
+async function loadForbrug(dealId){
+  const box=document.getElementById('jobs-list');
+  box.innerHTML='<div class="jobs-empty">Indlæser…</div>';
+  try{
+    const res=await fetch('/tools/klippekort/forbrug?pd_deal_id='+dealId);
+    if(!res.ok) throw new Error(await res.text());
+    const rows=(await res.json()).rows||[];
+    if(!rows.length){ box.innerHTML='<div class="jobs-empty">Ingen jobs oprettet endnu.</div>'; return; }
+    box.innerHTML=rows.map(j=>`
+      <div class="job-row">
+        <div class="job-main">
+          <div class="job-stilling">${escHtml(j.stilling)} <span style="font-weight:400;color:var(--ink-4)">· ${j.klip} klip</span>${j.effektgaranti?'<span class="badge-eff">Effektgaranti</span>':''}</div>
+          <div class="job-sub">${escHtml((j.sites||[]).join(', '))} · ${escHtml(j.tidspunkt)}${j.slutdato?' → udløber '+escHtml(j.slutdato):''} · oprettet af ${escHtml(j.created_by)}</div>
+        </div>
+        <div class="job-pris">${fmtFull(j.belob)}</div>
+        <button class="job-del" onclick="deleteJob('${escHtml(j.job_id)}', this)">Slet</button>
+      </div>`).join('');
+  }catch(e){ box.innerHTML='<div class="jobs-empty">Fejl: '+escHtml(e.message)+'</div>'; }
+}
+
+async function deleteJob(jobId, btn){
+  if(!confirm('Slet dette job? Klippene lægges tilbage på kortet.')) return;
+  if(btn){ btn.disabled=true; btn.textContent='Sletter…'; }
+  try{
+    const res=await fetch('/tools/klippekort/slet-job',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:jobId}),
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail || 'Fejl ved sletning');
+    // Opdatér overblik + modal-meta/jobliste FØRST (openModal nulstiller beskeden)
+    const dealId = activeDeal ? activeDeal.pd_deal_id : null;
+    await loadOverblik();
+    if(dealId){
+      const refreshed=overblikRows.find(x=>x.pd_deal_id===dealId);
+      if(refreshed){ activeDeal=refreshed; openModal(dealId); }
+      else loadForbrug(dealId); // deal ikke længere i aktiv-listen — vis blot joblisten
+    }
+    loadOek();
+    // Sæt status-besked til sidst, så den ikke bliver ryddet af openModal
+    const msg=document.getElementById('f-msg');
+    if(data.pipedrive && data.pipedrive.ok){
+      msg.className='form-msg ok'; msg.textContent=`Job slettet. Brugt: ${data.brugt}. Pipedrive opdateret.`;
+    } else {
+      msg.className='form-msg warn';
+      msg.textContent=`Job slettet lokalt (brugt: ${data.brugt}). Pipedrive ikke opdateret: `+
+                      escHtml((data.pipedrive&&data.pipedrive.reason)||'ukendt');
+    }
+  }catch(e){
+    const msg=document.getElementById('f-msg'); msg.className='form-msg err'; msg.textContent='Fejl: '+escHtml(e.message);
+    if(btn){ btn.disabled=false; btn.textContent='Slet'; }
+  }
+}
+function closeModal(){
+  // Kaldt fra ✕, Escape og klik på baggrund (modal-box stopper propagation selv).
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+async function submitJob(){
+  if(!activeDeal) return;
+  const stilling=document.getElementById('f-stilling').value.trim();
+  const sites=selectedSites();
+  const klip=Math.max(1, parseInt(document.getElementById('f-klip').value||'1',10));
+  const tidspunkt=document.getElementById('f-tidspunkt').value;
+  const slutdato=document.getElementById('f-slutdato').value;
+  const effektgaranti=document.getElementById('f-effektgaranti').checked;
+  const msg=document.getElementById('f-msg');
+  if(!stilling || !sites.length || !tidspunkt){ msg.className='form-msg err'; msg.textContent='Udfyld stilling, vælg mindst ét site, og angiv tidspunkt.'; return; }
+  const btn=document.getElementById('f-submit'); btn.disabled=true; btn.textContent='Opretter…';
+  try{
+    const res=await fetch('/tools/klippekort/opret-job',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pd_deal_id:activeDeal.pd_deal_id, sites, stilling, tidspunkt, slutdato, klip, effektgaranti}),
+    });
+    const data=await res.json();
+    if(!res.ok){ throw new Error(data.detail || 'Fejl ved oprettelse'); }
+    // Opdatér overblik + modal (meta/rest/jobliste) FØR beskeden sættes
+    const dealId=activeDeal.pd_deal_id;
+    await loadOverblik();
+    const refreshed=overblikRows.find(x=>x.pd_deal_id===dealId);
+    if(refreshed){ activeDeal=refreshed; openModal(dealId); }
+    loadOek();
+    if(data.pipedrive && data.pipedrive.ok){
+      msg.className='form-msg ok';
+      msg.textContent=`Klip trukket. Brugt: ${data.brugt}, rest: ${data.rest}. Pipedrive opdateret.`;
+    } else {
+      msg.className='form-msg warn';
+      msg.textContent=`Klip logget lokalt (brugt: ${data.brugt}, rest: ${data.rest}). `+
+                      `Pipedrive ikke opdateret: ${escHtml((data.pipedrive&&data.pipedrive.reason)||'ukendt')}`;
+    }
+  }catch(e){
+    msg.className='form-msg err'; msg.textContent='Fejl: '+escHtml(e.message);
+    btn.disabled=false; btn.textContent='Opret job & træk klip';
+  }
+}
+
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('modal-overlay').classList.add('hidden'); });
+loadSites();
+loadAll();
+</script>
+</body>
+</html>
