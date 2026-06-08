@@ -11,14 +11,14 @@
 @media(max-width:1100px){.dash-grid-5{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.dash-grid-5{grid-template-columns:1fr 1fr}}
 
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
-.dash-card.warn::before{background:#E8A33D}
+.dash-card.warn::before{background:#8A6D1F}
 .dash-card.bad::before{background:#B32E45}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px}
 .kpi-value{font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
 .kpi-value.green{color:var(--green)}
-.kpi-value.warn{color:#E8A33D}
+.kpi-value.warn{color:#8A6D1F}
 .kpi-value.bad{color:#B32E45}
 .kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
 .kpi-icon{font-size:22px;margin-bottom:8px}
@@ -46,12 +46,12 @@
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 
 .tag{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:3px 8px;border-radius:10px}
-.tag-match     {background:#C8E6D8;color:#0F5132}
-.tag-mismatch  {background:#F8D7DA;color:#842029}
-.tag-pd_only   {background:#FDF3D0;color:#856404}
-.tag-zuora_only{background:#D1E4F5;color:#0B4F8A}
+.tag-match     {background:#E7F2EC;color:#1F8A5B}
+.tag-mismatch  {background:#FDEDF0;color:#B32E45}
+.tag-pd_only   {background:#F6EFD9;color:#8A6D1F}
+.tag-zuora_only{background:#EDE8E1;color:#6F6353}
 
-.diff-pos{color:#0F5132;font-weight:700}
+.diff-pos{color:#1F8A5B;font-weight:700}
 .diff-neg{color:#B32E45;font-weight:700}
 .diff-zero{color:var(--ink-4)}
 
@@ -64,9 +64,9 @@
 .handled-cb{cursor:pointer;width:15px;height:15px;accent-color:var(--green)}
 
 .cur-badge{display:inline-block;font-size:8px;font-weight:800;letter-spacing:.5px;padding:2px 6px;border-radius:8px;font-family:var(--font);text-transform:uppercase}
-.cur-badge.cur-dkk{background:#EEF1F5;color:#5C6E80;border:1px solid #D8DFE6}
-.cur-badge.cur-foreign{background:#0B4F8A;color:#fff;border:1px solid #094175}
-.cur-badge.cur-multi{background:#FDF3D0;color:#856404;border:1px solid #F4D77A;margin-left:2px}
+.cur-badge.cur-dkk{background:#F0ECE6;color:#8B857A;border:1px solid #E9E5DE}
+.cur-badge.cur-foreign{background:#6F6353;color:#fff;border:1px solid #5A5044}
+.cur-badge.cur-multi{background:#F6EFD9;color:#8A6D1F;border:1px solid #E5D3A0;margin-left:2px}
 
 .create-deal-btn{font-family:var(--font);font-size:10px;font-weight:700;padding:5px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg);color:var(--ink-2);cursor:pointer;white-space:nowrap;transition:background .13s,border-color .13s,color .13s}
 .create-deal-btn:hover{background:var(--green);border-color:var(--green);color:#fff}
@@ -88,8 +88,8 @@
 .cd-btn-primary:hover{background:var(--green-mid)}
 .cd-btn-primary:disabled{opacity:.6;cursor:wait}
 .cd-result{margin-top:14px;padding:12px;border-radius:var(--r-sm);font-size:11px;line-height:1.5}
-.cd-result.success{background:#C8E6D8;color:#0F5132;border:1px solid #B0D4C0}
-.cd-result.error{background:#F8D7DA;color:#842029;border:1px solid #F5C2C7}
+.cd-result.success{background:#E7F2EC;color:#1F8A5B;border:1px solid #BFE0CD}
+.cd-result.error{background:#FDEDF0;color:#B32E45;border:1px solid #F2C9D2}
 .cd-result a{color:inherit;text-decoration:underline;font-weight:700}
 
 .bulk-modal-box{max-width:720px}
@@ -103,16 +103,16 @@
 .bulk-checkbox-line{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-2);cursor:pointer}
 .bulk-checkbox-line input{width:14px;height:14px;accent-color:var(--green);cursor:pointer}
 .bulk-result{margin-top:14px;padding:12px;border-radius:var(--r-sm);font-size:11px;line-height:1.5;max-height:300px;overflow-y:auto}
-.bulk-result.info{background:#EEF6FF;color:#0B4F8A;border:1px solid #B8D6F5}
-.bulk-result.success{background:#C8E6D8;color:#0F5132;border:1px solid #B0D4C0}
-.bulk-result.error{background:#F8D7DA;color:#842029;border:1px solid #F5C2C7}
+.bulk-result.info{background:#F0ECE6;color:#6F6353;border:1px solid #D4CEC4}
+.bulk-result.success{background:#E7F2EC;color:#1F8A5B;border:1px solid #BFE0CD}
+.bulk-result.error{background:#FDEDF0;color:#B32E45;border:1px solid #F2C9D2}
 .bulk-result table{width:100%;font-size:10px;margin-top:6px;border-collapse:collapse}
 .bulk-result th{text-align:left;font-weight:700;padding:3px 6px;border-bottom:1px solid currentColor}
 .bulk-result td{padding:3px 6px;border-bottom:1px solid rgba(0,0,0,.08)}
 .bulk-result a{color:inherit;text-decoration:underline}
 
-.bulk-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:#5B7FB8;color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
-.bulk-btn:hover{background:#4669A0}
+.bulk-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:#6F6353;color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.bulk-btn:hover{background:#5A5044}
 </style>
 </head>
 <body>
@@ -171,9 +171,9 @@
           <div>Henter data fra Pipedrive og Zuora… (kan tage 10–30 sek.)</div>
         </div>
 
-        <div id="error-state" class="hidden" style="background:#F8D7DA;border:1px solid #F5C2C7;color:#842029;padding:16px;border-radius:var(--r);margin-bottom:20px">
+        <div id="error-state" class="hidden" style="background:#FDEDF0;border:1px solid #F2C9D2;color:#B32E45;padding:16px;border-radius:var(--r);margin-bottom:20px">
           <strong>Fejl:</strong> <span id="error-msg"></span>
-          <div style="font-size:11px;margin-top:6px;color:#842029">
+          <div style="font-size:11px;margin-top:6px;color:#B32E45">
             Tjek at der ligger en fil med navnet <code>ACV_snapshot_DDMMYYYY.csv</code> (eller .xlsx) i porteføljemappen.
             Mappestien sættes med <code>ZUORA_SNAPSHOT_DIR</code> i .env — flere stier kan adskilles med <code>;</code>
             så samme .env virker på både lokal og remote (første sti der findes vinder).
@@ -423,11 +423,11 @@
 .kpi-pill{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 14px;font-size:11px;font-weight:700;color:var(--ink-3);display:inline-flex;align-items:center;gap:6px}
 .kpi-pill strong{color:var(--ink);font-size:13px}
 .tag-status{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:2px 7px;border-radius:8px}
-.tag-status-won  {background:#C8E6D8;color:#0F5132}
-.tag-status-lost {background:#F8D7DA;color:#842029}
-.tag-status-open {background:#D1E4F5;color:#0B4F8A}
-.tag-status-other{background:#F0F0EE;color:#666}
-.tag-admin{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;background:#FDF3D0;color:#856404;margin-left:6px}
+.tag-status-won  {background:#E7F2EC;color:#1F8A5B}
+.tag-status-lost {background:#FDEDF0;color:#B32E45}
+.tag-status-open {background:#EDE8E1;color:#6F6353}
+.tag-status-other{background:#F0ECE6;color:#8B857A}
+.tag-admin{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;background:#F6EFD9;color:#8A6D1F;margin-left:6px}
 </style>
 
 <script>
@@ -534,6 +534,23 @@ function onAccountChange() {
   loadData(false);
 }
 
+// Fetch med tidsgrænse: afbryder kaldet hvis Pipedrive/Zuora ikke svarer,
+// så UI'et viser en pæn fejl i stedet for at spinne i det uendelige.
+async function fetchWithTimeout(url, ms, opts) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal }));
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error('Tidsgrænse nået (' + Math.round(ms / 1000) + ' sek.) — Pipedrive/Zuora svarede ikke. Tryk "Genindlæs" for at prøve igen.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function loadData(force) {
   document.getElementById('loading-state').classList.remove('hidden');
   document.getElementById('dash-content').classList.add('hidden');
@@ -543,7 +560,7 @@ async function loadData(force) {
     let compUrl = '/tools/portfolio-alignment/comparison?scope=' + encodeURIComponent(currentScope) + (force ? '&refresh=1' : '');
     compUrl = appendCutoff(compUrl);
     const handledUrl = '/tools/portfolio-alignment/handled-states?scope=' + encodeURIComponent(currentScope);
-    const [compResp, handledResp] = await Promise.all([fetch(compUrl), fetch(handledUrl)]);
+    const [compResp, handledResp] = await Promise.all([fetchWithTimeout(compUrl, 90000), fetch(handledUrl)]);
     if (!compResp.ok) {
       const t = await compResp.text();
       throw new Error(`HTTP ${compResp.status}: ${t.slice(0,200)}`);
@@ -767,7 +784,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
         <span class="kpi-pill">Won-værdi <strong>${escHtml(wonValueStr)}</strong></span>
         <span class="kpi-pill">Administrative <strong>${adminDeals.length}</strong></span>
         <span class="kpi-pill">Total deals <strong>${deals.length}</strong></span>
-        ${site ? `<span class="kpi-pill" style="background:#EEF6FF;border-color:#B8D6F5">Filtreret til site <strong>${escHtml(site)}</strong></span>` : ''}
+        ${site ? `<span class="kpi-pill" style="background:#F0ECE6;border-color:#D4CEC4">Filtreret til site <strong>${escHtml(site)}</strong></span>` : ''}
       </div>
       <div style="margin-bottom:14px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Status-fordeling</div>
@@ -807,7 +824,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
   } catch(e) {
     console.error(e);
     document.getElementById('modal-body').innerHTML =
-      `<div style="background:#F8D7DA;color:#842029;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
+      `<div style="background:#FDEDF0;color:#B32E45;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
   }
 }
 
@@ -1142,7 +1159,7 @@ async function _pollBulkJob(jobId, total, isDryRun, resultEl) {
       resultEl.innerHTML =
         `<strong>${isDryRun ? 'Forhåndsvis' : 'Opretter'}…</strong> ${job.progress} / ${total}` +
         ` &nbsp;·&nbsp; ✓ ${created}` +
-        (failed  ? ` &nbsp;·&nbsp; <span style="color:#842029">✗ ${failed}</span>` : '') +
+        (failed  ? ` &nbsp;·&nbsp; <span style="color:#B32E45">✗ ${failed}</span>` : '') +
         (skipped ? ` &nbsp;·&nbsp; ↷ ${skipped}` : '');
       continue;
     }
@@ -1169,7 +1186,7 @@ function _renderBulkResult(d, isDryRun) {
     html += `<strong>Forhåndsvisning:</strong> ${eligible} række${eligible===1?'':'r'} ville blive oprettet.`;
   } else {
     html += `<strong>${created.length} deal${created.length===1?'':'s'} oprettet</strong>`;
-    if (failed.length) html += ` · <strong style="color:#842029">${failed.length} fejlede</strong>`;
+    if (failed.length) html += ` · <strong style="color:#B32E45">${failed.length} fejlede</strong>`;
     if (skipped.length) html += ` · ${skipped.length} sprunget over`;
     html += '.';
   }
@@ -1272,7 +1289,7 @@ async function openWebSaleModal(scope, site) {
   } catch(e) {
     console.error(e);
     document.getElementById('modal-body').innerHTML =
-      `<div style="background:#F8D7DA;color:#842029;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
+      `<div style="background:#FDEDF0;color:#B32E45;padding:14px;border-radius:var(--r-sm)"><strong>Fejl:</strong> ${escHtml(e.message || String(e))}</div>`;
   }
 }
 
