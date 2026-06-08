@@ -6,7 +6,7 @@
 <title>Portfolio Alignment — Intomedia Hub</title>
 <link rel="stylesheet" href="/static/hub.css">
 <style>
-.tool-wrap{max-width:1500px;margin:0 auto}
+.tool-wrap{max-width:none;margin:0 auto}
 .dash-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:20px;margin-bottom:20px}
 @media(max-width:1100px){.dash-grid-5{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:800px){.dash-grid-5{grid-template-columns:1fr 1fr}}
@@ -37,10 +37,13 @@
 .spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.v-table{width:100%;border-collapse:collapse;font-size:12px}
-.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap;cursor:pointer;user-select:none}
+.v-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 8px;text-align:left;white-space:normal;cursor:pointer;user-select:none}
 .v-table th.num{text-align:right}
-.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table td{padding:8px 8px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v-table th,.v-table td{overflow-wrap:anywhere}
+/* tal må gerne ombryde frem for at sprænge kolonnen, men aldrig midt i et tal */
+.v-table td.num,.v-table th.num{overflow-wrap:normal;word-break:keep-all}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
@@ -57,6 +60,9 @@
 
 .cached-info{font-size:10px;color:var(--ink-4);margin-left:8px}
 .hidden{display:none}
+.pg-btn{font-family:var(--font);font-size:11px;font-weight:700;padding:5px 12px;border-radius:var(--r-sm);border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-2);cursor:pointer}
+.pg-btn:hover:not(:disabled){border-color:var(--green);color:var(--ink)}
+.pg-btn:disabled{opacity:.4;cursor:default}
 .legend{font-size:10px;color:var(--ink-4);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .tag-filter{cursor:pointer;user-select:none;transition:opacity .15s}
 .tag-filter.tag-inactive{opacity:.25;text-decoration:line-through}
@@ -68,7 +74,7 @@
 .cur-badge.cur-foreign{background:#6F6353;color:#fff;border:1px solid #5A5044}
 .cur-badge.cur-multi{background:#F6EFD9;color:#8A6D1F;border:1px solid #E5D3A0;margin-left:2px}
 
-.create-deal-btn{font-family:var(--font);font-size:10px;font-weight:700;padding:5px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg);color:var(--ink-2);cursor:pointer;white-space:nowrap;transition:background .13s,border-color .13s,color .13s}
+.create-deal-btn{font-family:var(--font);font-size:10px;font-weight:700;padding:5px 8px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg);color:var(--ink-2);cursor:pointer;white-space:normal;line-height:1.25;width:100%;transition:background .13s,border-color .13s,color .13s}
 .create-deal-btn:hover{background:var(--green);border-color:var(--green);color:#fff}
 .create-deal-btn:disabled{opacity:.55;cursor:wait}
 
@@ -262,11 +268,16 @@
           </div>
 
           <div class="dash-card" style="padding:0;overflow:hidden">
-            <div style="overflow-x:auto;max-height:70vh">
+            <div id="cmp-scroll" style="overflow-y:auto;max-height:70vh">
               <table class="v-table">
+                <colgroup>
+                  <col style="width:3%"><col style="width:11%"><col style="width:16%"><col style="width:9%">
+                  <col style="width:9%"><col style="width:9%"><col style="width:8%"><col style="width:9%">
+                  <col style="width:5%"><col style="width:6%"><col style="width:7%"><col style="width:8%">
+                </colgroup>
                 <thead>
                   <tr>
-                    <th style="width:36px;text-align:center">✓</th>
+                    <th style="text-align:center">✓</th>
                     <th onclick="sortBy('scope_label')">Account</th>
                     <th onclick="sortBy('org_name')">Kunde</th>
                     <th onclick="sortBy('site')">Site</th>
@@ -296,7 +307,7 @@
               <span>Web sales pr. site (B2C)</span>
               <span style="font-weight:400;font-size:9px;color:var(--ink-4)">PD's "Web Sale"-organisation vs. Zuora's Consumer uden pipedrive_id — klik for deals</span>
             </div>
-            <div style="overflow-x:auto">
+            <div>
               <table class="v-table">
                 <thead>
                   <tr>
@@ -437,6 +448,10 @@ let activeStatuses = new Set(['match', 'mismatch', 'pd_only', 'zuora_only']);
 let currentScope = 'all';
 let sortKey = 'diff';
 let sortDir = -1;
+// Paginering — render kun én side ad gangen så DOM'en holdes lille og hurtig
+const PAGE_SIZE = 100;
+let _viewRows = [];   // alle filtrerede+sorterede rækker (på tværs af sider)
+let currentPage = 1;
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -795,7 +810,7 @@ async function openCustomerModal(scope, orgId, orgName, site) {
         <div style="display:flex;flex-wrap:wrap;gap:6px">${pipelinePills || '—'}</div>
       </div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals${siteLabel}</div>
-      <div style="overflow-x:auto">
+      <div>
         <table class="v-table">
           <thead><tr>
             <th>Titel</th>
@@ -1276,7 +1291,7 @@ async function openWebSaleModal(scope, site) {
         <div style="display:flex;flex-wrap:wrap;gap:6px">${pipelinePills || '—'}</div>
       </div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px">Alle deals</div>
-      <div style="overflow-x:auto">
+      <div>
         <table class="v-table">
           <thead><tr>
             <th>Titel</th><th>Status</th><th>Pipeline</th><th>Deal type</th><th>Site (raw)</th>
@@ -1326,11 +1341,29 @@ function renderTable() {
     return (av - bv) * sortDir;
   });
 
+  _viewRows = rows;
+  currentPage = 1;            // nyt filter/sortering → tilbage til side 1
+  renderPage();
+}
+
+function gotoPage(n) {
+  const pages = Math.max(1, Math.ceil(_viewRows.length / PAGE_SIZE));
+  currentPage = Math.min(Math.max(1, n), pages);
+  renderPage();
+  const sc = document.getElementById('cmp-scroll');
+  if (sc) sc.scrollTop = 0;
+}
+
+function renderPage() {
   const tbody = document.getElementById('cmp-tbody');
-  if (!rows.length) {
+  const total = _viewRows.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (currentPage > pages) currentPage = pages;
+  const startIdx = (currentPage - 1) * PAGE_SIZE;
+  if (!total) {
     tbody.innerHTML = '<tr><td colspan="12" class="empty">Ingen rækker matcher filteret</td></tr>';
   } else {
-    tbody.innerHTML = rows.map(r => {
+    tbody.innerHTML = _viewRows.slice(startIdx, startIdx + PAGE_SIZE).map(r => {
       const diffCls = r.status === 'match' ? 'diff-zero'
                     : (r.diff > 0 ? 'diff-pos' : r.diff < 0 ? 'diff-neg' : 'diff-zero');
       const detalje = [];
@@ -1375,8 +1408,8 @@ function renderTable() {
       const zuDisp  = (r.zuora_arr_display !== undefined && r.zuora_arr_display !== null) ? r.zuora_arr_display : r.zuora_arr;
       return `<tr ${rowClass} ${dataAttrs} style="${cursor}">
         ${cb}
-        <td style="font-size:10px;color:var(--ink-3)">${escHtml(r.scope_label || r.scope || '—')}</td>
-        <td style="font-weight:600;color:var(--ink)">${escHtml(r.org_name)}${r.org_id ? `<div style="font-size:10px;font-weight:400;color:var(--ink-4);margin-top:2px">org_id: ${escHtml(String(r.org_id))}</div>` : ''}</td>
+        <td style="font-size:10px;color:var(--ink-3)" title="${escHtml(r.scope_label || r.scope || '—')}">${escHtml(r.scope_label || r.scope || '—')}</td>
+        <td style="font-weight:600;color:var(--ink)" title="${escHtml(r.org_name)}">${escHtml(r.org_name)}${r.org_id ? `<div style="font-size:10px;font-weight:400;color:var(--ink-4);margin-top:2px">org_id: ${escHtml(String(r.org_id))}</div>` : ''}</td>
         <td>${escHtml(r.site)}</td>
         <td class="num">${fmtCurAmount(pdDisp, dispCur)}</td>
         <td class="num">${fmtCurAmount(zuDisp, dispCur)}</td>
@@ -1390,8 +1423,19 @@ function renderTable() {
     }).join('');
   }
 
-  document.getElementById('row-count').textContent =
-    `Viser ${rows.length.toLocaleString('da-DK')} af ${allRows.length.toLocaleString('da-DK')} rækker`;
+  const from = total ? startIdx + 1 : 0;
+  const to   = Math.min(startIdx + PAGE_SIZE, total);
+  const info = `Viser ${from.toLocaleString('da-DK')}–${to.toLocaleString('da-DK')} af ${total.toLocaleString('da-DK')} rækker (${allRows.length.toLocaleString('da-DK')} i alt)`;
+  const nav = pages > 1
+    ? `<div style="margin-top:8px;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">
+         <button class="pg-btn" onclick="gotoPage(1)" ${currentPage<=1?'disabled':''}>« Første</button>
+         <button class="pg-btn" onclick="gotoPage(currentPage-1)" ${currentPage<=1?'disabled':''}>‹ Forrige</button>
+         <span style="font-weight:700;color:var(--ink-2);padding:0 8px">Side ${currentPage} / ${pages}</span>
+         <button class="pg-btn" onclick="gotoPage(currentPage+1)" ${currentPage>=pages?'disabled':''}>Næste ›</button>
+         <button class="pg-btn" onclick="gotoPage(${pages})" ${currentPage>=pages?'disabled':''}>Sidste »</button>
+       </div>`
+    : '';
+  document.getElementById('row-count').innerHTML = info + nav;
 }
 
 loadAccounts().then(() => loadData(false));

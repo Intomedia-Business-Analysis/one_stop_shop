@@ -894,7 +894,7 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase; letter-spacing: 1.5px; padding: 11px 14px;
   text-align: left; white-space: nowrap; position: sticky; top: 0;
 }
-.v-table th.num { text-align: right; }
+.v-table th.num { text-align: right; color: #fff; }
 .v-table th.sortable { cursor: pointer; user-select: none; }
 .v-table th.sortable::after { content: '↕'; opacity: .4; margin-left: 6px; font-size: 9px; }
 .v-table th.sortable.asc::after  { content: '↑'; opacity: 1; }

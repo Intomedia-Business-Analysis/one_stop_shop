@@ -34,8 +34,11 @@ from .queries import (
     db_media_performance,
 )
 
+from nav_utils import register_nav_globals
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+register_nav_globals(templates)
 
 
 def _require(user, min_role: str = "salesperson", resource_id: str = "rotation"):
