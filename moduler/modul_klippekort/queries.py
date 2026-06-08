@@ -5,12 +5,15 @@ To datakilder:
     job-klippekort, hvor mange klip er købt (clip_card_size) og hvad er
     annonceringsperioden.
   - KlippekortForbrug (lokal app-tabel, oprettes her): hvert klip-forbrug
-    sælgeren registrerer i toolet (stilling, site, tidspunkt). Denne tabel er
-    kilden til "klip brugt" fremadrettet og driver klippekort-økonomien.
+    sælgeren registrerer i toolet (stilling, site, tidspunkt). Driver
+    klippekort-økonomien og opfølgningen på udløbende stillinger.
 
-'Klip brugt' pushes desuden til Pipedrive-feltet used_clip_cards via
-pipedrive_api.update_used_clip_cards, så det kommer ned i PipedriveDeals ved
-næste sync.
+Visningen af "klip brugt" i overblikket læses fra Pipedrives used_clip_cards
+(synces ned i PipedriveDeals) — det er den autoritative kilde. Når toolet
+registrerer/sletter et forbrug, lægger det kun sin delta oveni det felt via
+pipedrive_api.add_used_clip_cards (additivt, læser Pipedrives nuværende tal
+live), så klip sat direkte i Pipedrive ikke overskrives. Det opdaterede tal
+kommer retur ved næste sync.
 """
 import os
 import traceback
@@ -119,8 +122,9 @@ def init_klippekort_db():
 def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> list[dict]:
     """Job-klippekort med købt/brugt/rest og dage til udløb.
 
-    'brugt' tælles fra KlippekortForbrug (toolets egen registrering) — ikke fra
-    Pipedrives used_clip_cards, som kun vises som reference (brugt_pipedrive).
+    'brugt' læses fra Pipedrives used_clip_cards (synces ned i PipedriveDeals) —
+    det er den autoritative kilde. Toolets lokale KlippekortForbrug-sum vises
+    kun som reference (brugt_tool) og driver økonomi/opfølgning, ikke brugt-tallet.
     only_owner_name filtrerer til den indloggede sælger ("kun mine") — på
     ORGANISATIONENS ejer (oo.owner_name), ikke deal-owneren.
     status: 'aktive' (i annonceringsperioden netop nu) eller 'udloebne'
@@ -152,12 +156,12 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 d.sites,
                 TRY_CAST(d.clip_card_size AS INT)  AS clip_card_size,
                 ISNULL(TRY_CAST(d.transfered_clip_cards AS INT), 0) AS clips_previous,
-                TRY_CAST(d.used_clip_cards AS INT) AS brugt_pipedrive,
+                ISNULL(TRY_CAST(d.used_clip_cards AS INT), 0) AS brugt_pipedrive,
                 CAST(d.value_dkk AS BIGINT)        AS value_dkk,
                 CONVERT(NVARCHAR(10), d.advertising_periode_start, 23) AS periode_start,
                 CONVERT(NVARCHAR(10), d.advertising_periode_end, 23)  AS periode_slut,
                 DATEDIFF(day, CAST(GETDATE() AS date), d.advertising_periode_end) AS dage_til_udloeb,
-                (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt
+                (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt_tool
             FROM [dbo].[PipedriveDeals] d
             LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = d.org_id
             WHERE d.pipeline_name = 'job'
@@ -173,7 +177,8 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
             size = int(r["clip_card_size"] or 0)
             tidligere = int(r["clips_previous"] or 0)
             kob = size + tidligere   # samlet antal klip = kortets størrelse + klip fra tidligere aftale
-            brugt = round(float(r["brugt"] or 0))
+            brugt = int(r["brugt_pipedrive"] or 0)   # autoritativt fra Pipedrive (used_clip_cards)
+            brugt_tool = round(float(r["brugt_tool"] or 0))   # toolets egen registrering (reference)
             rows.append({
                 "pd_deal_id":      r["pd_deal_id"],
                 "org_id":          r["org_id"],
@@ -187,7 +192,7 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 "klip_fra_tidligere": tidligere,
                 "brugt":           brugt,
                 "rest":            kob - brugt,
-                "brugt_pipedrive": int(r["brugt_pipedrive"] or 0),
+                "brugt_tool":      brugt_tool,
                 "value_dkk":       int(r["value_dkk"] or 0),
                 "periode_start":   r["periode_start"] or "—",
                 "periode_slut":    r["periode_slut"] or "—",
@@ -278,6 +283,7 @@ def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
             "ok": True,
             "brugt": brugt,
             "rest": size - brugt,
+            "delta": klip,          # antal klip lige registreret (til additiv Pipedrive-push)
             "clip_card_size": size,
             "pris_pr_klip": pris_pr_klip,
         }
@@ -366,11 +372,18 @@ def db_slet_job(job_id: str) -> dict:
             return {"ok": False, "error": f"Job {job_id} blev ikke fundet"}
         pd_deal_id = int(row["pd_deal_id"])
 
+        # Antal klip jobbet lægger beslag på — fanges før sletning, så Pipedrive
+        # kan opdateres additivt (delta = -fjernede klip) i stedet for at overskrives.
+        cur.execute("SELECT ISNULL(SUM(klip), 0) AS klip FROM KlippekortForbrug WHERE job_id = %s", (job_id,))
+        # klip-andele pr. site er afrundet (fx 1 klip / 3 sites = 0,9999) — afrund
+        # summen tilbage til heltal, så delta = jobbets oprindelige antal klip.
+        fjernet = round(float((cur.fetchone() or {}).get("klip") or 0))
+
         cur.execute("DELETE FROM KlippekortForbrug WHERE job_id = %s", (job_id,))
         brugt = _brugt_for_deal(cur, pd_deal_id)
         conn.commit()
         conn.close()
-        return {"ok": True, "pd_deal_id": pd_deal_id, "brugt": brugt}
+        return {"ok": True, "pd_deal_id": pd_deal_id, "brugt": brugt, "delta": -fjernet}
     except Exception as e:
         traceback.print_exc()
         if conn:
