@@ -1,33 +1,36 @@
 /* ================================================================
    Intomedia Hub — Stylesheet
    Font: Montserrat (Google Fonts)
-   Brand green: #1B5C4A
+   Brand: warm near-black ink + taupe accent (#ACA199) — var names kept
    ================================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --green:          #1B5C4A;
-  --green-light:    #EBF2EF;
-  --green-mid:      #2E7A64;
-  --green-dark:     #134236;
-  --amber:          #B35A00;
-  --amber-light:    #FFF4E8;
-  --ink:            #0F1A16;
-  --ink-2:          #3D5249;
-  --ink-3:          #7A9187;
-  --ink-4:          #B4C8C0;
+  --green:          #1C1C1A;   /* primary brand: JP|Politiken near-black */
+  --green-light:    #F0ECE6;
+  --green-mid:      #3A372F;
+  --green-dark:     #000000;
+  --amber:          #6F6353;   /* secondary accent: dark taupe */
+  --amber-light:    #EFE9E0;
+  --taupe:          #ACA199;   /* JP|Politiken signature bar */
+  --taupe-dark:     #6F6353;
+  --taupe-light:    #EDE8E1;
+  --ink:            #1A1A17;
+  --ink-2:          #4D4942;
+  --ink-3:          #8B857A;
+  --ink-4:          #BEB7AC;
   --surface:        #FFFFFF;
-  --bg:             #F6F8F7;
-  --border:         #E4EDEA;
-  --border-strong:  #C8DAD4;
+  --bg:             #F7F5F2;
+  --border:         #E9E5DE;
+  --border-strong:  #D4CEC4;
   --font:           'Montserrat', sans-serif;
   --r:              10px;
   --r-sm:           6px;
   --r-xs:           4px;
-  --shadow-card:    0 3px 14px rgba(27, 92, 74, 0.10);
-  --shadow-palette: 0 20px 48px rgba(15, 26, 22, 0.18);
+  --shadow-card:    0 3px 14px rgba(28, 28, 26, 0.09);
+  --shadow-palette: 0 20px 48px rgba(26, 26, 23, 0.18);
 }
 
 html, body {
@@ -132,7 +135,7 @@ a { text-decoration: none; color: inherit; }
   padding:       2px 6px;
   border-radius: 10px;
 }
-.sbi.on .sbi-count { background: rgba(27,92,74,.15); color: var(--green); }
+.sbi.on .sbi-count { background: rgba(28,28,26,.10); color: var(--green); }
 
 .sb-divider { height: 1px; background: var(--border); margin: 6px 12px; }
 
@@ -457,7 +460,7 @@ a { text-decoration: none; color: inherit; }
   display:         none;
   position:        fixed;
   inset:           0;
-  background:      rgba(15, 26, 22, .35);
+  background:      rgba(26, 26, 23, .35);
   z-index:         1000;
   align-items:     flex-start;
   justify-content: center;
@@ -616,7 +619,7 @@ a { text-decoration: none; color: inherit; }
   animation:     fadeUp .28s ease both;
   animation-delay: var(--delay, 0s);
 }
-.sc-card:hover { border-color: var(--green); box-shadow: 0 2px 12px rgba(27,92,74,.08); }
+.sc-card:hover { border-color: var(--green); box-shadow: 0 2px 12px rgba(28,28,26,.08); }
 
 .sc-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
 .sc-desc  { font-size: 10px; color: var(--ink-3); line-height: 1.5; margin-bottom: 10px; }
@@ -667,7 +670,7 @@ a { text-decoration: none; color: inherit; }
   animation:     fadeUp .28s ease both;
   animation-delay: var(--delay, 0s);
 }
-.item-card:hover { border-color: var(--green); box-shadow: 0 2px 10px rgba(27,92,74,.07); }
+.item-card:hover { border-color: var(--green); box-shadow: 0 2px 10px rgba(28,28,26,.07); }
 
 .item-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .item-title     { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
@@ -677,3 +680,24 @@ a { text-decoration: none; color: inherit; }
 
 /* Active sidebar item fix */
 .sbi.active { background: var(--green-light) !important; color: var(--green) !important; font-weight: 700 !important; }
+
+
+/* ── JP|Politiken brand lockup overrides ──────────────────────────
+   Sidebar/login logo restyle: black mark + taupe signature bar.    */
+.sb-logo-mark,
+.login-logo-mark {
+  border-radius: var(--r-xs) !important;
+  background:    var(--green) !important;
+}
+.sb-logo-mark { width: 34px !important; height: 34px !important; font-size: 12px !important; letter-spacing: -.5px !important; }
+
+.sb-logo-text { display: flex !important; flex-direction: column; gap: 3px; color: var(--ink) !important; }
+.sb-logo-bar  { width: 46px; height: 5px; background: var(--taupe); }
+.sb-logo-word { font-size: 13px; font-weight: 800; color: var(--ink); letter-spacing: -.3px; line-height: 1.05; }
+.sb-logo-sub  { font-size: 8px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--taupe-dark); line-height: 1; }
+
+/* Login lockup */
+.login-logo-text { color: var(--ink) !important; }
+.login-logo-bar  { width: 64px; height: 7px; background: var(--taupe); }
+
+.login-logo { flex-direction: column !important; gap: 10px !important; }
