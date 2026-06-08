@@ -178,9 +178,9 @@ def load_deals():
         SELECT pd_deal_id, org_id, org_name,
                TRY_CAST(clip_card_size AS INT) AS size,
                CAST(value_dkk AS BIGINT) AS value_dkk,
-               CONVERT(NVARCHAR(10), advertising_periode_slut, 23) AS slut,
+               CONVERT(NVARCHAR(10), advertising_periode_end, 23) AS slut,
                CASE WHEN CAST(GETDATE() AS date)
-                         BETWEEN advertising_periode_start AND advertising_periode_slut
+                         BETWEEN advertising_periode_start AND advertising_periode_end
                     THEN 1 ELSE 0 END AS aktiv
         FROM [dbo].[PipedriveDeals]
         WHERE pipeline_name='job' AND account='jppol_advertising' AND status='won'

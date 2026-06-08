@@ -37,7 +37,6 @@ JPPOL_TOKEN_ENV = "PD_TOKEN_JPPOL"
 # Kopieret fra pipedrive_sync/config.py['jppol_advertising'].field_map.
 USED_CLIP_FIELD_KEY = "83f34a5fb1a534f807a846950b2ac41c6436d7eb"
 
-
 def _get_token() -> str | None:
     return os.getenv(JPPOL_TOKEN_ENV)
 

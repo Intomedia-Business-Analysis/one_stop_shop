@@ -187,8 +187,14 @@
         <!-- Stillinger der skal følges op på -->
         <div class="dash-card">
           <div class="dash-card-title">
-            <span>Stillinger der skal følges op på — snart udløbet</span>
-            <span id="udloeb-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+            <span id="udloeb-title">Aktive stillinger — følg op</span>
+            <span style="display:flex;align-items:center;gap:10px;text-transform:none">
+              <span id="udloeb-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+              <span class="toggle-group">
+                <button class="toggle-btn active" id="btn-stil-aktive" onclick="setUdlStatus('aktive')">Aktive</button>
+                <button class="toggle-btn" id="btn-stil-udloebne" onclick="setUdlStatus('udloebne')">Udløbne</button>
+              </span>
+            </span>
           </div>
           <div style="overflow-x:auto">
             <table class="v-table">
@@ -293,6 +299,7 @@ let sortDir      = 'asc';
 let oekSortCol   = 'omsaetning';
 let oekSortDir   = 'desc';
 let udlRows      = [];
+let udlStatus    = 'aktive';   // 'aktive' | 'udloebne'
 let udlSortCol   = 'dage_til_slut';
 let udlSortDir   = 'asc';
 let activeDeal   = null;
@@ -444,7 +451,7 @@ function sortUdl(col){
 function drawUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
   document.getElementById('udloeb-count').textContent = udlRows.length + ' stilling(er)';
-  if(!udlRows.length){ tb.innerHTML='<tr><td colspan="7" class="empty">Ingen stillinger med slutdato til opfølgning.</td></tr>'; setUdlArrows(); return; }
+  if(!udlRows.length){ const t = udlStatus==='udloebne' ? 'Ingen udløbne stillinger.' : 'Ingen aktive stillinger med slutdato.'; tb.innerHTML='<tr><td colspan="7" class="empty">'+t+'</td></tr>'; setUdlArrows(); return; }
   const val=(j,c)=> c==='sites' ? (j.sites||[]).join(', ') : j[c];
   const rows=[...udlRows].sort((a,b)=>{
     const va=val(a,udlSortCol), vb=val(b,udlSortCol);
@@ -463,11 +470,19 @@ function drawUdloeb(){
       </tr>`).join('');
   setUdlArrows();
 }
+function setUdlStatus(s){
+  udlStatus = s;
+  document.getElementById('btn-stil-aktive').classList.toggle('active', s==='aktive');
+  document.getElementById('btn-stil-udloebne').classList.toggle('active', s==='udloebne');
+  document.getElementById('udloeb-title').textContent =
+    s==='udloebne' ? 'Udløbne stillinger' : 'Aktive stillinger — følg op';
+  loadUdloeb();
+}
 async function loadUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
   tb.innerHTML='<tr><td colspan="7" class="empty"><div class="spinner"></div></td></tr>';
   try{
-    const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0));
+    const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0)+'&status='+udlStatus);
     if(!res.ok) throw new Error(await res.text());
     udlRows=(await res.json()).rows||[];
     drawUdloeb();
@@ -480,10 +495,13 @@ function openModal(dealId){
   const r=overblikRows.find(x=>x.pd_deal_id===dealId);
   if(!r) return;
   activeDeal=r;
+  const prisBase = (r.clip_card_base ?? r.clip_card_size);
   document.getElementById('modal-deal-meta').innerHTML =
     `<b>${escHtml(r.org_name)}</b> — ${escHtml(r.title)}<br>`+
-    `Klippekort: <b>${r.clip_card_size}</b> købt · <b>${r.brugt}</b> brugt · <b>${r.rest}</b> rest<br>`+
-    `Værdi: <b>${fmtFull(r.value_dkk)}</b> · Pris pr. klip: <b>${r.clip_card_size>0?fmtFull(r.value_dkk/r.clip_card_size):'—'}</b>`;
+    `Klippekort: <b>${r.clip_card_size}</b> købt`+
+      `${r.klip_fra_tidligere?` (heraf <b>${r.klip_fra_tidligere}</b> fra tidligere aftale)`:''}`+
+      ` · <b>${r.brugt}</b> brugt · <b>${r.rest}</b> rest<br>`+
+    `Værdi: <b>${fmtFull(r.value_dkk)}</b> · Pris pr. klip: <b>${prisBase>0?fmtFull(r.value_dkk/prisBase):'—'}</b>`;
   // Multi-site: alle Watch DK- OG Monitor-sites kan vælges (et klip kan bruges
   // på fx EjendomsWatch + Byrummonitor). Deal'ens egne sites er forvalgt.
   const box=document.getElementById('f-sites');
@@ -518,7 +536,8 @@ function updateKlipHint(){
   if(!activeDeal){ hint.textContent=''; return; }
   const sites=selectedSites();
   const klip=Math.max(1, parseInt(document.getElementById('f-klip').value||'1',10));
-  const pris=activeDeal.clip_card_size>0 ? activeDeal.value_dkk/activeDeal.clip_card_size : 0;
+  const prisBase=(activeDeal.clip_card_base ?? activeDeal.clip_card_size);
+  const pris=prisBase>0 ? activeDeal.value_dkk/prisBase : 0;
   if(!sites.length){ hint.textContent='Vælg mindst ét site.'; return; }
   const perSite=(klip*pris)/sites.length;
   hint.innerHTML = `Trækker <b>${klip}</b> klip · fordeles på <b>${sites.length}</b> site(r) = `+

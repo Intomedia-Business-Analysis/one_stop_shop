@@ -132,11 +132,11 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
         owner_clause = "AND oo.owner_name = %s"
         params.append(only_owner_name)
     if status == "udloebne":
-        period_clause = "AND d.advertising_periode_slut < CAST(GETDATE() AS date)"
+        period_clause = "AND d.advertising_periode_end < CAST(GETDATE() AS date)"
         order_clause = "ORDER BY dage_til_udloeb DESC"  # senest udløbne først
     else:
         period_clause = ("AND CAST(GETDATE() AS date)"
-                         " BETWEEN d.advertising_periode_start AND d.advertising_periode_slut")
+                         " BETWEEN d.advertising_periode_start AND d.advertising_periode_end")
         order_clause = "ORDER BY dage_til_udloeb ASC"   # snart-udløbne først
     try:
         conn = get_conn()
@@ -151,11 +151,12 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 oo.owner_name AS org_owner,
                 d.sites,
                 TRY_CAST(d.clip_card_size AS INT)  AS clip_card_size,
+                ISNULL(TRY_CAST(d.transfered_clip_cards AS INT), 0) AS clips_previous,
                 TRY_CAST(d.used_clip_cards AS INT) AS brugt_pipedrive,
                 CAST(d.value_dkk AS BIGINT)        AS value_dkk,
                 CONVERT(NVARCHAR(10), d.advertising_periode_start, 23) AS periode_start,
-                CONVERT(NVARCHAR(10), d.advertising_periode_slut, 23)  AS periode_slut,
-                DATEDIFF(day, CAST(GETDATE() AS date), d.advertising_periode_slut) AS dage_til_udloeb,
+                CONVERT(NVARCHAR(10), d.advertising_periode_end, 23)  AS periode_slut,
+                DATEDIFF(day, CAST(GETDATE() AS date), d.advertising_periode_end) AS dage_til_udloeb,
                 (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt
             FROM [dbo].[PipedriveDeals] d
             LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = d.org_id
@@ -169,7 +170,9 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
         """, tuple(params))
         rows = []
         for r in cur.fetchall():
-            kob = int(r["clip_card_size"] or 0)
+            size = int(r["clip_card_size"] or 0)
+            tidligere = int(r["clips_previous"] or 0)
+            kob = size + tidligere   # samlet antal klip = kortets størrelse + klip fra tidligere aftale
             brugt = round(float(r["brugt"] or 0))
             rows.append({
                 "pd_deal_id":      r["pd_deal_id"],
@@ -180,6 +183,8 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 "org_owner":       r["org_owner"] or "—",
                 "sites":           r["sites"] or "",
                 "clip_card_size":  kob,
+                "clip_card_base":  size,
+                "klip_fra_tidligere": tidligere,
                 "brugt":           brugt,
                 "rest":            kob - brugt,
                 "brugt_pipedrive": int(r["brugt_pipedrive"] or 0),
@@ -409,14 +414,23 @@ def db_oekonomi() -> list[dict]:
         return []
 
 
-def db_udloebende_jobs(only_owner_name: str | None = None, dage_bagud: int = 7) -> list[dict]:
-    """Stillinger med en slutdato — til opfølgning (snart-udløbne først).
+def db_udloebende_jobs(only_owner_name: str | None = None, status: str = "aktive") -> list[dict]:
+    """Stillinger med en slutdato — til opfølgning.
 
-    Viser jobs hvis slutdato ligger fra (i dag − dage_bagud) og frem, så netop
-    udløbne også er med. only_owner_name filtrerer på organisationens ejer.
+    status='aktive'   → stillinger der stadig kører (slutdato >= i dag, eller
+                        effektgaranti) — snart-udløbne øverst.
+    status='udloebne' → stillinger hvis slutdato er passeret (og ikke effektgaranti)
+                        — senest udløbne øverst.
+    only_owner_name filtrerer på organisationens ejer.
     """
+    if status == "udloebne":
+        status_clause = "AND f.slutdato < CAST(GETDATE() AS date) AND f.effektgaranti = 0"
+        order_clause = "ORDER BY f.slutdato DESC, f.job_id"
+    else:
+        status_clause = "AND (f.slutdato >= CAST(GETDATE() AS date) OR f.effektgaranti = 1)"
+        order_clause = "ORDER BY f.slutdato ASC, f.job_id"
     owner_clause = ""
-    params: list = [dage_bagud]
+    params: list = []
     if only_owner_name:
         owner_clause = "AND oo.owner_name = %s"
         params.append(only_owner_name)
@@ -439,9 +453,9 @@ def db_udloebende_jobs(only_owner_name: str | None = None, dage_bagud: int = 7) 
                   AND d.status = 'won'
             LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = f.org_id
             WHERE f.slutdato IS NOT NULL
-              AND f.slutdato >= DATEADD(day, -%s, CAST(GETDATE() AS date))
+              {status_clause}
               {owner_clause}
-            ORDER BY f.slutdato ASC, f.job_id
+            {order_clause}
         """, tuple(params))
         groups: dict = {}
         order: list = []
