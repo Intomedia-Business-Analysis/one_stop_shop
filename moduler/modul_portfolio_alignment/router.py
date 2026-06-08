@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from auth import ROLE_LABELS, get_current_user, has_access
 from moduler.modul_portfolio_alignment.queries import (
@@ -103,7 +104,9 @@ async def alignment_comparison(
     scope = _validate_scope(scope)
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        cached = _get_comparison(scope, force=bool(refresh), cutoff_date=cutoff)
+        cached = await run_in_threadpool(
+            _get_comparison, scope, force=bool(refresh), cutoff_date=cutoff
+        )
         return JSONResponse({
             **cached["data"],
             "cached_at": cached["ts"],
@@ -128,7 +131,10 @@ async def alignment_web_sale_deals(
         raise HTTPException(400, "site er påkrævet")
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_web_sale_deals(scope, site, snapshot_date=cutoff))
+        data = await run_in_threadpool(
+            fetch_web_sale_deals, scope, site, snapshot_date=cutoff
+        )
+        return JSONResponse(data)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -150,8 +156,10 @@ async def alignment_customer_deals(
         raise HTTPException(400, "org_id er påkrævet")
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_customer_deals(scope, org_id, site=site or None,
-                                                 snapshot_date=cutoff))
+        data = await run_in_threadpool(
+            fetch_customer_deals, scope, org_id, site=site or None, snapshot_date=cutoff
+        )
+        return JSONResponse(data)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
@@ -243,10 +251,13 @@ async def alignment_deal_preview(
     cutoff = _normalize_cutoff(cutoff_date)
     try:
         scope_v, org_id_v, site_v = _resolve_create_args({"scope": scope, "org_id": org_id, "site": site})
-        local = compute_local_diff(scope_v, str(org_id_v), site_v, cutoff_date=cutoff)
+        local = await run_in_threadpool(
+            compute_local_diff, scope_v, str(org_id_v), site_v, cutoff_date=cutoff
+        )
         if abs(local["value"]) < 1:
             raise HTTPException(400, "diff er nul (eller for lille) — der er intet at afstemme")
-        prev = preview_alignment_deal(
+        prev = await run_in_threadpool(
+            preview_alignment_deal,
             scope=scope_v,
             org_id=org_id_v,
             site=site_v,

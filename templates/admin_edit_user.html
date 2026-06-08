@@ -43,14 +43,15 @@
       font-weight: 500;
       margin-bottom: 1.25rem;
     }
-    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
-    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+    .notif-success { background: var(--win-light); border: 1px solid #BFE0CD; color: var(--win); }
+    .notif-error   { background: var(--danger-light); border: 1px solid #F2C9D2; color: var(--danger); }
 
     /* ── Edit card (basic user info) ── */
     .edit-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r);
+      box-shadow: var(--shadow-card);
       max-width: 680px;
     }
     .edit-card-header {
@@ -163,6 +164,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r);
+      box-shadow: var(--shadow-card);
       overflow: hidden;
       margin-top: 1.5rem;
     }
@@ -230,8 +232,8 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .type-dashboard { background: #dbeafe; color: #1e40af; }
-    .type-tool      { background: #ede9fe; color: #5b21b6; }
+    .type-dashboard { background: var(--green-light); color: var(--green); }
+    .type-tool      { background: var(--taupe-light); color: var(--taupe-dark); }
 
     .access-select {
       padding: .375rem .75rem;
@@ -248,23 +250,23 @@
     }
     .access-select:focus { border-color: var(--green); }
     .access-select.is-override {
-      border-color: #f59e0b;
-      background: #fffbeb;
-      color: #92400e;
+      border-color: var(--warn);
+      background: var(--warn-light);
+      color: var(--warn);
     }
 
     /* ── Memberships table ── */
     table { width: 100%; border-collapse: collapse; }
     th {
       text-align: left;
-      padding: .625rem 1rem;
-      font-size: .75rem;
-      font-weight: 600;
-      color: var(--text-muted);
+      padding: .7rem 1rem;
+      font-size: .6875rem;
+      font-weight: 700;
+      color: #fff;
       text-transform: uppercase;
-      letter-spacing: .04em;
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
+      letter-spacing: 1.5px;
+      background: var(--green);
+      white-space: nowrap;
     }
     td {
       padding: .75rem 1rem;
@@ -274,7 +276,7 @@
       vertical-align: middle;
     }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: var(--bg); }
+    tbody tr:hover td { background: var(--green-light); }
 
     .team-role-badge {
       display: inline-flex;
@@ -284,15 +286,15 @@
       font-size: .75rem;
       font-weight: 600;
     }
-    .role-leader { background: #dbeafe; color: #1e40af; }
-    .role-member { background: #f0fdf4; color: #166534; }
+    .role-leader { background: var(--green); color: #fff; }
+    .role-member { background: var(--green-light); color: var(--green); }
 
     .period-ongoing {
       font-size: .75rem;
-      font-weight: 600;
-      color: #166534;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
+      font-weight: 700;
+      color: var(--win);
+      background: var(--win-light);
+      border: 1px solid #BFE0CD;
       border-radius: 99px;
       padding: .15rem .5rem;
     }
@@ -312,8 +314,8 @@
       white-space: nowrap;
     }
     .action-btn:hover { border-color: var(--green); background: var(--bg); }
-    .action-btn-danger { border-color: #f5c2c7; color: #842029; }
-    .action-btn-danger:hover { border-color: #842029; background: #fff3f3; }
+    .action-btn-danger { border-color: #F2C9D2; color: var(--danger); }
+    .action-btn-danger:hover { border-color: var(--danger); background: var(--danger-light); }
 
     .add-membership-section {
       padding: 1.25rem 1.5rem;
@@ -351,8 +353,26 @@
 
   <!-- ── MAIN ── -->
   <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/admin/users" class="tb-btn">← Alle brugere</a>
+      </div>
+    </div>
     <div style="flex:1;min-height:0;overflow-y:auto;">
     <div style="padding: 2rem; max-width: 1000px;">
+
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+        <a href="/admin/users" class="bc-link">Brugerstyring</a><span class="bc-sep">/</span>
+        <span class="bc-current">Rediger bruger</span>
+      </div>
 
       <div class="page-header">
         <a href="/admin/users" class="back-btn">← Alle brugere</a>

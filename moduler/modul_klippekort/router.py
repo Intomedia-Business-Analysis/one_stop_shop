@@ -26,17 +26,17 @@ from nav_utils import register_nav_globals
 register_nav_globals(templates)
 init_klippekort_db()
 
-# Org-owner cache opdateres i baggrunden (org-owner synces ikke til DB, så vi
-# henter den fra Pipedrive). Trigges ved sidevisning hvis cachen er tom/forældet.
+# Org-ejer cache opdateres i baggrunden (org-ejer er ikke et deal-felt i
+# PipedriveDeals). Trigges ved sidevisning hvis cachen er tom/forældet.
 _ORG_REFRESH_LOCK = threading.Lock()
 _ORG_REFRESHING = {"running": False}
 _ORG_STALE_HOURS = 24
 
 
-def _maybe_refresh_org_owners():
+def _maybe_refresh_pd_cache():
     meta = db_org_owner_meta()
     if meta["count"] > 0 and meta["alder_timer"] < _ORG_STALE_HOURS:
-        return  # cache er frisk nok
+        return
     with _ORG_REFRESH_LOCK:
         if _ORG_REFRESHING["running"]:
             return
@@ -68,7 +68,7 @@ async def klippekort_overblik(mine: int = 0, status: str = "aktive", user=Depend
         raise HTTPException(403, "Ingen adgang")
     if status not in ("aktive", "udloebne"):
         status = "aktive"
-    _maybe_refresh_org_owners()
+    _maybe_refresh_pd_cache()
     try:
         owner = user.get("name") if mine else None
         return JSONResponse({"rows": db_overblik(owner, status)})
@@ -78,13 +78,15 @@ async def klippekort_overblik(mine: int = 0, status: str = "aktive", user=Depend
 
 
 @router.get("/udloebende")
-async def klippekort_udloebende(mine: int = 0, user=Depends(get_current_user)):
-    """Stillinger med slutdato — opfølgnings-oversigt (snart-udløbne først)."""
+async def klippekort_udloebende(mine: int = 0, status: str = "aktive", user=Depends(get_current_user)):
+    """Stillinger med slutdato — opfølgnings-oversigt (aktive eller udløbne)."""
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang")
+    if status not in ("aktive", "udloebne"):
+        status = "aktive"
     try:
         owner = user.get("name") if mine else None
-        return JSONResponse({"rows": db_udloebende_jobs(owner)})
+        return JSONResponse({"rows": db_udloebende_jobs(owner, status)})
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))

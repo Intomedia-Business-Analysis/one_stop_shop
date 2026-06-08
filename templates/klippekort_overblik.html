@@ -30,23 +30,25 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Tables */
-.v-table{width:100%;border-collapse:collapse;font-size:12px}
-.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:8px 8px;text-align:left;white-space:normal}
 .v-table th.num{text-align:right}
+.v-table th,.v-table td{overflow-wrap:anywhere}
 .v-table th.sortable{cursor:pointer;user-select:none}
 .v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
 .v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
 .v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
-.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v-table td.num{white-space:nowrap;overflow-wrap:normal;word-break:keep-all}
 .v-table tbody tr.clickable:hover td{background:var(--green-light,#f0f8f4);cursor:pointer}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 
 /* Badge for dage til udløb */
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums}
-.pill-red{background:#FCE4E4;color:#A52222}
-.pill-amber{background:#FDF3D0;color:#856404}
-.pill-green{background:#C8E6D8;color:#0F5132}
+.pill-red{background:var(--danger-light);color:var(--danger)}
+.pill-amber{background:var(--warn-light);color:var(--warn)}
+.pill-green{background:var(--win-light);color:var(--win)}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -65,9 +67,9 @@
 .btn-primary:hover{background:var(--green-mid)}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed}
 .form-msg{margin-top:12px;font-size:12px;font-weight:600;display:none}
-.form-msg.ok{color:#0F5132;display:block}
-.form-msg.warn{color:#856404;display:block}
-.form-msg.err{color:#A52222;display:block}
+.form-msg.ok{color:var(--win);display:block}
+.form-msg.warn{color:var(--warn);display:block}
+.form-msg.err{color:var(--danger);display:block}
 .hidden{display:none}
 
 /* Eksisterende jobs i modal */
@@ -78,8 +80,8 @@
 .job-row .job-stilling{font-weight:700;color:var(--ink)}
 .job-row .job-sub{font-size:11px;color:var(--ink-4)}
 .job-row .job-pris{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-3);white-space:nowrap}
-.job-del{background:none;border:1px solid var(--border);color:#A52222;border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
-.job-del:hover{background:#FCE4E4;border-color:#A52222}
+.job-del{background:none;border:1px solid var(--border);color:var(--danger);border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
+.job-del:hover{background:var(--danger-light);border-color:var(--danger)}
 .jobs-empty{font-size:12px;color:var(--ink-4);font-style:italic;padding:4px 0}
 
 /* Multi-site vælger */
@@ -96,7 +98,7 @@
 .deal-link:hover{text-decoration:underline}
 .eff-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin:0 0 16px;cursor:pointer}
 .eff-row input{accent-color:var(--green);width:15px;height:15px;cursor:pointer}
-.badge-eff{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:#E3F0FA;color:#1A5C8A;margin-left:6px}
+.badge-eff{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:var(--taupe-light);color:var(--taupe-dark);margin-left:6px}
 </style>
 </head>
 <body>
@@ -161,6 +163,11 @@
           </div>
           <div style="overflow-x:auto">
             <table class="v-table">
+              <colgroup>
+                <col style="width:12%"><col style="width:11%"><col style="width:11%"><col style="width:10%">
+                <col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%">
+                <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:6%">
+              </colgroup>
               <thead>
                 <tr>
                   <th class="sortable" onclick="sortBy('org_name')">Kunde<i class="sort-arrow" id="arr-org_name">↕</i></th>
@@ -187,11 +194,25 @@
         <!-- Stillinger der skal følges op på -->
         <div class="dash-card">
           <div class="dash-card-title">
-            <span>Stillinger der skal følges op på — snart udløbet</span>
-            <span id="udloeb-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+            <span id="udloeb-title">Aktive stillinger — følg op</span>
+            <span style="display:flex;align-items:center;gap:12px;text-transform:none">
+              <span id="udloeb-count" style="font-weight:400;font-size:9px;color:var(--ink-4)"></span>
+              <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap">
+                <input type="checkbox" id="chk-hide-eff" onchange="toggleHideEff(this.checked)" style="width:14px;height:14px;accent-color:var(--green);cursor:pointer">
+                Skjul effektgaranti
+              </label>
+              <span class="toggle-group">
+                <button class="toggle-btn active" id="btn-stil-aktive" onclick="setUdlStatus('aktive')">Aktive</button>
+                <button class="toggle-btn" id="btn-stil-udloebne" onclick="setUdlStatus('udloebne')">Udløbne</button>
+              </span>
+            </span>
           </div>
           <div style="overflow-x:auto">
             <table class="v-table">
+              <colgroup>
+                <col style="width:15%"><col style="width:28%"><col style="width:22%"><col style="width:12%">
+                <col style="width:12%"><col style="width:6%"><col style="width:5%">
+              </colgroup>
               <thead>
                 <tr>
                   <th class="sortable" onclick="sortUdl('org_name')">Kunde<i class="sort-arrow" id="uarr-org_name">↕</i></th>
@@ -218,6 +239,9 @@
           </div>
           <div style="overflow-x:auto">
             <table class="v-table">
+              <colgroup>
+                <col style="width:50%"><col style="width:25%"><col style="width:25%">
+              </colgroup>
               <thead>
                 <tr>
                   <th class="sortable" onclick="sortOek('site')">Site<i class="sort-arrow" id="oarr-site">↕</i></th>
@@ -293,6 +317,8 @@ let sortDir      = 'asc';
 let oekSortCol   = 'omsaetning';
 let oekSortDir   = 'desc';
 let udlRows      = [];
+let udlStatus    = 'aktive';   // 'aktive' | 'udloebne'
+let hideEff      = false;      // skjul effektgaranti-stillinger i overblikket
 let udlSortCol   = 'dage_til_slut';
 let udlSortDir   = 'asc';
 let activeDeal   = null;
@@ -353,10 +379,10 @@ function drawOverblik(){
   if(!rows.length){ const t = statusFilter==='udloebne' ? 'Ingen udløbne klippekort.' : 'Ingen aktive klippekort.'; tb.innerHTML='<tr><td colspan="12" class="empty">'+t+'</td></tr>'; setArrows(); return; }
   tb.innerHTML = rows.map(r=>`
     <tr class="clickable" onclick='openModal(${r.pd_deal_id})'>
-      <td>${escHtml(r.org_name)}</td>
-      <td>${escHtml(r.owner_name)}</td>
-      <td>${escHtml(r.org_owner)}</td>
-      <td>${escHtml(r.sites || '—')}</td>
+      <td title="${escHtml(r.org_name)}">${escHtml(r.org_name)}</td>
+      <td title="${escHtml(r.owner_name)}">${escHtml(r.owner_name)}</td>
+      <td title="${escHtml(r.org_owner)}">${escHtml(r.org_owner)}</td>
+      <td title="${escHtml(r.sites || '—')}">${escHtml(r.sites || '—')}</td>
       <td class="num"><a class="deal-link" href="${PD_DEAL_BASE}${r.pd_deal_id}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.pd_deal_id}</a></td>
       <td class="num">${r.clip_card_size}</td>
       <td class="num">${r.brugt}</td>
@@ -443,31 +469,41 @@ function sortUdl(col){
 }
 function drawUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
-  document.getElementById('udloeb-count').textContent = udlRows.length + ' stilling(er)';
-  if(!udlRows.length){ tb.innerHTML='<tr><td colspan="7" class="empty">Ingen stillinger med slutdato til opfølgning.</td></tr>'; setUdlArrows(); return; }
+  const view = hideEff ? udlRows.filter(j=>!j.effektgaranti) : udlRows;
+  document.getElementById('udloeb-count').textContent = view.length + ' stilling(er)';
+  if(!view.length){ const t = udlStatus==='udloebne' ? 'Ingen udløbne stillinger.' : 'Ingen aktive stillinger med slutdato.'; tb.innerHTML='<tr><td colspan="7" class="empty">'+t+'</td></tr>'; setUdlArrows(); return; }
   const val=(j,c)=> c==='sites' ? (j.sites||[]).join(', ') : j[c];
-  const rows=[...udlRows].sort((a,b)=>{
+  const rows=[...view].sort((a,b)=>{
     const va=val(a,udlSortCol), vb=val(b,udlSortCol);
     const d=(typeof va==='number'&&typeof vb==='number')?va-vb:String(va).localeCompare(String(vb),'da-DK');
     return udlSortDir==='asc'?d:-d;
   });
   tb.innerHTML=rows.map(j=>`
       <tr>
-        <td>${escHtml(j.org_name)}</td>
-        <td>${escHtml(j.stilling)}${j.effektgaranti?'<span class="badge-eff">Effektgaranti</span>':''}</td>
-        <td>${escHtml((j.sites||[]).join(', '))}</td>
-        <td>${escHtml(j.org_owner)}</td>
-        <td>${escHtml(j.deal_owner)}</td>
+        <td title="${escHtml(j.org_name)}">${escHtml(j.org_name)}</td>
+        <td title="${escHtml(j.stilling)}">${escHtml(j.stilling)}${j.effektgaranti?'<span class="badge-eff">Effektgaranti</span>':''}</td>
+        <td title="${escHtml((j.sites||[]).join(', '))}">${escHtml((j.sites||[]).join(', '))}</td>
+        <td title="${escHtml(j.org_owner)}">${escHtml(j.org_owner)}</td>
+        <td title="${escHtml(j.deal_owner)}">${escHtml(j.deal_owner)}</td>
         <td>${escHtml(j.slutdato)}</td>
         <td class="num">${j.effektgaranti?'<span class="pill pill-green">kører videre</span>':udloebPillSmall(j.dage_til_slut)}</td>
       </tr>`).join('');
   setUdlArrows();
 }
+function toggleHideEff(v){ hideEff = v; drawUdloeb(); }
+function setUdlStatus(s){
+  udlStatus = s;
+  document.getElementById('btn-stil-aktive').classList.toggle('active', s==='aktive');
+  document.getElementById('btn-stil-udloebne').classList.toggle('active', s==='udloebne');
+  document.getElementById('udloeb-title').textContent =
+    s==='udloebne' ? 'Udløbne stillinger' : 'Aktive stillinger — følg op';
+  loadUdloeb();
+}
 async function loadUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
   tb.innerHTML='<tr><td colspan="7" class="empty"><div class="spinner"></div></td></tr>';
   try{
-    const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0));
+    const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0)+'&status='+udlStatus);
     if(!res.ok) throw new Error(await res.text());
     udlRows=(await res.json()).rows||[];
     drawUdloeb();
@@ -480,10 +516,13 @@ function openModal(dealId){
   const r=overblikRows.find(x=>x.pd_deal_id===dealId);
   if(!r) return;
   activeDeal=r;
+  const prisBase = (r.clip_card_base ?? r.clip_card_size);
   document.getElementById('modal-deal-meta').innerHTML =
     `<b>${escHtml(r.org_name)}</b> — ${escHtml(r.title)}<br>`+
-    `Klippekort: <b>${r.clip_card_size}</b> købt · <b>${r.brugt}</b> brugt · <b>${r.rest}</b> rest<br>`+
-    `Værdi: <b>${fmtFull(r.value_dkk)}</b> · Pris pr. klip: <b>${r.clip_card_size>0?fmtFull(r.value_dkk/r.clip_card_size):'—'}</b>`;
+    `Klippekort: <b>${r.clip_card_size}</b> købt`+
+      `${r.klip_fra_tidligere?` (heraf <b>${r.klip_fra_tidligere}</b> fra tidligere aftale)`:''}`+
+      ` · <b>${r.brugt}</b> brugt · <b>${r.rest}</b> rest<br>`+
+    `Værdi: <b>${fmtFull(r.value_dkk)}</b> · Pris pr. klip: <b>${prisBase>0?fmtFull(r.value_dkk/prisBase):'—'}</b>`;
   // Multi-site: alle Watch DK- OG Monitor-sites kan vælges (et klip kan bruges
   // på fx EjendomsWatch + Byrummonitor). Deal'ens egne sites er forvalgt.
   const box=document.getElementById('f-sites');
@@ -518,7 +557,8 @@ function updateKlipHint(){
   if(!activeDeal){ hint.textContent=''; return; }
   const sites=selectedSites();
   const klip=Math.max(1, parseInt(document.getElementById('f-klip').value||'1',10));
-  const pris=activeDeal.clip_card_size>0 ? activeDeal.value_dkk/activeDeal.clip_card_size : 0;
+  const prisBase=(activeDeal.clip_card_base ?? activeDeal.clip_card_size);
+  const pris=prisBase>0 ? activeDeal.value_dkk/prisBase : 0;
   if(!sites.length){ hint.textContent='Vælg mindst ét site.'; return; }
   const perSite=(klip*pris)/sites.length;
   hint.innerHTML = `Trækker <b>${klip}</b> klip · fordeles på <b>${sites.length}</b> site(r) = `+

@@ -11,7 +11,7 @@
 .dash-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px}
 .dash-grid-full{grid-column:1/-1}
 @media(max-width:900px){.dash-grid,.dash-grid-3{grid-template-columns:1fr}}
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card.amber::before{background:var(--amber)}
 .dash-card.neg::before{background:#B32E45}
@@ -31,7 +31,7 @@
 .pipeline-track{height:28px;background:var(--border);border-radius:6px;overflow:hidden;display:flex}
 .pipeline-seg{height:100%;transition:width .5s ease;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:0;overflow:hidden}
 .pipeline-seg.won{background:var(--green)}
-.pipeline-seg.pipe{background:#6BAED6}
+.pipeline-seg.pipe{background:var(--taupe)}
 .pipeline-legend{display:flex;gap:16px;margin-top:8px;flex-wrap:wrap}
 .pipeline-legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3)}
 .pipeline-legend-dot{width:10px;height:10px;border-radius:2px}
@@ -269,7 +269,7 @@
                     <span>Vundet</span>
                   </div>
                   <div class="pipeline-legend-item">
-                    <div class="pipeline-legend-dot" style="background:#6BAED6"></div>
+                    <div class="pipeline-legend-dot" style="background:var(--taupe)"></div>
                     <span>Åben pipeline</span>
                   </div>
                 </div>
@@ -645,7 +645,7 @@ function renderPipeline(d) {
     pipeSeg.style.width = d.pipeline_value > 0 ? '100%' : '0%';
     legend.innerHTML = `
       <div class="pipeline-legend-item">
-        <div class="pipeline-legend-dot" style="background:#6BAED6"></div>
+        <div class="pipeline-legend-dot" style="background:var(--taupe)"></div>
         <span>Åben pipeline (intet budget sat)</span>
       </div>`;
   }

@@ -4,122 +4,170 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Department Performance — Indeværende måned</title>
-<link rel="stylesheet" href="/static/hub.css">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
-
-.page {
-  display: flex;
-  flex-direction: column;
-  width: 1920px;
-  height: 1080px;
-  transform-origin: top left;
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 8px 10px;
-  gap: 6px;
+:root{
+  --bg:#F7F5F2; --panel:#FFFFFF; --panel-2:#F2EFE9;
+  --line:#E9E5DE;
+  --taupe:#ACA199; --taupe-dim:#8C8275;
+  --text:#1A1A17; --text-dim:#6F6353;
+  --win:#4E9E6F; --cream:#2B2A27; --budget:#C9C1B5;
+  --font:'Montserrat',sans-serif;
 }
+html, body { height:100%; overflow:hidden; font-family:var(--font); background:var(--bg); color:var(--text); }
 
-/* ── HEADER ──────────────────────────────────────────────────────────── */
-.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
-.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
-.btn { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; }
-.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
-.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
-
-/* ── 3×2 gitter ─────────────────────────────────────────────────────── */
-.grid-6 {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 6px;
-  flex: 1;
-  min-height: 0;
+.page{
+  display:flex; flex-direction:column;
+  width:1920px; height:1080px;
+  transform-origin:top left; position:absolute; top:0; left:0;
+  padding:30px 36px 34px; gap:22px;
 }
+/* taupe signature bar across the very top */
+.topbar{position:absolute; top:0; left:0; right:0; height:8px; background:var(--taupe);}
 
-/* ── Chart-kort ─────────────────────────────────────────────────────── */
-.chart-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
-  padding: 8px 12px; position: relative; overflow: hidden;
-  display: flex; flex-direction: column;
-  min-height: 0;
+/* ── HEADER ── */
+.header{ display:flex; align-items:center; gap:26px; flex-shrink:0; }
+.lockup{ display:flex; flex-direction:column; gap:5px; }
+.lockup .bar{ width:54px; height:6px; background:var(--taupe); }
+.lockup .word{ font-size:20px; font-weight:800; letter-spacing:-.4px; color:var(--text); line-height:1; }
+.lockup .kick{ font-size:10px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--taupe-dim); }
+.divider{ width:1px; height:54px; background:var(--line); }
+.title-block{ display:flex; flex-direction:column; gap:4px; }
+.title-block h1{ font-size:30px; font-weight:800; letter-spacing:-.6px; color:var(--text); line-height:1; }
+.title-block .sub{ font-size:13px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--taupe); }
+.header-right{ margin-left:auto; display:flex; align-items:center; gap:30px; }
+.period{ text-align:right; }
+.period .lbl{ font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--taupe-dim); margin-bottom:4px; }
+.period .val{ font-size:26px; font-weight:800; letter-spacing:-.3px; color:var(--text); line-height:1; }
+.clock{ font-size:40px; font-weight:800; letter-spacing:-1px; color:var(--text); font-variant-numeric:tabular-nums; line-height:1; }
+.btn{ padding:9px 16px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid var(--line); background:var(--panel); color:var(--text-dim); cursor:pointer; text-decoration:none; }
+.btn:hover{ border-color:var(--taupe); color:var(--text); }
+
+/* ── 3×2 grid ── */
+.grid-6{ display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:18px; flex:1; min-height:0; }
+
+/* ── cards ── */
+.chart-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:18px 20px 14px; position:relative; overflow:hidden;
+  display:flex; flex-direction:column; min-height:0;
+  box-shadow:0 6px 20px rgba(28,28,26,.08);
+  opacity:0; animation:fadeUp .5s cubic-bezier(.2,.7,.2,1) both;
 }
-.chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
-.chart-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:3px; flex-shrink:0; }
-.legend-row { display:flex; gap:12px; margin-bottom:3px; flex-shrink:0; }
-.legend-item { display:flex; align-items:center; gap:4px; font-size:13px; color:var(--ink-3); }
-.legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.chart-wrap { flex:1; position:relative; min-height:0; }
+.chart-card:nth-child(1){animation-delay:.05s} .chart-card:nth-child(2){animation-delay:.12s}
+.chart-card:nth-child(3){animation-delay:.19s} .chart-card:nth-child(4){animation-delay:.26s}
+.chart-card:nth-child(5){animation-delay:.33s} .chart-card:nth-child(6){animation-delay:.40s}
+@keyframes fadeUp{ from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:translateY(0)} }
+.chart-card::before{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--taupe),rgba(194,180,162,.2)); }
+.card-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; flex-shrink:0; }
+.chart-title{ font-size:16px; font-weight:800; letter-spacing:.3px; color:var(--text); }
+.chart-title small{ display:block; font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--taupe-dim); margin-top:3px; }
+.legend-row{ display:flex; gap:14px; flex-shrink:0; }
+.legend-item{ display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--text-dim); }
+.legend-dot{ width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+.chart-wrap{ flex:1; position:relative; min-height:0; margin-top:6px; }
 </style>
 </head>
 <body>
 <div class="page">
+  <div class="topbar"></div>
 
   <!-- HEADER -->
   <div class="header">
-    <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
-    <div class="header-icon">📊</div>
-    <h1>Department Performance — Indeværende måned</h1>
-    <span class="header-sub" id="lblPeriod"></span>
+    <div class="lockup">
+      <div class="bar"></div>
+      <div class="word">JP|Politiken</div>
+      <div class="kick">Business Media</div>
+    </div>
+    <div class="divider"></div>
+    <div class="title-block">
+      <h1>Department Performance</h1>
+      <div class="sub">Indeværende måned</div>
+    </div>
+    <div class="header-right">
+      <div class="period">
+        <div class="lbl">Periode</div>
+        <div class="val" id="lblPeriod">—</div>
+      </div>
+      <div class="clock" id="clock">--:--</div>
+      <a href="/category/rotation-dashboards" class="btn" title="Tilbage">← Tilbage</a>
+    </div>
   </div>
 
   <!-- 6 chart-paneler -->
   <div class="grid-6">
 
     <div class="chart-card">
-      <div class="chart-title">Monitor Abonnement — Budget vs. tilvækst</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">Monitor<small>Abonnement · budget vs. tilvækst</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartMonitor"></canvas></div>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title">Watch Abonnement — Budget vs. tilvækst</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">Watch<small>Abonnement · budget vs. tilvækst</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartWatch"></canvas></div>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title">FINANS Abonnement — Budget vs. tilvækst</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Tilvækst</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">FINANS<small>Abonnement · budget vs. tilvækst</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartFinans"></canvas></div>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title">Banner — Budget vs. omsætning</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">Banner<small>Budget vs. omsætning</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartBanner"></canvas></div>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title">Job — Budget vs. omsætning</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">Job<small>Budget vs. omsætning</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartJob"></canvas></div>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title">MarketWire — Omsætning vs. budget</div>
-      <div class="legend-row">
-        <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+      <div class="card-head">
+        <div class="chart-title">MarketWire<small>Omsætning vs. budget</small></div>
+        <div class="legend-row">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--win)"></div>Over budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--cream)"></div>Under</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--budget)"></div>Budget</div>
+        </div>
       </div>
       <div class="chart-wrap"><canvas id="chartMW"></canvas></div>
     </div>
@@ -130,67 +178,53 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 <script>
 Chart.register(ChartDataLabels);
 const charts = {};
+const WIN='#4E9E6F', CREAM='#2B2A27', BUDGET='#C9C1B5';
 
-function fmt(v) {
-  if (v == null) return '—';
-  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' kr.';
-}
-function fmtAxis(v) {
-  const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+'mio.';
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.';
-  return v;
-}
-function fmtLabel(v) {
-  if (!v) return '';
-  const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:2})+'mio.';
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.';
-  return fmt(v);
-}
+function fmt(v){ if(v==null) return '—'; return new Intl.NumberFormat('da-DK',{maximumFractionDigits:0}).format(v)+' kr.'; }
+function fmtAxis(v){ const a=Math.abs(v); if(a>=1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+'mio.'; if(a>=1000) return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.'; return v; }
+function fmtLabel(v){ if(!v) return ''; const a=Math.abs(v); if(a>=1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:2})+'mio.'; if(a>=1000) return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.'; return fmt(v); }
 
-function buildHBar(id, rows, labelKey, val1Key, val2Key) {
+function buildHBar(id, rows, labelKey, val1Key, val2Key){
   const ctx = document.getElementById(id).getContext('2d');
   if (charts[id]) charts[id].destroy();
+  // actual bar lights up green when it meets/beats its budget — motivation
+  const actualColors = rows.map(r => (Number(r[val1Key]||0) >= Number(r[val2Key]||0) && Number(r[val2Key]||0) > 0) ? WIN : CREAM);
   charts[id] = new Chart(ctx, {
-    type: 'bar',
-    data: {
+    type:'bar',
+    data:{
       labels: rows.map(r => r[labelKey]),
-      datasets: [
-        { label:'Tilvækst/Omsætning', data:rows.map(r=>r[val1Key]||0), backgroundColor:'#2E7A64', borderRadius:2 },
-        { label:'Budget',             data:rows.map(r=>r[val2Key]||0), backgroundColor:'#B4C8C0', borderRadius:2 },
+      datasets:[
+        { label:'Tilvækst/Omsætning', data:rows.map(r=>r[val1Key]||0), backgroundColor:actualColors, borderRadius:4, barPercentage:0.86, categoryPercentage:0.9 },
+        { label:'Budget',             data:rows.map(r=>r[val2Key]||0), backgroundColor:BUDGET,      borderRadius:4, barPercentage:0.86, categoryPercentage:0.9 },
       ]
     },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display:false },
-        tooltip: { callbacks: { label: c => ' ' + fmt(c.raw) } },
-        datalabels: {
-          anchor:'end', align:'right', offset:2,
-          font:{ family:'Montserrat', size:14, weight:'600' },
-          color:'#3D5249',
-          formatter: v => fmtLabel(v),
-          clip:false,
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      animation:{ duration:900, easing:'easeOutQuart' },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } },
+        datalabels:{
+          anchor:'end', align:'right', offset:4,
+          font:{ family:'Montserrat', size:16, weight:'700' },
+          color:(c)=> c.datasetIndex===0 ? '#1A1A17' : '#8C8275',
+          formatter:v=>fmtLabel(v), clip:false,
         }
       },
-      layout:{ padding:{ right:90 } },
-      scales: {
-        x:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
-        y:{ ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} }
+      layout:{ padding:{ right:104 } },
+      scales:{
+        x:{ ticks:{ font:{family:'Montserrat',size:13,weight:'600'}, color:'#8C8275', callback:fmtAxis }, grid:{ color:'rgba(0,0,0,.06)' }, border:{display:false} },
+        y:{ ticks:{ font:{family:'Montserrat',size:14,weight:'700'}, color:'#1A1A17' }, grid:{ display:false }, border:{display:false} }
       }
     }
   });
 }
 
-async function loadData() {
+async function loadData(){
   const r = await fetch('/tools/rotation/department-performance-data');
   if (!r.ok) return;
   const d = await r.json();
-
-  document.getElementById('lblPeriod').textContent = d.maaned_label || '';
-
+  document.getElementById('lblPeriod').textContent = (d.maaned_label || '—').toUpperCase();
   buildHBar('chartMonitor', d.monitor_rows    || [], 'team',  'netto',   'budget');
   buildHBar('chartWatch',   d.watch_rows      || [], 'team',  'netto',   'budget');
   buildHBar('chartFinans',  d.finans_rows     || [], 'team',  'netto',   'budget');
@@ -199,12 +233,18 @@ async function loadData() {
   buildHBar('chartMW',      d.marketwire_rows || [], 'brand', 'revenue', 'budget');
 }
 
+function tickClock(){
+  const n=new Date();
+  document.getElementById('clock').textContent =
+    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+tickClock(); setInterval(tickClock, 10000);
+
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
 </script>
 <script>
-/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9).
-   Gør visningen uafhængig af remotens opløsning og Windows-skalering. */
+/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9). */
 (function () {
   var stage = document.querySelector('.page');
   if (!stage) return;

@@ -11,7 +11,7 @@
     .back-btn:hover{border-color:var(--green);color:var(--green)}
     .page-header h1{margin:0;font-size:1.5rem}
     .page-header .sub{margin:.25rem 0 0;color:var(--text-muted);font-size:.875rem}
-    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.5rem}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.5rem;box-shadow:var(--shadow-card)}
     .card-title{font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin:0 0 1rem 0}
     .row{display:grid;grid-template-columns:1fr 1fr 120px;gap:1rem;align-items:end}
     .form-field label{display:block;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px}
@@ -23,20 +23,20 @@
     .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
     .btn.primary:hover{background:var(--green-mid,#1a7a4a);color:#fff}
     .perm-table{width:100%;border-collapse:collapse;font-size:.875rem}
-    .perm-table th{background:var(--bg);color:var(--text-muted);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:.625rem 1rem;text-align:left;border-bottom:1px solid var(--border)}
+    .perm-table th{background:var(--green);color:#fff;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:.7rem 1rem;text-align:left}
     .perm-table td{padding:.75rem 1rem;border-bottom:1px solid var(--border);vertical-align:middle}
     .perm-table tr:last-child td{border-bottom:none}
-    .perm-table .cat-header td{background:var(--bg);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);padding:.625rem 1rem}
+    .perm-table .cat-header td{background:var(--taupe-light);font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--taupe-dark);padding:.625rem 1rem}
     .perm-select{padding:.35rem .6rem;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;font-size:.8125rem;background:var(--surface);min-width:140px}
     .perm-select:focus{outline:none;border-color:var(--green)}
     .perm-select.access-write{border-color:var(--green);background:#E6F4ED}
-    .perm-select.access-read{border-color:#5B9BD5;background:#EAF3FB}
+    .perm-select.access-read{border-color:var(--taupe-dark);background:var(--taupe-light)}
     .perm-select.access-none{border-color:#B32E45;background:#FDE8EC}
-    .badge-default{font-size:.6875rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#EEF1F4;color:var(--text-muted);display:inline-block}
+    .badge-default{font-size:.6875rem;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--taupe-light);color:var(--taupe-dark);display:inline-block}
     .badge-min-role{font-size:.6875rem;color:var(--text-muted)}
     .notif{padding:.75rem 1rem;border-radius:var(--r-sm);margin-bottom:1rem;font-size:.875rem}
-    .notif-success{background:#E6F4ED;color:var(--green);border:1px solid var(--green)}
-    .notif-error{background:#FDE8EC;color:#B32E45;border:1px solid #B32E45}
+    .notif-success{background:var(--win-light);color:var(--win);border:1px solid #BFE0CD}
+    .notif-error{background:var(--danger-light);color:var(--danger);border:1px solid #F2C9D2}
     .helptext{font-size:.75rem;color:var(--text-muted);margin-top:.5rem;line-height:1.5}
   </style>
   <script>
@@ -56,8 +56,24 @@
   {% with active_url='/admin/roles' %}{% include "_sidebar.html" %}{% endwith %}
 
   <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right"><a href="/admin/roles" class="tb-btn">← Alle roller</a></div>
+    </div>
     <div style="flex:1;min-height:0;overflow-y:auto;">
     <div style="padding:2rem;max-width:1100px;">
+
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+        <a href="/admin/roles" class="bc-link">Rollestyring</a><span class="bc-sep">/</span>
+        <span class="bc-current">{{ target_role.label }}</span>
+      </div>
 
       <div class="page-header">
         <a href="/admin/roles" class="back-btn">← Alle roller</a>

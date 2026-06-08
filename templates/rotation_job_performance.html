@@ -21,15 +21,27 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   top: 0;
   left: 0;
   padding: 8px 10px;
-  gap: 6px;
+  gap: 22px;
 }
 
 /* ── HEADER ──────────────────────────────────────────────────────────── */
-.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
-.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
-.btn { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; }
-.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
-.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+.topbar{position:absolute;top:0;left:0;right:0;height:6px;background:var(--taupe);z-index:5}
+.header { display:flex; align-items:center; gap:18px; flex-shrink:0; }
+.lockup{ display:flex; flex-direction:column; gap:3px; }
+.lockup .lk-bar{ width:42px; height:5px; background:var(--taupe); }
+.lockup .lk-word{ font-size:16px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1; }
+.lockup .lk-kick{ font-size:8px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-3); }
+.hdr-divider{ width:1px; height:38px; background:var(--border); }
+.title-block{ display:flex; flex-direction:column; gap:2px; }
+.title-block h1{ font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--ink); line-height:1; }
+.title-block .sub{ font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--taupe-dark); }
+.header-right{ margin-left:auto; display:flex; align-items:center; gap:20px; }
+.period{ text-align:right; }
+.period .lbl{ font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--ink-3); margin-bottom:2px; }
+.period .val{ font-size:18px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1; }
+.clock{ font-size:26px; font-weight:800; letter-spacing:-.5px; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1; }
+.btn { padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid var(--border); background:var(--surface); color:var(--ink-2); cursor:pointer; text-decoration:none; }
+.btn:hover{ border-color:var(--taupe); color:var(--ink); }
 
 /* ── INDHOLD ─────────────────────────────────────────────────────────── */
 .content {
@@ -100,13 +112,25 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 </head>
 <body>
 <div class="page">
+  <div class="topbar"></div>
 
   <!-- HEADER -->
   <div class="header">
-    <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
-    <div class="header-icon">💼</div>
-    <h1>Job Performance</h1>
-    <span class="header-sub" id="lblPeriod"></span>
+    <div class="lockup">
+      <div class="lk-bar"></div>
+      <div class="lk-word">JP|Politiken</div>
+      <div class="lk-kick">Business Media</div>
+    </div>
+    <div class="hdr-divider"></div>
+    <div class="title-block">
+      <h1>Job Performance</h1>
+      <div class="sub">Indeværende måned</div>
+    </div>
+    <div class="header-right">
+      <div class="period"><div class="lbl">Periode</div><div class="val" id="lblPeriod">—</div></div>
+      <div class="clock" id="clock">--:--</div>
+      <a href="/category/rotation-dashboards" class="btn" title="Tilbage">← Tilbage</a>
+    </div>
   </div>
 
   <!-- INDHOLD -->
@@ -183,8 +207,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
         <div class="chart-card">
           <div class="chart-title">Job — Omsætning vs. budget</div>
           <div class="legend-row">
-            <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Omsætning</div>
-            <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#2B2A27"></div>Omsætning</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#C9C1B5"></div>Budget</div>
           </div>
           <div class="chart-wrap"><canvas id="chartJob"></canvas></div>
         </div>
@@ -233,8 +257,8 @@ function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…
 
 // Fast farve pr. hovedbrand (samme farve i måneds- og kvartals-chartet)
 const BRAND_COLORS = {
-  'Watch DK':'#2E7A64', 'FINANS DK':'#D4A95C', 'Monitor':'#81A4CD',
-  'Watch Int':'#E07A5F', 'Marketwire':'#8FCBB4', 'Øvrige':'#B4C8C0'
+  'Watch DK':'#2B2A27', 'FINANS DK':'#A98545', 'Monitor':'#5E7385',
+  'Watch Int':'#B06A52', 'Marketwire':'#7E8F6F', 'Øvrige':'#C9C1B5'
 };
 
 function buildStackedBar(id, payload) {
@@ -260,7 +284,7 @@ function buildStackedBar(id, payload) {
   const datasets = series.map((s, di) => ({
     label: s.brand,
     data: s.data || [],
-    backgroundColor: BRAND_COLORS[s.brand] || '#B4C8C0',
+    backgroundColor: BRAND_COLORS[s.brand] || '#C9C1B5',
     borderRadius: 2,
     stack: 'total',
     datalabels: {
@@ -281,7 +305,7 @@ function buildStackedBar(id, payload) {
       font:{family:'Montserrat',size:12,weight:'700'},
       color: ctx => {
         const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? '#1F3A30' : '#fff';
+        return (smallCol[i] || v < maxTotal * THIN_SEG) ? '#2B2A27' : '#fff';
       },
       textStrokeColor:'rgba(255,255,255,0.9)',
       textStrokeWidth: ctx => {
@@ -304,7 +328,7 @@ function buildStackedBar(id, payload) {
       },
       scales:{
         x:{ stacked:true, ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} },
-        y:{ stacked:true, ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} }
+        y:{ stacked:true, ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'} }
       }
     }
   });
@@ -318,7 +342,7 @@ function buildVBar(id, rows, labelKey, revenueKey) {
     data: {
       labels: rows.map(r => r[labelKey] + (r.pipeline ? ' (' + r.pipeline + ')' : '')),
       datasets: [
-        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2E7A64', borderRadius:2 },
+        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2B2A27', borderRadius:2 },
       ]
     },
     options: {
@@ -329,7 +353,7 @@ function buildVBar(id, rows, labelKey, revenueKey) {
         datalabels:{
           anchor:'end', align:'end', offset:1,
           font:{family:'Montserrat',size:14,weight:'600'},
-          color:'#3D5249',
+          color:'#4D4942',
           formatter: v => fmtLabel(v),
           clip:false,
         }
@@ -337,7 +361,7 @@ function buildVBar(id, rows, labelKey, revenueKey) {
       layout:{ padding:{ top:18 } },
       scales:{
         x:{ ticks:{font:{family:'Montserrat',size:12},maxRotation:25}, grid:{display:false} },
-        y:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} }
+        y:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'} }
       }
     }
   });
@@ -351,8 +375,8 @@ function buildHBar(id, rows, labelKey, revenueKey, budgetKey) {
     data: {
       labels: rows.map(r => r[labelKey]),
       datasets: [
-        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2E7A64', borderRadius:2 },
-        { label:'Budget',    data:rows.map(r=>r[budgetKey]||0),  backgroundColor:'#B4C8C0', borderRadius:2 },
+        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2B2A27', borderRadius:2 },
+        { label:'Budget',    data:rows.map(r=>r[budgetKey]||0),  backgroundColor:'#C9C1B5', borderRadius:2 },
       ]
     },
     options: {
@@ -364,14 +388,14 @@ function buildHBar(id, rows, labelKey, revenueKey, budgetKey) {
         datalabels:{
           anchor:'end', align:'right', offset:2,
           font:{family:'Montserrat',size:14,weight:'600'},
-          color:'#3D5249',
+          color:'#4D4942',
           formatter: v => fmtLabel(v),
           clip:false,
         }
       },
       layout:{ padding:{ right:70 } },
       scales:{
-        x:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E4EDEA'} },
+        x:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'} },
         y:{ ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} }
       }
     }
@@ -439,6 +463,9 @@ setInterval(loadData, 5 * 60 * 1000);
   fit();
   window.addEventListener('resize', fit);
 })();
+</script>
+<script>
+(function(){function tc(){var n=new Date();var e=document.getElementById('clock');if(e)e.textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}tc();setInterval(tc,10000);})();
 </script>
 </body>
 </html>

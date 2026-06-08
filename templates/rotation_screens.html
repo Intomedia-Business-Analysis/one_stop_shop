@@ -6,7 +6,7 @@
   <title>Skærm-konfiguration — Intomedia Hub</title>
   <link rel="stylesheet" href="/static/hub.css">
   <style>
-    body { padding: 32px; max-width: 900px; margin: 0 auto; }
+    .config-shell { /* layout handled by .shell + .content-area */ }
 
     h1 { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
     .subtitle { font-size: 13px; color: var(--ink-muted); margin-bottom: 32px; }
@@ -16,7 +16,8 @@
     .screen-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--r);
+      box-shadow: var(--shadow-card);
       padding: 16px 20px;
       display: flex;
       align-items: center;
@@ -38,8 +39,8 @@
     .btn-primary:hover { opacity: 0.88; }
     .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--ink); }
     .btn-secondary:hover { background: var(--bg); }
-    .btn-danger { background: #fee2e2; color: #dc2626; }
-    .btn-danger:hover { background: #fecaca; }
+    .btn-danger { background: var(--danger-light); color: var(--danger); }
+    .btn-danger:hover { background: #FBDCE3; }
 
     /* Modal */
     .modal-overlay {
@@ -85,7 +86,7 @@
       color: var(--ink);
     }
     .dashboard-option input[type=checkbox] { accent-color: var(--green); width: 15px; height: 15px; }
-    .dashboard-option.selected { border-color: var(--green); background: #f0fdf4; }
+    .dashboard-option.selected { border-color: var(--green); background: var(--green-light); }
 
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
 
@@ -95,8 +96,27 @@
   </style>
 </head>
 <body>
+<div class="shell">
+  {% with active_url='/category/rotation-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right"><a href="/category/rotation-dashboards" class="tb-btn">← Rotation Dashboards</a></div>
+    </div>
+    <div class="content-area">
+      <div class="tool-wrap" style="margin:0">
 
-  <a href="/category/rotation-dashboards" class="btn-back">← Tilbage</a>
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+        <a href="/category/rotation-dashboards" class="bc-link">Rotation Dashboards</a><span class="bc-sep">/</span>
+        <span class="bc-current">Skærm-konfiguration</span>
+      </div>
 
   <h1>Skærm-konfiguration</h1>
   <p class="subtitle">Opret og administrer faste skærm-indstillinger til rotations-dashboards.</p>
@@ -124,6 +144,11 @@
   </div>
 
   <button class="btn btn-primary" onclick="openModal()">+ Ny skærm</button>
+
+      </div>
+    </div>
+  </div>
+</div>
 
   <!-- Modal -->
   <div class="modal-overlay" id="modalOverlay">

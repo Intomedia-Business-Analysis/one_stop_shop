@@ -22,15 +22,27 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   top: 0;
   left: 0;
   padding: 8px 10px;
-  gap: 6px;
+  gap: 22px;
 }
 
-/* ── HEADER ──────────────────────────────────────────────────────────── */
-.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
-.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
-.btn { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; }
-.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
-.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+/* ── HEADER (JP|Politiken lockup — fælles rotation-design) ───────────── */
+.topbar{position:absolute;top:0;left:0;right:0;height:6px;background:var(--taupe);z-index:5}
+.header { display:flex; align-items:center; gap:18px; flex-shrink:0; }
+.lockup{ display:flex; flex-direction:column; gap:3px; }
+.lockup .lk-bar{ width:42px; height:5px; background:var(--taupe); }
+.lockup .lk-word{ font-size:16px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1; }
+.lockup .lk-kick{ font-size:8px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-3); }
+.hdr-divider{ width:1px; height:38px; background:var(--border); }
+.title-block{ display:flex; flex-direction:column; gap:2px; }
+.title-block h1{ font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--ink); line-height:1; }
+.title-block .sub{ font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--taupe-dark); }
+.header-right{ margin-left:auto; display:flex; align-items:center; gap:20px; }
+.period{ text-align:right; }
+.period .lbl{ font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--ink-3); margin-bottom:2px; }
+.period .val{ font-size:18px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1; }
+.clock{ font-size:26px; font-weight:800; letter-spacing:-.5px; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1; }
+.btn { padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid var(--border); background:var(--surface); color:var(--ink-2); cursor:pointer; text-decoration:none; }
+.btn:hover{ border-color:var(--taupe); color:var(--ink); }
 
 /* ── INDHOLD: venstre + højre kolonne ───────────────────────────────── */
 .content {
@@ -126,7 +138,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .bullet-row:last-child { border-bottom: none; }
 .bullet-name { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bullet-track {
-  position: relative; height: 16px; background: #EDF2F0; border-radius: 8px; overflow: hidden;
+  position: relative; height: 16px; background: #ECE8E2; border-radius: 8px; overflow: hidden;
 }
 .bullet-fill {
   position: absolute; top: 0; left: 0; bottom: 0; border-radius: 8px;
@@ -135,14 +147,14 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 /* 100% (budget) markør */
 .bullet-target {
   position: absolute; top: -2px; bottom: -2px;
-  width: 2px; background: #1F3D33; left: 66.66%;  /* 100/150 = 66.66% i 150%-skala */
+  width: 2px; background: #2B2A27; left: 66.66%;  /* 100/150 = 66.66% i 150%-skala */
   border-radius: 1px;
   z-index: 2;
 }
 /* Negativ tilvækst: rødt skraveret venstre-marker */
 .bullet-negative {
   position: absolute; top: 0; left: 0; bottom: 0; width: 6px;
-  background: repeating-linear-gradient(45deg, #C25450 0 4px, #A73E3A 4px 8px);
+  background: repeating-linear-gradient(45deg, #B0524A 0 4px, #8F3F39 4px 8px);
   border-radius: 8px 0 0 8px;
 }
 .bullet-amount {
@@ -154,14 +166,14 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   z-index: 3;
 }
 .bullet-amount.outside { color: var(--ink-2); text-shadow: none; padding-left: 4px; }
-.bullet-amount.negative { color: #A73E3A; text-shadow: none; padding-left: 12px; }
+.bullet-amount.negative { color: #8F3F39; text-shadow: none; padding-left: 12px; }
 .bullet-idx {
   text-align: right; font-variant-numeric: tabular-nums;
   font-size: 14px; font-weight: 700;
 }
-.idx-good { color: #2E7A64; }
-.idx-mid  { color: #B58A2E; }
-.idx-low  { color: #B23A48; }
+.idx-good { color: #3F6B4E; }
+.idx-mid  { color: #C39A4A; }
+.idx-low  { color: #B0524A; }
 .idx-na   { color: var(--ink-4); font-style: italic; font-weight: 600; }
 
 /* Index-kort */
@@ -176,18 +188,30 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .bullet-legend { display:flex; gap:14px; margin-bottom:5px; flex-shrink:0; font-size:11px; color:var(--ink-3); }
 .bullet-legend-item { display:flex; align-items:center; gap:5px; }
 .bullet-legend-dot { width:10px; height:10px; border-radius:50%; }
-.bullet-legend-bar { width:18px; height:3px; background:#1F3D33; border-radius:1px; }
+.bullet-legend-bar { width:18px; height:3px; background:#2B2A27; border-radius:1px; }
 </style>
 </head>
 <body>
 <div class="page">
+  <div class="topbar"></div>
 
   <!-- HEADER -->
   <div class="header">
-    <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
-    <div class="header-icon">📊</div>
-    <h1>Sales Performance — Monitor, Watch &amp; FINANS</h1>
-    <span class="header-sub" id="lblPeriod"></span>
+    <div class="lockup">
+      <div class="lk-bar"></div>
+      <div class="lk-word">JP|Politiken</div>
+      <div class="lk-kick">Business Media</div>
+    </div>
+    <div class="hdr-divider"></div>
+    <div class="title-block">
+      <h1>Sales Performance</h1>
+      <div class="sub">Monitor, Watch, Marketwire &amp; FINANS</div>
+    </div>
+    <div class="header-right">
+      <div class="period"><div class="lbl">Periode</div><div class="val" id="lblPeriod">—</div></div>
+      <div class="clock" id="clock">--:--</div>
+      <a href="/category/rotation-dashboards" class="btn" title="Tilbage">← Tilbage</a>
+    </div>
   </div>
 
   <!-- INDHOLD -->
@@ -218,8 +242,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       <div class="chart-card">
         <div class="chart-title" id="lblKvartal">Tilvækst vs. budget — Indeværende kvartal</div>
         <div class="legend-row">
-          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Net Revenue, Business</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2B2A27"></div>Net Revenue, Business</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C9C1B5"></div>Budget</div>
         </div>
         <div class="chart-wrap"><canvas id="chartKvartal"></canvas></div>
       </div>
@@ -227,8 +251,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       <div class="chart-card">
         <div class="chart-title" id="lblMaaned">Tilvækst vs. budget — Indeværende måned</div>
         <div class="legend-row">
-          <div class="legend-item"><div class="legend-dot" style="background:#2E7A64"></div>Net Revenue, Business</div>
-          <div class="legend-item"><div class="legend-dot" style="background:#B4C8C0"></div>Budget</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2B2A27"></div>Net Revenue, Business</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#C9C1B5"></div>Budget</div>
         </div>
         <div class="chart-wrap"><canvas id="chartMaaned"></canvas></div>
       </div>
@@ -271,9 +295,9 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       <div class="index-card">
         <div class="card-title">Tilvækst pr. sælger — index (måned)</div>
         <div class="bullet-legend">
-          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#2E7A64"></div>≥ 100 %</div>
-          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#D4A547"></div>70–99 %</div>
-          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#C25450"></div>&lt; 70 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#3F6B4E"></div>≥ 100 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#C39A4A"></div>70–99 %</div>
+          <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#B0524A"></div>&lt; 70 %</div>
           <div class="bullet-legend-item"><div class="bullet-legend-bar"></div>Budget (100 %)</div>
         </div>
         <div class="index-scroll">
@@ -330,8 +354,8 @@ function buildChart(id, rows, labelKey, existing) {
     data: {
       labels: rows.map(r => r[labelKey]),
       datasets: [
-        { label:'Net Revenue, Business', data:rows.map(r=>r.netto??r.revenue??0), backgroundColor:'#2E7A64', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
-        { label:'Budget',               data:rows.map(r=>r.budget??0),            backgroundColor:'#B4C8C0', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
+        { label:'Net Revenue, Business', data:rows.map(r=>r.netto??r.revenue??0), backgroundColor:'#2B2A27', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
+        { label:'Budget',               data:rows.map(r=>r.budget??0),            backgroundColor:'#C9C1B5', borderRadius:3, barPercentage:0.92, categoryPercentage:0.88 },
       ]
     },
     options: {
@@ -342,15 +366,15 @@ function buildChart(id, rows, labelKey, existing) {
         datalabels: {
           anchor:'end', align:'end', offset:2,
           font:{ family:'Montserrat', size:13, weight:'700' },
-          color:'#1F3D33',
+          color:'#2B2A27',
           formatter: v => fmtLabel(v),
           clip:false,
         }
       },
       layout:{ padding:{ top:26 } },
       scales: {
-        x:{ ticks:{ font:{ family:'Montserrat', size:13, weight:'600' }, color:'#1F3D33', maxRotation:25, autoSkip:false }, grid:{ display:false } },
-        y:{ ticks:{ font:{ family:'Montserrat', size:12, weight:'600' }, color:'#3D5249', callback:fmtAxis }, grid:{ color:'#E4EDEA' } }
+        x:{ ticks:{ font:{ family:'Montserrat', size:13, weight:'600' }, color:'#2B2A27', maxRotation:25, autoSkip:false }, grid:{ display:false } },
+        y:{ ticks:{ font:{ family:'Montserrat', size:12, weight:'600' }, color:'#4D4942', callback:fmtAxis }, grid:{ color:'#E9E5DE' } }
       }
     }
   });
@@ -407,10 +431,10 @@ function idxClass(v) {
   return 'idx-low';
 }
 function idxFill(v) {
-  if (v == null) return '#C9D2CD';
-  if (v >= 100) return '#2E7A64';
-  if (v >= 70)  return '#D4A547';
-  return '#C25450';
+  if (v == null) return '#CFC8BD';
+  if (v >= 100) return '#3F6B4E';
+  if (v >= 70)  return '#C39A4A';
+  return '#B0524A';
 }
 function renderIndexBullets(rows) {
   const host = document.getElementById('tblIndex');
@@ -466,6 +490,9 @@ function renderIndexBullets(rows) {
       </div>`;
   }).join('');
 }
+
+function tickClock(){const n=new Date();document.getElementById('clock').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+tickClock(); setInterval(tickClock, 10000);
 
 loadData();
 setInterval(loadData, 5*60*1000);
