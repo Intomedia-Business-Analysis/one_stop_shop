@@ -143,12 +143,14 @@
             <button class="toggle-btn active" id="btn-alle" onclick="setMine(false)">Alle</button>
             <button class="toggle-btn" id="btn-mine" onclick="setMine(true)">Kun mine</button>
           </div>
+          <!-- MIDLERTIDIGT SKJULT (udløbne klippekort) — fjern denne kommentar-blok for at vise igen
           <div class="filter-sep"></div>
           <span class="filter-label">Status</span>
           <div class="toggle-group">
             <button class="toggle-btn active" id="btn-aktive" onclick="setStatus('aktive')">Aktive</button>
             <button class="toggle-btn" id="btn-udloebne" onclick="setStatus('udloebne')">Udløbne</button>
           </div>
+          SLUT SKJULT (udløbne klippekort) -->
           <button class="refresh-btn" onclick="loadAll()">
             <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
             Opdater
@@ -231,7 +233,7 @@
           </div>
         </div>
 
-        <!-- Klippekort økonomi -->
+        <!-- MIDLERTIDIGT SKJULT (klippekort økonomi) — fjern denne kommentar-blok for at vise igen
         <div class="dash-card">
           <div class="dash-card-title">
             <span>Klippekort Økonomi — omsætning pr. site</span>
@@ -255,6 +257,7 @@
             </table>
           </div>
         </div>
+        SLUT SKJULT (klippekort økonomi) -->
 
       </div>
     </div>
@@ -434,6 +437,7 @@ async function loadOverblik(){
 }
 async function loadOek(){
   const tb=document.getElementById('oekonomi-tbody');
+  if(!tb) return;   // sektion midlertidigt skjult (se HTML) — undgå crash
   try{
     const res=await fetch('/tools/klippekort/oekonomi');
     if(!res.ok) throw new Error(await res.text());
