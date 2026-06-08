@@ -4,8 +4,12 @@ JP/POL Advertising-kontoen har sit eget API-token og sit eget custom-felt-key
 for used_clip_cards. Værdier matcher pipedrive_sync/config.py['jppol_advertising']
 så de holdes i sync med det projekt der trækker data tilbage i PipedriveDeals.
 
-Flow: toolet registrerer et forbrug lokalt og kalder update_used_clip_cards med
-det nye kumulative antal brugte klip. Næste sync henter feltet ned i tabellen.
+Flow: toolet registrerer et forbrug lokalt og kalder add_used_clip_cards med
+delta'en (antal klip lige registreret/slettet). Funktionen læser Pipedrives
+nuværende used_clip_cards live og lægger delta oveni — så toolet aldrig
+overskriver klip det ikke selv har registreret (fx 4 klip sat direkte i
+Pipedrive). Næste sync henter det opdaterede felt ned i PipedriveDeals, som er
+den autoritative kilde til 'Brugt' i dashboardet.
 """
 from __future__ import annotations
 
@@ -85,6 +89,62 @@ def fetch_org_owners(needed_ids) -> dict:
         else:
             break
     return out
+
+
+def fetch_used_clip_cards(pd_deal_id: int) -> int | None:
+    """Hent den nuværende 'klip brugt' (used_clip_cards) LIVE fra Pipedrive.
+
+    Bruges som grundtal til additiv opdatering, så toolet lægger sin delta oveni
+    Pipedrives autoritative tal i stedet for at overskrive det. Læser live (ikke
+    fra synkede PipedriveDeals), så på hinanden følgende registreringer akkumulerer
+    korrekt uafhængigt af sync-intervallet. Returnerer antallet, 0 hvis feltet er
+    tomt, eller None hvis token mangler / dealen ikke kunne læses.
+    """
+    token = _get_token()
+    if not token:
+        return None
+    url = f"{BASE_URL}/deals/{int(pd_deal_id)}"
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = requests.get(url, params={"api_token": token}, timeout=30)
+            if resp.status_code == 429:
+                time.sleep(int(resp.headers.get("Retry-After", 5)))
+                continue
+            if resp.status_code >= 400:
+                return None
+            body = resp.json()
+            if not body.get("success"):
+                return None
+            raw = (body.get("data") or {}).get(USED_CLIP_FIELD_KEY)
+            if raw is None or str(raw).strip() == "":
+                return 0
+            try:
+                return int(float(str(raw)))
+            except (TypeError, ValueError):
+                return 0
+        except requests.RequestException:
+            time.sleep(1)
+    return None
+
+
+def add_used_clip_cards(pd_deal_id: int, delta: int) -> dict:
+    """Læg delta til Pipedrives nuværende used_clip_cards (additivt, bunder ved 0).
+
+    delta kan være negativ (fx ved sletning af et job). Læser det aktuelle tal
+    live fra Pipedrive og pusher current + delta, så toolet aldrig overskriver
+    eksisterende klip det ikke selv har registreret. Kaster IKKE — returnerer
+    {ok: False, reason} ved manglende token eller hvis tallet ikke kunne læses.
+    """
+    current = fetch_used_clip_cards(pd_deal_id)
+    if current is None:
+        return {
+            "ok": False,
+            "reason": f"Kunne ikke læse nuværende 'klip brugt' fra Pipedrive "
+                      f"(token mangler eller deal utilgængelig) — klip blev logget "
+                      f"lokalt, men Pipedrive blev ikke opdateret.",
+        }
+    new_used = max(0, current + int(delta))
+    return update_used_clip_cards(pd_deal_id, new_used)
 
 
 def update_used_clip_cards(pd_deal_id: int, new_used: int) -> dict:

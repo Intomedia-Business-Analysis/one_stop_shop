@@ -18,7 +18,7 @@ from moduler.modul_klippekort.queries import (
     init_klippekort_db,
     refresh_org_owners,
 )
-from moduler.modul_klippekort.pipedrive_api import update_used_clip_cards
+from moduler.modul_klippekort.pipedrive_api import add_used_clip_cards
 
 router = APIRouter(prefix="/tools/klippekort", tags=["Klippekort"])
 templates = Jinja2Templates(directory="templates")
@@ -139,7 +139,9 @@ async def klippekort_slet_job(payload: dict = Body(...), user=Depends(get_curren
     if not res.get("ok"):
         raise HTTPException(400, res.get("error", "Kunne ikke slette job"))
 
-    pd = update_used_clip_cards(res["pd_deal_id"], res["brugt"])
+    # Additivt: træk de fjernede klip fra Pipedrives autoritative used_clip_cards
+    # (delta er negativ), så vi ikke overskriver klip toolet ikke selv har registreret.
+    pd = add_used_clip_cards(res["pd_deal_id"], res["delta"])
     return JSONResponse({"ok": True, "brugt": res["brugt"], "pipedrive": pd})
 
 
@@ -180,7 +182,9 @@ async def klippekort_opret_job(payload: dict = Body(...), user=Depends(get_curre
         if not res.get("ok"):
             raise HTTPException(400, res.get("error", "Kunne ikke registrere job"))
 
-        pd = update_used_clip_cards(pd_deal_id, res["brugt"])
+        # Additivt: læg de nyligt registrerede klip oveni Pipedrives autoritative
+        # used_clip_cards (delta = +klip) i stedet for at overskrive med toolets sum.
+        pd = add_used_clip_cards(pd_deal_id, res["delta"])
         return JSONResponse({
             "ok":        True,
             "brugt":     res["brugt"],
