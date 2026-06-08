@@ -12,7 +12,7 @@
 .right-col{display:flex;flex-direction:column;gap:20px}
 @media(max-width:960px){.dash-main-grid{grid-template-columns:1fr}}
 /* Kort */
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
 /* Toggle */
@@ -24,7 +24,7 @@
 .tc-label{font-size:11px;font-weight:600;color:var(--ink);text-align:right;white-space:nowrap}
 .tc-track{height:14px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
 .tc-zone{position:absolute;top:0;height:100%}
-.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#5B9BD5;z-index:2;transition:width .5s ease}
+.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:var(--green);z-index:2;transition:width .5s ease}
 .tc-bar-can{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#B32E45;opacity:.75;z-index:3;transition:width .5s ease}
 .tc-vline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.25);z-index:4}
 .tc-val{font-size:13px;font-weight:700;text-align:right;white-space:nowrap;color:var(--ink)}
@@ -185,7 +185,7 @@
                   <span id="chart-year-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
                 </div>
                 <div id="net-chart"></div>
-                <div style="margin-top:8px;padding:6px 8px;background:rgba(255,193,7,0.12);border-left:3px solid #f0a500;border-radius:3px;font-size:10px;color:var(--ink-3);line-height:1.4;">
+                <div style="margin-top:8px;padding:6px 8px;background:var(--warn-light);border-left:3px solid var(--warn);border-radius:3px;font-size:10px;color:var(--ink-3);line-height:1.4;">
                   ⚠️ <strong>Mangler korrekt data</strong> — Kundetilgang afventer integration med SORA. Tallene afspejler pt. ikke den reelle nettotilgang.
                 </div>
               </div>

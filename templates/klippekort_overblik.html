@@ -44,9 +44,9 @@
 
 /* Badge for dage til udløb */
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums}
-.pill-red{background:#FCE4E4;color:#A52222}
-.pill-amber{background:#FDF3D0;color:#856404}
-.pill-green{background:#C8E6D8;color:#0F5132}
+.pill-red{background:var(--danger-light);color:var(--danger)}
+.pill-amber{background:var(--warn-light);color:var(--warn)}
+.pill-green{background:var(--win-light);color:var(--win)}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -65,9 +65,9 @@
 .btn-primary:hover{background:var(--green-mid)}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed}
 .form-msg{margin-top:12px;font-size:12px;font-weight:600;display:none}
-.form-msg.ok{color:#0F5132;display:block}
-.form-msg.warn{color:#856404;display:block}
-.form-msg.err{color:#A52222;display:block}
+.form-msg.ok{color:var(--win);display:block}
+.form-msg.warn{color:var(--warn);display:block}
+.form-msg.err{color:var(--danger);display:block}
 .hidden{display:none}
 
 /* Eksisterende jobs i modal */
@@ -78,8 +78,8 @@
 .job-row .job-stilling{font-weight:700;color:var(--ink)}
 .job-row .job-sub{font-size:11px;color:var(--ink-4)}
 .job-row .job-pris{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-3);white-space:nowrap}
-.job-del{background:none;border:1px solid var(--border);color:#A52222;border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
-.job-del:hover{background:#FCE4E4;border-color:#A52222}
+.job-del{background:none;border:1px solid var(--border);color:var(--danger);border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
+.job-del:hover{background:var(--danger-light);border-color:var(--danger)}
 .jobs-empty{font-size:12px;color:var(--ink-4);font-style:italic;padding:4px 0}
 
 /* Multi-site vælger */
@@ -96,7 +96,7 @@
 .deal-link:hover{text-decoration:underline}
 .eff-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin:0 0 16px;cursor:pointer}
 .eff-row input{accent-color:var(--green);width:15px;height:15px;cursor:pointer}
-.badge-eff{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:#E3F0FA;color:#1A5C8A;margin-left:6px}
+.badge-eff{display:inline-block;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:var(--taupe-light);color:var(--taupe-dark);margin-left:6px}
 </style>
 </head>
 <body>

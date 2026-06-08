@@ -10,11 +10,11 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root{
-  --bg:#1A1813; --panel:#232019; --panel-2:#2A2620;
-  --line:rgba(196,184,168,.14);
-  --taupe:#C2B4A2; --taupe-dim:#8C8275;
-  --text:#F3EFE9; --text-dim:#B7AEA1;
-  --win:#74B98D; --cream:#D8CDBC; --budget:#423D33;
+  --bg:#F7F5F2; --panel:#FFFFFF; --panel-2:#F2EFE9;
+  --line:#E9E5DE;
+  --taupe:#ACA199; --taupe-dim:#8C8275;
+  --text:#1A1A17; --text-dim:#6F6353;
+  --win:#4E9E6F; --cream:#2B2A27; --budget:#C9C1B5;
   --font:'Montserrat',sans-serif;
 }
 html, body { height:100%; overflow:hidden; font-family:var(--font); background:var(--bg); color:var(--text); }
@@ -54,7 +54,7 @@ html, body { height:100%; overflow:hidden; font-family:var(--font); background:v
   background:var(--panel); border:1px solid var(--line); border-radius:16px;
   padding:18px 20px 14px; position:relative; overflow:hidden;
   display:flex; flex-direction:column; min-height:0;
-  box-shadow:0 10px 30px rgba(0,0,0,.28);
+  box-shadow:0 6px 20px rgba(28,28,26,.08);
   opacity:0; animation:fadeUp .5s cubic-bezier(.2,.7,.2,1) both;
 }
 .chart-card:nth-child(1){animation-delay:.05s} .chart-card:nth-child(2){animation-delay:.12s}
@@ -178,7 +178,7 @@ html, body { height:100%; overflow:hidden; font-family:var(--font); background:v
 <script>
 Chart.register(ChartDataLabels);
 const charts = {};
-const WIN='#74B98D', CREAM='#D8CDBC', BUDGET='#423D33';
+const WIN='#4E9E6F', CREAM='#2B2A27', BUDGET='#C9C1B5';
 
 function fmt(v){ if(v==null) return '—'; return new Intl.NumberFormat('da-DK',{maximumFractionDigits:0}).format(v)+' kr.'; }
 function fmtAxis(v){ const a=Math.abs(v); if(a>=1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+'mio.'; if(a>=1000) return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.'; return v; }
@@ -207,14 +207,14 @@ function buildHBar(id, rows, labelKey, val1Key, val2Key){
         datalabels:{
           anchor:'end', align:'right', offset:4,
           font:{ family:'Montserrat', size:16, weight:'700' },
-          color:(c)=> c.datasetIndex===0 ? '#F3EFE9' : '#8C8275',
+          color:(c)=> c.datasetIndex===0 ? '#1A1A17' : '#8C8275',
           formatter:v=>fmtLabel(v), clip:false,
         }
       },
       layout:{ padding:{ right:104 } },
       scales:{
-        x:{ ticks:{ font:{family:'Montserrat',size:13,weight:'600'}, color:'#B7AEA1', callback:fmtAxis }, grid:{ color:'rgba(255,255,255,.06)' }, border:{display:false} },
-        y:{ ticks:{ font:{family:'Montserrat',size:14,weight:'700'}, color:'#F3EFE9' }, grid:{ display:false }, border:{display:false} }
+        x:{ ticks:{ font:{family:'Montserrat',size:13,weight:'600'}, color:'#8C8275', callback:fmtAxis }, grid:{ color:'rgba(0,0,0,.06)' }, border:{display:false} },
+        y:{ ticks:{ font:{family:'Montserrat',size:14,weight:'700'}, color:'#1A1A17' }, grid:{ display:false }, border:{display:false} }
       }
     }
   });

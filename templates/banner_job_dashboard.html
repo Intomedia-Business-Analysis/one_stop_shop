@@ -17,7 +17,7 @@
 @media(max-width:900px){.dash-grid,.dash-grid-4{grid-template-columns:1fr}}
 
 /* Dashboard cards */
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
 
@@ -63,9 +63,9 @@
 /* Heatmap cells */
 .hm-cell{display:inline-block;width:28px;height:28px;border-radius:4px;font-size:10px;font-weight:700;line-height:28px;text-align:center}
 .hm-cell-wide{width:auto;min-width:52px;padding:0 6px;white-space:nowrap}
-.hm-high{background:#C8E6D8;color:#0F5132}
-.hm-mid{background:#FDF3D0;color:#856404}
-.hm-low{background:#F0F0EE;color:#666}
+.hm-high{background:var(--taupe-dark);color:#fff}
+.hm-mid{background:var(--taupe);color:#fff}
+.hm-low{background:var(--taupe-light);color:var(--taupe-dark)}
 .hm-none{background:transparent;color:var(--ink-4)}
 
 /* Horizontal bar chart */
@@ -73,7 +73,7 @@
 .bar-chart-label{font-size:11px;font-weight:600;color:var(--ink);min-width:160px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
 .bar-chart-track{flex:1;height:20px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative}
 .bar-chart-fill{height:100%;background:var(--green);border-radius:4px;transition:width .4s;min-width:2px}
-.bar-chart-fill.job{background:#5B9BD5}
+.bar-chart-fill.job{background:var(--taupe)}
 .bar-chart-val{font-size:10px;font-weight:700;color:var(--ink-3);min-width:72px;text-align:right;white-space:nowrap}
 
 /* Modal */

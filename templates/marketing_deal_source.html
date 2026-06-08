@@ -80,8 +80,8 @@
 .status-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
 .status-pill{flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;display:flex;align-items:center;gap:14px;position:relative;overflow:hidden}
 .status-pill::before{content:'';position:absolute;top:0;left:0;bottom:0;width:4px}
-.status-pill.won::before{background:#2D8659}
-.status-pill.open::before{background:#D4A017}
+.status-pill.won::before{background:#1F8A5B}
+.status-pill.open::before{background:#8A6D1F}
 .status-pill.lost::before{background:#B32E45}
 .status-pill .sp-icon{font-size:20px;line-height:1}
 .status-pill .sp-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
@@ -94,8 +94,8 @@
 .modal-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0}
 .modal-title{font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px}
 .modal-title-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:3px 8px;border-radius:999px;color:#fff}
-.modal-title-badge.won{background:#2D8659}
-.modal-title-badge.open{background:#D4A017}
+.modal-title-badge.won{background:#1F8A5B}
+.modal-title-badge.open{background:#8A6D1F}
 .modal-title-badge.lost{background:#B32E45}
 .modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:22px;line-height:1;padding:4px}
 .modal-close:hover{color:var(--ink)}
@@ -589,8 +589,8 @@ function renderByAccount(rows){
     const winRate = closed ? Math.round(r.won / closed * 100) + '%' : '—';
     return `<tr>
       <td style="font-weight:600;color:var(--ink)"><span class="tag">${escHtml(r.account)}</span></td>
-      ${cell(r.won,  '#2D8659', r.account, 'won')}
-      ${cell(r.open, '#D4A017', r.account, 'open')}
+      ${cell(r.won,  '#1F8A5B', r.account, 'won')}
+      ${cell(r.open, '#8A6D1F', r.account, 'open')}
       ${cell(r.lost, '#B32E45', r.account, 'lost')}
       <td class="num" title="Won ÷ (Won + Lost)">${winRate}</td>
       <td class="num">${fmtFull(r.won_revenue || 0)}</td>

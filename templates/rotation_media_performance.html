@@ -23,11 +23,23 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 }
 
 /* ── HEADER ──────────────────────────────────────────────────────────── */
-.header { display:flex; align-items:center; gap:8px; flex-shrink:0; height:36px; }
-.header-icon { width:28px; height:28px; border-radius:6px; background:var(--green); display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; flex-shrink:0; }
-.btn { padding:6px 14px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; text-decoration:none; }
-.header h1 { font-size:16px; font-weight:700; color:var(--ink); }
-.header-sub { font-size:10px; color:var(--ink-4); margin-left:6px; }
+.topbar{position:absolute;top:0;left:0;right:0;height:6px;background:var(--taupe);z-index:5}
+.header { display:flex; align-items:center; gap:18px; flex-shrink:0; }
+.lockup{ display:flex; flex-direction:column; gap:3px; }
+.lockup .lk-bar{ width:42px; height:5px; background:var(--taupe); }
+.lockup .lk-word{ font-size:16px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1; }
+.lockup .lk-kick{ font-size:8px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-3); }
+.hdr-divider{ width:1px; height:38px; background:var(--border); }
+.title-block{ display:flex; flex-direction:column; gap:2px; }
+.title-block h1{ font-size:22px; font-weight:800; letter-spacing:-.5px; color:var(--ink); line-height:1; }
+.title-block .sub{ font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--taupe-dark); }
+.header-right{ margin-left:auto; display:flex; align-items:center; gap:20px; }
+.period{ text-align:right; }
+.period .lbl{ font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--ink-3); margin-bottom:2px; }
+.period .val{ font-size:16px; font-weight:800; letter-spacing:-.3px; color:var(--ink); line-height:1.15; }
+.clock{ font-size:26px; font-weight:800; letter-spacing:-.5px; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1; }
+.btn { padding:7px 14px; border-radius:8px; font-size:12px; font-weight:700; border:1px solid var(--border); background:var(--surface); color:var(--ink-2); cursor:pointer; text-decoration:none; }
+.btn:hover{ border-color:var(--taupe); color:var(--ink); }
 
 /* ── FILTER-BAR ──────────────────────────────────────────────────────── */
 .filter-bar {
@@ -105,13 +117,25 @@ body.embed .filter-bar { display:none; }
 </head>
 <body>
 <div class="page">
+  <div class="topbar"></div>
 
   <!-- HEADER -->
   <div class="header">
-    <a href="/category/rotation-dashboards" class="btn" title="Tilbage" style="text-decoration:none;">← Tilbage</a>
-    <div class="header-icon">📰</div>
-    <h1>Media Performance</h1>
-    <span class="header-sub" id="lblStatus">Henter data…</span>
+    <div class="lockup">
+      <div class="lk-bar"></div>
+      <div class="lk-word">JP|Politiken</div>
+      <div class="lk-kick">Business Media</div>
+    </div>
+    <div class="hdr-divider"></div>
+    <div class="title-block">
+      <h1>Media Performance</h1>
+      <div class="sub">Indeværende måned</div>
+    </div>
+    <div class="header-right">
+      <div class="period"><div class="lbl">Status</div><div class="val" id="lblStatus">Henter data…</div></div>
+      <div class="clock" id="clock">--:--</div>
+      <a href="/category/rotation-dashboards" class="btn" title="Tilbage">← Tilbage</a>
+    </div>
   </div>
 
   <!-- FILTER-BAR -->
@@ -427,6 +451,9 @@ setInterval(loadData, 5 * 60 * 1000);
   fit();
   window.addEventListener('resize', fit);
 })();
+</script>
+<script>
+(function(){function tc(){var n=new Date();var e=document.getElementById('clock');if(e)e.textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}tc();setInterval(tc,10000);})();
 </script>
 </body>
 </html>
