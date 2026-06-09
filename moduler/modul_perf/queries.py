@@ -69,10 +69,12 @@ _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
 # Pipelines der indgår i konverteringsraten (sælger-dashboard). Sammenlignes
 # case-insensitivt mod UPPER([pipeline_name]). Watch/Monitor bruger de engelske
-# navne; MarketWire bruger de danske (Opsigelser udelades — det er churn).
+# navne; MarketWire bruger de danske (Opsigelser udelades — det er churn);
+# Banner/Job-sælgere (account jppol_advertising) bruger pipeline 'banner'/'job'.
 CONVERSION_PIPELINES_UPPER = [
     "CUSTOMER", "NEWBIZZ", "COMPANY TRIAL",
     "VIRKSOMHEDSPRØVER", "TILBUD", "FORNYELSER",
+    "BANNER", "JOB",
 ]
 _CONV_PH = "(" + ",".join(["%s"] * len(CONVERSION_PIPELINES_UPPER)) + ")"
 
