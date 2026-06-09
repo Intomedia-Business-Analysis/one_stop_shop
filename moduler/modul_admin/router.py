@@ -96,6 +96,27 @@ async def admin_db_init(request: Request, user=Depends(get_current_user)):
 # User list
 # ---------------------------------------------------------------------------
 
+@router.get("/usage", response_class=HTMLResponse)
+async def admin_usage(request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    from usage_tracking import get_usage_dashboard
+    try:
+        days = int(request.query_params.get("days", 30))
+    except ValueError:
+        days = 30
+    days = max(7, min(days, 90))
+    try:
+        data = get_usage_dashboard(days)
+    except Exception:
+        print(traceback.format_exc())
+        data = None
+    return templates.TemplateResponse(request, "admin_usage.html", {
+        "user":  user,
+        "data":  data,
+        "days":  days,
+    })
+
+
 @router.get("/users", response_class=HTMLResponse)
 async def admin_users(request: Request, user=Depends(get_current_user)):
     require_admin(user)
