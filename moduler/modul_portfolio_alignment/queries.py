@@ -764,9 +764,20 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
     """
     target = path or find_latest_snapshot()
     if not target:
-        folder = get_snapshot_dir()
+        # Diagnostik: vis ALLE konfigurerede stier, om de findes, og hvor mange
+        # snapshot-filer der ligger i hver — så man kan se hvor processen reelt
+        # ledte (get_snapshot_dir returnerer kun den første sti og kan vildlede).
+        lines = []
+        for c in _candidate_snapshot_dirs():
+            if c.exists():
+                n = len(list(c.glob("ACV_snapshot_*.csv")) + list(c.glob("ACV_snapshot_*.xlsx")))
+                lines.append(f"  [FINDES, {n} snapshot-fil(er)] {c}")
+            else:
+                lines.append(f"  [FINDES IKKE]                {c}")
+        detalje = "\n".join(lines) or "  (ingen stier konfigureret)"
         raise FileNotFoundError(
-            f"Ingen ACV_snapshot_*.csv eller .xlsx fundet i {folder}"
+            "Ingen ACV_snapshot_*.csv eller .xlsx fundet. Tjekkede stier "
+            f"(fra ZUORA_SNAPSHOT_DIR i .env):\n{detalje}"
         )
 
     # Cache-key: sti + mtime. Hvis filen er den samme bruger vi cached resultat.
