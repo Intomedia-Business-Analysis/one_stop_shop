@@ -817,8 +817,8 @@ function renderPipelineModalRows() {
     const isOverdue = deal.expected_close !== '—' && deal.expected_close < todayStr;
     const dateStyle = isOverdue ? 'color:#B32E45;font-weight:700' : 'color:var(--ink-2)';
     return `<tr>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.site)}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.org_name)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:normal;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.site)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:normal;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.org_name)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:normal;font-size:11px;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.title)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;color:var(--green);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtFull(deal.value)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--green-light);color:var(--green)">${escHtml(deal.pipeline)}</span></td>
@@ -912,9 +912,9 @@ function renderConvModalRows() {
     const badgeTxt = isWon ? 'Vundet' : 'Tabt';
     const valColor = isWon ? 'var(--green)' : '#B32E45';
     return `<tr>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.site)}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.org_name)}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);font-size:11px;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.title)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:normal;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.site)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:normal;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.org_name)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);font-size:11px;white-space:normal;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.title)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;color:${valColor};font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtFull(deal.value)}</td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--green-light);color:var(--green)">${escHtml(deal.pipeline)}</span></td>
       <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;${badgeCls}">${badgeTxt}</span></td>
