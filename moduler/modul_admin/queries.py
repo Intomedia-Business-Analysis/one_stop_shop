@@ -97,6 +97,20 @@ def db_set_manager_for(manager_id: int, managed_ids: list):
     conn.commit()
     conn.close()
 
+def db_delete_user(user_id: int):
+    """Sletter en bruger permanent og rydder op i relaterede rækker:
+    holdmedlemskaber, ressource-adgang og leder-henvisninger fra andre brugere."""
+    conn = get_conn()
+    cur = conn.cursor()
+    # Nulstil leder for medarbejdere som denne bruger var leder for
+    cur.execute("UPDATE HubUsers SET manager_id = NULL WHERE manager_id = %s", (user_id,))
+    # Fjern relaterede rækker (ingen FK-cascade i skemaet)
+    cur.execute("DELETE FROM TeamMemberships WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM UserResourceAccess WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM HubUsers WHERE id = %s", (user_id,))
+    conn.commit()
+    conn.close()
+
 def db_get_user_memberships(user_id):
     conn = get_conn()
     cur = conn.cursor(as_dict=True)

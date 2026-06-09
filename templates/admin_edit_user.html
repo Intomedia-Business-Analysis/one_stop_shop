@@ -105,6 +105,71 @@
 
     .divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
 
+    /* ── Multiselect dropdown (Leder for) ── */
+    .ms { position: relative; }
+    .ms-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+      padding: .5625rem .875rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      background: var(--bg);
+      font-family: inherit;
+      font-size: .875rem;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color .15s;
+    }
+    .ms-toggle:hover { border-color: var(--text-muted); }
+    .ms.open .ms-toggle { border-color: var(--green); }
+    .ms-toggle-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ms-caret { color: var(--text-muted); transition: transform .15s; flex-shrink: 0; }
+    .ms.open .ms-caret { transform: rotate(180deg); }
+
+    .ms-panel {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      box-shadow: var(--shadow-card);
+      padding: .5rem;
+    }
+    .ms-search {
+      width: 100%;
+      padding: .4375rem .625rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-family: inherit;
+      font-size: .8125rem;
+      color: var(--text);
+      background: var(--bg);
+      outline: none;
+      margin-bottom: .375rem;
+    }
+    .ms-search:focus { border-color: var(--green); }
+    .ms-list { max-height: 220px; overflow-y: auto; }
+    .ms-option {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .375rem .5rem;
+      border-radius: var(--r-sm);
+      font-size: .875rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .ms-option:hover { background: var(--green-light); }
+    .ms-option input { width: 15px; height: 15px; accent-color: var(--green); cursor: pointer; flex-shrink: 0; }
+    .ms-option.is-hidden { display: none; }
+    .ms-empty { padding: .5rem; font-size: .8125rem; color: var(--text-muted); text-align: center; }
+
     .toggle-field { display: flex; align-items: center; gap: .75rem; }
     .toggle-field label { font-size: .875rem; font-weight: 500; color: var(--text); cursor: pointer; }
 
@@ -454,15 +519,28 @@
                 <span class="hint">Den leder, der godkender medarbejderens barselsplan.</span>
               </div>
               <div class="field">
-                <label>Leder for ({{ managed_users | length }})</label>
-                <select name="managed_ids" multiple size="5">
-                  {% for u in all_users %}
-                    {% if u.id != target.id %}
-                    <option value="{{ u.id }}" {% if u.manager_id == target.id %}selected{% endif %}>{{ u.name }}</option>
-                    {% endif %}
-                  {% endfor %}
-                </select>
-                <span class="hint">Hold Ctrl/Cmd nede for at vælge flere medarbejdere.</span>
+                <label>Leder for (<span id="ms-count">{{ managed_users | length }}</span>)</label>
+                <div class="ms" id="managed-ms">
+                  <button type="button" class="ms-toggle" id="ms-toggle" aria-expanded="false">
+                    <span class="ms-toggle-text">Vælg medarbejdere…</span>
+                    <span class="ms-caret">▾</span>
+                  </button>
+                  <div class="ms-panel" id="ms-panel" hidden>
+                    <input type="text" class="ms-search" id="ms-search" placeholder="Søg…" autocomplete="off">
+                    <div class="ms-list">
+                      {% for u in all_users %}
+                        {% if u.id != target.id %}
+                        <label class="ms-option">
+                          <input type="checkbox" name="managed_ids" value="{{ u.id }}"
+                                 {% if u.manager_id == target.id %}checked{% endif %}>
+                          <span>{{ u.name }}</span>
+                        </label>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+                <span class="hint">Sæt eller fjern flueben for at tilføje/fjerne medarbejdere under ledelsesansvaret.</span>
               </div>
             </div>
 
@@ -668,6 +746,53 @@
 (function() {
   const el = document.getElementById('user-add-start-date');
   if (el) el.value = new Date().toISOString().split('T')[0];
+})();
+
+// "Leder for" multiselect dropdown
+(function() {
+  const ms     = document.getElementById('managed-ms');
+  if (!ms) return;
+  const toggle = document.getElementById('ms-toggle');
+  const panel  = document.getElementById('ms-panel');
+  const search = document.getElementById('ms-search');
+  const label  = toggle.querySelector('.ms-toggle-text');
+  const count  = document.getElementById('ms-count');
+  const boxes  = Array.from(panel.querySelectorAll('input[type="checkbox"]'));
+  const options = Array.from(panel.querySelectorAll('.ms-option'));
+
+  function refreshLabel() {
+    const selected = boxes.filter(b => b.checked);
+    const n = selected.length;
+    if (count) count.textContent = n;
+    if (n === 0) {
+      label.textContent = 'Vælg medarbejdere…';
+    } else if (n <= 2) {
+      label.textContent = selected.map(b => b.nextElementSibling.textContent).join(', ');
+    } else {
+      label.textContent = n + ' medarbejdere valgt';
+    }
+  }
+
+  function open()  { ms.classList.add('open');  panel.hidden = false; toggle.setAttribute('aria-expanded', 'true');  search.focus(); }
+  function close() { ms.classList.remove('open'); panel.hidden = true;  toggle.setAttribute('aria-expanded', 'false'); }
+
+  toggle.addEventListener('click', () => ms.classList.contains('open') ? close() : open());
+
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    options.forEach(opt => {
+      const name = opt.querySelector('span').textContent.toLowerCase();
+      opt.classList.toggle('is-hidden', q && !name.includes(q));
+    });
+  });
+
+  boxes.forEach(b => b.addEventListener('change', refreshLabel));
+
+  document.addEventListener('click', (e) => {
+    if (!ms.contains(e.target)) close();
+  });
+
+  refreshLabel();
 })();
 </script>
 </body>

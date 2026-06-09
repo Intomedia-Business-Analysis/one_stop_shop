@@ -15,7 +15,7 @@ from moduler.modul_admin.queries import (
     db_get_user_memberships, db_add_membership, db_remove_membership,
     db_save_resource_access, db_get_all_teams, db_create_team,
     db_get_team_by_id, db_update_team, db_update_membership,
-    db_set_manager_for,
+    db_set_manager_for, db_delete_user,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -217,6 +217,25 @@ async def admin_update_user(user_id: int, request: Request, user=Depends(get_cur
         print(traceback.format_exc())
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=updated", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Delete user
+# ---------------------------------------------------------------------------
+
+@router.post("/users/{user_id}/delete")
+async def admin_delete_user(user_id: int, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    # Forhindr at man sletter sin egen konto
+    if user["id"] == user_id:
+        return RedirectResponse("/admin/users?error=cannot_delete_self", status_code=302)
+    try:
+        db_delete_user(user_id)
+    except Exception:
+        print(traceback.format_exc())
+        return RedirectResponse("/admin/users?error=db_error", status_code=302)
+
+    return RedirectResponse("/admin/users?success=deleted", status_code=302)
 
 
 # ---------------------------------------------------------------------------
