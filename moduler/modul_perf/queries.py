@@ -1638,7 +1638,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND UPPER([pipeline_name]) IN {_CONV_PH}
           AND {_p_close_time_clause}
           AND [owner_name] = %s
-          AND {_sites_filter}
+          AND ({_sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
           {_ADM_EXCLUDE}
           {team_clause}
     """, tuple(CONVERSION_PIPELINES_UPPER) + _p_close_time_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
@@ -1660,7 +1660,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND UPPER([pipeline_name]) IN {_CONV_PH}
           AND [close_time] >= %s AND [close_time] < %s
           AND [owner_name] = %s
-          AND {_sites_filter}
+          AND ({_sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
           {_ADM_EXCLUDE}
           {team_clause}
         GROUP BY MONTH([close_time])
