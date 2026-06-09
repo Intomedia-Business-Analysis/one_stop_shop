@@ -1461,7 +1461,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         WHERE [status]='open' AND [pipeline_name]<>'Web Sale'
           AND {_p_close_clause}
           AND [owner_name] = %s
-          AND [sites] IN {brands_ph}
+          AND {_sites_filter}
           AND COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) > 0
           {_ADM_EXCLUDE}
           {team_clause}
@@ -1977,7 +1977,7 @@ def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
             WHERE [status] = 'open'
               AND [pipeline_name] <> 'Web Sale'
               AND [owner_name] = %s
-              AND [sites] IN {brands_ph}
+              AND ([sites] IN {brands_ph} OR [sites] IS NULL)
               AND COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) > 0
               {_ADM_EXCLUDE}
               {extra_sql}
