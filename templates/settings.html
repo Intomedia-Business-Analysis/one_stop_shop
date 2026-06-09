@@ -71,12 +71,24 @@
 
       {% if request.query_params.get('success') == 'pw_changed' %}
       <div class="notif notif-success">Adgangskode opdateret</div>
+      {% elif request.query_params.get('success') == 'un_changed' %}
+      <div class="notif notif-success">Brugernavn opdateret</div>
       {% elif request.query_params.get('error') == 'pw_mismatch' %}
       <div class="notif notif-error">Adgangskoderne stemmer ikke overens</div>
       {% elif request.query_params.get('error') == 'pw_wrong' %}
       <div class="notif notif-error">Nuværende adgangskode er forkert</div>
       {% elif request.query_params.get('error') == 'missing_fields' %}
       <div class="notif notif-error">Udfyld alle felter</div>
+      {% elif request.query_params.get('error') == 'un_missing_fields' %}
+      <div class="notif notif-error">Udfyld både nyt brugernavn og din adgangskode</div>
+      {% elif request.query_params.get('error') == 'un_pw_wrong' %}
+      <div class="notif notif-error">Adgangskoden er forkert</div>
+      {% elif request.query_params.get('error') == 'un_taken' %}
+      <div class="notif notif-error">Brugernavnet er allerede i brug</div>
+      {% elif request.query_params.get('error') == 'un_unchanged' %}
+      <div class="notif notif-error">Det er allerede dit nuværende brugernavn</div>
+      {% elif request.query_params.get('error') == 'un_error' %}
+      <div class="notif notif-error">Brugernavnet kunne ikke opdateres — prøv igen</div>
       {% endif %}
 
       <!-- Profilkort -->
@@ -111,6 +123,29 @@
             </div>
             {% endif %}
           </div>
+        </div>
+      </div>
+
+      <!-- Skift brugernavn -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h2>Skift brugernavn</h2>
+          <p>Vælg et nyt brugernavn til login — bekræft med din adgangskode</p>
+        </div>
+        <div class="settings-card-body">
+          <form method="post" action="/settings/change-username">
+            <div class="change-pw-form">
+              <div class="field">
+                <label for="new_username">Nyt brugernavn</label>
+                <input type="text" id="new_username" name="new_username" value="{{ user.username }}" autocomplete="username" required>
+              </div>
+              <div class="field">
+                <label for="un_current_password">Nuværende adgangskode</label>
+                <input type="password" id="un_current_password" name="current_password" autocomplete="current-password" required>
+              </div>
+              <button type="submit" class="btn-primary">Gem brugernavn</button>
+            </div>
+          </form>
         </div>
       </div>
 

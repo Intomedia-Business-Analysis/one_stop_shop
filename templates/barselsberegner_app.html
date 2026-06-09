@@ -172,7 +172,7 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
     <p>Planlæg og godkend barsels- og orlovsforløb for medarbejdere</p>
   </div>
   <div class="header-actions">
-    <button class="btn btn-secondary" onclick="exportCSV()">Eksportér CSV</button>
+    <button class="btn btn-secondary" onclick="exportCSV()">Eksportér Excel</button>
     <button class="btn btn-secondary" onclick="window.print()">Print</button>
   </div>
 </header>
@@ -282,6 +282,8 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
 </main>
 <div id="toast"></div>
 
+<!-- SheetJS (xlsx-js-style fork) — bruges til Excel-eksport med farver/kolonnebredder -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script>
 // ── STATE ────────────────────────────────────────────
 // SEE_ALL: admin/management ser alle sager. IS_ADMIN: kan ændre virksomheds-
@@ -416,7 +418,7 @@ function statusCell(row){
     ${approvedBy}
     <div class="row-actions">${actions}</div>
     <div class="row-actions">
-      <button class="btn-mini" onclick="exportRow(${row.id})" title="Eksportér denne sag">⬇ CSV</button>
+      <button class="btn-mini" onclick="exportRow(${row.id})" title="Eksportér denne sag">⬇ Excel</button>
       <button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button>
     </div>
     ${owner}
@@ -671,61 +673,157 @@ function toggleSettings(){
   document.getElementById('settingsToggle').classList.toggle('collapsed');
 }
 
-// ── EXPORT ───────────────────────────────────────────
-const CSV_HEADERS = [
-  'Medarbejder','Mor navn','Mor ansat i Intomedia','Far navn','Far ansat i Intomedia',
-  'Terminsdato','Faktisk fødselsdato',
-  'Mor barselsstart','Mor uger','Mor barsel slutter',
-  'Mor optjent ferie','Mor selvbetalt ferie','Mor tilbagekomst',
-  'Fædreorlov start','Fædreorlov uger','Fædreorlov slutter',
-  'Forældreorlov start','Forældreorlov uger','Forældreorlov slutter',
-  'Far optjent ferie','Far selvbetalt ferie','Far tilbagekomst',
-  'Status'
+// ── EXPORT (Excel — spejler medarbejdertabellen 1:1) ──
+// Kolonner i nøjagtig samme rækkefølge og gruppering som tabellen på skærmen.
+// [label, sektionsnøgle, kolonnebredde, justering]
+const XLS_COLS = [
+  ['Medarbejder',          'base',  22, 'left'  ],
+  ['Mor navn',             'base',  18, 'left'  ],
+  ['Far / medmor navn',    'base',  18, 'left'  ],
+  ['Terminsdato',          'base',  13, 'center'],
+  ['Faktisk fødselsdato',  'base',  14, 'center'],
+  ['Barselsstart',         'mor',   13, 'center'],
+  ['Uger',                 'mor',    7, 'center'],
+  ['Barsel slutter',       'mor',   13, 'center'],
+  ['Optjent ferie',        'mor',    9, 'center'],
+  ['Selvbetalt ferie',     'mor',   10, 'center'],
+  ['Tilbagekomst',         'morhl', 13, 'center'],
+  ['Start',                'faed',  13, 'center'],
+  ['Uger',                 'faed',   7, 'center'],
+  ['Slutter',              'faed',  13, 'center'],
+  ['Start',                'forl',  13, 'center'],
+  ['Uger',                 'forl',   7, 'center'],
+  ['Slutter',              'forl',  13, 'center'],
+  ['Optjent ferie',        'forl',   9, 'center'],
+  ['Selvbetalt ferie',     'forl',  10, 'center'],
+  ['Tilbagekomst',         'far',   13, 'center'],
+  ['Status',               'base',  11, 'center'],
 ];
 
-function rowToCsvFields(row){
+// Sektions-overskrifter (øverste række) — [label, startkolonne, antal kolonner, nøgle]
+const XLS_SECTIONS = [
+  ['GRUNDOPLYSNINGER',         0, 5, 'base' ],
+  ['MOR / 1. FORÆLDER',        5, 5, 'mor'  ],
+  ['MOR TILBAGEKOMST',        10, 1, 'morhl'],
+  ['FÆDREORLOV — ved fødsel', 11, 3, 'faed' ],
+  ['FORÆLDREORLOV',           14, 5, 'forl' ],
+  ['FAR TILBAGEKOMST',        19, 1, 'far'  ],
+  ['STATUS',                  20, 1, 'base' ],
+];
+
+// Farver pr. sektion — matcher tabellens CSS (sektionsbjælke, kolonnehoved, datatint)
+const XLS_SEC_STYLE = {
+  base:  {hdr:'4D4942', colBg:'EFEBE4', colFg:'4D4942', dataBg:'FFFFFF'},
+  mor:   {hdr:'45596B', colBg:'E7ECEF', colFg:'45596B', dataBg:'F3F6F7'},
+  morhl: {hdr:'3F6B4E', colBg:'E2ECE4', colFg:'3F6B4E', dataBg:'E2ECE4'},
+  faed:  {hdr:'8A6E45', colBg:'F1EADB', colFg:'6E5736', dataBg:'FBF8F0'},
+  forl:  {hdr:'8A5648', colBg:'F2E6E0', colFg:'8A5648', dataBg:'FBF4F0'},
+  far:   {hdr:'5E3A2E', colBg:'EFE3DC', colFg:'5E3A2E', dataBg:'F2E6E0'},
+};
+
+const XLS_BORDER = {style:'thin', color:{rgb:'D9D4CC'}};
+const XLS_ALL_BORDERS = {top:XLS_BORDER, bottom:XLS_BORDER, left:XLS_BORDER, right:XLS_BORDER};
+
+const STATUS_LABELS = {draft:'Kladde', pending:'Afventer', approved:'Godkendt', rejected:'Afvist'};
+
+// Én sag → de 21 kolonneværdier i tabellens rækkefølge
+function rowToTableFields(row){
   const cv = calcRow(row);
   return [
     row.hubUserName||'',
-    row.morNavn||'', row.morAnsat?'Ja':'Nej',
-    row.farNavn||'', row.farAnsat?'Ja':'Nej',
+    row.morNavn||'',
+    row.farNavn||'',
     row.termin||'', row.foedselDato||'',
     fmt(cv.morStart), cv.morUger??'', fmt(cv.morSlut),
     row.morFerieOptjent||0, row.morFerieSelvbetalt||0, fmt(cv.morTilb),
     fmt(cv.faedStart), cv.faedUger??'', fmt(cv.faedSlut),
     fmt(cv.forlStart), cv.forlUger??'', fmt(cv.forlSlut),
     row.farFerieOptjent||0, row.farFerieSelvbetalt||0, fmt(cv.farTilb),
-    row.approvalStatus||'draft',
+    STATUS_LABELS[row.approvalStatus] || 'Kladde',
   ];
+}
+
+function buildBarselWorkbook(rowsArr){
+  const aoa = [];
+  // Række 0: sektions-overskrifter
+  const secRow = new Array(XLS_COLS.length).fill('');
+  XLS_SECTIONS.forEach(s => { secRow[s[1]] = s[0]; });
+  aoa.push(secRow);
+  // Række 1: kolonneoverskrifter
+  aoa.push(XLS_COLS.map(c => c[0]));
+  // Datarækker
+  rowsArr.forEach(r => aoa.push(rowToTableFields(r)));
+
+  const ws  = XLSX.utils.aoa_to_sheet(aoa);
+  const enc = XLSX.utils.encode_cell;
+
+  // Sammenlæg sektions-celler så de spænder over deres kolonner
+  ws['!merges'] = XLS_SECTIONS.filter(s => s[2] > 1)
+    .map(s => ({s:{r:0, c:s[1]}, e:{r:0, c:s[1]+s[2]-1}}));
+
+  // Kolonnebredder (alt foldet ud) + højere header-rækker
+  ws['!cols'] = XLS_COLS.map(c => ({wch: c[2]}));
+  ws['!rows'] = [{hpt:22}, {hpt:30}];
+
+  // Sektions-overskrifter (række 0)
+  XLS_SECTIONS.forEach(s => {
+    const st = XLS_SEC_STYLE[s[3]];
+    const cell = ws[enc({r:0, c:s[1]})];
+    if(cell) cell.s = {
+      fill:{patternType:'solid', fgColor:{rgb: st.hdr}},
+      font:{bold:true, color:{rgb:'FFFFFF'}, sz:11},
+      alignment:{horizontal:'center', vertical:'center', wrapText:true},
+      border: XLS_ALL_BORDERS,
+    };
+  });
+
+  // Kolonneoverskrifter (række 1)
+  XLS_COLS.forEach((c, i) => {
+    const st = XLS_SEC_STYLE[c[1]];
+    const cell = ws[enc({r:1, c:i})];
+    if(cell) cell.s = {
+      fill:{patternType:'solid', fgColor:{rgb: st.colBg}},
+      font:{bold:true, color:{rgb: st.colFg}, sz:10},
+      alignment:{horizontal:'center', vertical:'center', wrapText:true},
+      border: XLS_ALL_BORDERS,
+    };
+  });
+
+  // Dataceller — let sektionstint som i tabellen
+  for(let ri=0; ri<rowsArr.length; ri++){
+    XLS_COLS.forEach((c, i) => {
+      const st = XLS_SEC_STYLE[c[1]];
+      const cell = ws[enc({r:2+ri, c:i})];
+      if(cell) cell.s = {
+        fill:{patternType:'solid', fgColor:{rgb: st.dataBg}},
+        font:{sz:10, color:{rgb:'2B2B2B'}},
+        alignment:{horizontal: c[3], vertical:'center'},
+        border: XLS_ALL_BORDERS,
+      };
+    });
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Barselsplan');
+  return wb;
 }
 
 function exportCSV(){
-  const lines=[CSV_HEADERS.join(';')];
-  rows.forEach(row=>{
-    lines.push(rowToCsvFields(row).map(v=>`"${v??''}"`).join(';'));
-  });
-  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;a.download='barselsplan.csv';a.click();
-  URL.revokeObjectURL(url);
-  showToast('CSV eksporteret ✓');
+  if(typeof XLSX === 'undefined'){ showToast('Excel-bibliotek kunne ikke indlæses'); return; }
+  if(!rows.length){ showToast('Ingen sager at eksportere'); return; }
+  const wb = buildBarselWorkbook(rows);
+  XLSX.writeFile(wb, 'barselsplan.xlsx');
+  showToast('Excel eksporteret ✓');
 }
 
 function exportRow(id){
+  if(typeof XLSX === 'undefined'){ showToast('Excel-bibliotek kunne ikke indlæses'); return; }
   const row = rows.find(r => r.id===id);
   if(!row){ showToast('Sag ikke fundet'); return; }
-  const csvLines = [
-    CSV_HEADERS.join(';'),
-    rowToCsvFields(row).map(v=>`"${v??''}"`).join(';'),
-  ];
-  const blob=new Blob(['﻿'+csvLines.join('\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
+  const wb = buildBarselWorkbook([row]);
   const slug = (row.hubUserName || row.morNavn || row.farNavn || ('sag-'+id))
     .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || ('sag-'+id);
-  a.href=url; a.download='barselsplan-'+slug+'.csv'; a.click();
-  URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, 'barselsplan-'+slug+'.xlsx');
   showToast('Sag eksporteret ✓');
 }
 

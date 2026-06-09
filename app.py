@@ -162,6 +162,45 @@ async def settings_change_password(request: Request, user=Depends(get_current_us
     return RedirectResponse("/settings?success=pw_changed", status_code=302)
 
 
+@app.post("/settings/change-username")
+async def settings_change_username(request: Request, user=Depends(get_current_user)):
+    from auth import get_conn as auth_get_conn, verify_password
+    form         = await request.form()
+    new_username = form.get("new_username", "").strip()
+    current_pw   = form.get("current_password", "")
+
+    if not all([new_username, current_pw]):
+        return RedirectResponse("/settings?error=un_missing_fields", status_code=302)
+    if not verify_password(current_pw, user["password_hash"]):
+        return RedirectResponse("/settings?error=un_pw_wrong", status_code=302)
+    if new_username == user["username"]:
+        return RedirectResponse("/settings?error=un_unchanged", status_code=302)
+
+    try:
+        conn = auth_get_conn()
+        cur  = conn.cursor()
+        # Tjek at brugernavnet ikke allerede er taget af en anden bruger
+        cur.execute(
+            "SELECT id FROM HubUsers WHERE username=%s AND id<>%s",
+            (new_username, user["id"]),
+        )
+        if cur.fetchone():
+            conn.close()
+            return RedirectResponse("/settings?error=un_taken", status_code=302)
+        cur.execute(
+            "UPDATE HubUsers SET username=%s WHERE id=%s",
+            (new_username, user["id"]),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse("/settings?error=un_error", status_code=302)
+
+    return RedirectResponse("/settings?success=un_changed", status_code=302)
+
+
 @app.get("/dashboard/budget", response_class=HTMLResponse)
 async def budget_dashboard(request: Request, user=Depends(get_current_user)):
     return templates.TemplateResponse(request, "budget_tool.html", {

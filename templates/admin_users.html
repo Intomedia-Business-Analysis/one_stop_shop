@@ -61,6 +61,9 @@
 
     .action-btn { padding: 5px 12px; border-radius: var(--r-sm); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2); transition: all .13s; }
     .action-btn:hover { border-color: var(--green); background: var(--bg); color: var(--ink); }
+    .action-btn-danger { border-color: #F2C9D2; color: var(--danger); }
+    .action-btn-danger:hover { border-color: var(--danger); background: var(--danger-light); color: var(--danger); }
+    .action-cell { display: flex; gap: 6px; justify-content: flex-end; }
 
     .empty-state { text-align: center; padding: 48px 20px; color: var(--ink-4); font-size: 13px; }
 
@@ -124,12 +127,16 @@
         <div class="notif notif-success">Bruger opdateret</div>
         {% elif success == 'db_init' %}
         <div class="notif notif-success">DB initialiseret — manglende tabeller er oprettet</div>
+        {% elif success == 'deleted' %}
+        <div class="notif notif-success">Bruger slettet</div>
         {% endif %}
 
         {% if error == 'missing_fields' %}
         <div class="notif notif-error">Alle felter skal udfyldes</div>
         {% elif error == 'username_taken' %}
         <div class="notif notif-error">Brugernavnet er allerede i brug</div>
+        {% elif error == 'cannot_delete_self' %}
+        <div class="notif notif-error">Du kan ikke slette din egen konto</div>
         {% elif error == 'db_init_failed' %}
         <div class="notif notif-error">DB-initialisering fejlede — tjek databaseforbindelsen</div>
         {% elif error %}
@@ -235,7 +242,13 @@
                       {% else %}—{% endif %}
                     </td>
                     <td>
-                      <a href="/admin/users/{{ u.id }}/edit" class="action-btn">Rediger</a>
+                      <div class="action-cell">
+                        <a href="/admin/users/{{ u.id }}/edit" class="action-btn">Rediger</a>
+                        <form method="post" action="/admin/users/{{ u.id }}/delete"
+                              onsubmit="return confirm('Slet brugeren {{ u.name }}? Dette kan ikke fortrydes — holdmedlemskaber og adgangsindstillinger fjernes også.')">
+                          <button type="submit" class="action-btn action-btn-danger">Slet</button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                   {% endfor %}
