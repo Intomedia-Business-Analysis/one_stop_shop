@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -31,6 +32,7 @@ from moduler.modul_portfolio_alignment.router import router as portfolio_alignme
 from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_marketing.router import router as marketing_router
 from moduler.modul_klippekort.router import router as klippekort_router
+from usage_tracking import record_pageview, start_usage_worker
 
 load_dotenv()
 
@@ -40,10 +42,38 @@ if os.getenv("DEV_MODE") == "1":
 app = FastAPI(title="Intomedia Hub")
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
+start_usage_worker()  # Baggrundstråd der flusher usage-loggen til DB
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SECRET_KEY", "skift-denne-noegle"),
 )
+
+
+# ---------------------------------------------------------------------------
+# Usage-tracking: log sidevisninger (kun HTML-sider, ikke static/data/JSON)
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def usage_tracking_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    try:
+        if request.method == "GET" and response.status_code < 400:
+            ctype = response.headers.get("content-type", "")
+            path  = request.url.path
+            # Kun rigtige sider (text/html) — udelukker JSON-data-endpoints,
+            # static-filer, billeder og redirects automatisk.
+            if ctype.startswith("text/html") and not path.startswith("/static") \
+               and path not in ("/login", "/logout"):
+                session = request.scope.get("session") or {}
+                record_pageview(
+                    user_id=session.get("user_id"),
+                    path=path,
+                    status_code=response.status_code,
+                    duration_ms=int((time.perf_counter() - start) * 1000),
+                )
+    except Exception:
+        pass  # tracking må aldrig vælte et request
+    return response
 app.include_router(budget_router)
 app.include_router(admin_router)
 app.include_router(forecast_router)

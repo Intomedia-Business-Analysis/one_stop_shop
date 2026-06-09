@@ -145,6 +145,28 @@ def init_db():
                  AND name = 'service_activation_date'
            )
            ALTER TABLE PipedriveDeals ADD service_activation_date DATETIME NULL""",
+        # Usage-tracking: én række pr. sidevisning
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubUsageLog' AND xtype='U')
+           CREATE TABLE HubUsageLog (
+               id             INT IDENTITY(1,1) PRIMARY KEY,
+               user_id        INT           NULL,
+               path           NVARCHAR(400) NOT NULL,
+               resource_label NVARCHAR(150) NULL,
+               method         NVARCHAR(10)  NOT NULL DEFAULT 'GET',
+               status_code    INT           NULL,
+               duration_ms    INT           NULL,
+               created_at     DATETIME      NOT NULL DEFAULT GETDATE()
+           )""",
+        """IF NOT EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='IX_HubUsageLog_created' AND object_id = OBJECT_ID('HubUsageLog')
+           )
+           CREATE INDEX IX_HubUsageLog_created ON HubUsageLog (created_at)""",
+        """IF NOT EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='IX_HubUsageLog_user' AND object_id = OBJECT_ID('HubUsageLog')
+           )
+           CREATE INDEX IX_HubUsageLog_user ON HubUsageLog (user_id, created_at)""",
     ]
     try:
         conn = get_conn()
