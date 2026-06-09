@@ -1739,6 +1739,73 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     }
 
 
+def db_saelger_conversion_deals(owner_name: str, year: int | None = None,
+                                 month: str | None = None, team: str | None = None):
+    """Won/lost-deals der indgår i sælgerens konverteringsrate.
+
+    Samme afgrænsning som konverterings-queryen i db_saelger_data:
+    close_time-periode, CONVERSION_PIPELINES, owner/team og site-filter
+    (springes over for banner/job). Bruges af 'Konverteringsrate'-modalet
+    så man kan se præcis hvilke deals der giver raten.
+    """
+    ref_year = year or date.today().year
+
+    months_list: list[int] = []
+    if month in ("Q1", "Q2", "Q3", "Q4"):
+        q = int(str(month)[1])
+        months_list = list(range((q - 1) * 3 + 1, q * 3 + 1))
+    elif month not in (None, ""):
+        raw = [p.strip() for p in str(month).split(",") if p.strip().isdigit()]
+        months_list = sorted({int(p) for p in raw if 1 <= int(p) <= 12})
+
+    brands_ph = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+    if months_list:
+        _mph = "(" + ",".join(["%s"] * len(months_list)) + ")"
+        period_clause = f"YEAR([close_time]) = %s AND MONTH([close_time]) IN {_mph}"
+        period_params = (ref_year, *months_list)
+    else:
+        period_clause = "[close_time] >= %s AND [close_time] < %s"
+        period_params = (date(ref_year, 1, 1).isoformat(), date(ref_year + 1, 1, 1).isoformat())
+
+    team_clause  = "AND [team] = %s" if team else ""
+    team_params  = (team,) if team else ()
+    sites_filter = f"([sites] IN {brands_ph} OR [sites] IS NULL)"
+
+    try:
+        conn = get_conn()
+        cur  = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT [title], [sites], [org_name], [pipeline_name], [status],
+                ABS(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))) AS value,
+                CONVERT(NVARCHAR(10), [close_time], 23) AS close_date
+            FROM [dbo].[PipedriveDeals]
+            WHERE ([status]='won' OR [status]='lost')
+              AND [pipeline_name] <> 'Web Sale'
+              AND UPPER([pipeline_name]) IN {_CONV_PH}
+              AND {period_clause}
+              AND [owner_name] = %s
+              AND ({sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
+              {_ADM_EXCLUDE}
+              {team_clause}
+            ORDER BY [close_time] DESC
+        """, tuple(CONVERSION_PIPELINES_UPPER) + period_params + (owner_name,)
+             + tuple(SUBSCRIPTION_BRANDS) + team_params)
+        rows = cur.fetchall() or []
+        conn.close()
+        return [{
+            "title":      r["title"] or "(Uden titel)",
+            "site":       r["sites"] or "—",
+            "org_name":   r["org_name"] or "—",
+            "value":      float(r["value"] or 0),
+            "pipeline":   r["pipeline_name"] or "—",
+            "status":     r["status"],
+            "close_date": r["close_date"] or "—",
+        } for r in rows]
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
 def db_manager_saelger_deals(owner_name: str, year: int, month: int,
                               date_col: str = "won_time",
                               site: str | None = None,

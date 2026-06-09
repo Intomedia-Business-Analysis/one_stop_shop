@@ -11,7 +11,7 @@ from moduler.modul_perf.queries import (
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
     db_get_filters, db_manager_data, db_yoy_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
-    db_saelger_available_owners,
+    db_saelger_available_owners, db_saelger_conversion_deals,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
 )
 
@@ -265,6 +265,24 @@ async def perf_saelger_pipeline_deals(
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, str(e))
+
+@router.get("/saelger-conversion-deals")
+async def perf_saelger_conversion_deals(
+    year:  int | None = None,
+    month: str | None = None,
+    team:  str | None = None,
+    owner: str | None = None,
+    user=Depends(get_current_user),
+):
+    """Won/lost-deals bag sælgerens konverteringsrate — bruges af
+    'Konverteringsrate'-modalet på /tools/performance/saelger."""
+    try:
+        target_owner = _resolve_saelger_owner(user, owner)
+        return JSONResponse(db_saelger_conversion_deals(target_owner, year, month, team))
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, str(e))
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 #                                                  DASHBOARDS VÆLGER

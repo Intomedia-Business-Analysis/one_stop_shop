@@ -314,6 +314,41 @@
               </div>
             </div>
 
+            <!-- Konverterings-deals modal -->
+            <div id="conv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px">
+              <div style="background:var(--surface,#fff);border-radius:12px;padding:24px 28px;width:100%;max-width:min(1340px,96vw);box-shadow:0 8px 32px rgba(0,0,0,0.18);margin:auto">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                  <div>
+                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4)">Konverteringsrate — deals bag raten</div>
+                    <div id="conv-modal-title" style="font-weight:700;font-size:16px;color:var(--ink);margin-top:2px">Deals</div>
+                  </div>
+                  <span onclick="document.getElementById('conv-modal').style.display='none'" style="cursor:pointer;font-size:24px;color:var(--ink-4);line-height:1">&times;</span>
+                </div>
+                <div>
+                  <table class="v-table" style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+                    <colgroup>
+                      <col style="width:12%"><col style="width:22%"><col style="width:25%">
+                      <col style="width:11%"><col style="width:12%"><col style="width:9%"><col style="width:9%">
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Medie/Site</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Virksomhed</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Deal</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:right;cursor:pointer;user-select:none" onclick="sortConvModal('value')">Beløb<i id="arr-cm-value" style="margin-left:5px;opacity:0.5;font-style:normal;font-size:12px">↕</i></th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Pipeline</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left">Status</th>
+                        <th style="background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;cursor:pointer;user-select:none" onclick="sortConvModal('close_date')">Lukket<i id="arr-cm-close_date" style="margin-left:5px;opacity:0.5;font-style:normal;font-size:12px">↕</i></th>
+                      </tr>
+                    </thead>
+                    <tbody id="conv-modal-tbody">
+                      <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Henter…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
             <!-- Kort 3: YoY sammenligning -->
             <div class="dash-card" id="card-yoy">
               <div class="dash-card-title">Vs. samme måned LY</div>
@@ -345,7 +380,9 @@
             <div class="dash-card" id="card-conv">
               <div class="dash-card-title">Konverteringsrate pr. måned</div>
               <div class="big-number" id="conv-pct">—</div>
-              <div class="dash-sub" id="conv-sub">— vundet af lukkede deals</div>
+              <div class="dash-sub">
+                <span id="conv-sub" style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;color:var(--ink-2)" onclick="visConversionModal()">— vundet af lukkede deals</span>
+              </div>
               <div class="month-bars" id="conv-bars" style="margin-top:12px"></div>
               <div class="kpi-pills" style="margin-top:16px">
                 <div class="kpi-pill">
@@ -791,6 +828,102 @@ function renderPipelineModalRows() {
 }
 
 document.getElementById('pipeline-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+// ── Konverterings-deals modal ──────────────────────────────────────────────
+let _convDeals   = [];
+let _cmSortCol   = null;   // null = default (close_date desc)
+let _cmSortDir   = 'desc';
+
+async function visConversionModal() {
+  const modal = document.getElementById('conv-modal');
+  const tbody = document.getElementById('conv-modal-tbody');
+  const title = document.getElementById('conv-modal-title');
+
+  const ownerName = _lastDashData?.owner_name || '';
+  const monthLbl  = _lastDashData?.month_label || '';
+  title.textContent = ownerName ? `${ownerName} — ${monthLbl}` : 'Deals bag konverteringen';
+
+  modal.style.display = 'flex';
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Henter…</td></tr>';
+
+  try {
+    const year   = document.getElementById('filter-year').value;
+    const month  = msMonthParam();
+    const team   = document.getElementById('filter-team').value;
+    const params = new URLSearchParams();
+    if (year)          params.set('year',  year);
+    if (month)         params.set('month', month);
+    if (team)          params.set('team',  decodeURIComponent(team));
+    if (_currentOwner) params.set('owner', _currentOwner);
+
+    const r = await fetch('/tools/performance/saelger-conversion-deals?' + params);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    _convDeals = await r.json();
+    _cmSortCol = null;
+    _cmSortDir = 'desc';
+    renderConvModalRows();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#B32E45">Fejl: ${escHtml(e.message)}</td></tr>`;
+  }
+}
+
+function sortConvModal(col) {
+  if (_cmSortCol === col) {
+    if (_cmSortDir === 'desc') _cmSortDir = 'asc';
+    else { _cmSortCol = null; _cmSortDir = 'desc'; }
+  } else {
+    _cmSortCol = col;
+    _cmSortDir = 'desc';
+  }
+  renderConvModalRows();
+}
+
+function renderConvModalRows() {
+  const tbody = document.getElementById('conv-modal-tbody');
+  if (!_convDeals.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--ink-4);font-style:italic">Ingen lukkede deals i den valgte periode</td></tr>';
+    [['arr-cm-value'],['arr-cm-close_date']].forEach(([id]) => {
+      const a = document.getElementById(id);
+      if (a) { a.textContent = '↕'; a.style.opacity = '0.5'; }
+    });
+    return;
+  }
+
+  const effCol = _cmSortCol || 'close_date';
+  const effDir = _cmSortCol ? _cmSortDir : 'desc';
+  const sorted = [..._convDeals].sort((a, b) => {
+    const av = a[effCol] ?? '', bv = b[effCol] ?? '';
+    if (effCol === 'value') return effDir === 'desc' ? bv - av : av - bv;
+    return effDir === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+  });
+
+  [['arr-cm-value','value'],['arr-cm-close_date','close_date']].forEach(([id, key]) => {
+    const arrow = document.getElementById(id);
+    if (!arrow) return;
+    if (key === _cmSortCol) { arrow.textContent = _cmSortDir === 'desc' ? '↓' : '↑'; arrow.style.opacity = '1'; }
+    else                    { arrow.textContent = '↕'; arrow.style.opacity = '0.5'; }
+  });
+
+  tbody.innerHTML = sorted.map(deal => {
+    const isWon    = deal.status === 'won';
+    const badgeCls = isWon ? 'background:var(--green-light);color:var(--green)' : 'background:#FDE8EC;color:#B32E45';
+    const badgeTxt = isWon ? 'Vundet' : 'Tabt';
+    const valColor = isWon ? 'var(--green)' : '#B32E45';
+    return `<tr>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.site)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.org_name)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);font-size:11px;word-break:break-word;overflow-wrap:anywhere">${escHtml(deal.title)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:right;color:${valColor};font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtFull(deal.value)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--green-light);color:var(--green)">${escHtml(deal.pipeline)}</span></td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border)"><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;${badgeCls}">${badgeTxt}</span></td>
+      <td style="padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);white-space:nowrap">${escHtml(deal.close_date)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('conv-modal').addEventListener('click', function(e) {
   if (e.target === this) this.style.display = 'none';
 });
 
