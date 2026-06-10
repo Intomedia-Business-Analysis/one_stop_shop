@@ -1,6 +1,8 @@
 .idea/
 __pycache__/
 .env
+logs/
+.pytest_cache/
 *.pyc
 .venv
 screen_configs.json

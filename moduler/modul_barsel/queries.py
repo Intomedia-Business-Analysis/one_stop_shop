@@ -1,4 +1,8 @@
+import logging
+
 from auth import get_conn
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # DB-initialisering
@@ -98,8 +102,9 @@ def init_barsel_db():
             cur.execute(sql)
         conn.commit()
         conn.close()
-    except Exception as e:
-        print(f"[init_barsel_db] Advarsel: {e}")
+    except Exception:
+        # Må ikke vælte app-opstart — migreringen forsøges igen ved næste genstart
+        logger.exception("init_barsel_db fejlede")
 
 
 # ---------------------------------------------------------------------------
@@ -208,8 +213,9 @@ def get_settings() -> dict:
         conn.close()
         if row:
             return _settings_to_front(row)
-    except Exception as e:
-        print(f"[get_settings] Fejl: {e}")
+    except Exception:
+        # Fallback til standardindstillingerne — siden skal kunne vises alligevel
+        logger.exception("get_settings fejlede — bruger standardindstillinger")
     return _settings_to_front(_DEFAULT_SETTINGS)
 
 
@@ -281,9 +287,9 @@ def get_cases(user_id: int, see_all: bool) -> list:
         rows = cur.fetchall()
         conn.close()
         return [_row_to_front(r) for r in rows]
-    except Exception as e:
-        print(f"[get_cases] Fejl: {e}")
-        return []
+    except Exception:
+        logger.exception("get_cases fejlede")
+        raise
 
 
 def get_case(case_id: int) -> dict | None:
@@ -294,9 +300,10 @@ def get_case(case_id: int) -> dict | None:
         row = cur.fetchone()
         conn.close()
         return _row_to_front(row) if row else None
-    except Exception as e:
-        print(f"[get_case] Fejl: {e}")
-        return None
+    except Exception:
+        # Re-raise: None betyder "sag findes ikke" — en DB-fejl må ikke ligne en 404
+        logger.exception("get_case fejlede")
+        raise
 
 
 def user_can_access_case(user: dict, case_id: int) -> bool:
@@ -322,6 +329,8 @@ def user_can_access_case(user: dict, case_id: int) -> bool:
         conn.close()
         return bool(row and row[0] == user["id"])
     except Exception:
+        # Fail-closed: ved fejl nægtes adgang
+        logger.exception("user_can_access_case: manager-opslag fejlede")
         return False
 
 
@@ -439,6 +448,8 @@ def user_can_approve_case(user: dict, case_id: int) -> bool:
         conn.close()
         return bool(row and row[0] == user["id"])
     except Exception:
+        # Fail-closed: ved fejl nægtes godkendelse
+        logger.exception("user_can_approve_case: manager-opslag fejlede")
         return False
 
 
@@ -457,4 +468,6 @@ def list_hub_users() -> list:
         conn.close()
         return [{"id": r["id"], "name": r["name"]} for r in rows]
     except Exception:
+        # Dropdown-hjælper — tom liste er et fornuftigt fallback
+        logger.exception("list_hub_users fejlede")
         return []

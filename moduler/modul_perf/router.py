@@ -1,4 +1,4 @@
-import traceback
+import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,6 +15,8 @@ from moduler.modul_perf.queries import (
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
     db_owner_in_teams,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
 templates = Jinja2Templates(directory="templates")
@@ -99,9 +101,9 @@ async def perf_manager_data(
             pipeline_filter=pipeline_filter,
         )
         return JSONResponse(_filter_team_lists(user, data))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-data fejlede (team=%s, year=%s, month=%s)", team, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -138,9 +140,9 @@ async def perf_yoy_data(
             date_col=date_col, pipeline_filter=pipeline_filter,
         )
         return JSONResponse(_filter_team_lists(user, data))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("yoy-data fejlede (team=%s, year=%s, compare_year=%s, month=%s)", team, year, compare_year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -163,9 +165,9 @@ async def manager_saelger_filters_endpoint(
     _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_filters(owner_name))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-filters fejlede (owner=%s)", owner_name)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/manager-saelger-pipeline")
@@ -182,9 +184,9 @@ async def manager_saelger_pipeline(
     _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_pipeline(owner_name, year, month, site, pipeline_type))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-pipeline fejlede (owner=%s, year=%s, month=%s)", owner_name, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/manager-saelger-deals")
@@ -202,9 +204,9 @@ async def manager_saelger_deals(
     _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_deals(owner_name, year, month, date_col, site, pipeline_type))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-deals fejlede (owner=%s, year=%s, month=%s)", owner_name, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/afdelingsleder", response_class=HTMLResponse)
@@ -230,9 +232,9 @@ async def perf_afdelingsleder_data(
     try:
         ref_year = year if year else date.today().year
         return JSONResponse(db_afdelingsleder_data(ref_year, month))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("afdelingsleder-data fejlede (year=%s, month=%s)", year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -271,9 +273,9 @@ async def perf_saelger_meta(
         if can_pick_seller:
             meta["available_owners"] = db_saelger_available_owners()
         return JSONResponse(meta)
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-meta fejlede (owner=%s)", owner)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 @router.get("/saelger-data")
 async def perf_saelger_data(
@@ -291,9 +293,9 @@ async def perf_saelger_data(
             team=team, selected_year=year, selected_month=month,
             date_col=date_col,
         ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-data fejlede (owner=%s, team=%s, year=%s, month=%s)", owner, team, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/saelger-pipeline-deals")
@@ -309,9 +311,9 @@ async def perf_saelger_pipeline_deals(
     try:
         target_owner = _resolve_saelger_owner(user, owner)
         return JSONResponse(db_manager_saelger_pipeline(target_owner, year, month))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-pipeline-deals fejlede (owner=%s, year=%s, month=%s)", owner, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 @router.get("/saelger-conversion-deals")
 async def perf_saelger_conversion_deals(
@@ -326,9 +328,9 @@ async def perf_saelger_conversion_deals(
     try:
         target_owner = _resolve_saelger_owner(user, owner)
         return JSONResponse(db_saelger_conversion_deals(target_owner, year, month, team))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-conversion-deals fejlede (owner=%s, year=%s, month=%s)", owner, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #-----------------------------------------------------------------------------------------------------------------------

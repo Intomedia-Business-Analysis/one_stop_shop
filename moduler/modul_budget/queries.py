@@ -1,5 +1,5 @@
+import logging
 import os
-import traceback
 import io
 from datetime import date
 
@@ -10,17 +10,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv('DB_SERVER'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        database=os.getenv('DB_NAME', 'INTOMEDIA'),
-        tds_version='7.0',
-        login_timeout=5,
-        timeout=5
-    )
+
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 # ── Team-dataadgang ──────────────────────────────────────────────────────────
@@ -64,7 +58,8 @@ def db_budget_scope(team_names: list) -> dict:
             dealtypes.update(TEAM_TO_DEALTYPES.get(name, []))
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Fallback: tomt scope = ingen medie-budgetrækker vises (sikker degradering).
+        logger.exception("db_budget_scope fejlede — returnerer tomt scope")
     return {"brands": brands, "dealtypes": dealtypes}
 
 
@@ -85,6 +80,8 @@ def db_owners_for_teams(team_names: list) -> list:
         conn.close()
         return rows
     except Exception:
+        # Fallback: tom dropdown-liste i stedet for fejlside.
+        logger.exception("db_owners_for_teams fejlede — returnerer tom liste")
         return []
 
 
@@ -111,6 +108,8 @@ def db_get_distinct(table: str, column: str) -> list:
         conn.close()
         return rows
     except Exception:
+        # Fallback: tom dropdown-liste i stedet for fejlside.
+        logger.exception("db_get_distinct fejlede (%s.%s) — returnerer tom liste", table, column)
         return []
 
 
@@ -153,9 +152,11 @@ def db_medie_upload_df(df: pd.DataFrame):
                 VALUES (%s,%s,%s,%s,%s,%s)
             """, (str(row["DealType"]), str(row["Site"]), budget_date, amount, str(row["Brand"]), str(row["Salestype"])))
             inserted += 1
-        except Exception:
+        except Exception as e:
+            # Forventelig degradering — dårlige rækker i upload springes over.
             errors += 1
-            error_rows.append({"row": i + 2, "error": traceback.format_exc()})
+            logger.warning("Medie-upload: række %s kunne ikke importeres: %s", i + 2, e)
+            error_rows.append({"row": i + 2, "error": str(e)})
     conn.commit()
     conn.close()
     return inserted, errors, error_rows
@@ -208,9 +209,11 @@ def db_saelger_upload_df(df: pd.DataFrame):
                 VALUES (%s,%s,%s,%s,%s)
             """, (str(row["Owner"]), str(row["Brand"]), budget_date, amount, str(row["Team"])))
             inserted += 1
-        except Exception:
+        except Exception as e:
+            # Forventelig degradering — dårlige rækker i upload springes over.
             errors += 1
-            error_rows.append({"row": i + 2, "error": traceback.format_exc()})
+            logger.warning("Sælger-upload: række %s kunne ikke importeres: %s", i + 2, e)
+            error_rows.append({"row": i + 2, "error": str(e)})
     conn.commit()
     conn.close()
     return inserted, errors, error_rows

@@ -1,20 +1,14 @@
+import logging
 import os
-import traceback
 import pymssql
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+logger = logging.getLogger(__name__)
+
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 def db_get_all_users():
     try:
@@ -29,7 +23,7 @@ def db_get_all_users():
         conn.close()
         return users
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_get_all_users fejlede")
         return []
 
 def db_create_user(username, password_hash, name, initials, role, brand):

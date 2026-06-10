@@ -1,5 +1,5 @@
+import logging
 import threading
-import traceback
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -20,6 +20,8 @@ from moduler.modul_klippekort.queries import (
     refresh_org_owners,
 )
 from moduler.modul_klippekort.pipedrive_api import add_used_clip_cards
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/klippekort", tags=["Klippekort"])
 templates = Jinja2Templates(directory="templates")
@@ -47,7 +49,7 @@ def _maybe_refresh_pd_cache():
         try:
             refresh_org_owners()
         except Exception:
-            traceback.print_exc()
+            logger.exception("Baggrunds-refresh af org-ejere fejlede")
         finally:
             _ORG_REFRESHING["running"] = False
 
@@ -73,9 +75,9 @@ async def klippekort_overblik(mine: int = 0, status: str = "aktive", user=Depend
     try:
         owner = user.get("name") if mine else None
         return JSONResponse({"rows": db_overblik(owner, status)})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("klippekort_overblik fejlede (mine=%s, status=%s)", mine, status)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/udloebende")
@@ -88,9 +90,9 @@ async def klippekort_udloebende(mine: int = 0, status: str = "aktive", user=Depe
     try:
         owner = user.get("name") if mine else None
         return JSONResponse({"rows": db_udloebende_jobs(owner, status)})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("klippekort_udloebende fejlede (mine=%s, status=%s)", mine, status)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/sites")
@@ -107,9 +109,9 @@ async def klippekort_oekonomi(user=Depends(get_current_user)):
         raise HTTPException(403, "Ingen adgang")
     try:
         return JSONResponse({"rows": db_oekonomi()})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("klippekort_oekonomi fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/forbrug")
@@ -119,9 +121,9 @@ async def klippekort_forbrug(pd_deal_id: int, user=Depends(get_current_user)):
         raise HTTPException(403, "Ingen adgang")
     try:
         return JSONResponse({"rows": db_forbrug_for_deal(pd_deal_id)})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("klippekort_forbrug fejlede (pd_deal_id=%s)", pd_deal_id)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.post("/slet-job")
@@ -218,6 +220,6 @@ async def klippekort_opret_job(payload: dict = Body(...), user=Depends(get_curre
         })
     except HTTPException:
         raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("klippekort_opret_job fejlede (pd_deal_id=%s)", pd_deal_id)
+        raise HTTPException(500, "Data kunne ikke hentes")

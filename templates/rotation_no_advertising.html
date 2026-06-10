@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Job Performance</title>
+<title>Advertising Performance NO</title>
 <link rel="stylesheet" href="/static/hub.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -81,6 +81,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 /* ── HØJRE KOLONNE ───────────────────────────────────────────────────── */
 .right-col { display:flex; flex-direction:column; gap:6px; min-height:0; }
 
+/* Deals strip (3 mini-tabeller) */
 .deals-strip { display:grid; grid-template-columns:1fr 1fr 1.3fr; gap:6px; flex:2; min-height:0; }
 .mini-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
@@ -91,8 +92,10 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 .card-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--ink-4); margin-bottom:4px; flex-shrink:0; line-height:1.2; }
 .tbl-scroll { overflow-y:auto; flex:1; }
 
+/* Budget chart (ét chart i fuld bredde — Job + Banner mod budget) */
 .budget-strip { display:grid; grid-template-columns:1fr; gap:6px; flex:1.5; min-height:0; }
 
+/* Seneste deals */
 .seneste-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
   padding: 8px 10px; position: relative; overflow: hidden;
@@ -124,8 +127,8 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
     </div>
     <div class="hdr-divider"></div>
     <div class="title-block">
-      <h1>Job Performance</h1>
-      <div class="sub">Indeværende måned</div>
+      <h1>Advertising Performance NO</h1>
+      <div class="sub">Job + Banner — beløb i NOK</div>
     </div>
     <div class="header-right">
       <div class="period"><div class="lbl">Periode</div><div class="val" id="lblPeriod">—</div></div>
@@ -137,7 +140,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   <!-- INDHOLD -->
   <div class="content">
 
-    <!-- VENSTRE: KPI + Kvartal chart -->
+    <!-- VENSTRE: KPI + charts -->
     <div class="left-col">
 
       <div class="kpi-strip">
@@ -206,21 +209,21 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 
       <div class="budget-strip">
         <div class="chart-card">
-          <div class="chart-title">Job — Omsætning vs. budget</div>
+          <div class="chart-title">Omsætning vs. budget — indeværende måned</div>
           <div class="legend-row">
             <div class="legend-item"><div class="legend-dot" style="background:#2B2A27"></div>Omsætning</div>
             <div class="legend-item"><div class="legend-dot" style="background:#C9C1B5"></div>Budget</div>
           </div>
-          <div class="chart-wrap"><canvas id="chartJob"></canvas></div>
+          <div class="chart-wrap"><canvas id="chartBudget"></canvas></div>
         </div>
       </div>
 
       <div class="seneste-card">
-        <div class="card-title">Seneste deals vundet — Uden opsigelser</div>
+        <div class="card-title">Seneste deals vundet</div>
         <div class="tbl-scroll">
           <table class="dt">
             <thead><tr>
-              <th>Sælger</th><th>Organisation</th><th>Brand</th>
+              <th>Sælger</th><th>Organisation</th><th>Type</th><th>Site</th>
               <th class="r">Værdi</th><th>Won time</th>
             </tr></thead>
             <tbody id="tblSeneste"></tbody>
@@ -236,13 +239,61 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 Chart.register(ChartDataLabels);
 const charts = {};
 
-// Formattering, short() og fillTable() kommer fra /static/rotation-utils.js
-const { fmt, fmtAxis, fmtLabel } = makeMoneyFormatters('kr.', {zeroLabel: true});
+function fmt(v) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' NOK';
+}
+function fmtAxis(v) {
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+' mio.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+' t.';
+  return v;
+}
+// Kort beløb uden enhed — bruges inde i søjle-segmenterne, hvor pladsen er trang.
+function fmtShort(v) {
+  if (!v) return '';
+  const a = Math.abs(v);
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{minimumFractionDigits:1,maximumFractionDigits:1})+' mio.';
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+' t.';
+  return new Intl.NumberFormat('da-DK',{maximumFractionDigits:0}).format(v);
+}
+function fmtLabel(v) {
+  if (!v) return '';
+  return fmtShort(v) + ' NOK';
+}
+// short() og fillTable() kommer fra /static/rotation-utils.js
 
-// Fast farve pr. hovedbrand (samme farve i måneds- og kvartals-chartet)
-const BRAND_COLORS = {
-  'Watch DK':'#2B2A27', 'FINANS DK':'#A98545', 'Monitor':'#5E7385',
-  'Watch Int':'#B06A52', 'Marketwire':'#7E8F6F', 'Øvrige':'#C9C1B5'
+// Fast farve pr. forretningsben (samme farve i måneds- og kvartals-chartet)
+const BRAND_COLORS = { 'Job':'#2B2A27', 'Banner':'#A98545' };
+
+// Tegner én tydelig total over hver stablet søjle — uafhængigt af hvilke
+// serier der har data i den enkelte søjle.
+const stackTotalsPlugin = {
+  id: 'stackTotals',
+  afterDatasetsDraw(chart, args, opts) {
+    const totals = opts?.totals || [];
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = '700 13px Montserrat';
+    ctx.fillStyle = '#2B2A27';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    totals.forEach((t, i) => {
+      if (!t) return;
+      // Find søjlens x-position og øverste y på tværs af alle datasets.
+      let x = null, topY = Infinity;
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        const el = meta?.data?.[i];
+        if (!el || !(ds.data?.[i] > 0)) return;
+        x = el.x;
+        if (el.y < topY) topY = el.y;
+      });
+      if (x == null) return;
+      ctx.fillText(fmtLabel(t), x, topY - 4);
+    });
+    ctx.restore();
+  }
 };
 
 function buildStackedBar(id, payload) {
@@ -250,102 +301,47 @@ function buildStackedBar(id, payload) {
   if (charts[id]) charts[id].destroy();
   const labels = payload?.labels || [];
   const series = payload?.series || [];
-
   const nPts = labels.length;
   const totals = Array.from({length:nPts}, (_, i) =>
     series.reduce((sum, s) => sum + (s.data?.[i] || 0), 0));
   const maxTotal = Math.max(1, ...totals);
 
-  const SMALL_COL = 0.12;   // søjle-total < 12% af højeste → "lille søjle"
-  const THIN_SEG  = 0.07;   // segment < 7% af højeste → "tyndt segment"
-  const smallCol = totals.map(t => t > 0 && t < maxTotal * SMALL_COL);
-  const topIdx   = Array.from({length:nPts}, (_, i) => {
-    let idx = -1;
-    series.forEach((s, di) => { if ((s.data?.[i] || 0) > 0) idx = di; });
-    return idx;
-  });
-
-  const datasets = series.map((s, di) => ({
+  // Totalen står altid over søjlen (stackTotalsPlugin). Inde i segmenterne
+  // vises beløbet kun, når segmentet er højt nok til at det kan læses.
+  const MIN_SEG = 0.09;   // segment < 9% af højeste søjle → ingen indre label
+  const datasets = series.map(s => ({
     label: s.brand,
     data: s.data || [],
     backgroundColor: BRAND_COLORS[s.brand] || '#C9C1B5',
     borderRadius: 2,
     stack: 'total',
     datalabels: {
-      display: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        if (v <= 0) return false;
-        return smallCol[i] ? di === topIdx[i] : true;
-      },
-      anchor: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'end' : 'center';
-      },
-      align: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'top' : 'center';
-      },
-      offset: 2,
+      display: ctx => (ctx.dataset.data[ctx.dataIndex] || 0) >= maxTotal * MIN_SEG,
+      anchor: 'center',
+      align: 'center',
       font:{family:'Montserrat',size:12,weight:'700'},
-      color: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? '#2B2A27' : '#fff';
-      },
-      textStrokeColor:'rgba(255,255,255,0.9)',
-      textStrokeWidth: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 3 : 0;
-      },
-      formatter:(v, ctx) => smallCol[ctx.dataIndex] ? fmtLabel(totals[ctx.dataIndex]) : fmtLabel(v),
-      clip:false,
+      color:'#fff',
+      formatter: v => fmtShort(v),
+      clip:true,
     },
   }));
   charts[id] = new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets },
+    plugins: [stackTotalsPlugin],
     options: {
       responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ top:18 } },
+      layout:{ padding:{ top:24 } },
       plugins: {
+        stackTotals:{ totals },
         legend:{ display:true, position:'top', labels:{font:{family:'Montserrat',size:12}, boxWidth:12, padding:8} },
         tooltip:{ callbacks:{ label:c=>' '+c.dataset.label+': '+fmt(c.raw) } },
       },
       scales:{
         x:{ stacked:true, ticks:{font:{family:'Montserrat',size:12}}, grid:{display:false} },
-        y:{ stacked:true, ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'} }
-      }
-    }
-  });
-}
-
-function buildVBar(id, rows, labelKey, revenueKey) {
-  const ctx = document.getElementById(id).getContext('2d');
-  if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: rows.map(r => r[labelKey] + (r.pipeline ? ' (' + r.pipeline + ')' : '')),
-      datasets: [
-        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2B2A27', borderRadius:2 },
-      ]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{ display:false },
-        tooltip:{ callbacks:{ label:c=>' '+fmt(c.raw) } },
-        datalabels:{
-          anchor:'end', align:'end', offset:1,
-          font:{family:'Montserrat',size:14,weight:'600'},
-          color:'#4D4942',
-          formatter: v => fmtLabel(v),
-          clip:false,
-        }
-      },
-      layout:{ padding:{ top:18 } },
-      scales:{
-        x:{ ticks:{font:{family:'Montserrat',size:12},maxRotation:25}, grid:{display:false} },
-        y:{ ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'} }
+        y:{ stacked:true, ticks:{font:{family:'Montserrat',size:12},callback:fmtAxis}, grid:{color:'#E9E5DE'},
+            // Luft over højeste søjle, så total-labelen ikke klippes.
+            suggestedMax: maxTotal * 1.08 }
       }
     }
   });
@@ -387,7 +383,7 @@ function buildHBar(id, rows, labelKey, revenueKey, budgetKey) {
 }
 
 async function loadData() {
-  const d = await fetchDashboardData('/tools/rotation/job-performance-data');
+  const d = await fetchDashboardData('/tools/rotation/no-advertising-performance-data');
   if (!d) return;
 
   document.getElementById('kpiDag').textContent    = fmt(d.kpis?.dag);
@@ -401,7 +397,7 @@ async function loadData() {
 
   buildStackedBar('chartMaaned',  d.maaned_chart);
   buildStackedBar('chartKvartal', d.kvartal_chart);
-  buildHBar('chartJob',     d.budget_chart  || [], 'brand', 'revenue', 'budget');
+  buildHBar('chartBudget', d.budget_chart || [], 'brand', 'revenue', 'budget');
 
   fillTable('tblOprettet',   d.deals_oprettet   ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
   fillTable('tblVundet',     d.deals_vundet     ||[], [{key:'owner_name',fmt:n=>short(n,14)},{key:'deals',cls:'r'}]);
@@ -409,6 +405,7 @@ async function loadData() {
   fillTable('tblSeneste',    d.seneste_deals    ||[], [
     {key:'owner_name', fmt:n=>short(n,14)},
     {key:'org_name',   fmt:n=>short(n,18)},
+    {key:'pipeline',   fmt:n=>short(n,8)},
     {key:'brand',      fmt:n=>short(n,14)},
     {key:'value',      cls:'r', fmt:fmt},
     {key:'won_time',   fmt:v=>v?v.substring(0,16):'—'},

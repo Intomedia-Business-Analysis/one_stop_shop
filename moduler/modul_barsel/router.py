@@ -1,4 +1,4 @@
-import traceback
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -11,6 +11,8 @@ from moduler.modul_barsel.queries import (
     list_hub_users,
 )
 from moduler.modul_barsel.mail import send_approval_notification
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/barsel", tags=["Barsel"])
 
@@ -44,9 +46,9 @@ async def api_save_settings(request: Request, user=Depends(get_current_user)):
         data = await request.json()
         upsert_settings(data, user["id"])
         return JSONResponse({"status": "ok"})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("api_save_settings fejlede")
+        raise HTTPException(status_code=500, detail="Data kunne ikke hentes")
 
 # ---------------------------------------------------------------------------
 # Cases
@@ -90,9 +92,9 @@ async def api_create_case(request: Request, user=Depends(get_current_user)):
         data = await request.json()
         new_id = create_case(data, user["id"])
         return JSONResponse({"id": new_id})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("api_create_case fejlede")
+        raise HTTPException(status_code=500, detail="Data kunne ikke hentes")
 
 
 @router.put("/api/cases/{case_id}")
@@ -103,9 +105,9 @@ async def api_update_case(case_id: int, request: Request, user=Depends(get_curre
         data = await request.json()
         update_case(case_id, data, user)
         return JSONResponse({"status": "ok"})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("api_update_case fejlede")
+        raise HTTPException(status_code=500, detail="Data kunne ikke hentes")
 
 
 @router.delete("/api/cases/{case_id}")
@@ -115,9 +117,9 @@ async def api_delete_case(case_id: int, user=Depends(get_current_user)):
     try:
         delete_case(case_id)
         return JSONResponse({"status": "ok"})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("api_delete_case fejlede")
+        raise HTTPException(status_code=500, detail="Data kunne ikke hentes")
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +143,7 @@ async def api_approve_case(case_id: int, user=Depends(get_current_user)):
     set_approval_status(case_id, "approved", user["id"])
     # Send notifikation til distributionslisten. send_approval_notification
     # fejler aldrig hårdt — godkendelsen står ved magt selv hvis mailen
-    # ikke kan afsendes (logges til konsollen i stedet).
+    # ikke kan afsendes (fejlen logges i stedet).
     case = get_case(case_id)
     settings = get_settings()
     mail_sent = send_approval_notification(case or {}, settings.get("notifyEmails") or "")
