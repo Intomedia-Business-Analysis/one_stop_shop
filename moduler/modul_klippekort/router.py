@@ -11,6 +11,7 @@ from moduler.modul_klippekort.queries import (
     db_oekonomi,
     db_org_owner_meta,
     db_overblik,
+    db_rediger_job,
     db_registrer_forbrug,
     db_slet_job,
     db_udloebende_jobs,
@@ -143,6 +144,30 @@ async def klippekort_slet_job(payload: dict = Body(...), user=Depends(get_curren
     # (delta er negativ), så vi ikke overskriver klip toolet ikke selv har registreret.
     pd = add_used_clip_cards(res["pd_deal_id"], res["delta"])
     return JSONResponse({"ok": True, "brugt": res["brugt"], "pipedrive": pd})
+
+
+@router.post("/rediger-job")
+async def klippekort_rediger_job(payload: dict = Body(...), user=Depends(get_current_user)):
+    """Redigér et aktivt stillingsopslag: forlæng perioden og/eller giv effektgaranti.
+
+    Effektgaranti = aftalt med kunden hvor lang tid ekstra stillingen kører —
+    derfor skal der altid en (ny) slutdato med.
+    Body: {job_id, slutdato (YYYY-MM-DD), effektgaranti}
+    """
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang")
+    job_id = (payload.get("job_id") or "").strip()
+    slutdato = (payload.get("slutdato") or "").strip()
+    effektgaranti = bool(payload.get("effektgaranti"))
+    if not job_id:
+        raise HTTPException(400, "job_id er påkrævet")
+    if not slutdato:
+        raise HTTPException(400, "slutdato er påkrævet")
+
+    res = db_rediger_job(job_id, slutdato, effektgaranti)
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "Kunne ikke opdatere job"))
+    return JSONResponse({"ok": True})
 
 
 @router.post("/opret-job")

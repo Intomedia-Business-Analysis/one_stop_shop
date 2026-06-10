@@ -127,6 +127,40 @@ def build_team_filter(team: str | None, team_brand: str | None):
     return site_clause, site_list, owner_clause, owner_params
 
 
+def db_team_owner_names(team_names: list) -> set:
+    """Sælgernavne knyttet til de angivne teams — via aktivt holdmedlemskab,
+    sælgerbudget eller deals' team-felt.
+
+    Bruges til team-dataadgang: en team-begrænset bruger må kun se og gemme
+    forecasts på sælger-niveau for sælgere i sine tilladte teams.
+    """
+    if not team_names:
+        return set()
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT u.name
+            FROM   HubUsers u
+            JOIN   TeamMemberships tm ON tm.user_id = u.id
+            JOIN   Teams t ON t.id = tm.team_id
+            WHERE  t.name IN {ph}
+              AND  (tm.end_date IS NULL OR tm.end_date >= GETDATE())
+            UNION
+            SELECT [Owner] FROM [dbo].[SalespersonBudget] WHERE [Team] IN {ph}
+            UNION
+            SELECT DISTINCT [owner_name] FROM [dbo].[PipedriveDeals]
+            WHERE [team] IN {ph} AND [owner_name] IS NOT NULL
+        """, tuple(team_names) * 3)
+        names = {r[0] for r in cur.fetchall() if r[0]}
+        conn.close()
+        return names
+    except Exception:
+        traceback.print_exc()
+        return set()
+
+
 def db_get_teams():
     try:
         conn = get_conn()

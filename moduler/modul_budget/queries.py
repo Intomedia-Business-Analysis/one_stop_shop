@@ -23,6 +23,85 @@ def get_conn():
     )
 
 
+# ── Team-dataadgang ──────────────────────────────────────────────────────────
+# Sælgerbudgettet har en [Team]-kolonne og filtreres direkte. Medie-budgettet
+# er brand/site-niveau, så en team-begrænsning oversættes til de budget-brands
+# teamet dækker: Teams.brand (watch_no, finans, …) → BudgetsIntoMedia.[Brand].
+TEAM_BRAND_TO_BUDGET_BRANDS = {
+    "watch_dk":   ["Watch DK", "KForum"],
+    "watch_int":  ["Watch Int"],
+    "watch_no":   ["Watch NO"],
+    "watch_se":   ["Watch SE"],
+    "watch_de":   ["Watch DE"],
+    "finans":     ["FINANS DK"],
+    "finans_int": ["FINANS Int"],
+    "monitor":    ["Monitor"],
+    "marketwire": ["MarketWire"],
+}
+# Teams uden brand (Banner/Job) genkendes på DealType i medie-budgettet.
+TEAM_TO_DEALTYPES = {
+    "Team Banner": ["Banner"],
+    "Team Job":    ["Job"],
+}
+
+
+def db_budget_scope(team_names: list) -> dict:
+    """Oversæt tilladte teams til medie-budget-scope: {brands, dealtypes}.
+
+    En medie-budgetrække er tilladt hvis dens [Brand] ELLER [DealType] er i scope.
+    """
+    brands: set = set()
+    dealtypes: set = set()
+    if not team_names:
+        return {"brands": brands, "dealtypes": dealtypes}
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(f"SELECT name, brand FROM Teams WHERE name IN {ph}", tuple(team_names))
+        for name, brand in cur.fetchall():
+            brands.update(TEAM_BRAND_TO_BUDGET_BRANDS.get(brand or "", []))
+            dealtypes.update(TEAM_TO_DEALTYPES.get(name, []))
+        conn.close()
+    except Exception:
+        traceback.print_exc()
+    return {"brands": brands, "dealtypes": dealtypes}
+
+
+def db_owners_for_teams(team_names: list) -> list:
+    """Sælgere (Owner) i sælgerbudgettet for de angivne teams — til dropdowns."""
+    if not team_names:
+        return []
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT DISTINCT [Owner] FROM [dbo].[SalespersonBudget] "
+            f"WHERE [Team] IN {ph} AND [Owner] IS NOT NULL ORDER BY [Owner]",
+            tuple(team_names),
+        )
+        rows = [r[0] for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+
+def db_medie_get(row_id: int) -> dict | None:
+    """Hent én medie-budgetrække — til adgangstjek før update/delete."""
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(
+        "SELECT [ID],[Site],[Brand],[DealType],[Salestype] "
+        "FROM [dbo].[BudgetsIntoMedia] WHERE [ID] = %s",
+        (row_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 def db_get_distinct(table: str, column: str) -> list:
     try:
         conn = get_conn()

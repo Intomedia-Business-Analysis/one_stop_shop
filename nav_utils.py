@@ -76,9 +76,11 @@ CATEGORIES = [
         "items": [
             {"id": "rotation-autoplay",    "title": "Rotation",                "type": "tool",      "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/"},
             {"id": "rotation-sales",       "title": "Sales Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/sales-performance"},
+            {"id": "rotation-sales-no",    "title": "Sales Performance NO",    "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/sales-performance?teams=Team%20Watch%20NO"},
             {"id": "rotation-department",  "title": "Department Performance",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/department-performance"},
             {"id": "rotation-banner",      "title": "Banner Performance",      "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/banner-performance"},
             {"id": "rotation-job",         "title": "Job Performance",         "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/job-performance"},
+            {"id": "rotation-no-adv",      "title": "Advertising Performance NO", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/no-advertising-performance"},
             {"id": "rotation-media",       "title": "Media Performance",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/tools/rotation/media-performance"},
         ],
     },

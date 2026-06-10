@@ -115,6 +115,16 @@ def init_db():
                notes       NVARCHAR(500) NULL,
                created_at  DATETIME      DEFAULT GETDATE()
            )""",
+        # Per-bruger team-dataadgang: hvilke teams brugeren må se data for i
+        # performance-dashboards. Ingen rækker = ubegrænset (ser alle teams).
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubUserTeamAccess' AND xtype='U')
+           CREATE TABLE HubUserTeamAccess (
+               id          INT IDENTITY(1,1) PRIMARY KEY,
+               user_id     INT NOT NULL,
+               team_id     INT NOT NULL,
+               created_at  DATETIME DEFAULT GETDATE(),
+               CONSTRAINT UQ_HubUserTeamAccess UNIQUE (user_id, team_id)
+           )""",
         # Forecast-gemte prognoser
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecasts' AND xtype='U')
            CREATE TABLE HubForecasts (
@@ -415,6 +425,41 @@ def get_user_teams(user_id: int) -> list:
         return []
 
 
+def get_user_data_teams(user_id: int) -> list:
+    """Returnér holdnavne brugeren eksplicit er begrænset til at se data for
+    (HubUserTeamAccess — sættes på admin-brugersiden). Tom liste = ubegrænset.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """
+            SELECT t.name
+            FROM   HubUserTeamAccess a
+            JOIN   Teams t ON t.id = a.team_id
+            WHERE  a.user_id = %s
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall() or []
+        conn.close()
+        return [r["name"] for r in rows]
+    except Exception:
+        return []
+
+
+def allowed_data_teams(user: dict) -> list | None:
+    """Teams brugeren må se performance-data for. None = ubegrænset.
+
+    Admin er altid ubegrænset; alle andre begrænses kun hvis admin har sat
+    eksplicitte teams på brugeren (HubUserTeamAccess).
+    """
+    if user.get("role") == "admin":
+        return None
+    teams = user.get("_data_teams") or []
+    return teams if teams else None
+
+
 def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None, exclude_roles: list = None) -> str:
     """
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
@@ -478,6 +523,7 @@ def authenticate_user(username: str, password: str):
         user["_resource_access"] = get_user_resource_access(user["id"])
         user["_role_access"]     = get_role_resource_access(user["role"])
         user["_teams"] = get_user_teams(user["id"])
+        user["_data_teams"] = get_user_data_teams(user["id"])
         return user
     except Exception as e:
         print(f"[authenticate_user] FEJL: {e}")
@@ -498,6 +544,7 @@ def get_user_by_id(user_id: int):
             user["_resource_access"] = get_user_resource_access(user_id)
             user["_role_access"]     = get_role_resource_access(user["role"])
             user["_teams"] = get_user_teams(user_id)
+            user["_data_teams"] = get_user_data_teams(user_id)
         return user
     except Exception:
         return None
@@ -514,6 +561,7 @@ _DEV_USER = {
     "_resource_access": {},
     "_role_access": {},
     "_teams": [],
+    "_data_teams": [],
 }
 
 

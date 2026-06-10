@@ -394,6 +394,38 @@ def db_slet_job(job_id: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def db_rediger_job(job_id: str, slutdato: str, effektgaranti: bool) -> dict:
+    """Opdatér et helt jobs slutdato/effektgaranti (alle dets site-rækker).
+
+    Bruges til at forlænge en stillings periode eller give effektgaranti.
+    Effektgaranti = man aftaler med kunden hvor lang tid ekstra stillingen
+    kører — derfor følger der altid en (ny) slutdato med.
+    """
+    conn = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE KlippekortForbrug
+            SET slutdato = %s, effektgaranti = %s
+            WHERE job_id = %s
+        """, (slutdato, 1 if effektgaranti else 0, job_id))
+        if cur.rowcount == 0:
+            conn.close()
+            return {"ok": False, "error": f"Job {job_id} blev ikke fundet"}
+        conn.commit()
+        conn.close()
+        return {"ok": True}
+    except Exception as e:
+        traceback.print_exc()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return {"ok": False, "error": str(e)}
+
+
 def db_oekonomi() -> list[dict]:
     """Omsætning fordelt på de sites hvor klip er blevet brugt.
 
@@ -430,17 +462,18 @@ def db_oekonomi() -> list[dict]:
 def db_udloebende_jobs(only_owner_name: str | None = None, status: str = "aktive") -> list[dict]:
     """Stillinger med en slutdato — til opfølgning.
 
-    status='aktive'   → stillinger der stadig kører (slutdato >= i dag, eller
-                        effektgaranti) — snart-udløbne øverst.
-    status='udloebne' → stillinger hvis slutdato er passeret (og ikke effektgaranti)
-                        — senest udløbne øverst.
+    status='aktive'   → stillinger der stadig kører (slutdato >= i dag) —
+                        snart-udløbne øverst.
+    status='udloebne' → stillinger hvis slutdato er passeret — senest udløbne øverst.
+    Effektgaranti følger også slutdatoen: garantien er en aftalt ekstra periode,
+    så slutdatoen sættes frem når den gives (se db_rediger_job).
     only_owner_name filtrerer på organisationens ejer.
     """
     if status == "udloebne":
-        status_clause = "AND f.slutdato < CAST(GETDATE() AS date) AND f.effektgaranti = 0"
+        status_clause = "AND f.slutdato < CAST(GETDATE() AS date)"
         order_clause = "ORDER BY f.slutdato DESC, f.job_id"
     else:
-        status_clause = "AND (f.slutdato >= CAST(GETDATE() AS date) OR f.effektgaranti = 1)"
+        status_clause = "AND f.slutdato >= CAST(GETDATE() AS date)"
         order_clause = "ORDER BY f.slutdato ASC, f.job_id"
     owner_clause = ""
     params: list = []

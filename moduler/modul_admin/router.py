@@ -16,6 +16,7 @@ from moduler.modul_admin.queries import (
     db_save_resource_access, db_get_all_teams, db_create_team,
     db_get_team_by_id, db_update_team, db_update_membership,
     db_set_manager_for, db_delete_user,
+    db_get_user_team_access, db_set_user_team_access,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -178,6 +179,11 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
     except Exception:
         memberships, all_teams = [], []
 
+    try:
+        team_access = db_get_user_team_access(user_id)
+    except Exception:
+        team_access = set()
+
     # Hele brugerlisten — bruges til leder-dropdown og "leder for"-multiselect.
     all_users = [u for u in db_get_all_users() if u["is_active"]]
     managed_users = [u for u in all_users if u.get("manager_id") == user_id]
@@ -191,6 +197,7 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
         "resource_access": resource_access,
         "memberships":     memberships,
         "all_teams":       all_teams,
+        "team_access":     team_access,
         "all_users":       all_users,
         "managed_users":   managed_users,
         "success":         request.query_params.get("success"),
@@ -275,6 +282,30 @@ async def admin_save_resource_access(user_id: int, request: Request, user=Depend
         print(traceback.format_exc())
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=access_updated", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Team-dataadgang (hvilke teams brugeren må se performance-data for)
+# ---------------------------------------------------------------------------
+
+@router.post("/users/{user_id}/team-data-access")
+async def admin_save_team_data_access(user_id: int, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    form = await request.form()
+    raw = form.getlist("team_ids") if hasattr(form, "getlist") else []
+    team_ids = []
+    for v in raw:
+        try:
+            team_ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+    try:
+        db_set_user_team_access(user_id, team_ids)
+    except Exception:
+        print(traceback.format_exc())
+        return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
+
+    return RedirectResponse(f"/admin/users/{user_id}/edit?success=team_access_updated", status_code=302)
 
 
 # ---------------------------------------------------------------------------

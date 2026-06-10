@@ -134,7 +134,7 @@
             /tools/rotation/screen/{{ s.id }} &nbsp;📋
           </div>
         </div>
-        <button class="btn btn-secondary" data-screen='{"id":"{{ s.id }}","name":"{{ s.name }}","dashboards":{{ s.dashboards | tojson }},"interval":{{ s.interval }},"media":{{ s.get("media", {}) | tojson }}}' onclick="editScreen(JSON.parse(this.dataset.screen))">Rediger</button>
+        <button class="btn btn-secondary" data-screen='{"id":"{{ s.id }}","name":"{{ s.name }}","dashboards":{{ s.dashboards | tojson }},"interval":{{ s.interval }},"media":{{ s.get("media", {}) | tojson }},"sales":{{ s.get("sales", {}) | tojson }}}' onclick="editScreen(JSON.parse(this.dataset.screen))">Rediger</button>
         <button class="btn btn-danger" onclick="deleteScreen('{{ s.id }}', '{{ s.name }}')">Slet</button>
       </div>
       {% endfor %}
@@ -181,9 +181,27 @@
           <label class="dashboard-option" id="opt-job">
             <input type="checkbox" value="job"> Job Performance
           </label>
+          <label class="dashboard-option" id="opt-no_advertising">
+            <input type="checkbox" value="no_advertising"> Advertising Performance NO
+          </label>
+          <label class="dashboard-option" id="opt-sales_no">
+            <input type="checkbox" value="sales_no"> Sales Performance NO
+          </label>
           <label class="dashboard-option" id="opt-media">
             <input type="checkbox" value="media"> Media Performance
           </label>
+        </div>
+      </div>
+
+      <div class="form-group" id="salesSettings" style="display:none; border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--bg);">
+        <label style="font-size:13px; font-weight:700; color:var(--ink); display:block; margin-bottom:12px;">📊 Sales Performance indstillinger</label>
+        <div class="form-group" style="margin-bottom:0;">
+          <label>Teams <span style="font-weight:400; color:var(--ink-muted)">— tom = standard-teams (uden Norge)</span></label>
+          <div class="dashboard-grid" id="salesTeamsGrid">
+            {% for t in team_names %}
+            <label class="dashboard-option"><input type="checkbox" name="salesTeams" value="{{ t }}"> {{ t }}</label>
+            {% endfor %}
+          </div>
         </div>
       </div>
 
@@ -250,16 +268,17 @@
   </div>
 
   <script>
-    // Highlight dashboard-checkboxes + vis/skjul media-indstillinger
+    // Highlight dashboard-checkboxes + vis/skjul dashboard-specifikke indstillinger
     document.querySelectorAll('#dashboardsGrid .dashboard-option input').forEach(inp => {
       inp.addEventListener('change', () => {
         inp.closest('.dashboard-option').classList.toggle('selected', inp.checked);
         toggleMediaSettings();
+        toggleSalesSettings();
       });
     });
 
-    // Highlight media-indstillinger checkboxes og radio buttons
-    document.querySelectorAll('#mediaSettings .dashboard-option input').forEach(inp => {
+    // Highlight indstillings-checkboxes og radio buttons (media + sales)
+    document.querySelectorAll('#mediaSettings .dashboard-option input, #salesSettings .dashboard-option input').forEach(inp => {
       inp.addEventListener('change', () => {
         if (inp.type === 'radio') {
           document.querySelectorAll(`input[name="${inp.name}"]`).forEach(r => {
@@ -274,6 +293,11 @@
     function toggleMediaSettings() {
       const mediaChecked = document.querySelector('.dashboard-option input[value="media"]').checked;
       document.getElementById('mediaSettings').style.display = mediaChecked ? 'block' : 'none';
+    }
+
+    function toggleSalesSettings() {
+      const salesChecked = document.querySelector('.dashboard-option input[value="sales"]').checked;
+      document.getElementById('salesSettings').style.display = salesChecked ? 'block' : 'none';
     }
 
     function openModal(screen = null) {
@@ -314,7 +338,15 @@
         cb.checked = months.includes(cb.value);
         cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
       });
+      // Sales Performance teams (checkboxes)
+      const sales = screen ? (screen.sales || {}) : {};
+      const salesTeams = sales.teams ? sales.teams.split(',') : [];
+      document.querySelectorAll('input[name="salesTeams"]').forEach(cb => {
+        cb.checked = salesTeams.includes(cb.value);
+        cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
+      });
       toggleMediaSettings();
+      toggleSalesSettings();
 
       document.getElementById('modalOverlay').classList.add('open');
       document.getElementById('screenName').focus();
@@ -341,12 +373,14 @@
         years:    [...document.querySelectorAll('input[name="mediaYears"]:checked')].map(c => c.value).join(','),
         months:   [...document.querySelectorAll('input[name="mediaMonths"]:checked')].map(c => c.value).join(','),
       };
+      const salesTeams = [...document.querySelectorAll('input[name="salesTeams"]:checked')].map(c => c.value).join(',');
       const res = await fetch('/tools/rotation/screens/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: id || null, name, dashboards, interval,
           media_mode: media.mode, media_accounts: media.accounts,
-          media_years: media.years, media_months: media.months })
+          media_years: media.years, media_months: media.months,
+          sales_teams: salesTeams })
       });
       if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
     }

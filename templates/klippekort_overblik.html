@@ -82,6 +82,8 @@
 .job-row .job-pris{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink-3);white-space:nowrap}
 .job-del{background:none;border:1px solid var(--border);color:var(--danger);border-radius:var(--r-sm);cursor:pointer;font-size:12px;font-weight:700;padding:5px 9px;white-space:nowrap}
 .job-del:hover{background:var(--danger-light);border-color:var(--danger)}
+.job-edit{background:none;border:1px solid var(--border);color:var(--green);border-radius:var(--r-sm);cursor:pointer;font-size:11px;font-weight:700;padding:4px 9px;white-space:nowrap}
+.job-edit:hover{background:var(--green-light,#f0f8f4);border-color:var(--green)}
 .jobs-empty{font-size:12px;color:var(--ink-4);font-style:italic;padding:4px 0}
 
 /* Multi-site vælger */
@@ -212,8 +214,8 @@
           <div style="overflow-x:auto">
             <table class="v-table">
               <colgroup>
-                <col style="width:15%"><col style="width:28%"><col style="width:22%"><col style="width:12%">
-                <col style="width:12%"><col style="width:6%"><col style="width:5%">
+                <col style="width:14%"><col style="width:26%"><col style="width:20%"><col style="width:11%">
+                <col style="width:11%"><col style="width:6%"><col style="width:6%"><col style="width:6%">
               </colgroup>
               <thead>
                 <tr>
@@ -224,10 +226,11 @@
                   <th class="sortable" onclick="sortUdl('deal_owner')">Sælger (deal)<i class="sort-arrow" id="uarr-deal_owner">↕</i></th>
                   <th class="sortable" onclick="sortUdl('slutdato')">Slutdato<i class="sort-arrow" id="uarr-slutdato">↕</i></th>
                   <th class="num sortable sort-active" onclick="sortUdl('dage_til_slut')">Dage til udløb<i class="sort-arrow" id="uarr-dage_til_slut">↑</i></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="udloeb-tbody">
-                <tr><td colspan="7" class="empty">Indlæser…</td></tr>
+                <tr><td colspan="8" class="empty">Indlæser…</td></tr>
               </tbody>
             </table>
           </div>
@@ -296,7 +299,7 @@
         <input class="form-input" id="f-klip" type="number" min="1" step="1" value="1" oninput="updateKlipHint()">
       </div>
       <div id="f-klip-hint" class="klip-hint"></div>
-      <label class="eff-row"><input type="checkbox" id="f-effektgaranti"> Effektgaranti — stillingen må køre videre efter slutdato</label>
+      <label class="eff-row"><input type="checkbox" id="f-effektgaranti"> Effektgaranti — aftalt ekstra periode med kunden (slutdatoen angiver hvornår den udløber)</label>
       <button class="btn-primary" id="f-submit" onclick="submitJob()">Opret job &amp; træk klip</button>
       <div class="form-msg" id="f-msg"></div>
 
@@ -304,6 +307,30 @@
         <h4>Oprettede jobs på denne kunde</h4>
         <div id="jobs-list"><div class="jobs-empty">Indlæser…</div></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rediger stilling Modal (forlæng periode / effektgaranti) -->
+<div class="modal-overlay hidden" id="edit-overlay" onclick="closeEditModal()">
+  <div class="modal-box" style="max-width:440px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">Rediger stilling</div>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="deal-meta" id="edit-meta"></div>
+      <div class="form-row">
+        <label class="form-label" for="e-slutdato">Ny slutdato</label>
+        <input class="form-input" id="e-slutdato" type="date">
+      </div>
+      <label class="eff-row"><input type="checkbox" id="e-eff" onchange="updateEffHint()"> Effektgaranti</label>
+      <div class="klip-hint" id="e-eff-hint" style="display:none;margin:-8px 0 16px">
+        Effektgaranti: aftal med kunden hvor lang tid ekstra stillingen er oppe på vores sites,
+        og sæt den nye slutdato ovenfor.
+      </div>
+      <button class="btn-primary" id="e-submit" onclick="saveEdit()">Gem ændringer</button>
+      <div class="form-msg" id="e-msg"></div>
     </div>
   </div>
 </div>
@@ -475,7 +502,7 @@ function drawUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
   const view = hideEff ? udlRows.filter(j=>!j.effektgaranti) : udlRows;
   document.getElementById('udloeb-count').textContent = view.length + ' stilling(er)';
-  if(!view.length){ const t = udlStatus==='udloebne' ? 'Ingen udløbne stillinger.' : 'Ingen aktive stillinger med slutdato.'; tb.innerHTML='<tr><td colspan="7" class="empty">'+t+'</td></tr>'; setUdlArrows(); return; }
+  if(!view.length){ const t = udlStatus==='udloebne' ? 'Ingen udløbne stillinger.' : 'Ingen aktive stillinger med slutdato.'; tb.innerHTML='<tr><td colspan="8" class="empty">'+t+'</td></tr>'; setUdlArrows(); return; }
   const val=(j,c)=> c==='sites' ? (j.sites||[]).join(', ') : j[c];
   const rows=[...view].sort((a,b)=>{
     const va=val(a,udlSortCol), vb=val(b,udlSortCol);
@@ -490,7 +517,8 @@ function drawUdloeb(){
         <td title="${escHtml(j.org_owner)}">${escHtml(j.org_owner)}</td>
         <td title="${escHtml(j.deal_owner)}">${escHtml(j.deal_owner)}</td>
         <td>${escHtml(j.slutdato)}</td>
-        <td class="num">${j.effektgaranti?'<span class="pill pill-green">kører videre</span>':udloebPillSmall(j.dage_til_slut)}</td>
+        <td class="num">${udloebPillSmall(j.dage_til_slut)}</td>
+        <td style="text-align:right">${canEditJob(j)?`<button class="job-edit" onclick="openEditModal('${escHtml(j.job_id)}')">Rediger</button>`:''}</td>
       </tr>`).join('');
   setUdlArrows();
 }
@@ -505,13 +533,61 @@ function setUdlStatus(s){
 }
 async function loadUdloeb(){
   const tb=document.getElementById('udloeb-tbody');
-  tb.innerHTML='<tr><td colspan="7" class="empty"><div class="spinner"></div></td></tr>';
+  tb.innerHTML='<tr><td colspan="8" class="empty"><div class="spinner"></div></td></tr>';
   try{
     const res=await fetch('/tools/klippekort/udloebende?mine='+(mineOnly?1:0)+'&status='+udlStatus);
     if(!res.ok) throw new Error(await res.text());
     udlRows=(await res.json()).rows||[];
     drawUdloeb();
-  }catch(e){ tb.innerHTML='<tr><td colspan="7" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+  }catch(e){ tb.innerHTML='<tr><td colspan="8" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+}
+
+/* ---------- Rediger stilling (forlæng periode / effektgaranti) ---------- */
+let editJob = null;
+// Gamle rækker uden job_id grupperes under en syntetisk "deal-…"-nøgle og kan
+// ikke opdateres samlet — skjul Rediger-knappen for dem.
+function canEditJob(j){ return j.job_id && !String(j.job_id).startsWith('deal-'); }
+function openEditModal(jobId){
+  const j=udlRows.find(x=>x.job_id===jobId);
+  if(!j) return;
+  editJob=j;
+  document.getElementById('edit-meta').innerHTML =
+    `<b>${escHtml(j.org_name)}</b> — ${escHtml(j.stilling)}<br>`+
+    `${escHtml((j.sites||[]).join(', '))}<br>`+
+    `Nuværende slutdato: <b>${escHtml(j.slutdato)}</b>`+
+    `${j.effektgaranti?' <span class="badge-eff">Effektgaranti</span>':''}`;
+  document.getElementById('e-slutdato').value = /^\d{4}-\d{2}-\d{2}$/.test(j.slutdato)?j.slutdato:'';
+  document.getElementById('e-eff').checked = !!j.effektgaranti;
+  updateEffHint();
+  const msg=document.getElementById('e-msg'); msg.className='form-msg'; msg.textContent='';
+  const btn=document.getElementById('e-submit'); btn.disabled=false; btn.textContent='Gem ændringer';
+  document.getElementById('edit-overlay').classList.remove('hidden');
+}
+function updateEffHint(){
+  document.getElementById('e-eff-hint').style.display =
+    document.getElementById('e-eff').checked ? 'block' : 'none';
+}
+function closeEditModal(){ document.getElementById('edit-overlay').classList.add('hidden'); }
+async function saveEdit(){
+  if(!editJob) return;
+  const slutdato=document.getElementById('e-slutdato').value;
+  const effektgaranti=document.getElementById('e-eff').checked;
+  const msg=document.getElementById('e-msg');
+  if(!slutdato){ msg.className='form-msg err'; msg.textContent='Angiv en slutdato.'; return; }
+  const btn=document.getElementById('e-submit'); btn.disabled=true; btn.textContent='Gemmer…';
+  try{
+    const res=await fetch('/tools/klippekort/rediger-job',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:editJob.job_id, slutdato, effektgaranti}),
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.detail || 'Fejl ved opdatering');
+    closeEditModal();
+    loadUdloeb();
+  }catch(e){
+    msg.className='form-msg err'; msg.textContent='Fejl: '+escHtml(e.message);
+    btn.disabled=false; btn.textContent='Gem ændringer';
+  }
 }
 function loadAll(){ loadOverblik(); loadUdloeb(); loadOek(); }
 
@@ -665,7 +741,11 @@ async function submitJob(){
   }
 }
 
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('modal-overlay').classList.add('hidden'); });
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('edit-overlay').classList.add('hidden');
+});
 loadSites();
 loadAll();
 </script>
