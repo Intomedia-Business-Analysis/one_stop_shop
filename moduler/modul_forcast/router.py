@@ -1,4 +1,4 @@
-import traceback
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -11,6 +11,8 @@ from moduler.modul_forcast.queries import (
     db_team_owner_names,
     BRAND_GROUPS, BRAND_LABELS, SUBSCRIPTION_BRANDS,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/forecast", tags=["Forecast"])
 templates = Jinja2Templates(directory="templates")
@@ -69,9 +71,9 @@ async def forecast_teams(user=Depends(get_current_user)):
         if allowed is not None:
             teams = [t for t in teams if t["name"] in allowed]
         return JSONResponse({"teams": teams})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_teams fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/data")
@@ -154,9 +156,9 @@ async def forecast_data(
             "year_m2": year_m2,
         })
 
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_data fejlede (year=%s, month=%s, level=%s, team=%s)", year, month, level, team)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.post("/save")
@@ -177,6 +179,6 @@ async def forecast_save(request: Request, user=Depends(get_current_user)):
     try:
         saved_count = db_forecast_save(year, month, level, rows, user["name"])
         return JSONResponse({"status": "ok", "saved": saved_count})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_save fejlede (year=%s, month=%s, level=%s)", year, month, level)
+        raise HTTPException(500, "Data kunne ikke hentes")

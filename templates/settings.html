@@ -89,6 +89,8 @@
       <div class="notif notif-error">Det er allerede dit nuværende brugernavn</div>
       {% elif request.query_params.get('error') == 'un_error' %}
       <div class="notif notif-error">Brugernavnet kunne ikke opdateres — prøv igen</div>
+      {% elif request.query_params.get('error') == 'pw_error' %}
+      <div class="notif notif-error">Adgangskoden kunne ikke opdateres — prøv igen</div>
       {% endif %}
 
       <!-- Profilkort -->

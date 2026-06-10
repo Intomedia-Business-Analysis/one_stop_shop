@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Media Performance</title>
 <link rel="stylesheet" href="/static/hub.css">
+<script src="/static/rotation-utils.js?v=2"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
@@ -389,11 +390,8 @@ async function loadData() {
   if (selectedMonths.size)   params.set('months',   [...selectedMonths].join(','));
 
   document.getElementById('lblStatus').textContent = 'Henter…';
-  let r;
-  try { r = await fetch('/tools/rotation/media-performance-data?' + params); }
-  catch (e) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
-  if (!r.ok) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
-  const d = await r.json();
+  const d = await fetchDashboardData('/tools/rotation/media-performance-data?' + params);
+  if (!d) { document.getElementById('lblStatus').textContent = 'Fejl ved datahentning'; return; }
 
   document.getElementById('lblStatus').textContent = `${(d.rows||[]).length} sites`;
 
@@ -436,24 +434,6 @@ buildMonthChips();
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
 </script>
-<script>
-/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9).
-   Gør visningen uafhængig af remotens opløsning og Windows-skalering. */
-(function () {
-  var stage = document.querySelector('.page');
-  if (!stage) return;
-  function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    var x = (window.innerWidth  - 1920 * s) / 2;
-    var y = (window.innerHeight - 1080 * s) / 2;
-    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
-  }
-  fit();
-  window.addEventListener('resize', fit);
-})();
-</script>
-<script>
-(function(){function tc(){var n=new Date();var e=document.getElementById('clock');if(e)e.textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}tc();setInterval(tc,10000);})();
-</script>
+<script>initStageScale(); initClock();</script>
 </body>
 </html>

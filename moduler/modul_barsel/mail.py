@@ -25,13 +25,15 @@ Python 3.13 håndhæver strengere X.509-regler. Hvis du får
 TLS-inspektion), så sæt enten SMTP_CA_BUNDLE til virksomhedens root-cert,
 eller SMTP_SSL_VERIFY=0 som lynfix.
 """
+import logging
 import os
 import re
 import smtplib
 import ssl
-import traceback
 from email.message import EmailMessage
 from email.utils import formataddr
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -74,10 +76,10 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
     ssl_verify = os.getenv("SMTP_SSL_VERIFY", "1") != "0"
 
     if not host or not user or not password or not sender:
-        print(f"[barsel.mail] SMTP ikke konfigureret — springer afsendelse over (modtagere: {to_addrs})")
+        logger.warning(f"SMTP ikke konfigureret — springer afsendelse over (modtagere: {to_addrs})")
         return False
     if not to_addrs:
-        print("[barsel.mail] Ingen modtagere — springer afsendelse over")
+        logger.info("Ingen modtagere — springer afsendelse over")
         return False
 
     msg = EmailMessage()
@@ -97,7 +99,7 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
     try:
         if not ssl_verify:
             ctx = ssl._create_unverified_context()
-            print("[barsel.mail] ADVARSEL: SSL-verificering deaktiveret (SMTP_SSL_VERIFY=0)")
+            logger.warning("SSL-verificering deaktiveret (SMTP_SSL_VERIFY=0)")
         elif ca_bundle:
             ctx = ssl.create_default_context(cafile=ca_bundle)
         else:
@@ -107,7 +109,7 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
             except ImportError:
                 ctx = ssl.create_default_context()
     except Exception as e:
-        print(f"[barsel.mail] Kunne ikke bygge SSL-context: {e} — bruger default")
+        logger.warning(f"Kunne ikke bygge SSL-context: {e} — bruger default")
         ctx = ssl.create_default_context()
 
     try:
@@ -122,11 +124,11 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
             with smtplib.SMTP_SSL(host, port, timeout=15, context=ctx) as s:
                 s.login(user, password)
                 s.send_message(msg)
-        print(f"[barsel.mail] Sendt til {len(to_addrs)} modtager(e): {to_addrs}")
+        logger.info(f"Mail sendt til {len(to_addrs)} modtager(e): {to_addrs}")
         return True
-    except Exception as e:
-        print(f"[barsel.mail] FEJL ved afsendelse: {e}")
-        traceback.print_exc()
+    except Exception:
+        # Returværdi-kontrakt: False — mail-fejl må aldrig vælte godkendelses-flowet
+        logger.exception("Mailafsendelse fejlede")
         return False
 
 
@@ -146,7 +148,7 @@ def send_approval_notification(case: dict, notify_emails_raw: str) -> bool:
     """
     recipients = parse_recipients(notify_emails_raw)
     if not recipients:
-        print("[barsel.mail] notify_emails er tom — springer afsendelse over")
+        logger.info("notify_emails er tom — springer afsendelse over")
         return False
 
     medarbejder = case.get("hubUserName") or case.get("morNavn") or case.get("farNavn") or "Medarbejder"

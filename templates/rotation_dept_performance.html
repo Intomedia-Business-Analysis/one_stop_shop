@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="/static/rotation-utils.js?v=2"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root{
@@ -221,9 +222,8 @@ function buildHBar(id, rows, labelKey, val1Key, val2Key){
 }
 
 async function loadData(){
-  const r = await fetch('/tools/rotation/department-performance-data');
-  if (!r.ok) return;
-  const d = await r.json();
+  const d = await fetchDashboardData('/tools/rotation/department-performance-data');
+  if (!d) return;
   document.getElementById('lblPeriod').textContent = (d.maaned_label || '—').toUpperCase();
   buildHBar('chartMonitor', d.monitor_rows    || [], 'team',  'netto',   'budget');
   buildHBar('chartWatch',   d.watch_rows      || [], 'team',  'netto',   'budget');
@@ -233,30 +233,11 @@ async function loadData(){
   buildHBar('chartMW',      d.marketwire_rows || [], 'brand', 'revenue', 'budget');
 }
 
-function tickClock(){
-  const n=new Date();
-  document.getElementById('clock').textContent =
-    String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-tickClock(); setInterval(tickClock, 10000);
+initClock();
 
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
 </script>
-<script>
-/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9). */
-(function () {
-  var stage = document.querySelector('.page');
-  if (!stage) return;
-  function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    var x = (window.innerWidth  - 1920 * s) / 2;
-    var y = (window.innerHeight - 1080 * s) / 2;
-    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
-  }
-  fit();
-  window.addEventListener('resize', fit);
-})();
-</script>
+<script>initStageScale();</script>
 </body>
 </html>

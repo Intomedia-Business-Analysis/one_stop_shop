@@ -1,53 +1,19 @@
+import logging
 import os
-import traceback
 from datetime import date
 
 import pymssql
 from dotenv import load_dotenv
 from fastapi import HTTPException
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
-SUBSCRIPTION_BRANDS = [
-    "EnergiWatch NO", "MobilityWatch DK", "CleantechWatch DK", "TechWatch NO",
-    "AdvokatWatch NO", "Kforum DK", "Seniormonitor", "All Monitor Sites",
-    "FinansWatch SE", "Watch Medier DK", "Byrummonitor", "ShippingWatch DK",
-    "Idrætsmonitor", "Justitsmonitor", "MatvareWatch NO", "Naturmonitor",
-    "Socialmonitor", "FinansWatch DK", "Uddannelsesmonitor", "MedWatch NO",
-    "Klimamonitor", "EjendomsWatch DK", "FINANS DK", "DetailWatch DK",
-    "FinansWatch NO", "AdvokatWatch DK", "ITWatch DK", "KForum",
-    "All Watch Sites DK", "EnergiWatch DK", "Medier24 NO", "AgriWatch DK",
-    "Skolemonitor", "EiendomsWatch NO", "Kulturmonitor", "Sundhedsmonitor",
-    "MarketWire", "Kom24 NO", "AMWatch DK", "KapitalWatch DK",
-    "Policy DK", "HandelsWatch NO", "MedWatch DK", "FødevareWatch DK",
-    "Fødevare Watch DK", "All Watch Sites NO", "MediaWatch DK", "Turistmonitor",
-    "PolicyWatch DK", "Monitormedier",
-]
-_SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+# Fælles brand-konstanter — én kilde til sandheden i constants.py.
+from constants import SUBSCRIPTION_BRANDS, BRAND_GROUPS  # noqa: E402,F401
 
-BRAND_GROUPS: dict[str, list[str]] = {
-    "watch_dk": [
-        "FinansWatch DK", "Watch Medier DK", "ShippingWatch DK", "EjendomsWatch DK",
-        "AdvokatWatch DK", "ITWatch DK", "EnergiWatch DK", "AgriWatch DK",
-        "AMWatch DK", "KapitalWatch DK", "MedWatch DK", "FødevareWatch DK",
-        "Fødevare Watch DK", "MediaWatch DK", "DetailWatch DK", "KForum", "Kforum DK",
-        "All Watch Sites DK", "PolicyWatch DK", "Policy DK", "MobilityWatch DK", "CleantechWatch DK",
-    ],
-    "finans": ["FINANS DK"],
-    "watch_no": [
-        "EnergiWatch NO", "TechWatch NO", "AdvokatWatch NO", "MatvareWatch NO",
-        "MedWatch NO", "FinansWatch NO", "EiendomsWatch NO", "Kom24 NO",
-        "HandelsWatch NO", "Medier24 NO", "All Watch Sites NO",
-    ],
-    "watch_se": ["FinansWatch SE"],
-    "monitor": [
-        "Seniormonitor", "Byrummonitor", "Idrætsmonitor", "Justitsmonitor",
-        "Naturmonitor", "Socialmonitor", "Uddannelsesmonitor", "Klimamonitor",
-        "Kulturmonitor", "Sundhedsmonitor", "Skolemonitor", "Turistmonitor",
-        "All Monitor Sites", "Monitormedier",
-    ],
-    "marketwire": ["MarketWire"],
-}
+_SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
 BRAND_LABELS: dict[str, str] = {
     "watch_dk":   "Watch DK",
@@ -60,7 +26,7 @@ BRAND_LABELS: dict[str, str] = {
     "marketwire": "MarketWire",
 }
 
-_CANCEL_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
+from constants import CANCELLATION_PIPELINES as _CANCEL_PIPELINES  # noqa: E402
 _CANCEL_PH = "(" + ",".join(["%s"] * len(_CANCEL_PIPELINES)) + ")"
 
 # Teams der bruger advertising-pipeline i stedet for abonnement-deals
@@ -70,16 +36,8 @@ ADVERTISING_TEAMS: dict[str, str] = {
 }
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=10,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def ensure_schema():
@@ -96,7 +54,8 @@ def ensure_schema():
         conn.commit()
         conn.close()
     except Exception:
-        pass
+        # Skemaopdatering må ikke vælte opstarten — men fejlen skal i loggen
+        logger.warning("ensure_schema fejlede — adjustment_pct-kolonnen kunne ikke sikres", exc_info=True)
 
 
 def build_team_filter(team: str | None, team_brand: str | None):
@@ -157,7 +116,8 @@ def db_team_owner_names(team_names: list) -> set:
         conn.close()
         return names
     except Exception:
-        traceback.print_exc()
+        # Adgangsfiltrering: tom mængde = fail-closed (brugeren ser ingen fremmede rækker)
+        logger.exception("db_team_owner_names fejlede (teams=%s)", team_names)
         return set()
 
 
@@ -175,7 +135,8 @@ def db_get_teams():
         conn.close()
         return teams
     except Exception:
-        # Fallback
+        # Forventelig degradering: fald tilbage til teams fra SalespersonBudget
+        logger.warning("db_get_teams: Teams-tabellen kunne ikke læses — bruger fallback fra SalespersonBudget", exc_info=True)
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
         cur.execute("""

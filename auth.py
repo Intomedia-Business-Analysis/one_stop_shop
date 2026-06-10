@@ -1,11 +1,14 @@
 import os
 import datetime
+import logging
 import pymssql
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 from fastapi import Request
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -35,15 +38,9 @@ class RequiresLoginException(Exception):
     pass
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py. Navnet genexporteres herfra, fordi
+# modul_barsel og usage_tracking importerer get_conn fra auth.
+from db import get_conn  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +211,8 @@ def init_db():
             )
         conn.commit()
         conn.close()
-    except Exception as e:
-        print(f"[init_db] Advarsel — kunne ikke initialisere tabeller: {e}")
+    except Exception:
+        logger.exception("init_db: kunne ikke initialisere tabeller")
 
     # Indlæs rolle-tabel i memory så ROLE_RANK / ROLE_LABELS afspejler DB
     reload_roles_cache()
@@ -251,7 +248,7 @@ def reload_roles_cache():
                 }
     except Exception as e:
         # DB nede — behold default-værdier
-        print(f"[reload_roles_cache] Advarsel: {e}")
+        logger.warning("reload_roles_cache: DB utilgængelig, beholder defaults: %s", e)
 
 
 def list_roles() -> list:
@@ -299,8 +296,9 @@ def set_role_resource_access(role: str, resource_id: str, access: str | None) ->
             )
         conn.commit()
         conn.close()
-    except Exception as e:
-        print(f"[set_role_resource_access] FEJL: {e}")
+    except Exception:
+        logger.exception("set_role_resource_access fejlede (role=%s, resource=%s)",
+                         role, resource_id)
 
 
 def create_role(name: str, label: str, rank: int) -> tuple[bool, str]:
@@ -525,8 +523,8 @@ def authenticate_user(username: str, password: str):
         user["_teams"] = get_user_teams(user["id"])
         user["_data_teams"] = get_user_data_teams(user["id"])
         return user
-    except Exception as e:
-        print(f"[authenticate_user] FEJL: {e}")
+    except Exception:
+        logger.exception("authenticate_user fejlede (username=%s)", username)
         return None
 
 

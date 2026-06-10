@@ -15,14 +15,16 @@ pipedrive_api.add_used_clip_cards (additivt, læser Pipedrives nuværende tal
 live), så klip sat direkte i Pipedrive ikke overskrives. Det opdaterede tal
 kommer retur ved næste sync.
 """
+import logging
 import os
-import traceback
 import uuid
 
 import pymssql
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def get_site_groups() -> dict:
@@ -47,22 +49,15 @@ def get_site_groups() -> dict:
             (monitor if "monitor" in site.lower() else watch).append(site)
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Fallback: tom dropdown — siden kan stadig vises.
+        logger.exception("get_site_groups fejlede")
     watch.sort(key=str.lower)
     monitor.sort(key=str.lower)
     return {"watch_dk": watch, "monitor": monitor}
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=10,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def init_klippekort_db():
@@ -116,7 +111,8 @@ def init_klippekort_db():
         conn.commit()
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Kaldes ved router-import — må ikke vælte app-opstarten.
+        logger.exception("init_klippekort_db fejlede")
 
 
 def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> list[dict]:
@@ -201,8 +197,8 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_overblik fejlede (status=%s)", status)
+        raise
 
 
 def _deal_info(cur, pd_deal_id: int) -> dict | None:
@@ -287,14 +283,14 @@ def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
             "clip_card_size": size,
             "pris_pr_klip": pris_pr_klip,
         }
-    except Exception as e:
-        traceback.print_exc()
+    except Exception:
+        logger.exception("db_registrer_forbrug fejlede (pd_deal_id=%s)", pd_deal_id)
         if conn:
             try:
                 conn.close()
             except Exception:
                 pass
-        return {"ok": False, "error": str(e)}
+        raise
 
 
 def db_forbrug_for_deal(pd_deal_id: int) -> list[dict]:
@@ -355,8 +351,8 @@ def db_forbrug_for_deal(pd_deal_id: int) -> list[dict]:
         conn.close()
         return out
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_forbrug_for_deal fejlede (pd_deal_id=%s)", pd_deal_id)
+        raise
 
 
 def db_slet_job(job_id: str) -> dict:
@@ -384,14 +380,14 @@ def db_slet_job(job_id: str) -> dict:
         conn.commit()
         conn.close()
         return {"ok": True, "pd_deal_id": pd_deal_id, "brugt": brugt, "delta": -fjernet}
-    except Exception as e:
-        traceback.print_exc()
+    except Exception:
+        logger.exception("db_slet_job fejlede (job_id=%s)", job_id)
         if conn:
             try:
                 conn.close()
             except Exception:
                 pass
-        return {"ok": False, "error": str(e)}
+        raise
 
 
 def db_rediger_job(job_id: str, slutdato: str, effektgaranti: bool) -> dict:
@@ -416,14 +412,14 @@ def db_rediger_job(job_id: str, slutdato: str, effektgaranti: bool) -> dict:
         conn.commit()
         conn.close()
         return {"ok": True}
-    except Exception as e:
-        traceback.print_exc()
+    except Exception:
+        logger.exception("db_rediger_job fejlede (job_id=%s)", job_id)
         if conn:
             try:
                 conn.close()
             except Exception:
                 pass
-        return {"ok": False, "error": str(e)}
+        raise
 
 
 def db_oekonomi() -> list[dict]:
@@ -455,8 +451,8 @@ def db_oekonomi() -> list[dict]:
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_oekonomi fejlede")
+        raise
 
 
 def db_udloebende_jobs(only_owner_name: str | None = None, status: str = "aktive") -> list[dict]:
@@ -528,8 +524,8 @@ def db_udloebende_jobs(only_owner_name: str | None = None, status: str = "aktive
         conn.close()
         return [groups[k] for k in order]
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_udloebende_jobs fejlede (status=%s)", status)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +547,8 @@ def needed_org_ids() -> list[int]:
         conn.close()
         return ids
     except Exception:
-        traceback.print_exc()
+        # Fallback: tom liste — baggrunds-refresh springes blot over denne gang.
+        logger.exception("needed_org_ids fejlede")
         return []
 
 
@@ -570,7 +567,8 @@ def db_org_owner_meta() -> dict:
         return {"count": int(r.get("n", 0) or 0),
                 "alder_timer": int(r.get("alder_timer") or 0)}
     except Exception:
-        traceback.print_exc()
+        # Fallback: behandl cachen som tom — udløser blot et nyt refresh-forsøg.
+        logger.exception("db_org_owner_meta fejlede")
         return {"count": 0, "alder_timer": 0}
 
 
@@ -593,7 +591,8 @@ def db_upsert_org_owners(items: list[tuple]) -> int:
         conn.close()
         return len(items)
     except Exception:
-        traceback.print_exc()
+        # Fallback: 0 opdaterede — cachen forsøges igen ved næste refresh.
+        logger.exception("db_upsert_org_owners fejlede (%s organisationer)", len(items))
         return 0
 
 

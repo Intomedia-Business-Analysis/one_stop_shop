@@ -1,53 +1,19 @@
 import calendar
+import logging
 import os
-import traceback
 from datetime import date, timedelta
 
 import pymssql
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
-SUBSCRIPTION_BRANDS = [
-    "EnergiWatch NO", "MobilityWatch DK", "CleantechWatch DK", "TechWatch NO",
-    "AdvokatWatch NO", "Kforum DK", "Seniormonitor", "All Monitor Sites",
-    "FinansWatch SE", "Watch Medier DK", "Byrummonitor", "ShippingWatch DK",
-    "Idrætsmonitor", "Justitsmonitor", "MatvareWatch NO", "Naturmonitor",
-    "Socialmonitor", "FinansWatch DK", "Uddannelsesmonitor", "MedWatch NO",
-    "Klimamonitor", "EjendomsWatch DK", "FINANS DK", "DetailWatch DK",
-    "FinansWatch NO", "AdvokatWatch DK", "ITWatch DK", "KForum",
-    "All Watch Sites DK", "EnergiWatch DK", "Medier24 NO", "AgriWatch DK",
-    "Skolemonitor", "EiendomsWatch NO", "Kulturmonitor", "Sundhedsmonitor",
-    "MarketWire", "Kom24 NO", "AMWatch DK", "KapitalWatch DK",
-    "Policy DK", "HandelsWatch NO", "MedWatch DK", "FødevareWatch DK",
-    "Fødevare Watch DK", "All Watch Sites NO", "MediaWatch DK", "Turistmonitor",
-    "PolicyWatch DK", "Monitormedier",
-]
-BRANDS_PLACEHOLDER = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+# Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
+from constants import SUBSCRIPTION_BRANDS, BRAND_GROUPS, CANCELLATION_PIPELINES, MONTH_NAMES_DA  # noqa: E402,F401
 
-BRAND_GROUPS: dict[str, list[str]] = {
-    "watch_dk": [
-        "FinansWatch DK", "Watch Medier DK", "ShippingWatch DK", "EjendomsWatch DK",
-        "AdvokatWatch DK", "ITWatch DK", "EnergiWatch DK", "AgriWatch DK",
-        "AMWatch DK", "KapitalWatch DK", "MedWatch DK", "FødevareWatch DK",
-        "Fødevare Watch DK", "MediaWatch DK", "DetailWatch DK", "KForum", "Kforum DK",
-        "All Watch Sites DK", "PolicyWatch DK", "Policy DK", "MobilityWatch DK", "CleantechWatch DK",
-    ],
-    "finans": ["FINANS DK"],
-    "watch_no": [
-        "EnergiWatch NO", "TechWatch NO", "AdvokatWatch NO", "MatvareWatch NO",
-        "MedWatch NO", "FinansWatch NO", "EiendomsWatch NO", "Kom24 NO",
-        "HandelsWatch NO", "Medier24 NO", "All Watch Sites NO",
-    ],
-    "watch_se": ["FinansWatch SE"],
-    "monitor": [
-        "Seniormonitor", "Byrummonitor", "Idrætsmonitor", "Justitsmonitor",
-        "Naturmonitor", "Socialmonitor", "Uddannelsesmonitor", "Klimamonitor",
-        "Kulturmonitor", "Sundhedsmonitor", "Skolemonitor", "Turistmonitor",
-        "All Monitor Sites", "Monitormedier",
-    ],
-    "marketwire": ["MarketWire"],
-}
+BRANDS_PLACEHOLDER = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
 BRAND_GROUP_LABELS = {
     "watch_dk":   "Watch DK",
@@ -64,7 +30,6 @@ GROUPBY_COLUMNS = {
     "basis":      "[deal_basis]",
 }
 
-CANCELLATION_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
 # Pipelines der indgår i konverteringsraten (sælger-dashboard). Sammenlignes
@@ -91,22 +56,11 @@ DEAL_TYPE_CANONICAL = {
     "Subscription": "Abonnement",
 }
 
-MONTH_NAMES_DA = [
-    "Januar", "Februar", "Marts", "April", "Maj", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "December"
-]
+# MONTH_NAMES_DA importeres fra constants.py (øverst i filen).
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def resolve_brand_list(brand_groups_param: str | None) -> list | None:
@@ -244,7 +198,9 @@ def db_get_filters():
                 pass
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Direkte payload for /filters — lad den globale handler give 500
+        logger.exception("db_get_filters fejlede")
+        raise
     return results
 
 def db_owner_in_teams(owner_name: str, team_names: list) -> bool:
@@ -278,7 +234,8 @@ def db_owner_in_teams(owner_name: str, team_names: list) -> bool:
         conn.close()
         return bool(row.get("ok"))
     except Exception:
-        traceback.print_exc()
+        # Adgangstjek: fejl behandles fail-closed (ingen adgang)
+        logger.exception("db_owner_in_teams fejlede (owner=%s)", owner_name)
         return False
 
 
@@ -1837,8 +1794,8 @@ def db_saelger_conversion_deals(owner_name: str, year: int | None = None,
             "close_date": r["close_date"] or "—",
         } for r in rows]
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_saelger_conversion_deals fejlede (owner=%s)", owner_name)
+        raise
 
 
 def db_manager_saelger_deals(owner_name: str, year: int, month: int,
@@ -1904,8 +1861,8 @@ def db_manager_saelger_deals(owner_name: str, year: int, month: int,
         conn.close()
         return deals
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_manager_saelger_deals fejlede (owner=%s, year=%s, month=%s)", owner_name, year, month)
+        raise
 
 
 def db_manager_saelger_filters(owner_name: str):
@@ -1955,8 +1912,8 @@ def db_manager_saelger_filters(owner_name: str):
             "open_pipelines":  sorted(set(open_pipelines)),
         }
     except Exception:
-        traceback.print_exc()
-        return {"sites": [], "deal_pipelines": [], "open_pipelines": []}
+        logger.exception("db_manager_saelger_filters fejlede (owner=%s)", owner_name)
+        raise
 
 
 def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
@@ -2031,8 +1988,8 @@ def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
             "expected_close": r["expected_close"] or "—",
         } for r in rows]
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_manager_saelger_pipeline fejlede (owner=%s)", owner_name)
+        raise
 
 
 def db_saelger_meta(owner_name: str):
@@ -2078,7 +2035,8 @@ def db_saelger_available_owners():
         conn.close()
         return owners
     except Exception:
-        traceback.print_exc()
+        # Hjælper inde i /saelger-meta — tom admin-vælger er bedre end at vælte hele meta-svaret
+        logger.exception("db_saelger_available_owners fejlede")
         return []
 
 

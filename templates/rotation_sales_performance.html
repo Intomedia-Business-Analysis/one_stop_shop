@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/static/hub.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="/static/rotation-utils.js?v=2"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
@@ -340,25 +341,8 @@ if (_unitTeams.length) {
   if (sub) sub.textContent = _unitTeams.join(', ') + (UNIT === 'NOK' ? ' — beløb i NOK' : '');
 }
 
-function fmt(v) {
-  if (v == null) return '—';
-  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' ' + UNIT;
-}
-function fmtAxis(v) {
-  const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:0})+'mio. '+UNIT;
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. '+UNIT;
-  return v;
-}
-function fmtLabel(v) {
-  if (v == null) return '';
-  if (v === 0) return '0 ' + UNIT;
-  const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. '+UNIT;
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. '+UNIT;
-  return fmt(v);
-}
-function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…' : (n||'—'); }
+// Formattering, short() og fillTable() kommer fra /static/rotation-utils.js
+const { fmt, fmtAxis, fmtLabel } = makeMoneyFormatters(UNIT, {zeroLabel: true});
 
 function buildChart(id, rows, labelKey, existing) {
   const ctx = document.getElementById(id).getContext('2d');
@@ -394,26 +378,12 @@ function buildChart(id, rows, labelKey, existing) {
   });
 }
 
-function fillTable(id, rows, cols) {
-  const tb = document.getElementById(id);
-  if (!rows?.length) {
-    tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--ink-4);padding:6px;font-style:italic;font-size:10px">Ingen data</td></tr>';
-    return;
-  }
-  tb.innerHTML = rows.map(r => '<tr>' + cols.map(c => {
-    const v = r[c.key];
-    const d = c.fmt ? c.fmt(v) : (v!=null ? String(v) : '—');
-    return `<td class="${c.cls||''}" title="${v!=null?String(v):''}">${d}</td>`;
-  }).join('') + '</tr>').join('');
-}
-
 async function loadData() {
   // Team-valg fra skærm-konfigurationen (?teams=...) føres videre til data-kaldet.
   const _teams = new URLSearchParams(location.search).get('teams');
-  const r = await fetch('/tools/rotation/sales-performance-data' +
+  const d = await fetchDashboardData('/tools/rotation/sales-performance-data' +
                         (_teams ? '?teams=' + encodeURIComponent(_teams) : ''));
-  if (!r.ok) return;
-  const d = await r.json();
+  if (!d) return;
 
   document.getElementById('kpiDag').textContent    = fmt(d.kpis?.dag);
   document.getElementById('kpiUge').textContent    = fmt(d.kpis?.uge);
@@ -508,27 +478,11 @@ function renderIndexBullets(rows) {
   }).join('');
 }
 
-function tickClock(){const n=new Date();document.getElementById('clock').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
-tickClock(); setInterval(tickClock, 10000);
+initClock();
 
 loadData();
 setInterval(loadData, 5*60*1000);
 </script>
-<script>
-/* Auto-skaler dashboard til skærmen — design-lærred 1920×1080 (16:9).
-   Gør visningen uafhængig af remotens opløsning og Windows-skalering. */
-(function () {
-  var stage = document.querySelector('.page');
-  if (!stage) return;
-  function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    var x = (window.innerWidth  - 1920 * s) / 2;
-    var y = (window.innerHeight - 1080 * s) / 2;
-    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
-  }
-  fit();
-  window.addEventListener('resize', fit);
-})();
-</script>
+<script>initStageScale();</script>
 </body>
 </html>

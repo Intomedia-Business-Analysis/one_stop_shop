@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brugsstatistik — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .summary-bar { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; gap:1rem; flex-wrap:wrap; }
+    .summary-bar h1 { font-size:22px; font-weight:700; color:var(--ink); letter-spacing:-.5px; margin:0; }
+    .summary-bar p  { font-size:13px; color:var(--ink-3); margin:4px 0 0; }
+
+    .range-tabs { display:flex; gap:6px; }
+    .range-tab {
+      padding:6px 14px; border:1px solid var(--border); border-radius:99px;
+      font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface);
+      text-decoration:none; transition:all .15s;
+    }
+    .range-tab:hover { border-color:var(--green); color:var(--text); }
+    .range-tab.active { background:var(--green); border-color:var(--green); color:#fff; }
+
+    .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:26px; }
+    .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); padding:18px 20px; }
+    .kpi-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--text-muted); margin-bottom:8px; }
+    .kpi-value { font-size:28px; font-weight:700; color:var(--ink); line-height:1; }
+    .kpi-sub   { font-size:12px; color:var(--text-muted); margin-top:6px; }
+
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+
+    /* Bar chart */
+    .chart { display:flex; align-items:flex-end; gap:3px; height:180px; }
+    .chart-col { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; min-width:0; }
+    .chart-bar {
+      width:100%; max-width:22px; background:var(--green); border-radius:3px 3px 0 0;
+      transition:background .15s; min-height:2px;
+    }
+    .chart-col:hover .chart-bar { background:var(--taupe-dark); }
+    .chart-xlabel { font-size:8.5px; color:var(--ink-4); margin-top:6px; white-space:nowrap; transform:rotate(-45deg); transform-origin:center; height:14px; }
+
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; padding:11px 16px; font-size:9px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:1.5px; background:var(--green); white-space:nowrap; }
+    td { padding:11px 16px; font-size:12.5px; color:var(--ink-2); border-bottom:1px solid var(--border); vertical-align:middle; }
+    tr:last-child td { border-bottom:none; }
+    tbody tr:hover td { background:var(--green-light); }
+    .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; color:var(--ink); }
+
+    .user-cell { display:flex; align-items:center; gap:10px; }
+    .avatar { width:28px; height:28px; background:var(--green); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; }
+    .bar-mini { height:6px; border-radius:99px; background:var(--green); min-width:2px; }
+    .empty-state { text-align:center; padding:48px 20px; color:var(--ink-4); font-size:13px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/admin/usage' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1100px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Brugsstatistik</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Brugsstatistik</h1>
+            <p>Hvor meget brugerne faktisk bruger hub'en — baseret på sidevisninger</p>
+          </div>
+          <div class="range-tabs">
+            <a href="/admin/usage?days=7"  class="range-tab {% if days == 7 %}active{% endif %}">7 dage</a>
+            <a href="/admin/usage?days=30" class="range-tab {% if days == 30 %}active{% endif %}">30 dage</a>
+            <a href="/admin/usage?days=90" class="range-tab {% if days == 90 %}active{% endif %}">90 dage</a>
+          </div>
+        </div>
+
+        {% if not data %}
+        <div class="panel"><div class="empty-state">
+          Ingen data endnu — statistik vises, så snart brugerne begynder at navigere i hub'en.<br>
+          (Hvis du lige har slået trackingen til, så giv det et par sidevisninger.)
+        </div></div>
+        {% else %}
+
+        <!-- KPI'er -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Aktive i dag</div>
+            <div class="kpi-value">{{ data.users_today }}</div>
+            <div class="kpi-sub">{{ data.views_today }} sidevisninger</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Aktive · 7 dage</div>
+            <div class="kpi-value">{{ data.users_7d }}</div>
+            <div class="kpi-sub">{{ data.views_7d }} sidevisninger</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Aktive · 30 dage</div>
+            <div class="kpi-value">{{ data.users_30d }}</div>
+            <div class="kpi-sub">{{ data.views_30d }} sidevisninger</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Visninger · {{ days }} dage</div>
+            <div class="kpi-value">{{ data.daily | sum(attribute='views') }}</div>
+            <div class="kpi-sub">i den valgte periode</div>
+          </div>
+        </div>
+
+        <!-- Daglig aktivitet -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Sidevisninger pr. dag</h2>
+            <p>Seneste {{ days }} dage</p>
+          </div>
+          <div class="panel-body">
+            <div class="chart">
+              {% for d in data.daily %}
+              <div class="chart-col" title="{{ d.date }}: {{ d.views }} visninger · {{ d.users }} brugere">
+                <div class="chart-bar" style="height:{{ ((d.views / data.max_daily * 100) if data.max_daily else 0) | round(1) }}%"></div>
+                {% if days <= 31 or loop.index0 % 3 == 0 %}
+                <div class="chart-xlabel">{{ d.label }}</div>
+                {% else %}
+                <div class="chart-xlabel">&nbsp;</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Mest brugte værktøjer -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Mest brugte værktøjer</h2>
+            <p>Seneste 30 dage</p>
+          </div>
+          {% if data.top_resources %}
+          <table>
+            <thead><tr><th>Værktøj / side</th><th style="text-align:right">Visninger</th><th style="text-align:right">Unikke brugere</th><th style="width:30%"></th></tr></thead>
+            <tbody>
+              {% set top_max = data.top_resources[0].views %}
+              {% for r in data.top_resources %}
+              <tr>
+                <td>{{ r.label }}</td>
+                <td class="num">{{ r.views }}</td>
+                <td class="num">{{ r.users }}</td>
+                <td><div class="bar-mini" style="width:{{ ((r.views / top_max * 100) if top_max else 0) | round(1) }}%"></div></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state">Ingen visninger i perioden</div>
+          {% endif %}
+        </div>
+
+        <!-- Pr. bruger -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Aktivitet pr. bruger</h2>
+            <p>Seneste 30 dage — sorteret efter antal visninger</p>
+          </div>
+          {% if data.per_user %}
+          <table>
+            <thead><tr><th>Bruger</th><th>Rolle</th><th style="text-align:right">Visninger</th><th>Sidst set</th></tr></thead>
+            <tbody>
+              {% for u in data.per_user %}
+              <tr>
+                <td>
+                  <div class="user-cell">
+                    <div class="avatar">{{ u.initials }}</div>
+                    <span>{{ u.name }}</span>
+                  </div>
+                </td>
+                <td style="color:var(--text-muted);font-size:11px;">{{ ROLE_LABELS.get(u.role, u.role) }}</td>
+                <td class="num">{{ u.views }}</td>
+                <td style="color:var(--text-muted);font-size:11px;">{{ u.last_seen }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state">Ingen brugeraktivitet i perioden</div>
+          {% endif %}
+        </div>
+
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

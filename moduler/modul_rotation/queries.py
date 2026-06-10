@@ -1,5 +1,5 @@
+import logging
 import os
-import traceback
 from datetime import date, timedelta
 
 import pymssql
@@ -7,30 +7,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # ── Genbrugte konstanter fra modul_perf ─────────────────────────────────────
 
-SUBSCRIPTION_BRANDS = [
-    "EnergiWatch NO", "MobilityWatch DK", "CleantechWatch DK", "TechWatch NO",
-    "AdvokatWatch NO", "Kforum DK", "Seniormonitor", "All Monitor Sites",
-    "FinansWatch SE", "Watch Medier DK", "Byrummonitor", "ShippingWatch DK",
-    "Idrætsmonitor", "Justitsmonitor", "MatvareWatch NO", "Naturmonitor",
-    "Socialmonitor", "FinansWatch DK", "Uddannelsesmonitor", "MedWatch NO",
-    "Klimamonitor", "EjendomsWatch DK", "FINANS DK", "DetailWatch DK",
-    "FinansWatch NO", "AdvokatWatch DK", "ITWatch DK", "KForum",
-    "All Watch Sites DK", "EnergiWatch DK", "Medier24 NO", "AgriWatch DK",
-    "Skolemonitor", "EiendomsWatch NO", "Kulturmonitor", "Sundhedsmonitor",
-    "MarketWire", "Kom24 NO", "AMWatch DK", "KapitalWatch DK",
-    "Policy DK", "HandelsWatch NO", "MedWatch DK", "FødevareWatch DK",
-    "Fødevare Watch DK", "All Watch Sites NO", "MediaWatch DK", "Turistmonitor",
-    "PolicyWatch DK", "Monitormedier",
-]
+# Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
+from constants import SUBSCRIPTION_BRANDS, CANCELLATION_PIPELINES, MONTH_NAMES_DA  # noqa: E402,F401
+
 _SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
 # Sales Performance KPI — MarketWire er nu inkluderet (vises som eget team)
 SALES_PERF_BRANDS = list(SUBSCRIPTION_BRANDS)
 _SALES_PERF_PH = "(" + ",".join(["%s"] * len(SALES_PERF_BRANDS)) + ")"
 
-CANCELLATION_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
 _ADM_EXCLUDE = (
@@ -55,10 +44,7 @@ _ADM_EXCLUDE_ALLOW_WEBSALE = (
 SALES_PIPELINES = ['Company Trial', 'Customer', 'Newbizz']
 _SALES_PIPELINES_PH = "(" + ",".join(["%s"] * len(SALES_PIPELINES)) + ")"
 
-MONTH_NAMES_DA = [
-    "Januar", "Februar", "Marts", "April", "Maj", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "December"
-]
+# MONTH_NAMES_DA importeres fra constants.py (øverst i filen).
 
 MONITOR_SITES = [
     "Seniormonitor", "Byrummonitor", "Idrætsmonitor", "Justitsmonitor",
@@ -114,16 +100,8 @@ MEDIA_ACCOUNT_LABELS = {
 }
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def _week_range(today: date):
@@ -177,7 +155,8 @@ def db_all_team_names() -> list:
         conn.close()
         return names
     except Exception:
-        traceback.print_exc()
+        # Forventelig degradering — team-vælgeren falder tilbage til standard-teams.
+        logger.exception("db_all_team_names fejlede — falder tilbage til standard-teams")
         return list(DEFAULT_SALES_PERF_TEAMS)
 
 
@@ -465,8 +444,8 @@ def db_sales_performance(today: date, date_col: str = "won_time",
             "today": today.isoformat(),
         }
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_sales_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -615,8 +594,8 @@ def db_department_performance(today: date):
             "today": today.isoformat(),
         }
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_department_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -830,8 +809,8 @@ def db_banner_performance(today: date):
         conn.close()
         return result
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_banner_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -880,8 +859,8 @@ def db_job_performance(today: date):
         conn.close()
         return result
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_job_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1039,8 +1018,8 @@ def db_no_advertising_performance(today: date):
             "today": today.isoformat(),
         }
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_no_advertising_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1252,5 +1231,5 @@ def db_media_performance(selected_accounts: list | None = None,
             "account_labels":     dict(MEDIA_ACCOUNT_LABELS),
         }
     except Exception:
-        traceback.print_exc()
-        return empty
+        logger.exception("db_media_performance fejlede")
+        raise

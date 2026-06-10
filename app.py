@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import secrets
 import time
 
 from dotenv import load_dotenv
@@ -20,6 +22,7 @@ from auth import (
     resolve_resource_access,
     init_db,
 )
+from log_setup import audit_log, setup_logging
 from nav_utils import CATEGORIES, filter_categories, register_nav_globals
 from moduler.modul_budget.router import router as budget_router
 from moduler.modul_admin.router import router as admin_router
@@ -35,18 +38,59 @@ from moduler.modul_klippekort.router import router as klippekort_router
 from usage_tracking import record_pageview, start_usage_worker
 
 load_dotenv()
+setup_logging()
+logger = logging.getLogger(__name__)
 
 if os.getenv("DEV_MODE") == "1":
-    print("[DEV] DEV_MODE=1 — login og SQL-forbindelse er bypassed")
+    logger.info("[DEV] DEV_MODE=1 — login og SQL-forbindelse er bypassed")
 
 app = FastAPI(title="Intomedia Hub")
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
 start_usage_worker()  # Baggrundstråd der flusher usage-loggen til DB
+# Session-nøglen SKAL være sat i .env — med en kendt fallback-nøgle ville
+# enhver kunne forfalske session-cookies og logge ind som vilkårlig bruger.
+# I DEV_MODE bruges en tilfældig nøgle pr. opstart (sessioner ryger ved genstart).
+_secret_key = os.getenv("SECRET_KEY")
+if not _secret_key:
+    if os.getenv("DEV_MODE") == "1":
+        _secret_key = secrets.token_hex(32)
+    else:
+        raise RuntimeError(
+            "SECRET_KEY mangler i .env. Generér én med:\n"
+            '  python -c "import secrets; print(secrets.token_hex(32))"\n'
+            "og tilføj linjen SECRET_KEY=<nøglen> til .env."
+        )
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SECRET_KEY", "skift-denne-noegle"),
+    secret_key=_secret_key,
+    same_site="lax",  # session-cookien sendes ikke med cross-site POSTs
 )
+
+
+# ---------------------------------------------------------------------------
+# CSRF-beskyttelse: afvis skrivende requests fra fremmede sites.
+# Browsere sender altid Origin-headeren på cross-site POSTs — matcher den ikke
+# vores egen host, er requesten ikke affyret fra hubben selv. Sammen med
+# SameSite=lax på session-cookien lukker det CSRF uden tokens i alle formularer.
+# Requests uden Origin/Referer (curl, scripts, gamle klienter) tillades.
+# ---------------------------------------------------------------------------
+from urllib.parse import urlparse  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+
+@app.middleware("http")
+async def csrf_origin_check(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        source = request.headers.get("origin") or request.headers.get("referer")
+        if source:
+            source_host = urlparse(source).netloc
+            if source_host and source_host != request.headers.get("host", ""):
+                return JSONResponse(
+                    {"detail": "Requesten kommer fra et andet site (CSRF-tjek)"},
+                    status_code=403,
+                )
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +141,28 @@ async def requires_login_handler(request: Request, exc: RequiresLoginException):
     return RedirectResponse(url="/login", status_code=302)
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Fang alle uhåndterede fejl: log dem og giv klienten et brugbart svar.
+
+    Data-endpoints (fetch/XHR) får JSON med en fejlnøgle, så dashboards kan
+    vise "Data utilgængelig" i stedet for tomme charts. Almindelige sidevisninger
+    (Accept: text/html) får en lille fejlside. Selve tracebacken ligger i hub.log.
+    """
+    logger.error(
+        "Uhåndteret fejl på %s %s", request.method, request.url.path, exc_info=exc
+    )
+    if "text/html" in request.headers.get("accept", ""):
+        return HTMLResponse(
+            "<div style='font-family:sans-serif;max-width:480px;margin:80px auto;"
+            "text-align:center'><h2>Der opstod en fejl</h2>"
+            "<p>Data kunne ikke hentes. Prøv igen om lidt — fejlen er logget.</p>"
+            "<a href='/'>&larr; Tilbage til hubben</a></div>",
+            status_code=500,
+        )
+    return JSONResponse({"error": "Data kunne ikke hentes"}, status_code=500)
+
+
 # ---------------------------------------------------------------------------
 # Tool & Dashboard Registry
 # ---------------------------------------------------------------------------
@@ -129,10 +195,12 @@ async def login_post(request: Request):
     password = form.get("password", "")
     user = authenticate_user(username, password)
     if not user:
+        audit_log("login_afvist", request=request, username=username)
         return templates.TemplateResponse(request, "login.html", {
             "error": "Forkert brugernavn eller adgangskode",
         })
     request.session["user_id"] = user["id"]
+    audit_log("login_ok", user=user, request=request)
     # Skærm-brugere lander direkte på rotationen — de skal kun se den.
     if user.get("role") == "screen":
         return RedirectResponse("/tools/rotation/", status_code=302)
@@ -185,9 +253,10 @@ async def settings_change_password(request: Request, user=Depends(get_current_us
         )
         conn.commit()
         conn.close()
+        audit_log("password_aendret", user=user, request=request)
     except Exception:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Kunne ikke skifte adgangskode for bruger id=%s", user["id"])
+        return RedirectResponse("/settings?error=pw_error", status_code=302)
 
     return RedirectResponse("/settings?success=pw_changed", status_code=302)
 
@@ -223,9 +292,10 @@ async def settings_change_username(request: Request, user=Depends(get_current_us
         )
         conn.commit()
         conn.close()
+        audit_log("brugernavn_aendret", user=user, request=request,
+                  nyt_brugernavn=new_username)
     except Exception:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Kunne ikke skifte brugernavn for bruger id=%s", user["id"])
         return RedirectResponse("/settings?error=un_error", status_code=302)
 
     return RedirectResponse("/settings?success=un_changed", status_code=302)

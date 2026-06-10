@@ -1,10 +1,12 @@
+import logging
 import os
-import traceback
 
 import pymssql
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 BASE_YEAR = 2023
 HEATMAP_YEARS = [2023, 2024, 2025, 2026]
@@ -17,16 +19,8 @@ _BASE_WHERE = """
 """
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def _period_clause(year: int | None, month: str | None) -> tuple[str, list]:
@@ -96,8 +90,8 @@ def db_owners(pipeline: str) -> list[str]:
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_owners fejlede (pipeline=%s)", pipeline)
+        raise
 
 
 def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> dict:
@@ -173,8 +167,9 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
             "returning_customers": returning_customers,
         }
     except Exception:
-        traceback.print_exc()
-        return {"active_customers": 0, "total_value": 0, "avg_deal": 0, "avg_per_customer": 0, "total_deals": 0, "returning_customers": 0}
+        logger.exception("db_kpi_data fejlede (pipeline=%s, year=%s, month=%s, owner=%s)",
+                         pipeline, year, month, owner_name)
+        raise
 
 
 def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> list[dict]:
@@ -202,8 +197,9 @@ def db_top_customers(pipeline: str, year: int | None = None, month: str | None =
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_top_customers fejlede (pipeline=%s, year=%s, month=%s, owner=%s)",
+                         pipeline, year, month, owner_name)
+        raise
 
 
 def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None) -> list[dict]:
@@ -254,8 +250,9 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_salesperson_performance fejlede (pipeline=%s, year=%s, month=%s)",
+                         pipeline, year, month)
+        raise
 
 
 def db_customer_heatmap(pipeline: str, owner_name: str | None = None) -> list[dict]:
@@ -303,8 +300,8 @@ def db_customer_heatmap(pipeline: str, owner_name: str | None = None) -> list[di
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_customer_heatmap fejlede (pipeline=%s, owner=%s)", pipeline, owner_name)
+        raise
 
 
 def db_customer_history(pipeline: str, org_id: str) -> dict:
@@ -377,5 +374,5 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
         conn.close()
         return {"org_name": org_name, "by_year": by_year, "deals": deals}
     except Exception:
-        traceback.print_exc()
-        return {"org_name": org_id, "by_year": [], "deals": []}
+        logger.exception("db_customer_history fejlede (pipeline=%s, org_id=%s)", pipeline, org_id)
+        raise

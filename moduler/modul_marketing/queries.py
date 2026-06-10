@@ -13,8 +13,8 @@ Site-filteret er en EXISTS-subquery mod STRING_SPLIT(d.sites). Det er hurtigere
 end CROSS APPLY i hovedqueryen fordi det ikke multiplicerer rækker — så vi
 slipper for DISTINCT på 13 kolonner.
 """
+import logging
 import os
-import traceback
 from typing import Optional
 
 import pymssql
@@ -22,17 +22,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=15,
-    )
+
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 # Samme udelukkelse som modul_perf bruger — administrative deals og rapport-
@@ -153,8 +147,8 @@ def db_filter_options() -> dict:
         conn.close()
         return {"accounts": accounts, "sites": sites, "deal_sources": sources, "owners": owners}
     except Exception:
-        traceback.print_exc()
-        return {"accounts": [], "sites": [], "deal_sources": [], "owners": []}
+        logger.exception("db_filter_options fejlede")
+        raise
 
 
 def db_summary(
@@ -210,11 +204,8 @@ def db_summary(
             },
         }
     except Exception:
-        traceback.print_exc()
-        return {
-            "total_value": 0, "total_deals": 0, "unique_customers": 0, "avg_deal": 0,
-            "status_counts": {"won": 0, "open": 0, "lost": 0},
-        }
+        logger.exception("db_summary fejlede")
+        raise
 
 
 def db_by_account(
@@ -269,8 +260,8 @@ def db_by_account(
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_by_account fejlede")
+        raise
 
 
 _ALLOWED_DRILLDOWN_STATUSES = ("won", "open", "lost")
@@ -358,8 +349,8 @@ def db_account_deals(
         conn.close()
         return rows
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("db_account_deals fejlede")
+        raise
 
 
 _SORT_COLUMNS = {
@@ -450,5 +441,5 @@ def db_deals(
             "sort_dir":  sort_dir.lower(),
         }
     except Exception:
-        traceback.print_exc()
-        return {"rows": [], "total": 0, "page": page, "page_size": page_size, "sort_by": sort_by, "sort_dir": sort_dir.lower()}
+        logger.exception("db_deals fejlede")
+        raise

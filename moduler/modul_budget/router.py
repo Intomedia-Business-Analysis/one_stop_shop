@@ -1,6 +1,6 @@
 import json
 import io
-import traceback
+import logging
 from datetime import date
 
 import pandas as pd
@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import ROLE_LABELS, allowed_data_teams, get_current_user, has_access
+from log_setup import audit_log
 from moduler.modul_budget.queries import (
     db_get_distinct,
     db_medie_upsert_rows, db_medie_upload_df,
@@ -17,6 +18,8 @@ from moduler.modul_budget.queries import (
     db_medie_delete, db_medie_update,
     db_budget_scope, db_owners_for_teams, db_medie_get,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/budget", tags=["Budget"])
 templates = Jinja2Templates(directory="templates")
@@ -92,10 +95,12 @@ async def medie_insert(
     try:
         rows = json.loads(months_data)
         inserted = db_medie_upsert_rows(site, brand, deal_type, salestype, year, rows)
+        audit_log("budget_medie_indsat", user=user, site=site, brand=brand,
+                  dealtype=deal_type, aar=year, raekker=inserted)
         return JSONResponse({"status": "ok", "inserted": inserted})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("medie_insert fejlede (brand=%s, year=%s)", brand, year)
+        raise HTTPException(status_code=500, detail="Budgettet kunne ikke gemmes")
 
 
 @router.post("/medie/upload")
@@ -124,9 +129,12 @@ async def medie_upload(file: UploadFile = File(...), user=Depends(get_current_us
 
     try:
         inserted, errors, error_rows = db_medie_upload_df(df)
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("medie_upload fejlede (fil=%s)", file.filename)
+        raise HTTPException(500, "Filen kunne ikke importeres")
 
+    audit_log("budget_medie_upload", user=user, fil=file.filename,
+              raekker=inserted, fejl=errors)
     return JSONResponse({"status": "ok", "inserted": inserted, "errors": errors, "error_rows": error_rows[:10]})
 
 
@@ -146,10 +154,12 @@ async def saelger_insert(
     try:
         rows = json.loads(months_data)
         inserted = db_saelger_upsert_rows(salesperson, site, team, year, rows)
+        audit_log("budget_saelger_indsat", user=user, saelger=salesperson,
+                  team=team, aar=year, raekker=inserted)
         return JSONResponse({"status": "ok", "inserted": inserted})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("saelger_insert fejlede (saelger=%s, year=%s)", salesperson, year)
+        raise HTTPException(status_code=500, detail="Budgettet kunne ikke gemmes")
 
 
 @router.post("/saelger/upload")
@@ -175,8 +185,12 @@ async def saelger_upload(file: UploadFile = File(...), user=Depends(get_current_
 
     try:
         inserted, errors, error_rows = db_saelger_upload_df(df)
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger_upload fejlede (fil=%s)", file.filename)
+        raise HTTPException(500, "Filen kunne ikke importeres")
+
+    audit_log("budget_saelger_upload", user=user, fil=file.filename,
+              raekker=inserted, fejl=errors)
 
     return JSONResponse({"status": "ok", "inserted": inserted, "errors": errors, "error_rows": error_rows[:10]})
 
@@ -199,9 +213,9 @@ async def medie_data(
             monthly[m] = monthly.get(m, 0) + float(r["BudgetAmount"] or 0)
         chart = [{"måned": m, "budget": round(monthly.get(m, 0))} for m in range(1, 13)]
         return JSONResponse({"rows": rows, "chart": chart, "total": sum(monthly.values())})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("medie_data fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/saelger/data")
@@ -224,9 +238,9 @@ async def saelger_data(
             monthly[m] = monthly.get(m, 0) + float(r["BudgetAmount"] or 0)
         chart = [{"måned": m, "budget": round(monthly.get(m, 0))} for m in range(1, 13)]
         return JSONResponse({"rows": rows, "chart": chart, "total": sum(monthly.values())})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger_data fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.delete("/medie/delete/{row_id}")
@@ -239,10 +253,11 @@ async def medie_delete(row_id: int, user=Depends(get_current_user)):
             raise HTTPException(403, "Ingen adgang til at slette denne budgetrække")
     try:
         db_medie_delete(row_id)
+        audit_log("budget_medie_slettet", user=user, row_id=row_id)
         return JSONResponse({"status": "ok"})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("medie_delete fejlede (row_id=%s)", row_id)
+        raise HTTPException(500, "Budgetrækken kunne ikke slettes")
 
 
 @router.put("/medie/update/{row_id}")
@@ -267,10 +282,12 @@ async def medie_update(
             raise HTTPException(403, "Ingen adgang til at redigere denne budgetrække")
     try:
         db_medie_update(row_id, site, brand, dealtype, salestype, year, month, amount)
+        audit_log("budget_medie_opdateret", user=user, row_id=row_id, brand=brand,
+                  dealtype=dealtype, aar=year, maaned=month, beloeb=amount)
         return JSONResponse({"status": "ok"})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("medie_update fejlede (row_id=%s)", row_id)
+        raise HTTPException(500, "Budgetrækken kunne ikke opdateres")
 
 
 @router.get("/medie/template")

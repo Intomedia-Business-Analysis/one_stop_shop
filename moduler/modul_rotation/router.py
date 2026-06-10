@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import uuid
 from datetime import date
 from typing import Optional
@@ -17,15 +18,26 @@ from auth import get_current_user, resolve_resource_access, RequiresLoginExcepti
 
 SCREEN_CONFIGS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "screen_configs.json")
 
+# Beskytter mod at to samtidige gem fra skærm-admin overskriver hinandens
+# ændringer (læs-ændr-gem på samme JSON-fil). RLock, så endpoints kan holde
+# låsen over hele forløbet, mens _load/_save også selv tager den.
+_configs_lock = threading.RLock()
+
 def _load_configs() -> dict:
-    if not os.path.exists(SCREEN_CONFIGS_PATH):
-        return {"screens": []}
-    with open(SCREEN_CONFIGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _configs_lock:
+        if not os.path.exists(SCREEN_CONFIGS_PATH):
+            return {"screens": []}
+        with open(SCREEN_CONFIGS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 def _save_configs(data: dict):
-    with open(SCREEN_CONFIGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with _configs_lock:
+        # Atomisk skrivning: skriv til temp-fil og swap, så filen aldrig kan
+        # stå halvt skrevet, hvis processen dør midt i et gem.
+        tmp_path = SCREEN_CONFIGS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, SCREEN_CONFIGS_PATH)
 
 from .queries import (
     db_all_team_names,
@@ -210,7 +222,6 @@ async def screens_admin(request: Request, user=Depends(get_current_user)):
 async def screens_save(request: Request, user=Depends(get_current_user)):
     _require(user, "sales_manager")
     body = await request.json()
-    configs = _load_configs()
 
     screen_id = body.get("id")
     media = {
@@ -221,28 +232,31 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
     }
     # Sales Performance: hvilke teams skærmen viser (tom = standard-teams).
     sales = {"teams": body.get("sales_teams", "")}
-    if screen_id:
-        # Opdater eksisterende
-        for s in configs["screens"]:
-            if s["id"] == screen_id:
-                s["name"] = body["name"]
-                s["dashboards"] = body["dashboards"]
-                s["interval"] = body["interval"]
-                s["media"] = media
-                s["sales"] = sales
-                break
-    else:
-        # Opret ny
-        configs["screens"].append({
-            "id": str(uuid.uuid4())[:8],
-            "name": body["name"],
-            "dashboards": body["dashboards"],
-            "interval": body["interval"],
-            "media": media,
-            "sales": sales,
-        })
 
-    _save_configs(configs)
+    # Lås over hele læs-ændr-gem, så to samtidige gem ikke taber ændringer.
+    with _configs_lock:
+        configs = _load_configs()
+        if screen_id:
+            # Opdater eksisterende
+            for s in configs["screens"]:
+                if s["id"] == screen_id:
+                    s["name"] = body["name"]
+                    s["dashboards"] = body["dashboards"]
+                    s["interval"] = body["interval"]
+                    s["media"] = media
+                    s["sales"] = sales
+                    break
+        else:
+            # Opret ny
+            configs["screens"].append({
+                "id": str(uuid.uuid4())[:8],
+                "name": body["name"],
+                "dashboards": body["dashboards"],
+                "interval": body["interval"],
+                "media": media,
+                "sales": sales,
+            })
+        _save_configs(configs)
     return JSONResponse({"ok": True})
 
 
@@ -250,9 +264,10 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
 async def screens_delete(request: Request, user=Depends(get_current_user)):
     _require(user, "sales_manager")
     body = await request.json()
-    configs = _load_configs()
-    configs["screens"] = [s for s in configs["screens"] if s["id"] != body["id"]]
-    _save_configs(configs)
+    with _configs_lock:
+        configs = _load_configs()
+        configs["screens"] = [s for s in configs["screens"] if s["id"] != body["id"]]
+        _save_configs(configs)
     return JSONResponse({"ok": True})
 
 
