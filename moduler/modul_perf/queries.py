@@ -247,6 +247,41 @@ def db_get_filters():
         traceback.print_exc()
     return results
 
+def db_owner_in_teams(owner_name: str, team_names: list) -> bool:
+    """Er sælgeren knyttet til ét af de angivne teams?
+
+    Bruges til team-dataadgang: en team-begrænset bruger må kun se sælger-
+    drilldowns for sælgere i sine tilladte teams. Tjekker både aktivt
+    holdmedlemskab (HubUsers/TeamMemberships) og deals tagget med [team],
+    da begge bruges som team-kilde i dashboardet.
+    """
+    if not owner_name or not team_names:
+        return False
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT CASE WHEN EXISTS (
+                SELECT 1
+                FROM HubUsers u
+                JOIN TeamMemberships tm ON tm.user_id = u.id
+                JOIN Teams t ON t.id = tm.team_id
+                WHERE u.name = %s AND t.name IN {ph}
+                  AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+            ) OR EXISTS (
+                SELECT 1 FROM [dbo].[PipedriveDeals]
+                WHERE [owner_name] = %s AND [team] IN {ph}
+            ) THEN 1 ELSE 0 END AS ok
+        """, (owner_name,) + tuple(team_names) + (owner_name,) + tuple(team_names))
+        row = cur.fetchone() or {}
+        conn.close()
+        return bool(row.get("ok"))
+    except Exception:
+        traceback.print_exc()
+        return False
+
+
 #-----------------------------------------------------------------------------------------------------------------------
 #                                          DET NYE DASHBOARD FOR MANAGER
 #-----------------------------------------------------------------------------------------------------------------------

@@ -453,6 +453,8 @@
       <div class="notif notif-success">Tilføjet til hold</div>
       {% elif success == 'member_removed' %}
       <div class="notif notif-success">Fjernet fra hold</div>
+      {% elif success == 'team_access_updated' %}
+      <div class="notif notif-success">Team-dataadgang gemt</div>
       {% endif %}
 
       {% if error == 'missing_fields' %}
@@ -736,6 +738,46 @@
         </div>
 
       </div><!-- /.section-card memberships -->
+
+      <!-- ── 4. Team-dataadgang ── -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div>
+            <h2>Team-dataadgang</h2>
+            <p>Begræns hvilke teams brugeren kan se data for i Manager Dashboard, YoY, Forecast og Budget</p>
+          </div>
+          <span style="font-size:.8125rem;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:.2rem .65rem;">
+            {% if team_access %}{{ team_access | length }} team(s){% else %}Alle teams{% endif %}
+          </span>
+        </div>
+        <div class="section-card-body">
+          {% if all_teams %}
+          <form method="post" action="/admin/users/{{ target.id }}/team-data-access">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.5rem .75rem;">
+              {% for t in all_teams %}
+              <label style="display:flex;align-items:center;gap:.5rem;font-size:.875rem;color:var(--text);cursor:pointer;">
+                <input type="checkbox" name="team_ids" value="{{ t.id }}"
+                       {% if t.id in team_access %}checked{% endif %}
+                       style="width:15px;height:15px;accent-color:var(--green);cursor:pointer;">
+                {{ t.name }}{% if t.brand %} <span style="color:var(--text-muted);font-size:.8125rem;">({{ t.brand }})</span>{% endif %}
+              </label>
+              {% endfor %}
+            </div>
+            <div style="margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border);display:flex;align-items:center;gap:1rem;">
+              <button type="submit" class="btn-primary">Gem team-dataadgang</button>
+              <span style="font-size:.8125rem;color:var(--text-muted);">
+                Ingen flueben = brugeren ser data for alle teams (standard). Admins er altid ubegrænsede.
+              </span>
+            </div>
+          </form>
+          {% else %}
+          <p style="font-size:.8125rem;color:var(--text-muted);">
+            Ingen hold oprettet endnu.
+            <a href="/admin/teams" style="color:var(--green);">Opret et hold</a> først.
+          </p>
+          {% endif %}
+        </div>
+      </div><!-- /.section-card team-dataadgang -->
 
     </div><!-- /max-width -->
     </div><!-- /scroll wrapper -->

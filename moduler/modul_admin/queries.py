@@ -107,6 +107,7 @@ def db_delete_user(user_id: int):
     # Fjern relaterede rækker (ingen FK-cascade i skemaet)
     cur.execute("DELETE FROM TeamMemberships WHERE user_id = %s", (user_id,))
     cur.execute("DELETE FROM UserResourceAccess WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
     cur.execute("DELETE FROM HubUsers WHERE id = %s", (user_id,))
     conn.commit()
     conn.close()
@@ -166,6 +167,28 @@ def db_save_resource_access(user_id, all_resource_ids, form_data):
                 "INSERT INTO UserResourceAccess (user_id, resource_id, access) VALUES (%s, %s, %s)",
                 (user_id, rid, val),
             )
+    conn.commit()
+    conn.close()
+
+def db_get_user_team_access(user_id) -> set:
+    """Team-id'er brugeren er begrænset til at se data for (tom = ubegrænset)."""
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute("SELECT team_id FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
+    ids = {r["team_id"] for r in cur.fetchall()}
+    conn.close()
+    return ids
+
+def db_set_user_team_access(user_id, team_ids: list):
+    """Erstat brugerens team-dataadgang. Tom liste = fjern begrænsningen."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
+    for tid in team_ids:
+        cur.execute(
+            "INSERT INTO HubUserTeamAccess (user_id, team_id) VALUES (%s, %s)",
+            (user_id, tid),
+        )
     conn.commit()
     conn.close()
 

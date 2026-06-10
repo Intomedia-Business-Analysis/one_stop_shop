@@ -326,22 +326,36 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 Chart.register(ChartDataLabels);
 let chartK = null, chartM = null;
 
+// Beløbsenhed: norske teams handler i NOK. Der skrives kun NOK, når ALLE
+// valgte teams (?teams=...) er norske — ved blandede teams er valutaerne
+// blandede, og standard-enheden 'kr.' beholdes.
+const _unitTeams = (new URLSearchParams(location.search).get('teams') || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+const UNIT = _unitTeams.length && _unitTeams.every(t => / NO( |$)/i.test(t)) ? 'NOK' : 'kr.';
+
+// Med fast team-valg i URL'en viser undertitlen de valgte teams i stedet for
+// standard-teksten "Monitor, Watch, Marketwire & FINANS".
+if (_unitTeams.length) {
+  const sub = document.querySelector('.title-block .sub');
+  if (sub) sub.textContent = _unitTeams.join(', ') + (UNIT === 'NOK' ? ' — beløb i NOK' : '');
+}
+
 function fmt(v) {
   if (v == null) return '—';
-  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' kr.';
+  return new Intl.NumberFormat('da-DK', {maximumFractionDigits:0}).format(v) + ' ' + UNIT;
 }
 function fmtAxis(v) {
   const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:0})+'mio. kr.';
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. kr.';
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:0})+'mio. '+UNIT;
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. '+UNIT;
   return v;
 }
 function fmtLabel(v) {
   if (v == null) return '';
-  if (v === 0) return '0 kr.';
+  if (v === 0) return '0 ' + UNIT;
   const a = Math.abs(v);
-  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. kr.';
-  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. kr.';
+  if (a >= 1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:3})+'mio. '+UNIT;
+  if (a >= 1000)    return (v/1000).toLocaleString('da-DK',   {maximumFractionDigits:0})+'t. '+UNIT;
   return fmt(v);
 }
 function short(n, len=16) { return n && n.length>len ? n.substring(0,len-1)+'…' : (n||'—'); }
@@ -394,7 +408,10 @@ function fillTable(id, rows, cols) {
 }
 
 async function loadData() {
-  const r = await fetch('/tools/rotation/sales-performance-data');
+  // Team-valg fra skærm-konfigurationen (?teams=...) føres videre til data-kaldet.
+  const _teams = new URLSearchParams(location.search).get('teams');
+  const r = await fetch('/tools/rotation/sales-performance-data' +
+                        (_teams ? '?teams=' + encodeURIComponent(_teams) : ''));
   if (!r.ok) return;
   const d = await r.json();
 

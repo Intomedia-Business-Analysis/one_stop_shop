@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import date
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -27,10 +28,12 @@ def _save_configs(data: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 from .queries import (
+    db_all_team_names,
     db_sales_performance,
     db_department_performance,
     db_banner_performance,
     db_job_performance,
+    db_no_advertising_performance,
     db_media_performance,
 )
 
@@ -79,9 +82,16 @@ async def sales_performance_page(request: Request, user=Depends(get_current_user
 
 
 @router.get("/tools/rotation/sales-performance-data")
-async def sales_performance_data(request: Request, user=Depends(get_current_user)):
+async def sales_performance_data(
+    request: Request,
+    user=Depends(get_current_user),
+    teams: Optional[str] = None,
+):
     _require(user, "salesperson")
-    data = db_sales_performance(date.today())
+    # teams (komma-sep.) kommer fra skærm-konfigurationen, så forskellige
+    # kontorer kan køre forskellige team-visninger. Tom = standard-teams.
+    selected_teams = [t.strip() for t in teams.split(",")] if teams else None
+    data = db_sales_performance(date.today(), teams=selected_teams)
     return JSONResponse(content=data)
 
 
@@ -137,6 +147,23 @@ async def job_performance_data(request: Request, user=Depends(get_current_user))
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  DASHBOARD 4b — Advertising Performance NO (job + banner samlet)
+# ════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tools/rotation/no-advertising-performance", response_class=HTMLResponse)
+async def no_advertising_performance_page(request: Request, user=Depends(get_current_user)):
+    _require(user, "salesperson")
+    return templates.TemplateResponse(request, "rotation_no_advertising.html", {"user": user})
+
+
+@router.get("/tools/rotation/no-advertising-performance-data")
+async def no_advertising_performance_data(request: Request, user=Depends(get_current_user)):
+    _require(user, "salesperson")
+    data = db_no_advertising_performance(date.today())
+    return JSONResponse(content=data)
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  DASHBOARD 5 — Media Performance
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -175,6 +202,7 @@ async def screens_admin(request: Request, user=Depends(get_current_user)):
     return templates.TemplateResponse(request, "rotation_screens.html", {
         "user": user,
         "screens": configs["screens"],
+        "team_names": db_all_team_names(),
     })
 
 
@@ -191,6 +219,8 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
         "years":    body.get("media_years", ""),
         "months":   body.get("media_months", ""),
     }
+    # Sales Performance: hvilke teams skærmen viser (tom = standard-teams).
+    sales = {"teams": body.get("sales_teams", "")}
     if screen_id:
         # Opdater eksisterende
         for s in configs["screens"]:
@@ -199,6 +229,7 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
                 s["dashboards"] = body["dashboards"]
                 s["interval"] = body["interval"]
                 s["media"] = media
+                s["sales"] = sales
                 break
     else:
         # Opret ny
@@ -208,6 +239,7 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
             "dashboards": body["dashboards"],
             "interval": body["interval"],
             "media": media,
+            "sales": sales,
         })
 
     _save_configs(configs)
@@ -243,4 +275,7 @@ async def screen_player(screen_id: str, request: Request, user=Depends(get_curre
         url += f"&years={media['years']}"
     if media.get("months"):
         url += f"&months={media['months']}"
+    sales = screen.get("sales", {})
+    if sales.get("teams"):
+        url += f"&teams={quote(sales['teams'])}"
     return RedirectResponse(url)
