@@ -5,7 +5,11 @@
 #}
 {% set _cats = filter_categories(CATEGORIES, user) %}
 {% set _active = active_url|default('') %}
-<aside class="sidebar">
+<button class="sb-toggle" id="sbToggle" type="button" aria-label="Åbn menu" aria-expanded="false" aria-controls="sidebar">
+  <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+<div class="sb-backdrop" id="sbBackdrop"></div>
+<aside class="sidebar" id="sidebar">
   <div class="sb-logo">
     <div class="sb-logo-text"><div class="sb-logo-bar"></div>
     <div class="sb-logo-word">JP|Politiken</div><div class="sb-logo-sub">Business Media</div></div>
@@ -74,3 +78,23 @@
     </button>
   </form>
 </aside>
+
+<script>
+(function () {
+  const toggle   = document.getElementById('sbToggle');
+  const backdrop = document.getElementById('sbBackdrop');
+  const sidebar  = document.getElementById('sidebar');
+
+  function setOpen(open) {
+    document.body.classList.toggle('sb-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  toggle.addEventListener('click', () => setOpen(!document.body.classList.contains('sb-open')));
+  backdrop.addEventListener('click', () => setOpen(false));
+  sidebar.addEventListener('click', e => { if (e.target.closest('a')) setOpen(false); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('sb-open')) setOpen(false);
+  });
+})();
+</script>
