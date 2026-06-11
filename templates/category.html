@@ -8,9 +8,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
   <style>
-    .shell { display: flex; height: 100vh; overflow: hidden; }
+    .shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
     .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 220px; overflow-x: visible; }
     .main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    @media (max-width: 768px) {
+      .main { margin-left: 0; }
+      .sidebar { width: 264px; }
+      .content-area { padding: 16px; }
+    }
     .topbar { position: sticky; top: 0; z-index: 10; }
     .content-area { flex: 1; overflow-y: auto; padding: 28px 32px; }
     .sbi { white-space: nowrap; overflow: visible; }

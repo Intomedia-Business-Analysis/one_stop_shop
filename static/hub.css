@@ -46,6 +46,7 @@ a { text-decoration: none; color: inherit; }
 .shell {
   display:  flex;
   height:   100vh;
+  height:   100dvh; /* mobil: 100vh inkluderer adressebjælken */
   overflow: hidden;
 }
 
@@ -976,3 +977,99 @@ a { text-decoration: none; color: inherit; }
 
 /* Scroll wrapper helper for in-hub pages */
 .scroll-main { flex: 1; min-height: 0; overflow-y: auto; }
+
+
+/* ================================================================
+   MOBILE / RESPONSIVE
+   Hamburger + backdrop-markup ligger i _sidebar.html og er skjult
+   på desktop. Off-canvas styres med body.sb-open.
+   ================================================================ */
+.sb-toggle, .sb-backdrop { display: none; }
+
+.cp-results { max-height: 60vh; overflow-y: auto; }
+
+@media (max-width: 768px) {
+
+  /* ── Off-canvas sidebar ── */
+  .sidebar {
+    position:   fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index:    600;
+    width:      264px;
+    max-width:  84vw;
+    transform:  translateX(-100%);
+    transition: transform .22s ease;
+  }
+  body.sb-open .sidebar { transform: translateX(0); box-shadow: var(--shadow-palette); }
+
+  body.sb-open .sb-backdrop {
+    display:    block;
+    position:   fixed;
+    inset:      0;
+    background: rgba(26, 26, 23, .35);
+    z-index:    550;
+    animation:  bdin .15s ease;
+  }
+
+  .sb-toggle {
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    position:        fixed;
+    top: 9px; left: 12px;
+    z-index:         500;
+    width:           36px;
+    height:          36px;
+    border:          1px solid var(--border-strong);
+    border-radius:   var(--r-sm);
+    background:      var(--surface);
+    color:           var(--ink-2);
+    cursor:          pointer;
+  }
+  .sb-toggle svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
+
+  /* ── Topbar: plads til hamburger, søgning som ikon-knap ── */
+  .topbar { padding: 0 12px 0 58px; gap: 8px; }
+  .st-text, .st-right { display: none; }
+  .search-trigger { flex: 0 0 auto; width: 36px; height: 36px; justify-content: center; }
+  .tb-right { gap: 6px; }
+  .tb-btn { padding: 8px 10px; font-size: 10px; white-space: nowrap; }
+
+  /* ── Touch targets i sidebar ── */
+  .sbi { padding: 10px; font-size: 13px; }
+  .sbi svg { width: 16px; height: 16px; }
+
+  /* ── Content ── */
+  .content-area { padding: 16px; }
+  .page-title { font-size: 19px; }
+  .cat-detail-header { padding: 16px; gap: 12px; }
+
+  /* ── Grids → én kolonne ── */
+  .cat-grid, .subcat-grid, .items-grid { grid-template-columns: 1fr; }
+  .kpi-grid, .kpi-grid.cols-3, .kpi-grid.cols-2 { grid-template-columns: 1fr; }
+  .form-grid, .form-grid-3 { grid-template-columns: 1fr; }
+  .filter-bar.cols-4, .filter-bar.cols-5 { grid-template-columns: 1fr; }
+
+  /* ── Statbarer → 2×2 ── */
+  .stat-bar, .sum-bar { flex-wrap: wrap; }
+  .stat, .sum-cell { flex: 1 1 40%; }
+
+  /* ── Command palette ── */
+  .cp-backdrop { padding: 12px; }
+  .cp-input { font-size: 16px; } /* under 16px auto-zoomer iOS */
+  .cp-results { max-height: 55vh; }
+
+  /* ── Formularfelter: undgå iOS-zoom ── */
+  .fld input[type=text], .fld input[type=number], .fld input[type=password],
+  .fld input[type=email], .fld input[type=date], .fld select, .fld textarea,
+  .field input, .field select, .field textarea { font-size: 16px; }
+
+  /* ── Toast fylder bredden ── */
+  .toast { left: 16px; right: 16px; max-width: none; }
+}
+
+@media (max-width: 480px) {
+  /* Sekundære topbar-knapper skjules på små telefoner —
+     rammer kun <button> (fx "Anmod om adgang"), ikke <a>-tilbage-links */
+  button.tb-btn:not(.primary) { display: none; }
+}
