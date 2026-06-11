@@ -10,10 +10,10 @@ from moduler.modul_perf.queries import (
     SUBSCRIPTION_BRANDS, BRAND_GROUPS, BRAND_GROUP_LABELS, GROUPBY_COLUMNS,
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
-    db_get_filters, db_manager_data, db_yoy_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
+    db_get_filters, db_manager_data, db_yoy_data, db_saelger_data, db_saelger_meta,
     db_saelger_available_owners, db_saelger_conversion_deals,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
-    db_owner_in_teams,
+    db_owner_in_teams, db_brand_overblik,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,6 +103,24 @@ async def perf_manager_data(
         return JSONResponse(_filter_team_lists(user, data))
     except Exception:
         logger.exception("manager-data fejlede (team=%s, year=%s, month=%s)", team, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        BRAND OVERBLIK-DATA (bruges af Afdelingsleder Dashboard)
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/brand-overblik-data")
+async def brand_overblik_data(
+    date_col: str = "won_time",
+    ytd: int = 1,
+    user=Depends(get_current_user)
+):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_brand_overblik(date.today(), date_col=date_col, ytd=bool(ytd)))
+    except Exception:
+        logger.exception("brand-overblik-data fejlede (date_col=%s, ytd=%s)", date_col, ytd)
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
@@ -220,21 +238,6 @@ async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_us
         "current_month": today.month,
         "current_day":   today.day,
     })
-
-@router.get("/afdelingsleder-data")
-async def perf_afdelingsleder_data(
-    year:  int | None = None,
-    month: int | None = None,
-    user=Depends(get_current_user)
-):
-    if not has_access(user, "management"):
-        raise HTTPException(403, "Ingen adgang")
-    try:
-        ref_year = year if year else date.today().year
-        return JSONResponse(db_afdelingsleder_data(ref_year, month))
-    except Exception:
-        logger.exception("afdelingsleder-data fejlede (year=%s, month=%s)", year, month)
-        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------

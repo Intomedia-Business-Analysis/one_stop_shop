@@ -7,392 +7,675 @@
 <link rel="stylesheet" href="/static/hub.css">
 <style>
 .tool-wrap{max-width:1280px;margin:0 auto}
-/* Hoved-grid: team-chart venstre, højre kolonne */
-.dash-main-grid{display:grid;grid-template-columns:3fr 2fr;gap:20px;align-items:start}
-.right-col{display:flex;flex-direction:column;gap:20px}
-@media(max-width:960px){.dash-main-grid{grid-template-columns:1fr}}
-/* Kort */
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
-.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
-.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
-/* Toggle */
-.toggle-pills{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:3px;width:fit-content}
-.toggle-pill{padding:5px 14px;border-radius:5px;border:none;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;transition:all .13s;background:transparent;color:var(--ink-3)}
-.toggle-pill.on{background:var(--green);color:#fff}
-/* Team chart (horisontale bars) */
-.tc-row{display:grid;grid-template-columns:115px 1fr 195px;align-items:center;gap:10px;margin-bottom:10px}
-.tc-label{font-size:11px;font-weight:600;color:var(--ink);text-align:right;white-space:nowrap}
-.tc-track{height:14px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
-.tc-zone{position:absolute;top:0;height:100%}
-.tc-bar-won{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:var(--green);z-index:2;transition:width .5s ease}
-.tc-bar-can{position:absolute;left:0;top:2px;height:10px;border-radius:2px;background:#B32E45;opacity:.75;z-index:3;transition:width .5s ease}
-.tc-vline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(0,0,0,.25);z-index:4}
-.tc-val{font-size:13px;font-weight:700;text-align:right;white-space:nowrap;color:var(--ink)}
-.tc-val small{font-size:12px;color:var(--green);font-weight:600}
-/* Akse-række bruger samme grid som tc-row */
-.tc-axis-row{display:grid;grid-template-columns:115px 1fr 195px;gap:10px;margin-top:2px}
-.tc-axis-inner{display:flex;justify-content:space-between;font-size:8px;color:var(--ink-4)}
-/* Forecast bokse */
-.fc-boxes{display:flex;align-items:center;gap:10px;margin-top:4px}
-.fc-box{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 12px;text-align:center}
-.fc-box-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:8px}
-.fc-box-val{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.5px}
-.fc-big-arrow{font-size:26px;color:var(--ink-3);flex-shrink:0;line-height:1}
-.fc-big-arrow.up{color:var(--green)}
-.fc-big-arrow.down{color:#B32E45}
-.fc-meta{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
-.fc-meta-item{display:flex;flex-direction:column;gap:3px}
-.fc-meta-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4)}
-.fc-meta-val{font-size:13px;font-weight:700;color:var(--ink)}
-.fc-meta-val.green{color:var(--green)}
-.fc-meta-val.neg{color:#B32E45}
+
 /* Filter-bar */
 .filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
 .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
 .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+
+/* KPI cards grid */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.kpi-grid{grid-template-columns:1fr}}
+
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:14px}
+
+.kpi-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.kpi-year{font-size:10px;font-weight:700;color:var(--ink-4)}
+.kpi-val{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.kpi-val.curr{font-size:22px;color:var(--ink)}
+
+.kpi-divider{height:1px;background:var(--border);margin:10px 0}
+
+.kpi-delta{display:flex;align-items:center;gap:8px;margin-top:4px}
+.kpi-diff{font-size:12px;font-weight:700}
+.kpi-pct{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
+.pos{color:var(--win)}.neg{color:var(--danger)}.neu{color:var(--ink-4)}
+.pct-pos{background:var(--win-light);color:var(--win)}
+.pct-neg{background:var(--danger-light);color:var(--danger)}
+.pct-neu{background:var(--border);color:var(--ink-4)}
+
+/* Chart card */
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px}
+.chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.chart-legend{display:flex;gap:16px}
+.legend-dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.legend-item{font-size:11px;font-weight:600;color:var(--ink-3);display:flex;align-items:center}
+
+/* Brand Overblik */
+.brand-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:1000px){.brand-grid{grid-template-columns:1fr}}
+.brand-card{border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.brand-card-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-2);margin-bottom:14px}
+.brand-bars{display:flex;align-items:flex-end;gap:24px;height:190px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.bar-label{font-size:12px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+.bar-value{font-size:10px;color:var(--ink);font-weight:800;white-space:nowrap}
+
+.toggle-group{display:flex;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.toggle-btn{font-family:var(--font);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:6px 14px;background:var(--bg);border:none;cursor:pointer;color:var(--ink-3)}
+.toggle-btn.active{background:#2B2A27;color:#fff}
+
+.yoy-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:14px}
+.yoy-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:8px 10px;text-align:left;white-space:nowrap}
+.yoy-table th.num{text-align:right}
+.yoy-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle;white-space:nowrap}
+.yoy-table tr:hover td{background:var(--green-light)}
+.yoy-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.delta-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.delta-pill.pos{background:var(--win-light);color:var(--win)}
+.delta-pill.neg{background:var(--danger-light);color:var(--danger)}
+.delta-pill.neu{background:var(--border);color:var(--ink-4)}
+
 /* Spinner */
-.spin-wrap{text-align:center;padding:40px;color:var(--ink-4);font-size:12px}
-.spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
-.refresh-btn:hover{background:var(--green-mid)}
-.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Multi-select dropdowns */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{display:flex;align-items:center;gap:6px;padding:6px 10px;min-width:140px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;user-select:none}
+.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
+.ms-badge{display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:0 4px;border-radius:8px;
+  background:var(--green);color:#fff;font-size:10px;font-weight:700}
+.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;margin-left:auto}
+.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
+.ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:200;
+  min-width:200px;max-height:280px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);display:none}
+.ms-panel.open{display:block}
+.ms-list-header,.ms-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer}
+.ms-list-header:hover,.ms-item:hover{background:var(--green-light)}
+.ms-item input[type=checkbox]{accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none}
+.ms-item label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;font-size:12px}
+.ms-list-header input[type=checkbox]{accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none}
+.ms-list-header label{flex:1;font-size:12px;font-weight:700;pointer-events:none}
 </style>
 </head>
 <body>
 <div class="shell">
-  {% with active_url='/category/kpi-dashboards' %}{% include "_sidebar.html" %}{% endwith %}
 
+  <!-- SIDEBAR -->
+  {% with active_url='/tools/performance/afdelingsleder' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <!-- MAIN -->
   <div class="main">
-    <div class="topbar">
-      <div class="search-trigger" role="button" tabindex="0">
-        <div class="st-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+    <div class="content-area">
+    <div class="tool-wrap">
+
+      <!-- Page header -->
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="breadcrumb" style="margin-bottom:8px">
+            <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+            <span>Afdelingsleder Dashboard</span>
+          </div>
+          <h1 class="page-title" style="margin-bottom:4px">Afdelingsleder Dashboard</h1>
+          <p class="page-sub" id="period-subtitle">Indlæser…</p>
         </div>
-        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
-        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
       </div>
-      <div class="tb-right">
-        <a href="/tools/performance/dashboards" class="tb-btn">← KPI Dashboards</a>
+
+  <!-- Filter-bar (YoY) -->
+  <div class="filter-bar">
+    <span class="filter-label">Filter</span>
+    <div class="filter-sep"></div>
+    <select class="filter-select" id="filter-year" onchange="loadData()">
+      <option value="">Indlæser år…</option>
+    </select>
+    <span style="font-size:11px;font-weight:700;color:var(--ink-4)">vs</span>
+    <select class="filter-select" id="filter-compare-year" onchange="loadData()">
+      <option value="">Indlæser år…</option>
+    </select>
+    <!-- Month multi-select -->
+    <div class="ms-wrap" id="ms-month-wrap">
+      <div class="ms-trigger" id="ms-month-trigger" onclick="msToggle('month')">
+        <span id="ms-month-label">Hele Året</span>
+        <span class="ms-badge" id="ms-month-badge" style="display:none"></span>
+        <span class="ms-arrow">▾</span>
+      </div>
+      <div class="ms-panel" id="ms-month-panel">
+        <div class="ms-list-header" onclick="msClearAll('month')">
+          <input type="checkbox" id="ms-m-all" checked onclick="event.preventDefault();event.stopPropagation()">
+          <label>Hele Året</label>
+        </div>
+        <div class="ms-item" onclick="msToggleQuarter('Q1')"><input type="checkbox" id="ms-m-Q1" onclick="event.preventDefault();event.stopPropagation()"><label>Q1 (Jan–Mar)</label></div>
+        <div class="ms-item" onclick="msToggleQuarter('Q2')"><input type="checkbox" id="ms-m-Q2" onclick="event.preventDefault();event.stopPropagation()"><label>Q2 (Apr–Jun)</label></div>
+        <div class="ms-item" onclick="msToggleQuarter('Q3')"><input type="checkbox" id="ms-m-Q3" onclick="event.preventDefault();event.stopPropagation()"><label>Q3 (Jul–Sep)</label></div>
+        <div class="ms-item" onclick="msToggleQuarter('Q4')"><input type="checkbox" id="ms-m-Q4" onclick="event.preventDefault();event.stopPropagation()"><label>Q4 (Okt–Dec)</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','1','Januar')"><input type="checkbox" id="ms-m-1" onclick="event.preventDefault();event.stopPropagation()"><label>Januar</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','2','Februar')"><input type="checkbox" id="ms-m-2" onclick="event.preventDefault();event.stopPropagation()"><label>Februar</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','3','Marts')"><input type="checkbox" id="ms-m-3" onclick="event.preventDefault();event.stopPropagation()"><label>Marts</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','4','April')"><input type="checkbox" id="ms-m-4" onclick="event.preventDefault();event.stopPropagation()"><label>April</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','5','Maj')"><input type="checkbox" id="ms-m-5" onclick="event.preventDefault();event.stopPropagation()"><label>Maj</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','6','Juni')"><input type="checkbox" id="ms-m-6" onclick="event.preventDefault();event.stopPropagation()"><label>Juni</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','7','Juli')"><input type="checkbox" id="ms-m-7" onclick="event.preventDefault();event.stopPropagation()"><label>Juli</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','8','August')"><input type="checkbox" id="ms-m-8" onclick="event.preventDefault();event.stopPropagation()"><label>August</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','9','September')"><input type="checkbox" id="ms-m-9" onclick="event.preventDefault();event.stopPropagation()"><label>September</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','10','Oktober')"><input type="checkbox" id="ms-m-10" onclick="event.preventDefault();event.stopPropagation()"><label>Oktober</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','11','November')"><input type="checkbox" id="ms-m-11" onclick="event.preventDefault();event.stopPropagation()"><label>November</label></div>
+        <div class="ms-item" onclick="msToggleItem('month','12','December')"><input type="checkbox" id="ms-m-12" onclick="event.preventDefault();event.stopPropagation()"><label>December</label></div>
       </div>
     </div>
 
-    <div class="content-area">
-      <div class="tool-wrap">
-        <div class="breadcrumb">
-          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
-          <a href="/tools/performance/dashboards" class="bc-link">KPI Dashboards</a><span class="bc-sep">/</span>
-          <span>Afdelingsleder</span>
+    <!-- Team multi-select -->
+    <div class="ms-wrap" id="ms-team-wrap">
+      <div class="ms-trigger" id="ms-team-trigger" onclick="msToggle('team')">
+        <span id="ms-team-label">Alle teams</span>
+        <span class="ms-badge" id="ms-team-badge" style="display:none"></span>
+        <span class="ms-arrow">▾</span>
+      </div>
+      <div class="ms-panel" id="ms-team-panel">
+        <div class="ms-list-header" onclick="msClearAll('team')">
+          <input type="checkbox" id="ms-team-all" checked onclick="event.preventDefault();event.stopPropagation()">
+          <label>Alle teams</label>
         </div>
+        <!-- populated dynamically by buildTeamDropdown() -->
+      </div>
+    </div>
 
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-          <div>
-            <h1 class="page-title" style="margin-bottom:4px">Afdelingsleder Dashboard</h1>
-            <p class="page-sub">Helikopter-perspektiv — omsætning, budget, forecast og vækst</p>
-          </div>
+    <div class="filter-sep"></div>
+
+    <!-- Pipeline multi-select -->
+    <div class="ms-wrap" id="ms-pipeline-wrap">
+      <div class="ms-trigger" id="ms-pipeline-trigger" onclick="msToggle('pipeline')">
+        <span id="ms-pipeline-label">Alle pipelines</span>
+        <span class="ms-badge" id="ms-pipeline-badge" style="display:none"></span>
+        <span class="ms-arrow">▾</span>
+      </div>
+      <div class="ms-panel" id="ms-pipeline-panel">
+        <div class="ms-list-header" onclick="msClearAll('pipeline')">
+          <input type="checkbox" id="ms-p-all" checked onclick="event.preventDefault();event.stopPropagation()">
+          <label>Alle pipelines</label>
         </div>
+        <div class="ms-item" data-val="Customer" onclick="msToggleItem('pipeline','Customer','Customer')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Customer</label></div>
+        <div class="ms-item" data-val="Newbizz" onclick="msToggleItem('pipeline','Newbizz','Newbizz')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Newbizz</label></div>
+        <div class="ms-item" data-val="Company Trial" onclick="msToggleItem('pipeline','Company Trial','Company Trial')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Company Trial</label></div>
+        <div class="ms-item" data-val="Cancellations" onclick="msToggleItem('pipeline','Cancellations','Opsigelser')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Opsigelser</label></div>
+      </div>
+    </div>
+    <div class="filter-sep"></div>
+    <select class="filter-select" id="filter-date-col" onchange="loadData()">
+      <option value="won_time">Won time</option>
+      <option value="service_activation_date" selected>Service activation date</option>
+    </select>
+  </div>
 
-        <!-- Filter-bar -->
-        <div class="filter-bar">
-          <span class="filter-label">Filter</span>
-          <div class="filter-sep"></div>
-          <select class="filter-select" id="filter-year" onchange="loadData()">
-            <option value="">Indlæser år…</option>
-          </select>
-          <select class="filter-select" id="filter-month" onchange="loadData()">
-            <option value="">Alle måneder</option>
-            <option value="1">Januar</option>
-            <option value="2">Februar</option>
-            <option value="3">Marts</option>
-            <option value="4">April</option>
-            <option value="5">Maj</option>
-            <option value="6">Juni</option>
-            <option value="7">Juli</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">Oktober</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-          <div class="filter-sep"></div>
-          <button class="refresh-btn" onclick="loadData()">
-            <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
-            Opdater
-          </button>
-        </div>
+  <!-- Spinner -->
+  <div id="loading-state" class="spin-wrap">
+    <div class="spinner"></div><br>Henter data…
+  </div>
 
-        <div id="loading-state" class="spin-wrap">
-          <div class="spinner"></div>
-          <div>Henter data…</div>
-        </div>
+  <div id="dash-content" style="display:none">
 
-        <div id="dash-content" style="display:none">
-          <div class="dash-main-grid">
+    <!-- KPI cards -->
+    <div class="kpi-grid" id="kpi-grid"></div>
 
-            <!-- Venstre: Nettosalg vs. Budget per team -->
-            <div class="dash-card">
-              <div class="dash-card-title">
-                <span>Nettosalg vs. Budget</span>
-                <span id="rv-month-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
-              </div>
-              <div id="team-chart"><div style="color:var(--ink-4);font-size:12px">Henter…</div></div>
-              <div class="tc-axis-row" id="tc-axis" style="display:none">
-                <div></div>
-                <div class="tc-axis-inner"><span>0%</span><span>50%</span><span>100%</span></div>
-                <div></div>
-              </div>
-            </div>
-
-            <!-- Højre kolonne: Forecast + Kundetilgang -->
-            <div class="right-col">
-
-              <!-- Forecast -->
-              <div class="dash-card">
-                <div class="dash-card-title">Forecast</div>
-                <div class="fc-boxes">
-                  <div class="fc-box">
-                    <div class="fc-box-label">Nuværende</div>
-                    <div class="fc-box-val" id="fc-nu">—</div>
-                  </div>
-                  <div class="fc-big-arrow" id="fc-arrow">→</div>
-                  <div class="fc-box">
-                    <div class="fc-box-label">Forventet</div>
-                    <div class="fc-box-val" id="fc-forecast">—</div>
-                  </div>
-                </div>
-                <div class="fc-meta">
-                  <div class="fc-meta-item">
-                    <span class="fc-meta-label">Vs. LY (netto)</span>
-                    <span class="fc-meta-val" id="fc-vs-ly">—</span>
-                  </div>
-                  <div class="fc-meta-item">
-                    <span class="fc-meta-label">YoY %</span>
-                    <span class="fc-meta-val" id="fc-yoy-pct">—</span>
-                  </div>
-                  <div class="fc-meta-item">
-                    <span class="fc-meta-label">Budget</span>
-                    <span class="fc-meta-val" id="fc-budget">—</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Kundetilgang (netto) -->
-              <div class="dash-card">
-                <div class="dash-card-title">
-                  <span>Kundetilgang (Netto)</span>
-                  <span id="chart-year-label" style="font-size:9px;font-weight:400;color:var(--ink-4)"></span>
-                </div>
-                <div id="net-chart"></div>
-                <div style="margin-top:8px;padding:6px 8px;background:var(--warn-light);border-left:3px solid var(--warn);border-radius:3px;font-size:10px;color:var(--ink-3);line-height:1.4;">
-                  ⚠️ <strong>Mangler korrekt data</strong> — Kundetilgang afventer integration med SORA. Tallene afspejler pt. ikke den reelle nettotilgang.
-                </div>
-              </div>
-
-            </div>
-          </div>
+    <!-- Monthly chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        <span>Månedlig netto — år for år</span>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
+          <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span><span id="legend-prev"></span></span>
         </div>
       </div>
+      <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
+    </div>
+
+  </div><!-- dash-content -->
+
+  <!-- Brand Overblik -->
+  <div class="chart-card">
+    <div class="chart-title">
+      <span>Brand Overblik — salg, opsigelser og netto pr. år</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="brand-mode-won" onclick="setBrandDateCol('won_time')">Won</button>
+          <button class="toggle-btn" id="brand-mode-tilvaekst" onclick="setBrandDateCol('service_activation_date')">Tilvækst</button>
+        </div>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="brand-period-ytd" onclick="setBrandYtd(1)">ÅTD</button>
+          <button class="toggle-btn" id="brand-period-full" onclick="setBrandYtd(0)">Hele året</button>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--ink-4);margin:-8px 0 16px" id="brand-sub"></p>
+    <div class="brand-grid" id="brand-cards">
+      <div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div>
     </div>
   </div>
-</div>
+
+</div><!-- tool-wrap -->
+</div><!-- content-area -->
 
 <script>
-function fmtKr(v) {
-  const abs = Math.abs(v);
-  const sign = v < 0 ? '-' : '';
-  if (abs >= 1000000) return sign + (abs/1000000).toFixed(2).replace('.',',') + ' mio.';
-  if (abs >= 1000)    return sign + Math.round(abs/1000) + 'k kr.';
-  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr.';
+const CURRENT_YEAR  = {{ current_year }};
+const CURRENT_MONTH = {{ current_month }};
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+const fmtKr = v => {
+  const abs = Math.abs(v), sign = v < 0 ? '−' : '';
+  if (abs >= 1e6)  return sign + (abs/1e6).toFixed(1).replace('.',',') + ' m';
+  if (abs >= 1000) return sign + (abs/1000).toFixed(0) + 'k';
+  return sign + Math.round(abs).toLocaleString('da-DK');
+};
+const fmtFull = v => {
+  const abs = Math.abs(v), sign = v < 0 ? '−' : '';
+  return sign + Math.round(abs).toLocaleString('da-DK') + ' kr';
+};
+const fmtPct = v => (v > 0 ? '+' : '') + v + '%';
+
+// ── Multi-select state ────────────────────────────────────────────────────────
+const selectedMonths    = new Set();
+const selectedTeams     = new Set();
+const selectedPipelines = new Set();
+
+const MONTH_NAMES_FULL = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+const QUARTER_MONTHS   = { Q1:[1,2,3], Q2:[4,5,6], Q3:[7,8,9], Q4:[10,11,12] };
+const MS_ALL_LABELS    = { month: 'Hele Året', team: 'Alle teams', pipeline: 'Alle pipelines' };
+
+function msToggle(key) {
+  const panel   = document.getElementById(`ms-${key}-panel`);
+  const trigger = document.getElementById(`ms-${key}-trigger`);
+  const isOpen  = panel.classList.contains('open');
+  ['month','team','pipeline'].forEach(k => {
+    document.getElementById(`ms-${k}-panel`).classList.remove('open');
+    document.getElementById(`ms-${k}-trigger`).classList.remove('open');
+  });
+  if (!isOpen) { panel.classList.add('open'); trigger.classList.add('open'); }
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function loadMeta() {
-  const today = new Date();
-  const yearSel = document.getElementById('filter-year');
-  yearSel.innerHTML = '';
-  for (let y = today.getFullYear(); y >= today.getFullYear() - 3; y--) {
-    const opt = document.createElement('option');
-    opt.value = y; opt.textContent = y;
-    if (y === today.getFullYear()) opt.selected = true;
-    yearSel.appendChild(opt);
+function msToggleItem(key, val, label) {
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  let cb;
+  if (key === 'month') {
+    cb = document.getElementById(`ms-m-${val}`);
+  } else if (key === 'pipeline') {
+    const item = document.querySelector(`#ms-pipeline-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
+    cb = item ? item.querySelector('input[type=checkbox]') : null;
+  } else {
+    const item = document.querySelector(`#ms-team-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
+    cb = item ? item.querySelector('input[type=checkbox]') : null;
   }
-  // Lad "Alle måneder" være default — sæt ikke en specifik måned
+  if (sel.has(val)) { sel.delete(val); if (cb) cb.checked = false; }
+  else              { sel.add(val);    if (cb) cb.checked = true; }
+  msUpdateLabel(key);
+  loadData();
 }
 
+function msToggleQuarter(q) {
+  const months     = QUARTER_MONTHS[q];
+  const strMonths  = months.map(String);
+  const allSelected = strMonths.every(m => selectedMonths.has(m));
+  strMonths.forEach(m => {
+    const cb = document.getElementById(`ms-m-${m}`);
+    if (allSelected) { selectedMonths.delete(m); if (cb) cb.checked = false; }
+    else             { selectedMonths.add(m);    if (cb) cb.checked = true; }
+  });
+  msUpdateLabel('month');
+  loadData();
+}
+
+function msClearAll(key) {
+  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  sel.clear();
+  const panel = document.getElementById(`ms-${key}-panel`);
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
+  const allCb = panel.querySelector('.ms-list-header input[type=checkbox]');
+  if (allCb) allCb.checked = true;
+  msUpdateLabel(key);
+  loadData();
+}
+
+function msUpdateLabel(key) {
+  const sel     = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
+  const label   = document.getElementById(`ms-${key}-label`);
+  const badge   = document.getElementById(`ms-${key}-badge`);
+  const panel   = document.getElementById(`ms-${key}-panel`);
+  const allCb   = panel.querySelector('.ms-list-header input[type=checkbox]');
+  if (sel.size === 0) {
+    label.textContent = MS_ALL_LABELS[key];
+    badge.style.display = 'none';
+    if (allCb) allCb.checked = true;
+  } else {
+    badge.textContent   = sel.size;
+    badge.style.display = '';
+    if (allCb) allCb.checked = false;
+    if (key === 'month') {
+      const names = [...sel].map(m => MONTH_NAMES_FULL[parseInt(m) - 1]);
+      label.textContent = names.length === 1 ? names[0] : `${names.length} måneder`;
+    } else if (key === 'team') {
+      label.textContent = sel.size === 1 ? [...sel][0] : `${sel.size} teams`;
+    } else {
+      label.textContent = sel.size === 1 ? [...sel][0] : `${sel.size} pipelines`;
+    }
+  }
+  // Sync Q-checkboxes
+  if (key === 'month') {
+    Object.entries(QUARTER_MONTHS).forEach(([q, months]) => {
+      const qCb = document.getElementById(`ms-m-${q}`);
+      if (qCb) qCb.checked = months.every(m => sel.has(String(m)));
+    });
+  }
+}
+
+function buildTeamDropdown(teams) {
+  const panel = document.getElementById('ms-team-panel');
+  panel.querySelectorAll('.ms-item').forEach(el => el.remove());
+  teams.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'ms-item';
+    div.dataset.val = t;
+    const cb  = document.createElement('input');
+    cb.type   = 'checkbox';
+    cb.setAttribute('onclick', 'event.preventDefault();event.stopPropagation()');
+    if (selectedTeams.has(t)) cb.checked = true;
+    const lbl = document.createElement('label');
+    lbl.textContent = t;
+    lbl.style.cssText = 'pointer-events:none;font-size:12px';
+    div.appendChild(cb); div.appendChild(lbl);
+    div.addEventListener('click', () => msToggleItem('team', t, t));
+    panel.appendChild(div);
+  });
+}
+
+// Close panels on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-wrap')) {
+    ['month','team','pipeline'].forEach(k => {
+      document.getElementById(`ms-${k}-panel`)?.classList.remove('open');
+      document.getElementById(`ms-${k}-trigger`)?.classList.remove('open');
+    });
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const ySel  = document.getElementById('filter-year');
+  const cySel = document.getElementById('filter-compare-year');
+  ySel.innerHTML = '';
+  cySel.innerHTML = '';
+  for (let y = CURRENT_YEAR + 1; y >= 2024; y--) {
+    const o1 = document.createElement('option');
+    o1.value = y; o1.textContent = y;
+    if (y === CURRENT_YEAR) o1.selected = true;
+    ySel.appendChild(o1);
+
+    const o2 = document.createElement('option');
+    o2.value = y; o2.textContent = y;
+    if (y === CURRENT_YEAR - 1) o2.selected = true;
+    cySel.appendChild(o2);
+  }
+  loadData();
+  loadBrandData();
+});
+
+// ── YoY: Load ─────────────────────────────────────────────────────────────────
 async function loadData() {
-  const year  = document.getElementById('filter-year').value;
-  const month = document.getElementById('filter-month').value;
+  const year        = document.getElementById('filter-year').value;
+  const compareYear = document.getElementById('filter-compare-year').value;
+  const dateCol     = document.getElementById('filter-date-col').value;
+
+  const month    = selectedMonths.size    ? [...selectedMonths].join(',')    : '';
+  const team     = selectedTeams.size     ? [...selectedTeams].join(',')     : '';
+  const pipeline = selectedPipelines.size ? [...selectedPipelines].join(',') : '';
+
   const params = new URLSearchParams();
-  if (year)  params.set('year',  year);
-  if (month) params.set('month', month);
+  if (year)        params.set('year',            year);
+  if (compareYear) params.set('compare_year',    compareYear);
+  if (month)       params.set('month',           month);
+  if (team)        params.set('team',            team);
+  if (dateCol)     params.set('date_col',        dateCol);
+  if (pipeline)    params.set('pipeline_filter', pipeline);
+
+  document.getElementById('loading-state').style.display = '';
+  document.getElementById('dash-content').style.display  = 'none';
+
   try {
-    const r = await fetch(`/tools/performance/afdelingsleder-data?` + params, { cache: 'no-store' });
+    const r = await fetch('/tools/performance/yoy-data?' + params);
     const d = await r.json();
     if (!r.ok) return;
 
+    if (d.teams?.length && document.getElementById('ms-team-panel').querySelectorAll('.ms-item').length === 0) {
+      buildTeamDropdown(d.teams);
+    }
+
+    document.getElementById('period-subtitle').textContent = d.period_label;
+    document.getElementById('legend-curr').textContent = d.ref_year;
+    document.getElementById('legend-prev').textContent = d.prev_year;
+
+    renderKPI(d);
+    renderChart(d);
+
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
-
-    renderTeamChart(d);
-    renderForecast(d);
-    renderNetChart(d);
-
   } catch(e) {
     console.error(e);
   }
 }
 
-function fmtFull(v) {
-  const sign = v < 0 ? '-' : '';
-  return sign + Math.abs(Math.round(v)).toLocaleString('da-DK') + ' kr.';
-}
+// ── KPI cards ─────────────────────────────────────────────────────────────────
+function renderKPI(d) {
+  const cards = [
+    { label: 'Omsætning',    key: 'won',       isCount: false },
+    { label: 'Opsigelser',   key: 'cancel',    isCount: false },
+    { label: 'Netto',        key: 'netto',     isCount: false },
+    { label: 'Antal deals',  key: 'won_count', isCount: true  },
+  ];
 
-function renderTeamChart(d) {
-  document.getElementById('rv-month-label').textContent = d.month_label;
-  const teams = d.team_chart || [];
-  const axisEl = document.getElementById('tc-axis');
+  const grid = document.getElementById('kpi-grid');
+  grid.innerHTML = '';
 
-  if (!teams.length) {
-    document.getElementById('team-chart').innerHTML =
-      '<div style="color:var(--ink-4);font-size:12px;padding:20px 0">Ingen data</div>';
-    axisEl.style.display = 'none';
-    return;
-  }
+  cards.forEach(({label, key, isCount}) => {
+    const cv  = d.curr[key];
+    const pv  = d.prev[key];
+    const dlt = d.deltas[key];
 
-  // Reference for skalering: brug budget hvis tilgængeligt, ellers max won
-  const maxWon    = Math.max(...teams.map(t => t.won), 1);
-  const maxBudget = Math.max(...teams.map(t => t.budget), 0);
-  axisEl.style.display = '';
+    const diff    = dlt.diff;
+    const pct     = dlt.pct;
+    const diffPos = diff >= 0;
+    // For opsigelser: højere churn er dårligt → omvendt farve
+    const isCancel = key === 'cancel';
+    const good = isCancel ? !diffPos : diffPos;
 
-  document.getElementById('team-chart').innerHTML = teams.map(t => {
-    // 100% = budget (hvis sat), ellers max won på tværs af teams
-    const ref    = t.budget > 0 ? t.budget : (maxBudget > 0 ? maxBudget : maxWon);
-    const wonPct = Math.min((t.netto / ref) * 100, 120).toFixed(1); // kan gå lidt over 100%
+    const colorCls  = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
+    const pctCls    = diff === 0 ? 'pct-neu' : (good ? 'pct-pos' : 'pct-neg');
+    const diffSign  = diff > 0 ? '+' : '';
+    const diffFmt   = isCount ? diffSign + diff : diffSign + fmtKr(diff);
+    const pctFmt    = pct !== null ? fmtPct(pct) : '—';
 
-    // Højre side: netto / budget (som manager dashboard)
-    const hasBudget = t.budget > 0;
-    const valHtml = hasBudget
-      ? `${fmtFull(t.netto)} <small>/ ${fmtFull(t.budget)}</small>`
-      : fmtKr(t.netto);
-
-    return `
-      <div class="tc-row">
-        <div class="tc-label">${escHtml(t.team)}</div>
-        <div class="tc-track">
-          <div class="tc-zone" style="left:0;width:50%;background:#FDE8EC"></div>
-          <div class="tc-zone" style="left:50%;width:35%;background:#FEF3DC"></div>
-          <div class="tc-zone" style="left:85%;width:15%;background:#D4EDE4"></div>
-          <div class="tc-bar-won" style="width:${wonPct}%" title="Won: ${fmtKr(t.won)}"></div>
-          <div class="tc-vline" style="left:50%"></div>
-          <div class="tc-vline" style="left:calc(100% - 1px)"></div>
+    grid.innerHTML += `
+      <div class="kpi-card">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-row">
+          <span class="kpi-year">${d.ref_year}</span>
+          <span class="kpi-val curr">${isCount ? cv : fmtKr(cv)}</span>
         </div>
-        <div class="tc-val">${valHtml}</div>
+        <div class="kpi-row">
+          <span class="kpi-year">${d.prev_year}</span>
+          <span class="kpi-val">${isCount ? pv : fmtKr(pv)}</span>
+        </div>
+        <div class="kpi-divider"></div>
+        <div class="kpi-delta">
+          <span class="kpi-diff ${colorCls}">${diffFmt}</span>
+          <span class="kpi-pct ${pctCls}">${pctFmt}</span>
+        </div>
       </div>`;
+  });
+}
+
+// ── Monthly chart ─────────────────────────────────────────────────────────────
+function renderChart(d) {
+  const svg   = document.getElementById('monthly-chart');
+  const W     = svg.getBoundingClientRect().width || 900;
+  const H     = 200;
+  const PAD   = { t: 10, r: 10, b: 30, l: 48 };
+  const chartW = W - PAD.l - PAD.r;
+  const chartH = H - PAD.t - PAD.b;
+
+  const curr = d.monthly_curr.map(m => m.netto);
+  const prev = d.monthly_prev.map(m => m.netto);
+  const labels = d.monthly_curr.map(m => m.maaned);
+  const n = 12;
+
+  const allVals = [...curr, ...prev];
+  const minV = Math.min(0, ...allVals);
+  const maxV = Math.max(1, ...allVals);
+  const range = maxV - minV || 1;
+
+  const toY = v => PAD.t + chartH - ((v - minV) / range) * chartH;
+
+  const groupW = chartW / n;
+  const barW   = groupW * 0.32;
+  const gap    = groupW * 0.06;
+
+  let paths = '';
+  if (minV < 0) {
+    const zy = toY(0);
+    paths += `<line x1="${PAD.l}" y1="${zy}" x2="${PAD.l + chartW}" y2="${zy}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const gx = PAD.l + i * groupW + groupW * 0.04;
+    const zy = toY(0);
+
+    const cy  = toY(curr[i]);
+    const ch  = Math.abs(cy - zy);
+    const cTop = curr[i] >= 0 ? cy : zy;
+    paths += `<rect x="${gx}" y="${cTop}" width="${barW}" height="${Math.max(ch,1)}"
+      fill="var(--green)" rx="2" opacity="0.9">
+      <title>${labels[i]} ${d.ref_year}: ${fmtFull(curr[i])}</title></rect>`;
+
+    const px2 = gx + barW + gap;
+    const py  = toY(prev[i]);
+    const ph  = Math.abs(py - zy);
+    const pTop = prev[i] >= 0 ? py : zy;
+    paths += `<rect x="${px2}" y="${pTop}" width="${barW}" height="${Math.max(ph,1)}"
+      fill="#C9C1B5" rx="2" opacity="0.85">
+      <title>${labels[i]} ${d.prev_year}: ${fmtFull(prev[i])}</title></rect>`;
+
+    paths += `<text x="${gx + barW + gap/2}" y="${H - PAD.b + 14}" text-anchor="middle"
+      font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
+  }
+
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = minV + (range / ticks) * i;
+    const y = toY(v);
+    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end"
+      font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
+  }
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = paths;
+}
+
+// ── Brand Overblik ────────────────────────────────────────────────────────────
+let brandDateCol = 'won_time';
+let brandYtd = 1;
+
+function setBrandDateCol(col) {
+  brandDateCol = col;
+  document.getElementById('brand-mode-won').classList.toggle('active', col === 'won_time');
+  document.getElementById('brand-mode-tilvaekst').classList.toggle('active', col === 'service_activation_date');
+  loadBrandData();
+}
+function setBrandYtd(v) {
+  brandYtd = v;
+  document.getElementById('brand-period-ytd').classList.toggle('active', v === 1);
+  document.getElementById('brand-period-full').classList.toggle('active', v === 0);
+  loadBrandData();
+}
+
+function brandDelta(cur, prev) {
+  if (!prev) return '<span style="color:var(--ink-4)">—</span>';
+  const diff = cur - prev;
+  const pct  = (diff / Math.abs(prev) * 100).toFixed(1).replace('.', ',');
+  const cls  = diff >= 0 ? 'pos' : 'neg';
+  return `<span class="delta-pill ${cls}">${diff >= 0 ? '+' : ''}${pct}%</span>`;
+}
+
+function renderBrandGroup(g) {
+  const CHART_H = 150;
+  const max = Math.max(...g.rows.map(r => Math.max(r.won, r.ops)), 1);
+  const bar = (v, color) => {
+    const h = v === 0 ? 2 : Math.max(Math.round((v / max) * CHART_H), 4);
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;min-width:0">
+      <div class="bar-value" style="color:${color === '#B06A52' ? '#B06A52' : 'var(--ink)'}">${v !== 0 ? fmtKr(v) : ''}</div>
+      <div style="height:${h}px;width:100%;background:${color};border-radius:3px 3px 0 0"></div>
+    </div>`;
+  };
+  const barsHtml = g.rows.map(r => `
+    <div class="bar-col" title="${r.aar} — Salg: ${fmtFull(r.won)} / Opsigelser: ${fmtFull(r.ops)} / Netto: ${fmtFull(r.netto)}">
+      <div style="display:flex;align-items:flex-end;gap:3px;width:100%;height:${CHART_H + 16}px">
+        ${bar(r.won, '#2B2A27')}${bar(r.ops, '#B06A52')}
+      </div>
+      <div class="bar-label">${r.aar}</div>
+      <div style="font-size:10px;font-weight:700;color:${r.netto >= 0 ? 'var(--ink-3)' : '#B06A52'}">Netto: ${fmtKr(r.netto)}</div>
+    </div>`).join('');
+
+  const tableRows = g.rows.map((r, i) => {
+    const prev = i > 0 ? g.rows[i - 1] : null;
+    return `<tr>
+      <td style="font-weight:700">${r.aar}</td>
+      <td class="num">${fmtFull(r.won)}</td>
+      <td class="num" style="color:#B06A52">−${fmtFull(r.ops)}</td>
+      <td class="num" style="font-weight:800">${fmtFull(r.netto)}</td>
+      <td class="num">${r.won_count}</td>
+      <td class="num">${brandDelta(r.netto, prev ? prev.netto : null)}</td>
+    </tr>`;
   }).join('');
+
+  return `<div class="brand-card">
+    <div class="brand-card-title">${g.label}</div>
+    <div class="brand-bars">${barsHtml}</div>
+    <div style="display:flex;gap:16px;margin-top:12px">
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#2B2A27"></div>Salg</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#B06A52"></div>Opsigelser</div>
+    </div>
+    <table class="yoy-table">
+      <thead><tr>
+        <th>År</th><th class="num">Salg</th><th class="num">Opsigelser</th>
+        <th class="num">Netto</th><th class="num">Deals</th><th class="num">Netto vs. året før</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </div>`;
 }
 
-function renderForecast(d) {
-  document.getElementById('fc-nu').textContent = fmtKr(d.netto_maaned);
-  document.getElementById('fc-budget').textContent = d.budget_maaned > 0 ? fmtKr(d.budget_maaned) : '—';
-
-  // FORVENTET = netto vundet + vægtet åben pipeline
-  const hasPipeline = (d.pipeline_won || 0) + (d.pipeline_cancel || 0) > 0;
-  document.getElementById('fc-forecast').textContent = hasPipeline ? fmtKr(d.forecast_netto) : fmtKr(d.netto_maaned);
-
-  // Pil baseret på om forecast er over eller under nuværende
-  const arrowEl = document.getElementById('fc-arrow');
-  const diff = (d.forecast_netto || d.netto_maaned) - d.netto_maaned;
-  if (hasPipeline && diff !== 0) {
-    arrowEl.textContent = diff > 0 ? '↑' : '↓';
-    arrowEl.className   = 'fc-big-arrow ' + (diff > 0 ? 'up' : 'down');
-  } else {
-    arrowEl.textContent = '→';
-    arrowEl.className   = 'fc-big-arrow';
-  }
-
-  // VS. LY og YOY%
-  if (d.vs_ly !== null && d.vs_ly !== undefined) {
-    const sign = d.vs_ly >= 0 ? '+' : '';
-    const el   = document.getElementById('fc-vs-ly');
-    el.textContent = sign + fmtKr(d.vs_ly);
-    el.className   = 'fc-meta-val ' + (d.vs_ly >= 0 ? 'green' : 'neg');
-  }
-  if (d.vs_ly_pct !== null && d.vs_ly_pct !== undefined) {
-    const yoyEl = document.getElementById('fc-yoy-pct');
-    yoyEl.textContent = (d.vs_ly_pct >= 0 ? '+' : '') + d.vs_ly_pct.toFixed(1).replace('.',',') + '%';
-    yoyEl.className   = 'fc-meta-val ' + (d.vs_ly_pct >= 0 ? 'green' : 'neg');
+async function loadBrandData() {
+  const el = document.getElementById('brand-cards');
+  el.innerHTML = '<div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div>';
+  try {
+    const res = await fetch(`/tools/performance/brand-overblik-data?date_col=${brandDateCol}&ytd=${brandYtd}`);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const d = new Date(data.cutoff);
+    document.getElementById('brand-sub').textContent = data.ytd
+      ? `ÅTD — hvert år afgrænset 1/1 til ${d.toLocaleDateString('da-DK')}, så årene sammenlignes på lige fod`
+      : 'Hele kalenderår';
+    el.innerHTML = data.groups.map(renderBrandGroup).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:#B06A52;padding:20px">Data kunne ikke hentes. Prøv at genindlæse siden.</div>';
   }
 }
 
-function renderNetChart(d) {
-  document.getElementById('chart-year-label').textContent = new Date(d.today).getFullYear();
-  const chart    = d.churn_chart;
-  const curMonth = parseInt(d.today.split('-')[1]);
-
-  // Brug antal kunder (netto_count), ikke beløb
-  const maxAbs = Math.max(...chart.map(m => Math.abs(m.netto_count)), 1);
-
-  const W = 260, padX = 24, padY = 8;
-  const H = 110;
-  const midY  = padY + (H - padY * 2) / 2;
-  const halfH = (H - padY * 2) / 2;
-  const barW  = (W - padX * 2) / 12;
-
-  // Y-akse labels (max, 0, min)
-  const yMax = Math.ceil(maxAbs);
-  const yAxisLabels = [
-    { val: yMax,  y: padY },
-    { val: 0,     y: midY },
-    { val: -yMax, y: padY + (H - padY * 2) },
-  ].map(l =>
-    `<text x="${(padX - 4).toFixed(1)}" y="${l.y.toFixed(1)}" font-size="7"
-      fill="var(--ink-4)" text-anchor="end" dominant-baseline="middle">${l.val}</text>`
-  ).join('');
-
-  const items = chart.map((m, i) => {
-    const month    = i + 1;
-    const isFuture = month > curMonth;
-    const isCur    = month === curMonth;
-    const cx  = padX + i * barW + barW / 2;
-    const bw  = barW * 0.55;
-    const bx  = cx - bw / 2;
-    const lblCol = isCur ? 'var(--green)' : 'var(--ink-4)';
-    const lblFw  = isCur ? '700' : '400';
-    const op     = isFuture ? 0.35 : 1;
-
-    let bar = '';
-    if (!isFuture && m.netto_count !== 0) {
-      const pct = m.netto_count / maxAbs;
-      const bh  = Math.max(Math.abs(pct) * halfH, 2);
-      const by  = pct >= 0 ? midY - bh : midY;
-      const col = m.netto_count >= 0 ? 'var(--green)' : '#B32E45';
-      bar = `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}"
-        fill="${col}" opacity="${isCur ? 1 : 0.82}" rx="1.5">
-        <title>${m.maaned}: ${m.netto_count > 0 ? '+' : ''}${m.netto_count} kunder (${m.won_count} nye, ${m.cancel_count} tabt)</title>
-      </rect>`;
-    }
-
-    return bar + `<text x="${cx.toFixed(1)}" y="${H + 4}" font-size="7" fill="${lblCol}"
-      font-weight="${lblFw}" opacity="${op}" text-anchor="middle">${m.maaned}</text>`;
-  }).join('');
-
-  document.getElementById('net-chart').innerHTML =
-    `<svg viewBox="0 0 ${W} ${H + 14}" style="width:100%;overflow:visible">
-       ${yAxisLabels}
-       <line x1="${padX}" y1="${midY.toFixed(1)}" x2="${W - padX}" y2="${midY.toFixed(1)}"
-         stroke="var(--border)" stroke-width="1"/>
-       ${items}
-     </svg>`;
-}
-
-loadMeta();
-loadData();
-setInterval(loadData, 5 * 60 * 1000);
+window.addEventListener('resize', () => {
+  const content = document.getElementById('dash-content');
+  if (content.style.display !== 'none') loadData();
+});
 </script>
+
+    </div><!-- content-area -->
+  </div><!-- main -->
+</div><!-- shell -->
 </body>
 </html>

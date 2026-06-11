@@ -2040,284 +2040,89 @@ def db_saelger_available_owners():
         return []
 
 
-#-----------------------------------------------------------------------------------------------------------------------
-#                                          DET NYE DASHBOARD FOR LEDER
-#-----------------------------------------------------------------------------------------------------------------------
 
-def db_afdelingsleder_data(year: int, month: int | None = None):
-    real_today = date.today()
+def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
+                      years: list[int] | None = None):
+    """Salg, opsigelser og netto pr. brand-gruppe (alle brands) for flere år.
 
-    # Periode: specifik måned eller hele året
-    if month:
-        month_from = date(year, month, 1)
-        next_m     = month % 12 + 1
-        next_y     = year + (1 if month == 12 else 0)
-        month_to   = date(next_y, next_m, 1)
-        month_label = f"{MONTH_NAMES_DA[month - 1]} {year}"
-        # LY: samme måned sidste år
-        ly_from = date(year - 1, month, 1)
-        ly_to   = date(year - 1 + (1 if month == 12 else 0), next_m, 1)
-        # Forecast: valgt måned
-        fc_year, fc_month = year, month
-        # Churn chart: highlight valgt måned, grey future relative til i dag
-        chart_ref_month = month
-    else:
-        month_from  = date(year, 1, 1)
-        month_to    = date(year + 1, 1, 1)
-        month_label = str(year)
-        # LY: for indeværende år → YTD-sammenligning (Jan → nuværende måned)
-        # For historiske år → sammenlign fuldt år med fuldt foregående år
-        if year == real_today.year:
-            ly_from   = date(year - 1, 1, 1)
-            ly_next_m = real_today.month % 12 + 1
-            ly_next_y = year - 1 + (1 if real_today.month == 12 else 0)
-            ly_to     = date(ly_next_y, ly_next_m, 1)
-        else:
-            ly_from = date(year - 1, 1, 1)
-            ly_to   = date(year, 1, 1)
-        # Churn chart: highlight nuværende måned (eller dec hvis historisk år)
-        chart_ref_month = real_today.month if year == real_today.year else 12
+    ÅTD: hvert år afgrænses 1/1 → samme dag/måned som i dag, så årene
+    sammenlignes på lige fod. ytd=False giver hele kalenderår.
+    Deal-afgrænsningen er identisk med YoY-værktøjet (db_yoy_data):
+    status='won', ekskl. Web Sale og administrative deals, NO/SE i lokal
+    valuta, opsigelser = CANCELLATION_PIPELINES.
+    """
+    _VALID_DATE_COLS = {"won_time", "service_activation_date"}
+    if date_col not in _VALID_DATE_COLS:
+        date_col = "won_time"
+    d_col = f"[{date_col}]"
+    years = years or [today.year - 2, today.year - 1, today.year]
 
-    year_from = date(year, 1, 1)
-    year_to   = date(year + 1, 1, 1)
+    def _cut(y: int) -> date:
+        if not ytd:
+            return date(y + 1, 1, 1)
+        try:
+            return today.replace(year=y) + timedelta(days=1)
+        except ValueError:  # 29/2 i skudår
+            return date(y, today.month, 28) + timedelta(days=1)
 
-    brands_ph  = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
-    sub_filter = f"AND [sites] IN {brands_ph}"
-    sub_params = tuple(SUBSCRIPTION_BRANDS)
+    _VAL = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
+            "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    range_sql = " OR ".join([f"({d_col} >= %s AND {d_col} < %s)"] * len(years))
+    range_params: list = []
+    for y in years:
+        range_params += [date(y, 1, 1).isoformat(), _cut(y).isoformat()]
+
+    # Scope pr. gruppe: abonnements-brands matcher på [sites]. MarketWire-deals
+    # har IKKE sites udfyldt og matcher i stedet på account='marketwire'.
+    # Banner og Job er annonce-salg og matcher på account + pipeline
+    # (samme regel som modul_banner_job).
+    group_defs = []
+    for key in ("watch_dk", "finans", "watch_no", "watch_se", "monitor"):
+        sites = BRAND_GROUPS[key]
+        sites_ph = "(" + ",".join(["%s"] * len(sites)) + ")"
+        group_defs.append((key, BRAND_GROUP_LABELS[key], f"[sites] IN {sites_ph}", tuple(sites)))
+    group_defs.append(("marketwire", "MarketWire", "[account]='marketwire'", ()))
+    group_defs.append(("banner", "Banner", "[account]='jppol_advertising' AND UPPER([pipeline_name])='BANNER'", ()))
+    group_defs.append(("job",    "Job",    "[account]='jppol_advertising' AND UPPER([pipeline_name])='JOB'",    ()))
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)
-
-    cur.execute(f"""
-        SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-          AND [service_activation_date] >= %s AND [service_activation_date] < %s
-          AND COALESCE([administrativ],'') <> 'ja'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-          AND COALESCE([deal_type],'') <> 'Rapport'
-          {sub_filter}
-    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
-    revenue_maaned = float((cur.fetchone() or {}).get("revenue", 0) or 0)
-
-    cur.execute(f"""
-        SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS cancel
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-          AND [service_activation_date] >= %s AND [service_activation_date] < %s
-          AND COALESCE([administrativ],'') <> 'ja'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-          {sub_filter}
-    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
-    cancel_maaned = abs(float((cur.fetchone() or {}).get("cancel", 0) or 0))
-    netto_maaned  = revenue_maaned - cancel_maaned
-
-    cur.execute("""
-        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
-        FROM [dbo].[BudgetsIntoMedia]
-        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
-    """, (month_from.isoformat(), month_to.isoformat()))
-    budget_maaned = float((cur.fetchone() or {}).get("budget", 0) or 0)
-
-    cur.execute(f"""
-        SELECT
-            ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
-            ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [service_activation_date] >= %s AND [service_activation_date] < %s
-          AND COALESCE([administrativ],'') <> 'ja'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-          AND COALESCE([deal_type],'') <> 'Rapport'
-          {sub_filter}
-    """, (ly_from.isoformat(), ly_to.isoformat()) + sub_params)
-    ly_row   = cur.fetchone() or {}
-    ly_netto = float(ly_row.get("won", 0) or 0) - abs(float(ly_row.get("cancel", 0) or 0))
-
-    cur.execute(f"""
-        SELECT
-            MONTH([service_activation_date]) AS maaned,
-            ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
-            ISNULL(SUM(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS cancel,
-            COUNT(CASE WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS won_count,
-            COUNT(CASE WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser') THEN 1 END) AS cancel_count
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
-          AND [service_activation_date] >= %s AND [service_activation_date] < %s
-          AND COALESCE([administrativ],'') <> 'ja'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-          AND COALESCE([deal_type],'') <> 'Rapport'
-          {sub_filter}
-        GROUP BY MONTH([service_activation_date])
-        ORDER BY maaned
-    """, (year_from.isoformat(), year_to.isoformat()) + sub_params)
-    churn_raw = {r["maaned"]: r for r in cur.fetchall()}
-    churn_chart = []
-    for m in range(1, 13):
-        r          = churn_raw.get(m, {"won": 0, "cancel": 0, "won_count": 0, "cancel_count": 0})
-        won        = float(r["won"] or 0)
-        can        = abs(float(r["cancel"] or 0))
-        won_cnt    = int(r["won_count"]    or 0)
-        cancel_cnt = int(r["cancel_count"] or 0)
-        churn_chart.append({
-            "maaned":       MONTH_NAMES_DA[m - 1][:3],
-            "won":          round(won, 2),
-            "cancel":       round(can, 2),
-            "netto":        round(won - can, 2),
-            "won_count":    won_cnt,
-            "cancel_count": cancel_cnt,
-            "netto_count":  won_cnt - cancel_cnt,
-        })
-
-    # Automatisk forecast: vundet netto + vægtet åben pipeline for perioden.
-    # weighted_value = Pipedrive's eget sandsynlighedsvægtede felt (value × stage-probability).
-    # Vi inkluderer kun deals med positiv value og ekskluderer Rapport og Web Sale.
-    cur.execute(f"""
-        SELECT
-            ISNULL(SUM(CASE
-                WHEN [pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                 AND CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2)) > 0
-                THEN CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2))
-                ELSE 0 END), 0) AS pipeline_won,
-            ISNULL(SUM(CASE
-                WHEN [pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                 AND ABS(CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2))) > 0
-                THEN ABS(CAST(COALESCE([weighted_value],[value_dkk],[value],0) AS DECIMAL(18,2)))
-                ELSE 0 END), 0) AS pipeline_cancel
-        FROM [dbo].[PipedriveDeals]
-        WHERE [status] = 'open'
-          AND [pipeline_name] <> 'Web Sale'
-          AND COALESCE([administrativ],'') <> 'ja'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-          AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-          AND COALESCE([deal_type],'') <> 'Rapport'
-          AND [expected_close_date] >= %s AND [expected_close_date] < %s
-          {sub_filter}
-    """, (month_from.isoformat(), month_to.isoformat()) + sub_params)
-    pipe_row       = cur.fetchone() or {}
-    pipeline_won    = float(pipe_row.get("pipeline_won",    0) or 0)
-    pipeline_cancel = float(pipe_row.get("pipeline_cancel", 0) or 0)
-    forecast_netto  = round(netto_maaned + pipeline_won - pipeline_cancel, 2)
-
-    # Per-team netto revenue — joiner direkte på d.[team] for at matche Pipedrive præcist.
-    # Deals uden team-tag (NULL) tæller ikke med under noget team.
-    cur.execute("""
-        SELECT
-            t.name AS team,
-            ISNULL(SUM(CASE WHEN d.[pipeline_name] NOT IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN d.[currency] IN ('NOK','SEK') THEN d.[value] ELSE d.[value_dkk] END,d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
-            ABS(ISNULL(SUM(CASE WHEN d.[pipeline_name] IN ('Cancellation','Cancellations','Opsigelser')
-                THEN CAST(COALESCE(CASE WHEN d.[currency] IN ('NOK','SEK') THEN d.[value] ELSE d.[value_dkk] END,d.[value]) AS DECIMAL(18,2)) ELSE 0 END), 0)) AS cancel
-        FROM Teams t
-        LEFT JOIN [dbo].[PipedriveDeals] d
-            ON d.[team] = t.name
-            AND d.[status] = 'won'
-            AND d.[pipeline_name] <> 'Web Sale'
-            AND d.[service_activation_date] >= %s AND d.[service_activation_date] < %s
-            AND COALESCE(d.[administrativ],'') <> 'ja'
-            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
-            AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
-            AND COALESCE(d.[deal_type],'') <> 'Rapport'
-        WHERE t.name IS NOT NULL AND t.name <> ''
-        GROUP BY t.name
-    """, (month_from.isoformat(), month_to.isoformat()))
-    team_data_map = {}
-    for r in cur.fetchall():
-        won    = float(r["won"]    or 0)
-        cancel = float(r["cancel"] or 0)
-        team_data_map[r["team"]] = {
-            "won":    round(won,    2),
-            "cancel": round(cancel, 2),
-            "netto":  round(won - cancel, 2),
-        }
-
-    # Per-team budget fra SalespersonBudget (individuelle sælgere)
-    cur.execute("""
-        SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
-        FROM [dbo].[SalespersonBudget]
-        WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
-          AND [Team] IS NOT NULL AND [Team] <> ''
-        GROUP BY [Team]
-    """, (month_from.isoformat(), month_to.isoformat()))
-    team_budget_map = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
-
-    # Team Banner budget fra BudgetsIntoMedia (ingen per-person budget)
-    cur.execute("""
-        SELECT ISNULL(SUM([BudgetAmount]), 0) AS budget
-        FROM [dbo].[BudgetsIntoMedia]
-        WHERE [DealType] = 'Banner'
-          AND [BudgetDate] >= %s AND [BudgetDate] < %s
-    """, (month_from.isoformat(), month_to.isoformat()))
-    banner_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
-    if banner_budget > 0:
-        team_budget_map["Team Banner"] = banner_budget
-
-    # Team Marketwire budget fra BudgetsIntoMedia
-    cur.execute("""
-        SELECT ISNULL(SUM([BudgetAmount]), 0) AS budget
-        FROM [dbo].[BudgetsIntoMedia]
-        WHERE [Brand] = 'marketwire'
-          AND [BudgetDate] >= %s AND [BudgetDate] < %s
-    """, (month_from.isoformat(), month_to.isoformat()))
-    marketwire_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
-    if marketwire_budget > 0:
-        team_budget_map["Team Marketwire"] = marketwire_budget
-
-    # Alle teams (inkl. dem uden data i perioden)
-    cur.execute("""
-        SELECT name
-        FROM Teams
-        WHERE name IS NOT NULL AND name <> ''
-        ORDER BY name
-    """)
-    all_team_names = [r["name"] for r in cur.fetchall()]
-
-    # Sammensæt: alle teams med data + budget
-    team_chart = []
-    for name in all_team_names:
-        data = team_data_map.get(name, {"won": 0, "cancel": 0, "netto": 0})
-        team_chart.append({
-            "team":   name,
-            "won":    data["won"],
-            "cancel": data["cancel"],
-            "netto":  data["netto"],
-            "budget": team_budget_map.get(name, 0),
-        })
-    # Sorter: teams med data øverst, derefter alfabetisk
-    team_chart.sort(key=lambda x: (-x["won"], x["team"]))
-
+    groups = []
+    for key, label, scope_sql, scope_params in group_defs:
+        cur.execute(f"""
+            SELECT
+                YEAR({d_col}) AS aar,
+                ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH}
+                    THEN {_VAL} ELSE 0 END), 0) AS won,
+                ISNULL(ABS(SUM(CASE WHEN [pipeline_name] IN {_CANCEL_PH}
+                    THEN {_VAL} ELSE 0 END)), 0) AS ops,
+                COUNT(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH} THEN 1 END) AS won_count
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND ({range_sql})
+              AND ({scope_sql})
+              {_ADM_EXCLUDE}
+            GROUP BY YEAR({d_col})
+        """, tuple(CANCELLATION_PIPELINES) * 3 + tuple(range_params) + scope_params)
+        by_year = {r["aar"]: r for r in cur.fetchall()}
+        rows = []
+        for y in years:
+            r = by_year.get(y, {})
+            won = float(r.get("won") or 0)
+            ops = float(r.get("ops") or 0)
+            rows.append({
+                "aar":       y,
+                "won":       round(won, 2),
+                "ops":       round(ops, 2),
+                "netto":     round(won - ops, 2),
+                "won_count": r.get("won_count") or 0,
+            })
+        groups.append({"key": key, "label": label, "rows": rows})
     conn.close()
 
-    vs_budget     = round(netto_maaned - budget_maaned, 2) if budget_maaned else None
-    vs_budget_pct = round(netto_maaned / budget_maaned * 100, 1) if budget_maaned else None
-    vs_ly         = round(netto_maaned - ly_netto, 2) if ly_netto else None
-    vs_ly_pct     = round((netto_maaned - ly_netto) / abs(ly_netto) * 100, 1) if ly_netto else None
-
     return {
-        "revenue_maaned":  round(revenue_maaned, 2),
-        "cancel_maaned":   round(cancel_maaned, 2),
-        "netto_maaned":    round(netto_maaned, 2),
-        "budget_maaned":   round(budget_maaned, 2),
-        "forecast_netto":   forecast_netto,
-        "pipeline_won":    round(pipeline_won, 2),
-        "pipeline_cancel": round(pipeline_cancel, 2),
-        "ly_netto":        round(ly_netto, 2),
-        "vs_budget":       vs_budget,
-        "vs_budget_pct":   vs_budget_pct,
-        "vs_ly":           vs_ly,
-        "vs_ly_pct":       vs_ly_pct,
-        "churn_chart":     churn_chart,
-        "team_chart":      team_chart,
-        "month_label":     month_label,
-        "today":           date(year, chart_ref_month, 1).isoformat(),
+        "years":  years,
+        "ytd":    ytd,
+        "cutoff": today.isoformat(),
+        "groups": groups,
     }
