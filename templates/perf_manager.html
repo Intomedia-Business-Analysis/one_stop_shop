@@ -16,7 +16,7 @@
 @media(max-width:900px){.dash-grid,.dash-grid-3{grid-template-columns:1fr}}
 
 /* Dashboard kort */
-.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;box-shadow:var(--shadow-card)}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
 .dash-card-sub{font-size:11px;color:var(--ink-4);margin-top:4px}
@@ -815,8 +815,8 @@ function renderTeamTotal(d) {
   const COL_ACTUAL_POS = 'var(--green)';
   const COL_ACTUAL_NEG = '#B32E45';
   const COL_PROGR      = '#7BB89A';  // lysere groen — stackes ovenpa pipedrive-delen
-  const COL_BUDGET     = '#9CA3AF';
-  const COL_FORECAST   = '#5B9BD5';
+  const COL_BUDGET     = '#C9C1B5';  // §3B budget = lys taupe
+  const COL_FORECAST   = '#8C8275';  // §3B forecast = taupe-dim
   const HILITE         = '#0F5E3C';  // mørk grøn til highlight af valgt måned
 
   // Tjekker om programmatic indgaar i nogen maaned i datasaettet (saa stacker vi)
@@ -974,7 +974,7 @@ function renderWeeklyReport(d) {
     const hasBudget = budgetWeek > 0;
     const pct       = hasBudget ? Math.min(vsPct ?? 0, 150) : 0;
     const pctLabel  = hasBudget ? `${Math.round(vsPct ?? 0)}%` : '';
-    const barColor  = (vsPct ?? 0) >= 100 ? 'var(--green)' : (vsPct ?? 0) >= 70 ? '#F59E0B' : 'var(--red,#EF4444)';
+    const barColor  = (vsPct ?? 0) >= 100 ? 'var(--green)' : (vsPct ?? 0) >= 70 ? 'var(--amber)' : 'var(--danger)';
     const budgetTxt = hasBudget
       ? `<span style="color:var(--ink-4);font-size:10px">${fmtKr(netto)} / ${fmtKr(budgetWeek)}</span>`
       : `<span style="color:var(--ink-4);font-size:10px">Intet budget</span>`;

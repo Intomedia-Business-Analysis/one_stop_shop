@@ -1,9 +1,10 @@
-import traceback
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from log_setup import audit_log
 from auth import (
     ROLE_LABELS, get_current_user, get_user_resource_access, hash_password, init_db,
     list_roles, get_role_resource_access, set_role_resource_access,
@@ -15,8 +16,11 @@ from moduler.modul_admin.queries import (
     db_get_user_memberships, db_add_membership, db_remove_membership,
     db_save_resource_access, db_get_all_teams, db_create_team,
     db_get_team_by_id, db_update_team, db_update_membership,
-    db_set_manager_for,
+    db_set_manager_for, db_delete_user,
+    db_get_user_team_access, db_set_user_team_access,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 templates = Jinja2Templates(directory="templates")
@@ -87,14 +91,37 @@ async def admin_db_init(request: Request, user=Depends(get_current_user)):
     require_admin(user)
     try:
         init_db()
+        audit_log("db_init", user=user, request=request)
         return RedirectResponse("/admin/users?success=db_init", status_code=302)
     except Exception:
+        logger.exception("admin_db_init fejlede")
         return RedirectResponse("/admin/users?error=db_init_failed", status_code=302)
 
 
 # ---------------------------------------------------------------------------
 # User list
 # ---------------------------------------------------------------------------
+
+@router.get("/usage", response_class=HTMLResponse)
+async def admin_usage(request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    from usage_tracking import get_usage_dashboard
+    try:
+        days = int(request.query_params.get("days", 30))
+    except ValueError:
+        days = 30
+    days = max(7, min(days, 90))
+    try:
+        data = get_usage_dashboard(days)
+    except Exception:
+        logger.exception("get_usage_dashboard fejlede")
+        data = None
+    return templates.TemplateResponse(request, "admin_usage.html", {
+        "user":  user,
+        "data":  data,
+        "days":  days,
+    })
+
 
 @router.get("/users", response_class=HTMLResponse)
 async def admin_users(request: Request, user=Depends(get_current_user)):
@@ -132,9 +159,11 @@ async def admin_create_user(request: Request, user=Depends(get_current_user)):
     try:
         db_create_user(username, hash_password(password), name, initials, role, brand)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_create_user fejlede (username=%s)", username)
         return RedirectResponse("/admin/users?error=username_taken", status_code=302)
 
+    audit_log("bruger_oprettet", user=user, request=request,
+              nyt_brugernavn=username, rolle=role, brand=brand)
     return RedirectResponse("/admin/users?success=created", status_code=302)
 
 
@@ -157,6 +186,11 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
     except Exception:
         memberships, all_teams = [], []
 
+    try:
+        team_access = db_get_user_team_access(user_id)
+    except Exception:
+        team_access = set()
+
     # Hele brugerlisten — bruges til leder-dropdown og "leder for"-multiselect.
     all_users = [u for u in db_get_all_users() if u["is_active"]]
     managed_users = [u for u in all_users if u.get("manager_id") == user_id]
@@ -170,6 +204,7 @@ async def admin_edit_page(user_id: int, request: Request, user=Depends(get_curre
         "resource_access": resource_access,
         "memberships":     memberships,
         "all_teams":       all_teams,
+        "team_access":     team_access,
         "all_users":       all_users,
         "managed_users":   managed_users,
         "success":         request.query_params.get("success"),
@@ -213,10 +248,34 @@ async def admin_update_user(user_id: int, request: Request, user=Depends(get_cur
             password_hash=hash_password(new_pw) if new_pw else None,
         )
         db_set_manager_for(user_id, managed_ids)
+        audit_log("bruger_opdateret", user=user, request=request,
+                  target_user_id=user_id, rolle=role, brand=brand,
+                  aktiv=is_active, password_skiftet=bool(new_pw))
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_update_user fejlede (user_id=%s)", user_id)
+        return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=updated", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Delete user
+# ---------------------------------------------------------------------------
+
+@router.post("/users/{user_id}/delete")
+async def admin_delete_user(user_id: int, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    # Forhindr at man sletter sin egen konto
+    if user["id"] == user_id:
+        return RedirectResponse("/admin/users?error=cannot_delete_self", status_code=302)
+    try:
+        db_delete_user(user_id)
+    except Exception:
+        logger.exception("db_delete_user fejlede (user_id=%s)", user_id)
+        return RedirectResponse("/admin/users?error=db_error", status_code=302)
+
+    audit_log("bruger_slettet", user=user, request=request, target_user_id=user_id)
+    return RedirectResponse("/admin/users?success=deleted", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -231,10 +290,39 @@ async def admin_save_resource_access(user_id: int, request: Request, user=Depend
 
     try:
         db_save_resource_access(user_id, all_resource_ids, form)
+        audit_log("ressourceadgang_aendret", user=user, request=request,
+                  target_user_id=user_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_save_resource_access fejlede (user_id=%s)", user_id)
+        return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=access_updated", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Team-dataadgang (hvilke teams brugeren må se performance-data for)
+# ---------------------------------------------------------------------------
+
+@router.post("/users/{user_id}/team-data-access")
+async def admin_save_team_data_access(user_id: int, request: Request, user=Depends(get_current_user)):
+    require_admin(user)
+    form = await request.form()
+    raw = form.getlist("team_ids") if hasattr(form, "getlist") else []
+    team_ids = []
+    for v in raw:
+        try:
+            team_ids.append(int(v))
+        except (ValueError, TypeError):
+            pass
+    try:
+        db_set_user_team_access(user_id, team_ids)
+        audit_log("team_dataadgang_aendret", user=user, request=request,
+                  target_user_id=user_id, team_ids=team_ids)
+    except Exception:
+        logger.exception("db_set_user_team_access fejlede (user_id=%s)", user_id)
+        return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
+
+    return RedirectResponse(f"/admin/users/{user_id}/edit?success=team_access_updated", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -256,8 +344,10 @@ async def admin_add_user_membership(user_id: int, request: Request, user=Depends
 
     try:
         db_add_membership(user_id, int(team_id), role, start_date, end_date, notes)
+        audit_log("holdmedlemskab_tilfoejet", user=user, request=request,
+                  target_user_id=user_id, team_id=team_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_add_membership fejlede (user_id=%s, team_id=%s)", user_id, team_id)
         return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=member_added", status_code=302)
@@ -270,8 +360,11 @@ async def admin_remove_user_membership(
     require_admin(user)
     try:
         db_remove_membership(membership_id, user_id=user_id)
+        audit_log("holdmedlemskab_fjernet", user=user, request=request,
+                  target_user_id=user_id, membership_id=membership_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_remove_membership fejlede (membership_id=%s)", membership_id)
+        return RedirectResponse(f"/admin/users/{user_id}/edit?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/users/{user_id}/edit?success=member_removed", status_code=302)
 
@@ -286,7 +379,7 @@ async def admin_teams_list(request: Request, user=Depends(get_current_user)):
     try:
         teams = db_get_all_teams()
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_get_all_teams fejlede")
         teams = []
 
     return templates.TemplateResponse(request, "admin_teams.html", {
@@ -311,8 +404,9 @@ async def admin_create_team(request: Request, user=Depends(get_current_user)):
 
     try:
         db_create_team(name, brand, description)
+        audit_log("hold_oprettet", user=user, request=request, hold=name, brand=brand)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_create_team fejlede (name=%s)", name)
         return RedirectResponse("/admin/teams?error=db_error", status_code=302)
 
     return RedirectResponse("/admin/teams?success=created", status_code=302)
@@ -332,7 +426,7 @@ async def admin_edit_team(team_id: int, request: Request, user=Depends(get_curre
     except HTTPException:
         raise
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_get_team_by_id fejlede (team_id=%s)", team_id)
         raise HTTPException(status_code=500, detail="Databasefejl")
 
     return templates.TemplateResponse(request, "admin_edit_team.html", {
@@ -356,8 +450,11 @@ async def admin_update_team(team_id: int, request: Request, user=Depends(get_cur
 
     try:
         db_update_team(team_id, name, brand, description)
+        audit_log("hold_opdateret", user=user, request=request,
+                  team_id=team_id, hold=name, brand=brand)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_update_team fejlede (team_id=%s)", team_id)
+        return RedirectResponse(f"/admin/teams/{team_id}?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/teams/{team_id}?success=updated", status_code=302)
 
@@ -377,8 +474,10 @@ async def admin_add_team_membership(team_id: int, request: Request, user=Depends
 
     try:
         db_add_membership(int(user_id), team_id, role, start_date, end_date, notes)
+        audit_log("holdmedlemskab_tilfoejet", user=user, request=request,
+                  target_user_id=user_id, team_id=team_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_add_membership fejlede (user_id=%s, team_id=%s)", user_id, team_id)
         return RedirectResponse(f"/admin/teams/{team_id}?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/teams/{team_id}?success=member_added", status_code=302)
@@ -397,8 +496,11 @@ async def admin_update_team_membership(
 
     try:
         db_update_membership(membership_id, team_id, role, start_date, end_date, notes)
+        audit_log("holdmedlemskab_opdateret", user=user, request=request,
+                  membership_id=membership_id, team_id=team_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_update_membership fejlede (membership_id=%s)", membership_id)
+        return RedirectResponse(f"/admin/teams/{team_id}?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/teams/{team_id}?success=updated", status_code=302)
 
@@ -410,8 +512,11 @@ async def admin_remove_team_membership(
     require_admin(user)
     try:
         db_remove_membership(membership_id, team_id=team_id)
+        audit_log("holdmedlemskab_fjernet", user=user, request=request,
+                  membership_id=membership_id, team_id=team_id)
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_remove_membership fejlede (membership_id=%s)", membership_id)
+        return RedirectResponse(f"/admin/teams/{team_id}?error=db_error", status_code=302)
 
     return RedirectResponse(f"/admin/teams/{team_id}?success=member_removed", status_code=302)
 
@@ -454,6 +559,7 @@ async def admin_create_role(request: Request, user=Depends(get_current_user)):
     ok, err = create_role(name, label, rank_int)
     if not ok:
         return RedirectResponse(f"/admin/roles?error={err}", status_code=302)
+    audit_log("rolle_oprettet", user=user, request=request, rolle=name, rang=rank_int)
     return RedirectResponse("/admin/roles?success=created", status_code=302)
 
 
@@ -488,6 +594,7 @@ async def admin_update_role(role_name: str, request: Request, user=Depends(get_c
     ok, err = update_role(role_name, label, rank_int)
     if not ok:
         return RedirectResponse(f"/admin/roles/{role_name}/edit?error={err}", status_code=302)
+    audit_log("rolle_opdateret", user=user, request=request, rolle=role_name, rang=rank_int)
     return RedirectResponse(f"/admin/roles/{role_name}/edit?success=updated", status_code=302)
 
 
@@ -503,6 +610,7 @@ async def admin_save_role_permissions(role_name: str, request: Request, user=Dep
             rid = item["id"]
             val = form.get(f"perm_{rid}", "default")
             set_role_resource_access(role_name, rid, val)
+    audit_log("rolle_tilladelser_aendret", user=user, request=request, rolle=role_name)
     return RedirectResponse(f"/admin/roles/{role_name}/edit?success=perms_saved", status_code=302)
 
 
@@ -512,4 +620,5 @@ async def admin_delete_role(role_name: str, request: Request, user=Depends(get_c
     ok, err = delete_role(role_name)
     if not ok:
         return RedirectResponse(f"/admin/roles?error={err}", status_code=302)
+    audit_log("rolle_slettet", user=user, request=request, rolle=role_name)
     return RedirectResponse("/admin/roles?success=deleted", status_code=302)

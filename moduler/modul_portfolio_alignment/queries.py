@@ -18,9 +18,9 @@ så Pipedrive's "FinansWatch DK" og Zuora's site-værdi mødes.
 """
 
 import glob
+import logging
 import os
 import re
-import traceback
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
@@ -30,6 +30,8 @@ import pymssql
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SNAPSHOT_DIR = (
@@ -444,7 +446,8 @@ def fetch_pipedrive_acv(
                 })
         conn.close()
     except Exception:
-        traceback.print_exc()
+        logger.exception("fetch_pipedrive_acv fejlede")
+        raise
     return out, pd_currency_map
 
 
@@ -485,7 +488,9 @@ def fetch_pipedrive_org_names(scope: Optional[str] = None) -> dict[str, str]:
                 out[str(r["org_id"])] = r["org_name"] or "—"
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Fallback-hjælper: tomt navne-opslag betyder blot at kunder vises
+        # som "(kunde ikke i Pipedrive)" — må ikke vælte sammenligningen.
+        logger.exception("fetch_pipedrive_org_names fejlede — fortsætter med tomt navne-opslag")
     return out
 
 
@@ -547,7 +552,8 @@ def fetch_pipedrive_web_sales(
                 })
         conn.close()
     except Exception:
-        traceback.print_exc()
+        logger.exception("fetch_pipedrive_web_sales fejlede")
+        raise
     return out
 
 
@@ -624,7 +630,8 @@ def fetch_web_sale_deals(scope: str, site: str, snapshot_date: Optional[str] = N
             out["by_pipeline"][deal["pipeline"]] = out["by_pipeline"].get(deal["pipeline"], 0) + 1
         conn.close()
     except Exception:
-        traceback.print_exc()
+        logger.exception("fetch_web_sale_deals fejlede")
+        raise
     return out
 
 
@@ -702,7 +709,8 @@ def fetch_customer_deals(scope: str, org_id: str, site: Optional[str] = None, sn
             out["by_pipeline"][deal["pipeline"]] = out["by_pipeline"].get(deal["pipeline"], 0) + 1
         conn.close()
     except Exception:
-        traceback.print_exc()
+        logger.exception("fetch_customer_deals fejlede")
+        raise
 
     if site:
         filtered = [
@@ -764,9 +772,20 @@ def load_zuora_snapshot(path: Optional[Path] = None) -> dict:
     """
     target = path or find_latest_snapshot()
     if not target:
-        folder = get_snapshot_dir()
+        # Diagnostik: vis ALLE konfigurerede stier, om de findes, og hvor mange
+        # snapshot-filer der ligger i hver — så man kan se hvor processen reelt
+        # ledte (get_snapshot_dir returnerer kun den første sti og kan vildlede).
+        lines = []
+        for c in _candidate_snapshot_dirs():
+            if c.exists():
+                n = len(list(c.glob("ACV_snapshot_*.csv")) + list(c.glob("ACV_snapshot_*.xlsx")))
+                lines.append(f"  [FINDES, {n} snapshot-fil(er)] {c}")
+            else:
+                lines.append(f"  [FINDES IKKE]                {c}")
+        detalje = "\n".join(lines) or "  (ingen stier konfigureret)"
         raise FileNotFoundError(
-            f"Ingen ACV_snapshot_*.csv eller .xlsx fundet i {folder}"
+            "Ingen ACV_snapshot_*.csv eller .xlsx fundet. Tjekkede stier "
+            f"(fra ZUORA_SNAPSHOT_DIR i .env):\n{detalje}"
         )
 
     # Cache-key: sti + mtime. Hvis filen er den samme bruger vi cached resultat.
@@ -1203,7 +1222,8 @@ def init_portfolio_notes_db():
         conn.commit()
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Må ikke vælte app-opstart — tabellen forsøges oprettet/migreret ved næste genstart
+        logger.exception("init_portfolio_notes_db fejlede")
 
 
 def get_note(scope: str, org_id: str, site: str) -> Optional[dict]:
@@ -1219,8 +1239,8 @@ def get_note(scope: str, org_id: str, site: str) -> Optional[dict]:
         conn.close()
         return dict(row) if row else None
     except Exception:
-        traceback.print_exc()
-        return None
+        logger.exception("get_note fejlede")
+        raise
 
 
 def get_handled_states(scope: Optional[str] = None) -> list[dict]:
@@ -1239,8 +1259,8 @@ def get_handled_states(scope: Optional[str] = None) -> list[dict]:
         conn.close()
         return [dict(r) for r in rows]
     except Exception:
-        traceback.print_exc()
-        return []
+        logger.exception("get_handled_states fejlede")
+        raise
 
 
 def set_handled(scope: str, org_id: str, site: str, handled: bool, updated_by: str) -> bool:
@@ -1262,7 +1282,8 @@ def set_handled(scope: str, org_id: str, site: str, handled: bool, updated_by: s
         conn.close()
         return True
     except Exception:
-        traceback.print_exc()
+        # Returværdi-kontrakt: False → routeren melder "Kunne ikke opdatere status"
+        logger.exception("set_handled fejlede")
         return False
 
 
@@ -1285,7 +1306,8 @@ def save_note(scope: str, org_id: str, site: str, note: str, updated_by: str) ->
         conn.close()
         return True
     except Exception:
-        traceback.print_exc()
+        # Returværdi-kontrakt: False → routeren melder "Kunne ikke gemme kommentar"
+        logger.exception("save_note fejlede")
         return False
 
 
@@ -1414,7 +1436,9 @@ def compute_local_diff(scope: str, org_id: str, site: str,
             bucket["pd_dkk"]   += float(r["value_dkk_fixed"] or 0)
         conn.close()
     except Exception:
-        traceback.print_exc()
+        # Re-raise: en tom PD-side ville give et forkert diff og dermed forkerte deals
+        logger.exception("compute_local_diff fejlede")
+        raise
 
     # Zuora-side: filtrér rå rækker. enterprise_raw bevarer currency + arr_local.
     zu_by_currency: dict[str, dict] = {}

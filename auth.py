@@ -1,11 +1,14 @@
 import os
 import datetime
+import logging
 import pymssql
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 from fastapi import Request
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -35,15 +38,9 @@ class RequiresLoginException(Exception):
     pass
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py. Navnet genexporteres herfra, fordi
+# modul_barsel og usage_tracking importerer get_conn fra auth.
+from db import get_conn  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +112,16 @@ def init_db():
                notes       NVARCHAR(500) NULL,
                created_at  DATETIME      DEFAULT GETDATE()
            )""",
+        # Per-bruger team-dataadgang: hvilke teams brugeren må se data for i
+        # performance-dashboards. Ingen rækker = ubegrænset (ser alle teams).
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubUserTeamAccess' AND xtype='U')
+           CREATE TABLE HubUserTeamAccess (
+               id          INT IDENTITY(1,1) PRIMARY KEY,
+               user_id     INT NOT NULL,
+               team_id     INT NOT NULL,
+               created_at  DATETIME DEFAULT GETDATE(),
+               CONSTRAINT UQ_HubUserTeamAccess UNIQUE (user_id, team_id)
+           )""",
         # Forecast-gemte prognoser
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecasts' AND xtype='U')
            CREATE TABLE HubForecasts (
@@ -145,6 +152,28 @@ def init_db():
                  AND name = 'service_activation_date'
            )
            ALTER TABLE PipedriveDeals ADD service_activation_date DATETIME NULL""",
+        # Usage-tracking: én række pr. sidevisning
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubUsageLog' AND xtype='U')
+           CREATE TABLE HubUsageLog (
+               id             INT IDENTITY(1,1) PRIMARY KEY,
+               user_id        INT           NULL,
+               path           NVARCHAR(400) NOT NULL,
+               resource_label NVARCHAR(150) NULL,
+               method         NVARCHAR(10)  NOT NULL DEFAULT 'GET',
+               status_code    INT           NULL,
+               duration_ms    INT           NULL,
+               created_at     DATETIME      NOT NULL DEFAULT GETDATE()
+           )""",
+        """IF NOT EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='IX_HubUsageLog_created' AND object_id = OBJECT_ID('HubUsageLog')
+           )
+           CREATE INDEX IX_HubUsageLog_created ON HubUsageLog (created_at)""",
+        """IF NOT EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='IX_HubUsageLog_user' AND object_id = OBJECT_ID('HubUsageLog')
+           )
+           CREATE INDEX IX_HubUsageLog_user ON HubUsageLog (user_id, created_at)""",
     ]
     try:
         conn = get_conn()
@@ -182,8 +211,8 @@ def init_db():
             )
         conn.commit()
         conn.close()
-    except Exception as e:
-        print(f"[init_db] Advarsel — kunne ikke initialisere tabeller: {e}")
+    except Exception:
+        logger.exception("init_db: kunne ikke initialisere tabeller")
 
     # Indlæs rolle-tabel i memory så ROLE_RANK / ROLE_LABELS afspejler DB
     reload_roles_cache()
@@ -219,7 +248,7 @@ def reload_roles_cache():
                 }
     except Exception as e:
         # DB nede — behold default-værdier
-        print(f"[reload_roles_cache] Advarsel: {e}")
+        logger.warning("reload_roles_cache: DB utilgængelig, beholder defaults: %s", e)
 
 
 def list_roles() -> list:
@@ -267,8 +296,9 @@ def set_role_resource_access(role: str, resource_id: str, access: str | None) ->
             )
         conn.commit()
         conn.close()
-    except Exception as e:
-        print(f"[set_role_resource_access] FEJL: {e}")
+    except Exception:
+        logger.exception("set_role_resource_access fejlede (role=%s, resource=%s)",
+                         role, resource_id)
 
 
 def create_role(name: str, label: str, rank: int) -> tuple[bool, str]:
@@ -393,6 +423,41 @@ def get_user_teams(user_id: int) -> list:
         return []
 
 
+def get_user_data_teams(user_id: int) -> list:
+    """Returnér holdnavne brugeren eksplicit er begrænset til at se data for
+    (HubUserTeamAccess — sættes på admin-brugersiden). Tom liste = ubegrænset.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """
+            SELECT t.name
+            FROM   HubUserTeamAccess a
+            JOIN   Teams t ON t.id = a.team_id
+            WHERE  a.user_id = %s
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall() or []
+        conn.close()
+        return [r["name"] for r in rows]
+    except Exception:
+        return []
+
+
+def allowed_data_teams(user: dict) -> list | None:
+    """Teams brugeren må se performance-data for. None = ubegrænset.
+
+    Admin er altid ubegrænset; alle andre begrænses kun hvis admin har sat
+    eksplicitte teams på brugeren (HubUserTeamAccess).
+    """
+    if user.get("role") == "admin":
+        return None
+    teams = user.get("_data_teams") or []
+    return teams if teams else None
+
+
 def resolve_resource_access(user: dict, resource_id: str, min_role: str, brand=None, required_team: str = None, exclude_roles: list = None) -> str:
     """
     Returnér 'none', 'read' eller 'write' for en given bruger + ressource.
@@ -456,9 +521,10 @@ def authenticate_user(username: str, password: str):
         user["_resource_access"] = get_user_resource_access(user["id"])
         user["_role_access"]     = get_role_resource_access(user["role"])
         user["_teams"] = get_user_teams(user["id"])
+        user["_data_teams"] = get_user_data_teams(user["id"])
         return user
-    except Exception as e:
-        print(f"[authenticate_user] FEJL: {e}")
+    except Exception:
+        logger.exception("authenticate_user fejlede (username=%s)", username)
         return None
 
 
@@ -476,6 +542,7 @@ def get_user_by_id(user_id: int):
             user["_resource_access"] = get_user_resource_access(user_id)
             user["_role_access"]     = get_role_resource_access(user["role"])
             user["_teams"] = get_user_teams(user_id)
+            user["_data_teams"] = get_user_data_teams(user_id)
         return user
     except Exception:
         return None
@@ -492,6 +559,7 @@ _DEV_USER = {
     "_resource_access": {},
     "_role_access": {},
     "_teams": [],
+    "_data_teams": [],
 }
 
 

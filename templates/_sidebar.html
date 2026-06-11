@@ -7,8 +7,8 @@
 {% set _active = active_url|default('') %}
 <aside class="sidebar">
   <div class="sb-logo">
-    <div class="sb-logo-mark">:m</div>
-    <span class="sb-logo-text">intomedia</span>
+    <div class="sb-logo-text"><div class="sb-logo-bar"></div>
+    <div class="sb-logo-word">JP|Politiken</div><div class="sb-logo-sub">Business Media</div></div>
   </div>
 
   <nav class="sb-nav">
@@ -47,6 +47,12 @@
     </a>
     <a href="/admin/roles" class="sbi{% if _active == '/admin/roles' %} on{% endif %}">
       {% include "icons/users.svg" %} Rollestyring
+    </a>
+    <a href="/admin/teams" class="sbi{% if _active == '/admin/teams' %} on{% endif %}">
+      {% include "icons/briefcase.svg" %} Holdstyring
+    </a>
+    <a href="/admin/usage" class="sbi{% if _active == '/admin/usage' %} on{% endif %}">
+      {% include "icons/activity.svg" %} Brugsstatistik
     </a>
     {% endif %}
     <a href="/settings" class="sbi{% if _active == '/settings' %} on{% endif %}">

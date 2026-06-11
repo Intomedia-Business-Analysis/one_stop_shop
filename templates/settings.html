@@ -10,160 +10,34 @@
   <link rel="stylesheet" href="/static/hub.css">
   <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
   <style>
-    .page-header {
-      margin-bottom: 2rem;
-    }
-    .page-header h1 {
-      font-size: 1.375rem;
-      font-weight: 700;
-      color: var(--text);
-      margin: 0 0 .25rem;
-    }
-    .page-header p {
-      font-size: .8125rem;
-      color: var(--text-muted);
-      margin: 0;
-    }
-
     .settings-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      margin-bottom: 1.25rem;
+      position: relative; overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); box-shadow: var(--shadow-card); margin-bottom: 18px;
     }
-    .settings-card-header {
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .settings-card-header h2 {
-      font-size: .9375rem;
-      font-weight: 600;
-      color: var(--text);
-      margin: 0;
-    }
-    .settings-card-header p {
-      font-size: .8125rem;
-      color: var(--text-muted);
-      margin: .25rem 0 0;
-    }
-    .settings-card-body {
-      padding: 1.25rem;
-    }
+    .settings-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--taupe), rgba(172,161,153,.25)); }
+    .settings-card-header { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+    .settings-card-header h2 { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.1px; margin: 0; }
+    .settings-card-header p { font-size: 11px; color: var(--ink-3); margin: 4px 0 0; }
+    .settings-card-body { padding: 22px; }
 
-    .profile-row {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
+    .profile-row { display: flex; align-items: center; gap: 16px; }
     .profile-avatar {
-      width: 52px;
-      height: 52px;
-      background: var(--green);
-      color: #fff;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.125rem;
-      font-weight: 700;
-      flex-shrink: 0;
+      width: 52px; height: 52px; background: var(--green); color: #fff;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700; flex-shrink: 0;
     }
-    .profile-info strong {
-      display: block;
-      font-size: .9375rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .profile-info span {
-      font-size: .8125rem;
-      color: var(--text-muted);
-    }
+    .profile-info strong { display: block; font-size: 15px; font-weight: 700; color: var(--ink); }
+    .profile-info span { font-size: 12px; color: var(--ink-3); }
 
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-top: 1.25rem;
-    }
-    .info-field label {
-      display: block;
-      font-size: .75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      color: var(--text-muted);
-      margin-bottom: .3rem;
-    }
-    .info-field .value {
-      font-size: .875rem;
-      color: var(--text);
-      font-weight: 500;
-    }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 18px; margin-top: 22px; }
+    .info-field label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--ink-4); margin-bottom: 6px; }
+    .info-field .value { font-size: 13px; color: var(--ink); font-weight: 600; }
 
-    .role-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: .2rem .65rem;
-      border-radius: 99px;
-      font-size: .75rem;
-      font-weight: 600;
-      background: #f0f9ff;
-      color: #0369a1;
-    }
-
-    .change-pw-form {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 1rem;
-      align-items: end;
-    }
-    .field { display: flex; flex-direction: column; gap: .375rem; }
-    .field label { font-size: .8125rem; font-weight: 500; color: var(--text); }
-    .field input {
-      padding: .5rem .75rem;
-      border: 1px solid var(--border);
-      border-radius: var(--r-sm);
-      font-family: inherit;
-      font-size: .875rem;
-      color: var(--text);
-      background: var(--bg);
-      outline: none;
-      transition: border-color .15s;
-    }
-    .field input:focus { border-color: var(--green); }
-
-    .btn-primary {
-      display: inline-flex;
-      align-items: center;
-      gap: .5rem;
-      padding: .5625rem 1.125rem;
-      background: var(--green);
-      color: #fff;
-      border: none;
-      border-radius: var(--r-sm);
-      font-family: inherit;
-      font-size: .875rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      transition: opacity .15s;
-      white-space: nowrap;
-      align-self: flex-end;
-    }
-    .btn-primary:hover { opacity: .88; }
-
-    .notif {
-      display: flex;
-      align-items: center;
-      gap: .625rem;
-      padding: .75rem 1rem;
-      border-radius: var(--r-sm);
-      font-size: .8125rem;
-      font-weight: 500;
-      margin-bottom: 1.25rem;
-    }
-    .notif-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
-    .notif-error   { background: #fff3f3; border: 1px solid #f5c2c7; color: #842029; }
+    .change-pw-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; align-items: end; }
+    .change-pw-form .field { display: flex; flex-direction: column; gap: 6px; }
+    .change-pw-form .field label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--ink-4); }
+    .change-pw-form .btn-primary { align-self: end; }
   </style>
 </head>
 <body>
@@ -174,21 +48,49 @@
 
   <!-- ── MAIN ── -->
   <div class="main">
-    <div style="padding: 2rem; max-width: 860px;">
-
-      <div class="page-header">
-        <h1>Indstillinger</h1>
-        <p>Din profil og kontoadministration</p>
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
       </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap tool-wrap--narrow" style="margin:0;max-width:860px;">
+
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Indstillinger</span>
+      </div>
+      <h1 class="page-title">Indstillinger</h1>
+      <p class="page-sub">Din profil og kontoadministration</p>
 
       {% if request.query_params.get('success') == 'pw_changed' %}
-      <div class="notif notif-success">✓ Adgangskode opdateret</div>
+      <div class="notif notif-success">Adgangskode opdateret</div>
+      {% elif request.query_params.get('success') == 'un_changed' %}
+      <div class="notif notif-success">Brugernavn opdateret</div>
       {% elif request.query_params.get('error') == 'pw_mismatch' %}
       <div class="notif notif-error">Adgangskoderne stemmer ikke overens</div>
       {% elif request.query_params.get('error') == 'pw_wrong' %}
       <div class="notif notif-error">Nuværende adgangskode er forkert</div>
       {% elif request.query_params.get('error') == 'missing_fields' %}
       <div class="notif notif-error">Udfyld alle felter</div>
+      {% elif request.query_params.get('error') == 'un_missing_fields' %}
+      <div class="notif notif-error">Udfyld både nyt brugernavn og din adgangskode</div>
+      {% elif request.query_params.get('error') == 'un_pw_wrong' %}
+      <div class="notif notif-error">Adgangskoden er forkert</div>
+      {% elif request.query_params.get('error') == 'un_taken' %}
+      <div class="notif notif-error">Brugernavnet er allerede i brug</div>
+      {% elif request.query_params.get('error') == 'un_unchanged' %}
+      <div class="notif notif-error">Det er allerede dit nuværende brugernavn</div>
+      {% elif request.query_params.get('error') == 'un_error' %}
+      <div class="notif notif-error">Brugernavnet kunne ikke opdateres — prøv igen</div>
+      {% elif request.query_params.get('error') == 'pw_error' %}
+      <div class="notif notif-error">Adgangskoden kunne ikke opdateres — prøv igen</div>
       {% endif %}
 
       <!-- Profilkort -->
@@ -213,7 +115,7 @@
             <div class="info-field">
               <label>Rolle</label>
               <div class="value">
-                <span class="role-badge">{{ ROLE_LABELS.get(user.role, user.role) }}</span>
+                <span class="pill pill-neutral">{{ ROLE_LABELS.get(user.role, user.role) }}</span>
               </div>
             </div>
             {% if user.brand %}
@@ -223,6 +125,29 @@
             </div>
             {% endif %}
           </div>
+        </div>
+      </div>
+
+      <!-- Skift brugernavn -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <h2>Skift brugernavn</h2>
+          <p>Vælg et nyt brugernavn til login — bekræft med din adgangskode</p>
+        </div>
+        <div class="settings-card-body">
+          <form method="post" action="/settings/change-username">
+            <div class="change-pw-form">
+              <div class="field">
+                <label for="new_username">Nyt brugernavn</label>
+                <input type="text" id="new_username" name="new_username" value="{{ user.username }}" autocomplete="username" required>
+              </div>
+              <div class="field">
+                <label for="un_current_password">Nuværende adgangskode</label>
+                <input type="password" id="un_current_password" name="current_password" autocomplete="current-password" required>
+              </div>
+              <button type="submit" class="btn-primary">Gem brugernavn</button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -253,6 +178,7 @@
         </div>
       </div>
 
+      </div>
     </div>
   </div>
 

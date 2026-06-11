@@ -1,15 +1,18 @@
-import traceback
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import ROLE_LABELS, get_current_user, has_access
+from auth import ROLE_LABELS, allowed_data_teams, get_current_user, has_access
 from moduler.modul_forcast.queries import (
     ensure_schema, db_get_teams, db_forecast_data, db_forecast_save,
+    db_team_owner_names,
     BRAND_GROUPS, BRAND_LABELS, SUBSCRIPTION_BRANDS,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/forecast", tags=["Forecast"])
 templates = Jinja2Templates(directory="templates")
@@ -30,6 +33,22 @@ def require_forecast_access(user: dict):
         raise HTTPException(status_code=403, detail="Ingen adgang til Forecast Tool")
 
 
+def _filter_forecast_rows(user: dict, level: str, rows: list, key: str = "dimension_key") -> list:
+    """Team-dataadgang: begræns rækker til brugerens tilladte teams.
+
+    level='team'    → dimension_key er teamnavnet.
+    level='saelger' → dimension_key er sælgernavnet; opløses via teamtilknytning.
+    """
+    allowed = allowed_data_teams(user)
+    if allowed is None:
+        return rows
+    if level == "team":
+        keep = set(allowed)
+    else:
+        keep = db_team_owner_names(allowed)
+    return [r for r in rows if str(r.get(key, "")).strip() in keep]
+
+
 @router.get("/", response_class=HTMLResponse)
 async def forecast_tool(request: Request, user=Depends(get_current_user)):
     require_forecast_access(user)
@@ -48,10 +67,13 @@ async def forecast_teams(user=Depends(get_current_user)):
     require_forecast_access(user)
     try:
         teams = db_get_teams()
+        allowed = allowed_data_teams(user)
+        if allowed is not None:
+            teams = [t for t in teams if t["name"] in allowed]
         return JSONResponse({"teams": teams})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_teams fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/data")
@@ -66,6 +88,10 @@ async def forecast_data(
     require_forecast_access(user)
     if level not in ("saelger", "team"):
         raise HTTPException(400, "level skal være 'saelger' eller 'team'")
+
+    allowed = allowed_data_teams(user)
+    if allowed is not None and team and team not in allowed:
+        raise HTTPException(403, "Ingen adgang til dette teams data")
 
     year_m1 = year - 1
     year_m2 = year - 2
@@ -116,6 +142,11 @@ async def forecast_data(
                 "is_saved":       key in saved,
             })
 
+        # Team-begrænset bruger uden teamvalg: skær fremmede teams/sælgere fra
+        # (med teamvalg er adgangen allerede afvist ovenfor hvis ikke tilladt).
+        if not team:
+            rows = _filter_forecast_rows(user, level, rows)
+
         return JSONResponse({
             "rows":    rows,
             "year":    year,
@@ -125,9 +156,9 @@ async def forecast_data(
             "year_m2": year_m2,
         })
 
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_data fejlede (year=%s, month=%s, level=%s, team=%s)", year, month, level, team)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.post("/save")
@@ -142,9 +173,12 @@ async def forecast_save(request: Request, user=Depends(get_current_user)):
     if not all([year, month, level]) or level not in ("saelger", "team"):
         raise HTTPException(400, "Ugyldige parametre")
 
+    # Team-begrænset bruger må kun gemme forecasts for sine tilladte teams/sælgere
+    rows = _filter_forecast_rows(user, level, rows)
+
     try:
         saved_count = db_forecast_save(year, month, level, rows, user["name"])
         return JSONResponse({"status": "ok", "saved": saved_count})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("forecast_save fejlede (year=%s, month=%s, level=%s)", year, month, level)
+        raise HTTPException(500, "Data kunne ikke hentes")

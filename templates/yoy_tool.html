@@ -41,9 +41,9 @@
 .kpi-delta{display:flex;align-items:center;gap:8px;margin-top:4px}
 .kpi-diff{font-size:12px;font-weight:700}
 .kpi-pct{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
-.pos{color:var(--green)}.neg{color:#B32E45}.neu{color:var(--ink-4)}
-.pct-pos{background:#E6F4EC;color:var(--green)}
-.pct-neg{background:#FBEAEC;color:#B32E45}
+.pos{color:var(--win)}.neg{color:var(--danger)}.neu{color:var(--ink-4)}
+.pct-pos{background:var(--win-light);color:var(--win)}
+.pct-neg{background:var(--danger-light);color:var(--danger)}
 .pct-neu{background:var(--border);color:var(--ink-4)}
 
 /* Chart card */
@@ -68,8 +68,8 @@
 .yoy-table .num{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
 .yoy-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 .delta-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
-.delta-pill.pos{background:#E6F4EC;color:var(--green)}
-.delta-pill.neg{background:#FBEAEC;color:#B32E45}
+.delta-pill.pos{background:var(--win-light);color:var(--win)}
+.delta-pill.neg{background:var(--danger-light);color:var(--danger)}
 .delta-pill.neu{background:var(--border);color:var(--ink-4)}
 
 /* Knapper */
@@ -247,7 +247,7 @@
         <span>Månedlig netto — år for år</span>
         <div class="chart-legend">
           <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
-          <span class="legend-item"><span class="legend-dot" style="background:#B0C9BB"></span><span id="legend-prev"></span></span>
+          <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span><span id="legend-prev"></span></span>
         </div>
       </div>
       <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
@@ -639,7 +639,7 @@ function renderChart(d) {
     const ph  = Math.abs(py - zy);
     const pTop = prev[i] >= 0 ? py : zy;
     paths += `<rect x="${px2}" y="${pTop}" width="${barW}" height="${Math.max(ph,1)}"
-      fill="#B0C9BB" rx="2" opacity="0.85">
+      fill="#C9C1B5" rx="2" opacity="0.85">
       <title>${labels[i]} ${d.prev_year}: ${fmtFull(prev[i])}</title></rect>`;
 
     // Month label

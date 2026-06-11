@@ -1,19 +1,22 @@
-import traceback
+import logging
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import ROLE_LABELS, get_current_user, has_access
+from auth import ROLE_LABELS, allowed_data_teams, get_current_user, has_access
 from moduler.modul_perf.queries import (
     SUBSCRIPTION_BRANDS, BRAND_GROUPS, BRAND_GROUP_LABELS, GROUPBY_COLUMNS,
     CANCELLATION_PIPELINES, DEAL_TYPE_ALIASES, DEAL_TYPE_CANONICAL, MONTH_NAMES_DA,
     resolve_brand_list, date_expr, shift_year_back, budget_range, build_where,
     db_get_filters, db_manager_data, db_yoy_data, db_afdelingsleder_data, db_saelger_data, db_saelger_meta,
-    db_saelger_available_owners,
+    db_saelger_available_owners, db_saelger_conversion_deals,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
+    db_owner_in_teams,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/performance", tags=["Performance"])
 templates = Jinja2Templates(directory="templates")
@@ -23,6 +26,47 @@ register_nav_globals(templates)
 @router.get("/filters")
 async def perf_filters(user=Depends(get_current_user)):
     return JSONResponse(db_get_filters())
+
+
+# ---------------------------------------------------------------------------
+# Team-dataadgang: admin kan begrænse hvilke teams en bruger ser data for
+# (HubUserTeamAccess — sættes på admin-brugersiden). Ingen begrænsning = alt.
+# ---------------------------------------------------------------------------
+
+def _effective_team(user: dict, team: str | None) -> str | None:
+    """Begræns team-filteret til brugerens tilladte teams.
+
+    Uden begrænsning returneres parametret uændret. Med begrænsning skæres de
+    anmodede teams ned til de tilladte — og intet valg ('Alle teams') bliver
+    til alle brugerens tilladte teams i stedet for hele firmaet.
+    """
+    allowed = allowed_data_teams(user)
+    if allowed is None:
+        return team
+    requested = [t.strip() for t in (team or "").split(",") if t.strip()]
+    effective = [t for t in requested if t in allowed] or allowed
+    return ",".join(effective)
+
+
+def _filter_team_lists(user: dict, data: dict) -> dict:
+    """Skjul ikke-tilladte teams i svaret (dropdown-liste + ugerapport)."""
+    allowed = allowed_data_teams(user)
+    if allowed is None:
+        return data
+    if isinstance(data.get("teams"), list):
+        data["teams"] = [t for t in data["teams"] if t in allowed]
+    if isinstance(data.get("week_teams"), list):
+        data["week_teams"] = [w for w in data["week_teams"] if w.get("team") in allowed]
+    return data
+
+
+def _require_owner_access(user: dict, owner_name: str):
+    """403 hvis brugeren er team-begrænset og sælgeren ikke er i et tilladt team."""
+    allowed = allowed_data_teams(user)
+    if allowed is None:
+        return
+    if not db_owner_in_teams(owner_name, allowed):
+        raise HTTPException(403, "Ingen adgang til denne sælgers data")
 
 #----------------------------------------------------------------------------------------------------------------------
 #                                        DET NYE DASHBOARD FOR MANAGER
@@ -51,14 +95,15 @@ async def perf_manager_data(
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse(db_manager_data(
-            date.today(), team=team,
+        data = db_manager_data(
+            date.today(), team=_effective_team(user, team),
             selected_year=year, selected_month=month, date_col=date_col,
             pipeline_filter=pipeline_filter,
-        ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+        )
+        return JSONResponse(_filter_team_lists(user, data))
+    except Exception:
+        logger.exception("manager-data fejlede (team=%s, year=%s, month=%s)", team, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -88,15 +133,16 @@ async def perf_yoy_data(
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse(db_yoy_data(
-            date.today(), team=team,
+        data = db_yoy_data(
+            date.today(), team=_effective_team(user, team),
             selected_year=year, compare_year=compare_year,
             selected_month=month,
             date_col=date_col, pipeline_filter=pipeline_filter,
-        ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+        )
+        return JSONResponse(_filter_team_lists(user, data))
+    except Exception:
+        logger.exception("yoy-data fejlede (team=%s, year=%s, compare_year=%s, month=%s)", team, year, compare_year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -116,11 +162,12 @@ async def manager_saelger_filters_endpoint(
 ):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
+    _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_filters(owner_name))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-filters fejlede (owner=%s)", owner_name)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/manager-saelger-pipeline")
@@ -134,11 +181,12 @@ async def manager_saelger_pipeline(
 ):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
+    _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_pipeline(owner_name, year, month, site, pipeline_type))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-pipeline fejlede (owner=%s, year=%s, month=%s)", owner_name, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/manager-saelger-deals")
@@ -153,11 +201,12 @@ async def manager_saelger_deals(
 ):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
+    _require_owner_access(user, owner_name)
     try:
         return JSONResponse(db_manager_saelger_deals(owner_name, year, month, date_col, site, pipeline_type))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("manager-saelger-deals fejlede (owner=%s, year=%s, month=%s)", owner_name, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/afdelingsleder", response_class=HTMLResponse)
@@ -183,9 +232,9 @@ async def perf_afdelingsleder_data(
     try:
         ref_year = year if year else date.today().year
         return JSONResponse(db_afdelingsleder_data(ref_year, month))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("afdelingsleder-data fejlede (year=%s, month=%s)", year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 #----------------------------------------------------------------------------------------------------------------------
@@ -224,9 +273,9 @@ async def perf_saelger_meta(
         if can_pick_seller:
             meta["available_owners"] = db_saelger_available_owners()
         return JSONResponse(meta)
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-meta fejlede (owner=%s)", owner)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 @router.get("/saelger-data")
 async def perf_saelger_data(
@@ -244,9 +293,9 @@ async def perf_saelger_data(
             team=team, selected_year=year, selected_month=month,
             date_col=date_col,
         ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-data fejlede (owner=%s, team=%s, year=%s, month=%s)", owner, team, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/saelger-pipeline-deals")
@@ -262,9 +311,27 @@ async def perf_saelger_pipeline_deals(
     try:
         target_owner = _resolve_saelger_owner(user, owner)
         return JSONResponse(db_manager_saelger_pipeline(target_owner, year, month))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("saelger-pipeline-deals fejlede (owner=%s, year=%s, month=%s)", owner, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+@router.get("/saelger-conversion-deals")
+async def perf_saelger_conversion_deals(
+    year:  int | None = None,
+    month: str | None = None,
+    team:  str | None = None,
+    owner: str | None = None,
+    user=Depends(get_current_user),
+):
+    """Won/lost-deals bag sælgerens konverteringsrate — bruges af
+    'Konverteringsrate'-modalet på /tools/performance/saelger."""
+    try:
+        target_owner = _resolve_saelger_owner(user, owner)
+        return JSONResponse(db_saelger_conversion_deals(target_owner, year, month, team))
+    except Exception:
+        logger.exception("saelger-conversion-deals fejlede (owner=%s, year=%s, month=%s)", owner, year, month)
+        raise HTTPException(500, "Data kunne ikke hentes")
+
 
 #-----------------------------------------------------------------------------------------------------------------------
 #                                                  DASHBOARDS VÆLGER

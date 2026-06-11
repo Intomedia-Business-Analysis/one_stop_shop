@@ -1,0 +1,3 @@
+# Værktøjer til test/CI — installeres ikke i produktion
+pytest==8.4.2
+httpx==0.28.1

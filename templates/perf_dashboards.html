@@ -12,22 +12,22 @@
 
 .dash-pick-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:32px 28px;position:relative;overflow:hidden;transition:all .15s;display:flex;flex-direction:column;gap:16px}
 .dash-pick-card.unlocked{cursor:pointer}
-.dash-pick-card.unlocked:hover{border-color:var(--green);box-shadow:0 4px 20px rgba(27,92,74,.1);transform:translateY(-2px)}
+.dash-pick-card.unlocked:hover{border-color:var(--green);box-shadow:var(--shadow-card);transform:translateY(-2px)}
 .dash-pick-card.locked{opacity:.55;cursor:not-allowed}
 .dash-pick-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:var(--r) var(--r) 0 0}
 .dash-pick-card.color-green::before{background:var(--green)}
 .dash-pick-card.color-amber::before{background:var(--amber)}
-.dash-pick-card.color-blue::before{background:#3B82F6}
+.dash-pick-card.color-blue::before{background:var(--win)}
 .dash-pick-card.locked::before{background:var(--border)}
 
 .dpc-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center}
 .dpc-icon.green{background:var(--green-light)}
 .dpc-icon.amber{background:var(--amber-light)}
-.dpc-icon.blue{background:#EFF6FF}
+.dpc-icon.blue{background:var(--win-light)}
 .dpc-icon svg{width:22px;height:22px;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none}
 .dpc-icon.green svg{stroke:var(--green)}
 .dpc-icon.amber svg{stroke:var(--amber)}
-.dpc-icon.blue svg{stroke:#3B82F6}
+.dpc-icon.blue svg{stroke:var(--win)}
 
 .dpc-title{font-size:16px;font-weight:700;color:var(--ink)}
 .dpc-desc{font-size:12px;color:var(--ink-3);line-height:1.6}
@@ -39,7 +39,7 @@
 .dpc-role-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:3px 9px;border-radius:10px}
 .dpc-role-badge.green{background:var(--green-light);color:var(--green)}
 .dpc-role-badge.amber{background:var(--amber-light);color:var(--amber)}
-.dpc-role-badge.blue{background:#EFF6FF;color:#3B82F6}
+.dpc-role-badge.blue{background:var(--win-light);color:var(--win)}
 .dpc-role-badge.locked{background:var(--border);color:var(--ink-4)}
 
 .dpc-arrow{font-size:18px;color:var(--green);transition:transform .15s}

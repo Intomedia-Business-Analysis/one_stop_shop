@@ -1,4 +1,4 @@
-import traceback
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -12,6 +12,8 @@ from moduler.modul_marketing.queries import (
     db_filter_options,
     db_summary,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/marketing", tags=["Marketing"])
 templates = Jinja2Templates(directory="templates")
@@ -44,9 +46,9 @@ async def marketing_filters(user=Depends(get_current_user)):
     _require_access(user)
     try:
         return JSONResponse(db_filter_options())
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("marketing_filters fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/summary")
@@ -69,9 +71,9 @@ async def marketing_summary(
             date_from=_norm(date_from),
             date_to=_norm(date_to),
         ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("marketing_summary fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/by-account")
@@ -94,9 +96,9 @@ async def marketing_by_account(
             date_from=_norm(date_from),
             date_to=_norm(date_to),
         )})
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("marketing_by_account fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/account-deals")
@@ -124,9 +126,9 @@ async def marketing_account_deals(
         )})
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("marketing_account_deals fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/deals")
@@ -157,8 +159,8 @@ async def marketing_deals(
             sort_by=sort_by,
             sort_dir=sort_dir,
         ))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("marketing_deals fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 

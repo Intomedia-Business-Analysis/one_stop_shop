@@ -1,5 +1,5 @@
+import logging
 import os
-import traceback
 import io
 from datetime import date
 
@@ -10,17 +10,93 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv('DB_SERVER'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        database=os.getenv('DB_NAME', 'INTOMEDIA'),
-        tds_version='7.0',
-        login_timeout=5,
-        timeout=5
+
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
+
+
+# ── Team-dataadgang ──────────────────────────────────────────────────────────
+# Sælgerbudgettet har en [Team]-kolonne og filtreres direkte. Medie-budgettet
+# er brand/site-niveau, så en team-begrænsning oversættes til de budget-brands
+# teamet dækker: Teams.brand (watch_no, finans, …) → BudgetsIntoMedia.[Brand].
+TEAM_BRAND_TO_BUDGET_BRANDS = {
+    "watch_dk":   ["Watch DK", "KForum"],
+    "watch_int":  ["Watch Int"],
+    "watch_no":   ["Watch NO"],
+    "watch_se":   ["Watch SE"],
+    "watch_de":   ["Watch DE"],
+    "finans":     ["FINANS DK"],
+    "finans_int": ["FINANS Int"],
+    "monitor":    ["Monitor"],
+    "marketwire": ["MarketWire"],
+}
+# Teams uden brand (Banner/Job) genkendes på DealType i medie-budgettet.
+TEAM_TO_DEALTYPES = {
+    "Team Banner": ["Banner"],
+    "Team Job":    ["Job"],
+}
+
+
+def db_budget_scope(team_names: list) -> dict:
+    """Oversæt tilladte teams til medie-budget-scope: {brands, dealtypes}.
+
+    En medie-budgetrække er tilladt hvis dens [Brand] ELLER [DealType] er i scope.
+    """
+    brands: set = set()
+    dealtypes: set = set()
+    if not team_names:
+        return {"brands": brands, "dealtypes": dealtypes}
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(f"SELECT name, brand FROM Teams WHERE name IN {ph}", tuple(team_names))
+        for name, brand in cur.fetchall():
+            brands.update(TEAM_BRAND_TO_BUDGET_BRANDS.get(brand or "", []))
+            dealtypes.update(TEAM_TO_DEALTYPES.get(name, []))
+        conn.close()
+    except Exception:
+        # Fallback: tomt scope = ingen medie-budgetrækker vises (sikker degradering).
+        logger.exception("db_budget_scope fejlede — returnerer tomt scope")
+    return {"brands": brands, "dealtypes": dealtypes}
+
+
+def db_owners_for_teams(team_names: list) -> list:
+    """Sælgere (Owner) i sælgerbudgettet for de angivne teams — til dropdowns."""
+    if not team_names:
+        return []
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT DISTINCT [Owner] FROM [dbo].[SalespersonBudget] "
+            f"WHERE [Team] IN {ph} AND [Owner] IS NOT NULL ORDER BY [Owner]",
+            tuple(team_names),
+        )
+        rows = [r[0] for r in cur.fetchall()]
+        conn.close()
+        return rows
+    except Exception:
+        # Fallback: tom dropdown-liste i stedet for fejlside.
+        logger.exception("db_owners_for_teams fejlede — returnerer tom liste")
+        return []
+
+
+def db_medie_get(row_id: int) -> dict | None:
+    """Hent én medie-budgetrække — til adgangstjek før update/delete."""
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(
+        "SELECT [ID],[Site],[Brand],[DealType],[Salestype] "
+        "FROM [dbo].[BudgetsIntoMedia] WHERE [ID] = %s",
+        (row_id,),
     )
+    row = cur.fetchone()
+    conn.close()
+    return row
 
 
 def db_get_distinct(table: str, column: str) -> list:
@@ -32,6 +108,8 @@ def db_get_distinct(table: str, column: str) -> list:
         conn.close()
         return rows
     except Exception:
+        # Fallback: tom dropdown-liste i stedet for fejlside.
+        logger.exception("db_get_distinct fejlede (%s.%s) — returnerer tom liste", table, column)
         return []
 
 
@@ -74,9 +152,11 @@ def db_medie_upload_df(df: pd.DataFrame):
                 VALUES (%s,%s,%s,%s,%s,%s)
             """, (str(row["DealType"]), str(row["Site"]), budget_date, amount, str(row["Brand"]), str(row["Salestype"])))
             inserted += 1
-        except Exception:
+        except Exception as e:
+            # Forventelig degradering — dårlige rækker i upload springes over.
             errors += 1
-            error_rows.append({"row": i + 2, "error": traceback.format_exc()})
+            logger.warning("Medie-upload: række %s kunne ikke importeres: %s", i + 2, e)
+            error_rows.append({"row": i + 2, "error": str(e)})
     conn.commit()
     conn.close()
     return inserted, errors, error_rows
@@ -129,9 +209,11 @@ def db_saelger_upload_df(df: pd.DataFrame):
                 VALUES (%s,%s,%s,%s,%s)
             """, (str(row["Owner"]), str(row["Brand"]), budget_date, amount, str(row["Team"])))
             inserted += 1
-        except Exception:
+        except Exception as e:
+            # Forventelig degradering — dårlige rækker i upload springes over.
             errors += 1
-            error_rows.append({"row": i + 2, "error": traceback.format_exc()})
+            logger.warning("Sælger-upload: række %s kunne ikke importeres: %s", i + 2, e)
+            error_rows.append({"row": i + 2, "error": str(e)})
     conn.commit()
     conn.close()
     return inserted, errors, error_rows

@@ -1,11 +1,12 @@
+import logging
 import threading
 import time
-import traceback
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from auth import ROLE_LABELS, get_current_user, has_access
 from moduler.modul_portfolio_alignment.queries import (
@@ -25,6 +26,8 @@ from moduler.modul_portfolio_alignment.pipedrive_api import (
     create_alignment_deal,
     preview_alignment_deal,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tools/portfolio-alignment", tags=["Portfolio Alignment"])
 templates = Jinja2Templates(directory="templates")
@@ -103,14 +106,16 @@ async def alignment_comparison(
     scope = _validate_scope(scope)
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        cached = _get_comparison(scope, force=bool(refresh), cutoff_date=cutoff)
+        cached = await run_in_threadpool(
+            _get_comparison, scope, force=bool(refresh), cutoff_date=cutoff
+        )
         return JSONResponse({
             **cached["data"],
             "cached_at": cached["ts"],
         })
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("alignment_comparison fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/web-sale-deals")
@@ -128,10 +133,13 @@ async def alignment_web_sale_deals(
         raise HTTPException(400, "site er påkrævet")
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_web_sale_deals(scope, site, snapshot_date=cutoff))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+        data = await run_in_threadpool(
+            fetch_web_sale_deals, scope, site, snapshot_date=cutoff
+        )
+        return JSONResponse(data)
+    except Exception:
+        logger.exception("alignment_web_sale_deals fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/customer-deals")
@@ -150,11 +158,13 @@ async def alignment_customer_deals(
         raise HTTPException(400, "org_id er påkrævet")
     cutoff = _normalize_cutoff(cutoff_date)
     try:
-        return JSONResponse(fetch_customer_deals(scope, org_id, site=site or None,
-                                                 snapshot_date=cutoff))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+        data = await run_in_threadpool(
+            fetch_customer_deals, scope, org_id, site=site or None, snapshot_date=cutoff
+        )
+        return JSONResponse(data)
+    except Exception:
+        logger.exception("alignment_customer_deals fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/handled-states")
@@ -243,10 +253,13 @@ async def alignment_deal_preview(
     cutoff = _normalize_cutoff(cutoff_date)
     try:
         scope_v, org_id_v, site_v = _resolve_create_args({"scope": scope, "org_id": org_id, "site": site})
-        local = compute_local_diff(scope_v, str(org_id_v), site_v, cutoff_date=cutoff)
+        local = await run_in_threadpool(
+            compute_local_diff, scope_v, str(org_id_v), site_v, cutoff_date=cutoff
+        )
         if abs(local["value"]) < 1:
             raise HTTPException(400, "diff er nul (eller for lille) — der er intet at afstemme")
-        prev = preview_alignment_deal(
+        prev = await run_in_threadpool(
+            preview_alignment_deal,
             scope=scope_v,
             org_id=org_id_v,
             site=site_v,
@@ -259,9 +272,9 @@ async def alignment_deal_preview(
         raise
     except (ValueError, RuntimeError) as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("alignment_deal_preview fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.post("/create-deal")
@@ -300,9 +313,9 @@ async def alignment_create_deal(
         raise
     except (ValueError, RuntimeError) as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, str(e))
+    except Exception:
+        logger.exception("alignment_create_deal fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +383,8 @@ def _bulk_worker(job_id: str, eligible: list, dry_run: bool, user_name: str) -> 
                 try:
                     set_handled(r["scope"], str(r["org_id"]), r["site"], True, user_name)
                 except Exception:
-                    traceback.print_exc()  # ikke kritisk — deal'en er oprettet
+                    # ikke kritisk — deal'en er oprettet
+                    logger.exception("_bulk_worker: set_handled fejlede efter deal-oprettelse")
             with _BULK_JOBS_LOCK:
                 job["created"].append({
                     **_row_short(r),
@@ -386,7 +400,7 @@ def _bulk_worker(job_id: str, eligible: list, dry_run: bool, user_name: str) -> 
                 job["failed"].append({**_row_short(r), "error": str(e)})
                 job["progress"] += 1
         except Exception as e:
-            traceback.print_exc()
+            logger.exception("_bulk_worker: deal-oprettelse fejlede")
             with _BULK_JOBS_LOCK:
                 job["failed"].append({**_row_short(r), "error": str(e)})
                 job["progress"] += 1

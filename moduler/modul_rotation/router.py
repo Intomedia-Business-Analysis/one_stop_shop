@@ -1,8 +1,10 @@
 import json
 import os
+import threading
 import uuid
 from datetime import date
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -16,26 +18,42 @@ from auth import get_current_user, resolve_resource_access, RequiresLoginExcepti
 
 SCREEN_CONFIGS_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "screen_configs.json")
 
+# Beskytter mod at to samtidige gem fra skærm-admin overskriver hinandens
+# ændringer (læs-ændr-gem på samme JSON-fil). RLock, så endpoints kan holde
+# låsen over hele forløbet, mens _load/_save også selv tager den.
+_configs_lock = threading.RLock()
+
 def _load_configs() -> dict:
-    if not os.path.exists(SCREEN_CONFIGS_PATH):
-        return {"screens": []}
-    with open(SCREEN_CONFIGS_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with _configs_lock:
+        if not os.path.exists(SCREEN_CONFIGS_PATH):
+            return {"screens": []}
+        with open(SCREEN_CONFIGS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 def _save_configs(data: dict):
-    with open(SCREEN_CONFIGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with _configs_lock:
+        # Atomisk skrivning: skriv til temp-fil og swap, så filen aldrig kan
+        # stå halvt skrevet, hvis processen dør midt i et gem.
+        tmp_path = SCREEN_CONFIGS_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, SCREEN_CONFIGS_PATH)
 
 from .queries import (
+    db_all_team_names,
     db_sales_performance,
     db_department_performance,
     db_banner_performance,
     db_job_performance,
+    db_no_advertising_performance,
     db_media_performance,
 )
 
+from nav_utils import register_nav_globals
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+register_nav_globals(templates)
 
 
 def _require(user, min_role: str = "salesperson", resource_id: str = "rotation"):
@@ -76,9 +94,16 @@ async def sales_performance_page(request: Request, user=Depends(get_current_user
 
 
 @router.get("/tools/rotation/sales-performance-data")
-async def sales_performance_data(request: Request, user=Depends(get_current_user)):
+async def sales_performance_data(
+    request: Request,
+    user=Depends(get_current_user),
+    teams: Optional[str] = None,
+):
     _require(user, "salesperson")
-    data = db_sales_performance(date.today())
+    # teams (komma-sep.) kommer fra skærm-konfigurationen, så forskellige
+    # kontorer kan køre forskellige team-visninger. Tom = standard-teams.
+    selected_teams = [t.strip() for t in teams.split(",")] if teams else None
+    data = db_sales_performance(date.today(), teams=selected_teams)
     return JSONResponse(content=data)
 
 
@@ -134,6 +159,23 @@ async def job_performance_data(request: Request, user=Depends(get_current_user))
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  DASHBOARD 4b — Advertising Performance NO (job + banner samlet)
+# ════════════════════════════════════════════════════════════════════════════
+
+@router.get("/tools/rotation/no-advertising-performance", response_class=HTMLResponse)
+async def no_advertising_performance_page(request: Request, user=Depends(get_current_user)):
+    _require(user, "salesperson")
+    return templates.TemplateResponse(request, "rotation_no_advertising.html", {"user": user})
+
+
+@router.get("/tools/rotation/no-advertising-performance-data")
+async def no_advertising_performance_data(request: Request, user=Depends(get_current_user)):
+    _require(user, "salesperson")
+    data = db_no_advertising_performance(date.today())
+    return JSONResponse(content=data)
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  DASHBOARD 5 — Media Performance
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -172,6 +214,7 @@ async def screens_admin(request: Request, user=Depends(get_current_user)):
     return templates.TemplateResponse(request, "rotation_screens.html", {
         "user": user,
         "screens": configs["screens"],
+        "team_names": db_all_team_names(),
     })
 
 
@@ -179,7 +222,6 @@ async def screens_admin(request: Request, user=Depends(get_current_user)):
 async def screens_save(request: Request, user=Depends(get_current_user)):
     _require(user, "sales_manager")
     body = await request.json()
-    configs = _load_configs()
 
     screen_id = body.get("id")
     media = {
@@ -188,26 +230,33 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
         "years":    body.get("media_years", ""),
         "months":   body.get("media_months", ""),
     }
-    if screen_id:
-        # Opdater eksisterende
-        for s in configs["screens"]:
-            if s["id"] == screen_id:
-                s["name"] = body["name"]
-                s["dashboards"] = body["dashboards"]
-                s["interval"] = body["interval"]
-                s["media"] = media
-                break
-    else:
-        # Opret ny
-        configs["screens"].append({
-            "id": str(uuid.uuid4())[:8],
-            "name": body["name"],
-            "dashboards": body["dashboards"],
-            "interval": body["interval"],
-            "media": media,
-        })
+    # Sales Performance: hvilke teams skærmen viser (tom = standard-teams).
+    sales = {"teams": body.get("sales_teams", "")}
 
-    _save_configs(configs)
+    # Lås over hele læs-ændr-gem, så to samtidige gem ikke taber ændringer.
+    with _configs_lock:
+        configs = _load_configs()
+        if screen_id:
+            # Opdater eksisterende
+            for s in configs["screens"]:
+                if s["id"] == screen_id:
+                    s["name"] = body["name"]
+                    s["dashboards"] = body["dashboards"]
+                    s["interval"] = body["interval"]
+                    s["media"] = media
+                    s["sales"] = sales
+                    break
+        else:
+            # Opret ny
+            configs["screens"].append({
+                "id": str(uuid.uuid4())[:8],
+                "name": body["name"],
+                "dashboards": body["dashboards"],
+                "interval": body["interval"],
+                "media": media,
+                "sales": sales,
+            })
+        _save_configs(configs)
     return JSONResponse({"ok": True})
 
 
@@ -215,9 +264,10 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
 async def screens_delete(request: Request, user=Depends(get_current_user)):
     _require(user, "sales_manager")
     body = await request.json()
-    configs = _load_configs()
-    configs["screens"] = [s for s in configs["screens"] if s["id"] != body["id"]]
-    _save_configs(configs)
+    with _configs_lock:
+        configs = _load_configs()
+        configs["screens"] = [s for s in configs["screens"] if s["id"] != body["id"]]
+        _save_configs(configs)
     return JSONResponse({"ok": True})
 
 
@@ -240,4 +290,7 @@ async def screen_player(screen_id: str, request: Request, user=Depends(get_curre
         url += f"&years={media['years']}"
     if media.get("months"):
         url += f"&months={media['months']}"
+    sales = screen.get("sales", {})
+    if sales.get("teams"):
+        url += f"&teams={quote(sales['teams'])}"
     return RedirectResponse(url)

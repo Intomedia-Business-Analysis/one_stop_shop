@@ -1,5 +1,5 @@
+import logging
 import os
-import traceback
 from datetime import date, timedelta
 
 import pymssql
@@ -7,30 +7,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 # ── Genbrugte konstanter fra modul_perf ─────────────────────────────────────
 
-SUBSCRIPTION_BRANDS = [
-    "EnergiWatch NO", "MobilityWatch DK", "CleantechWatch DK", "TechWatch NO",
-    "AdvokatWatch NO", "Kforum DK", "Seniormonitor", "All Monitor Sites",
-    "FinansWatch SE", "Watch Medier DK", "Byrummonitor", "ShippingWatch DK",
-    "Idrætsmonitor", "Justitsmonitor", "MatvareWatch NO", "Naturmonitor",
-    "Socialmonitor", "FinansWatch DK", "Uddannelsesmonitor", "MedWatch NO",
-    "Klimamonitor", "EjendomsWatch DK", "FINANS DK", "DetailWatch DK",
-    "FinansWatch NO", "AdvokatWatch DK", "ITWatch DK", "KForum",
-    "All Watch Sites DK", "EnergiWatch DK", "Medier24 NO", "AgriWatch DK",
-    "Skolemonitor", "EiendomsWatch NO", "Kulturmonitor", "Sundhedsmonitor",
-    "MarketWire", "Kom24 NO", "AMWatch DK", "KapitalWatch DK",
-    "Policy DK", "HandelsWatch NO", "MedWatch DK", "FødevareWatch DK",
-    "Fødevare Watch DK", "All Watch Sites NO", "MediaWatch DK", "Turistmonitor",
-    "PolicyWatch DK", "Monitormedier",
-]
+# Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
+from constants import SUBSCRIPTION_BRANDS, CANCELLATION_PIPELINES, MONTH_NAMES_DA  # noqa: E402,F401
+
 _SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
 # Sales Performance KPI — MarketWire er nu inkluderet (vises som eget team)
 SALES_PERF_BRANDS = list(SUBSCRIPTION_BRANDS)
 _SALES_PERF_PH = "(" + ",".join(["%s"] * len(SALES_PERF_BRANDS)) + ")"
 
-CANCELLATION_PIPELINES = ["Cancellation", "Cancellations", "Opsigelser"]
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
 _ADM_EXCLUDE = (
@@ -55,10 +44,7 @@ _ADM_EXCLUDE_ALLOW_WEBSALE = (
 SALES_PIPELINES = ['Company Trial', 'Customer', 'Newbizz']
 _SALES_PIPELINES_PH = "(" + ",".join(["%s"] * len(SALES_PIPELINES)) + ")"
 
-MONTH_NAMES_DA = [
-    "Januar", "Februar", "Marts", "April", "Maj", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "December"
-]
+# MONTH_NAMES_DA importeres fra constants.py (øverst i filen).
 
 MONITOR_SITES = [
     "Seniormonitor", "Byrummonitor", "Idrætsmonitor", "Justitsmonitor",
@@ -114,16 +100,8 @@ MEDIA_ACCOUNT_LABELS = {
 }
 
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 
 def _week_range(today: date):
@@ -157,36 +135,48 @@ def _quarter_label(today: date):
 
 # ── Fælles KPI-hjælper ───────────────────────────────────────────────────────
 
-SALES_PERF_TEAMS = [
+# Standard-teams i Sales Performance. Skærm-konfigurationer kan overstyre
+# listen pr. skærm (?teams=Team Watch NO,...), så fx Norge-kontoret kan køre
+# sin egen visning uden at påvirke de danske skærme.
+DEFAULT_SALES_PERF_TEAMS = [
     "Team Watch DK", "Team Watch Int", "Team Watch SE",
     "Team FINANS DK", "Team FINANS Int",
     "Team Marketwire", "Team Monitor",
 ]
-_SALES_PERF_TEAMS_PH = "(" + ",".join(["%s"] * len(SALES_PERF_TEAMS)) + ")"
 
-# Omsætnings-KPI'en (dag/uge/måned/år, øverste bar) tæller ALLE teams i
-# dashboardet — inkl. Team Monitor — og filtrerer kun på team + deal_type.
-REVENUE_KPI_TEAMS = [
-    "Team Watch DK", "Team Finans DK",
-    "Team Watch Int", "Team Finans Int",
-    "Team Monitor", "Team Marketwire", "Team Watch SE",
-]
-_REVENUE_KPI_TEAMS_PH = "(" + ",".join(["%s"] * len(REVENUE_KPI_TEAMS)) + ")"
 
-# Subquery der begrænser owner_name til aktive medlemmer af de relevante teams.
-# Watch DK og FINANS DK deler samme sælgere — ligesom Watch Int og FINANS Int.
-_OWNER_IN_TEAMS_SQL = f"""
+def db_all_team_names() -> list:
+    """Alle holdnavne — til team-vælgeren i skærm-konfigurationen."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("SELECT name FROM Teams WHERE name IS NOT NULL ORDER BY name")
+        names = [r["name"] for r in cur.fetchall()]
+        conn.close()
+        return names
+    except Exception:
+        # Forventelig degradering — team-vælgeren falder tilbage til standard-teams.
+        logger.exception("db_all_team_names fejlede — falder tilbage til standard-teams")
+        return list(DEFAULT_SALES_PERF_TEAMS)
+
+
+def _owner_in_teams_sql(teams_ph: str) -> str:
+    """Subquery der begrænser owner_name til aktive medlemmer af teams.
+    Watch DK og FINANS DK deler samme sælgere — ligesom Watch Int og FINANS Int.
+    """
+    return f"""
     AND [owner_name] IN (
         SELECT u.name FROM [dbo].[HubUsers] u
         JOIN [dbo].[TeamMemberships] tm ON tm.user_id = u.id
         JOIN [dbo].[Teams] t ON t.id = tm.team_id
-        WHERE t.name IN {_SALES_PERF_TEAMS_PH}
+        WHERE t.name IN {teams_ph}
           AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
     )
 """
 
 
-def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_time"):
+def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_time",
+                  teams: list | None = None):
     week_start, week_end = _week_range(today)
     m_start, m_end = _month_range(today)
     y_start, y_end = _year_range(today)
@@ -195,19 +185,22 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_t
         # Omsætnings-KPI — alle teams i dashboardet (inkl. Team Monitor).
         # Filtrerer på team + deal_type (abonnement/subscription eller NULL for
         # MarketWire). KPI-baren (dag/uge/måned/år) kører altid på won_time.
+        kpi_teams = teams if teams else list(DEFAULT_SALES_PERF_TEAMS)
+        kpi_teams_ph = "(" + ",".join(["%s"] * len(kpi_teams)) + ")"
+
         def _sum(date_from, date_to):
             cur.execute(f"""
-                SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+                SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS total
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
                   AND [won_time] >= %s
                   AND [won_time] < %s
-                  AND [pipeline_name] NOT IN ('Web sale','cancellation','Opsigelser')
+                  AND [pipeline_name] NOT IN ('Web sale','cancellation','Opsigelser','banner','job','Bannerads','Jobads')
                   AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [deal_type] IS NULL)
-                  AND [team] IN {_REVENUE_KPI_TEAMS_PH}
+                  AND [team] IN {kpi_teams_ph}
                   {_ADM_EXCLUDE}
             """, (date_from.isoformat(), date_to.isoformat())
-                + tuple(REVENUE_KPI_TEAMS))
+                + tuple(kpi_teams))
             return float((cur.fetchone() or {}).get("total", 0) or 0)
     else:
         if pipeline_filter == "banner":
@@ -219,7 +212,7 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_t
 
         def _sum(date_from, date_to):
             cur.execute(f"""
-                SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS total
+                SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS total
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
                   AND [won_time] >= %s AND [won_time] < %s
@@ -239,12 +232,21 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_t
 #  DASHBOARD 1 — Sales Performance (Monitor, Watch & FINANS)
 # ════════════════════════════════════════════════════════════════════════════
 
-def db_sales_performance(today: date, date_col: str = "won_time"):
+def db_sales_performance(today: date, date_col: str = "won_time",
+                         teams: list | None = None):
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
 
-        kpis = _revenue_kpis(cur, today, "subscription", date_col=date_col)
+        # Team-liste pr. skærm-konfiguration (?teams=...) — bruges i alle
+        # team- og sælger-filtre i dette dashboard. Uden valg: standard-teams.
+        perf_teams = [t.strip() for t in (teams or []) if t and t.strip()]
+        if not perf_teams:
+            perf_teams = list(DEFAULT_SALES_PERF_TEAMS)
+        teams_ph = "(" + ",".join(["%s"] * len(perf_teams)) + ")"
+        owner_in_teams = _owner_in_teams_sql(teams_ph)
+
+        kpis = _revenue_kpis(cur, today, "subscription", date_col=date_col, teams=perf_teams)
         q_start, q_end = _quarter_range(today)
         m_start, m_end = _month_range(today)
 
@@ -252,37 +254,40 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
             cur.execute(f"""
                 SELECT [team],
                     ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH}
-                        THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
+                        THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
                     ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN {_CANCEL_PH}
-                        THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
+                        THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] NOT IN ('banner','job','Web Sale')
                   AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [team] = 'Team Marketwire')
                   AND [service_activation_date] >= %s AND [service_activation_date] < %s
                   AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-                  AND [team] IN {_SALES_PERF_TEAMS_PH}
+                  AND [team] IN {teams_ph}
                   {_ADM_EXCLUDE}
                 GROUP BY [team]
-            """, tuple(CANCELLATION_PIPELINES) * 2 + (date_from.isoformat(), date_to.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
+            """, tuple(CANCELLATION_PIPELINES) * 2 + (date_from.isoformat(), date_to.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
             netto_map = {r["team"]: round(float(r["won"] or 0) - float(r["cancel"] or 0), 2) for r in cur.fetchall()}
 
             cur.execute(f"""
                 SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
                 FROM [dbo].[SalespersonBudget]
                 WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
-                  AND [Team] IN {_SALES_PERF_TEAMS_PH}
+                  AND [Team] IN {teams_ph}
                 GROUP BY [Team]
-            """, (date_from.isoformat(), date_to.isoformat()) + tuple(SALES_PERF_TEAMS))
+            """, (date_from.isoformat(), date_to.isoformat()) + tuple(perf_teams))
             budget_map = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
 
             # MarketWire-budgettet ligger i BudgetsIntoMedia (ikke SalespersonBudget)
-            cur.execute("""
-                SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
-                FROM [dbo].[BudgetsIntoMedia]
-                WHERE [Brand] = 'MarketWire' AND [DealType] = 'Subscription'
-                  AND [BudgetDate] >= %s AND [BudgetDate] < %s
-            """, (date_from.isoformat(), date_to.isoformat()))
-            mw_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+            # — men kun hvis Team Marketwire er blandt skærmens valgte teams.
+            mw_budget = 0.0
+            if any(t.lower() == "team marketwire" for t in perf_teams):
+                cur.execute("""
+                    SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+                    FROM [dbo].[BudgetsIntoMedia]
+                    WHERE [Brand] = 'MarketWire' AND [DealType] = 'Subscription'
+                      AND [BudgetDate] >= %s AND [BudgetDate] < %s
+                """, (date_from.isoformat(), date_to.isoformat()))
+                mw_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
             if mw_budget:
                 budget_map["Team Marketwire"] = budget_map.get("Team Marketwire", 0.0) + mw_budget
 
@@ -302,10 +307,10 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
                 WHERE [add_time] >= %s AND [add_time] < %s
                   AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
                   AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-                  {_OWNER_IN_TEAMS_SQL}
+                  {owner_in_teams}
                   {_ADM_EXCLUDE}
                 GROUP BY [owner_name] ORDER BY deals DESC
-            """, (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
+            """, (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
             deals_oprettet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
         except Exception:
             deals_oprettet = []
@@ -318,25 +323,25 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
               AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
               AND [close_time] >= %s AND [close_time] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-              {_OWNER_IN_TEAMS_SQL}
+              {owner_in_teams}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY deals DESC
-        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
+        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         deals_vundet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
 
         # Deals omsætning — kun sælgere på de relevante teams (ekskl. Norge)
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
-                   ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+                   ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won'
               AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
               AND [won_time] >= %s AND [won_time] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-              {_OWNER_IN_TEAMS_SQL}
+              {owner_in_teams}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY revenue DESC
-        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
+        """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         deals_omsaetning = [{"owner_name": r["owner_name"], "revenue": round(float(r["revenue"] or 0), 2)} for r in cur.fetchall()]
 
         # Seneste deals vundet — kun subscription teams, ingen opsigelser
@@ -346,17 +351,17 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
                 COALESCE([org_name],'')         AS org_name,
                 COALESCE([team],'')             AS team,
                 COALESCE([sites],'')            AS sites,
-                CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) AS value,
+                CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) AS value,
                 CONVERT(VARCHAR(19),[won_time],120) AS won_time
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won'
               AND [pipeline_name] NOT IN {_CANCEL_PH}
               AND [pipeline_name] NOT IN ('banner','job','Web Sale')
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-              AND [team] IN {_REVENUE_KPI_TEAMS_PH}
+              AND [team] IN {teams_ph}
               {_ADM_EXCLUDE}
             ORDER BY [won_time] DESC
-        """, tuple(CANCELLATION_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(REVENUE_KPI_TEAMS))
+        """, tuple(CANCELLATION_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         seneste_deals = [{"owner_name": r["owner_name"], "org_name": r["org_name"], "team": r["team"],
                           "sites": r["sites"], "value": float(r["value"] or 0), "won_time": str(r["won_time"] or "")}
                          for r in cur.fetchall()]
@@ -365,30 +370,32 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
                 ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH}
-                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
+                    THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
                 ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN {_CANCEL_PH}
-                    THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
+                    THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name] NOT IN ('banner','job','Web Sale')
               AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [team] = 'Team Marketwire')
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-              AND [team] IN {_SALES_PERF_TEAMS_PH}
+              AND [team] IN {teams_ph}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name]
         """, tuple(CANCELLATION_PIPELINES) * 2 + (m_start.isoformat(), m_end.isoformat())
-            + tuple(SALES_PERF_BRANDS) + tuple(SALES_PERF_TEAMS))
+            + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         seller_tilvaekst = {r["owner_name"]: round(float(r["won"] or 0) - float(r["cancel"] or 0), 2)
                             for r in cur.fetchall()}
 
-        # Budget pr. sælger — summeret på tværs af teams/sites
-        cur.execute("""
+        # Budget pr. sælger — kun for skærmens valgte teams, så sælgere fra
+        # andre teams ikke trækkes ind i rosteret med 0-rækker.
+        cur.execute(f"""
             SELECT [Owner] AS owner_name, SUM([BudgetAmount]) AS budget
             FROM [dbo].[SalespersonBudget]
             WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
               AND [Owner] IS NOT NULL AND [Owner] <> ''
+              AND [Team] IN {teams_ph}
             GROUP BY [Owner]
-        """, (m_start.isoformat(), m_end.isoformat()))
+        """, (m_start.isoformat(), m_end.isoformat()) + tuple(perf_teams))
         seller_budget = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
 
         # ── Unificeret sælger-roster på tværs af alle 4 widgets ───────────────
@@ -437,8 +444,8 @@ def db_sales_performance(today: date, date_col: str = "won_time"):
             "today": today.isoformat(),
         }
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_sales_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -451,9 +458,9 @@ def _dept_sub_panel(cur, m_start, m_end, sites, teams):
     cur.execute(f"""
         SELECT [team],
             ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH}
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
+                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
             ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN {_CANCEL_PH}
-                THEN CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
+                THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND [pipeline_name] NOT IN ('banner','job','Web Sale')
           AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [team] = 'Team Marketwire')
@@ -482,7 +489,7 @@ def _dept_adv_panel(cur, m_start, m_end, pipeline, brand_sites_map, include_prog
     for label, site_list in brand_sites_map.items():
         sites_ph = "(" + ",".join(["%s"] * len(site_list)) + ")"
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name] = %s
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
@@ -545,7 +552,7 @@ def db_department_performance(today: date):
         # Job: omsætning for Team Job-deals vs. budget summeret på Team Job-sælgere
         # (SalespersonBudget i stedet for BudgetsIntoMedia).
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
@@ -564,7 +571,7 @@ def db_department_performance(today: date):
         # MarketWire identificeres på team (sites er NULL for disse deals).
         # Subscription-produkt → service_activation_date som de øvrige abonnementspaneler.
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name] NOT IN {_CANCEL_PH}
               AND [pipeline_name] NOT IN ('banner','job','Web Sale')
@@ -587,8 +594,8 @@ def db_department_performance(today: date):
             "today": today.isoformat(),
         }
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_department_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -625,7 +632,7 @@ def _adv_series_by_brand(cur, today, pipeline, granularity):
     cur.execute(f"""
         SELECT COALESCE([sites],'Ukendt') AS site,
                {period_expr} AS period,
-               ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+               ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND {pipeline_clause} AND [account]='jppol_advertising'
           AND [won_time] >= %s AND [won_time] < %s
@@ -693,7 +700,7 @@ def _adv_omsaetning_by_owner(cur, m_start, m_end, pipeline):
     pipeline_clause = "[pipeline_name] IN ('banner','job')" if pipeline == "advertising" else f"[pipeline_name] = '{pipeline}'"
     cur.execute(f"""
         SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
-               ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+               ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND {pipeline_clause} AND [account]='jppol_advertising'
           AND [won_time] >= %s AND [won_time] < %s
@@ -710,7 +717,7 @@ def _adv_budget_by_brand(cur, m_start, m_end, pipeline, include_programmatic=Fal
     for brand, site_list in brand_sites.items():
         sites_ph = "(" + ",".join(["%s"] * len(site_list)) + ")"
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]=%s
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
@@ -745,7 +752,7 @@ def _adv_seneste_deals(cur, pipeline):
             COALESCE([owner_name],'Ukendt') AS owner_name,
             COALESCE([org_name],'')         AS org_name,
             COALESCE([sites],'')            AS brand,
-            CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2)) AS value,
+            CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) AS value,
             CONVERT(VARCHAR(19),[won_time],120) AS won_time
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND {pipeline_clause} AND [account]='jppol_advertising'
@@ -802,8 +809,8 @@ def db_banner_performance(today: date):
         conn.close()
         return result
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_banner_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -820,7 +827,7 @@ def db_job_performance(today: date):
         # (SalespersonBudget summeret på Team Job) vs. omsætning for indeværende
         # måned (service_activation_date) for Team Job-deals.
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
@@ -852,8 +859,167 @@ def db_job_performance(today: date):
         conn.close()
         return result
     except Exception:
-        traceback.print_exc()
-        return {}
+        logger.exception("db_job_performance fejlede")
+        raise
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  DASHBOARD 4b — Advertising Performance NO (job + banner samlet, Norge)
+# ════════════════════════════════════════════════════════════════════════════
+
+# Norske annonce-deals ligger i egen Pipedrive-account, adskilt fra
+# jppol_advertising som de danske banner/job-dashboards kører på. Pipelines
+# hedder 'Job' og 'Banner'. Alle deals er i NOK, så beløbene vises i NOK
+# (matcher Watch NO-budgettet i BudgetsIntoMedia).
+NO_ADV_ACCOUNT = "watch_no_advertising"
+
+_NO_VAL = "CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))"
+
+
+def db_no_advertising_performance(today: date):
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        m_start, m_end = _month_range(today)
+        week_start, week_end = _week_range(today)
+        y_start, y_end = _year_range(today)
+
+        # KPI-bar (dag/uge/måned/år) — vundne deals på won_time, job + banner samlet.
+        def _sum(date_from, date_to):
+            cur.execute(f"""
+                SELECT ISNULL(SUM({_NO_VAL}),0) AS total
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status]='won' AND [account]=%s
+                  AND [pipeline_name] IN ('Job','Banner')
+                  AND [won_time] >= %s AND [won_time] < %s
+            """, (NO_ADV_ACCOUNT, date_from.isoformat(), date_to.isoformat()))
+            return float((cur.fetchone() or {}).get("total", 0) or 0)
+
+        kpis = {
+            "dag":    round(_sum(today, today + timedelta(days=1)), 2),
+            "uge":    round(_sum(week_start, week_end), 2),
+            "maaned": round(_sum(m_start, m_end), 2),
+            "aar":    round(_sum(y_start, y_end), 2),
+        }
+
+        # Stablet tidsserie Job vs. Banner for indeværende år. Nøglen hedder
+        # 'brand' så frontenden kan genbruge samme stacked-bar-builder som de
+        # danske annonce-dashboards.
+        def _series(granularity):
+            period_expr = "MONTH([won_time])" if granularity == "month" else "DATEPART(QUARTER, [won_time])"
+            cur.execute(f"""
+                SELECT [pipeline_name] AS pipeline, {period_expr} AS period,
+                       ISNULL(SUM({_NO_VAL}),0) AS revenue
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status]='won' AND [account]=%s
+                  AND [pipeline_name] IN ('Job','Banner')
+                  AND [won_time] >= %s AND [won_time] < %s
+                GROUP BY [pipeline_name], {period_expr}
+            """, (NO_ADV_ACCOUNT, y_start.isoformat(), y_end.isoformat()))
+            n = 12 if granularity == "month" else 4
+            labels = (["Jan", "Feb", "Mar", "Apr", "Maj", "Jun",
+                       "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
+                      if granularity == "month" else ["Q1", "Q2", "Q3", "Q4"])
+            by_pipe: dict = {}
+            for r in cur.fetchall():
+                idx = int(r["period"]) - 1
+                if idx < 0 or idx >= n:
+                    continue
+                name = "Job" if str(r["pipeline"]).strip().lower().startswith("job") else "Banner"
+                by_pipe.setdefault(name, [0.0] * n)
+                by_pipe[name][idx] = round(by_pipe[name][idx] + float(r["revenue"] or 0), 2)
+            series = [{"brand": p, "data": by_pipe[p]} for p in ("Job", "Banner") if p in by_pipe]
+            return {"labels": labels, "series": series}
+
+        maaned_chart  = _series("month")
+        kvartal_chart = _series("quarter")
+
+        try:
+            cur.execute("""
+                SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
+                FROM [dbo].[PipedriveDeals]
+                WHERE [add_time] >= %s AND [add_time] < %s
+                  AND [account]=%s AND [pipeline_name] IN ('Job','Banner')
+                GROUP BY [owner_name] ORDER BY deals DESC
+            """, (m_start.isoformat(), m_end.isoformat(), NO_ADV_ACCOUNT))
+            deals_oprettet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
+        except Exception:
+            deals_oprettet = []
+
+        cur.execute("""
+            SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [account]=%s AND [pipeline_name] IN ('Job','Banner')
+              AND [won_time] >= %s AND [won_time] < %s
+            GROUP BY [owner_name] ORDER BY deals DESC
+        """, (NO_ADV_ACCOUNT, m_start.isoformat(), m_end.isoformat()))
+        deals_vundet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
+
+        cur.execute(f"""
+            SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
+                   ISNULL(SUM({_NO_VAL}),0) AS revenue
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [account]=%s AND [pipeline_name] IN ('Job','Banner')
+              AND [won_time] >= %s AND [won_time] < %s
+            GROUP BY [owner_name] ORDER BY revenue DESC
+        """, (NO_ADV_ACCOUNT, m_start.isoformat(), m_end.isoformat()))
+        deals_omsaetning = [{"owner_name": r["owner_name"], "revenue": round(float(r["revenue"] or 0), 2)} for r in cur.fetchall()]
+
+        # Omsætning mod budget pr. ben (Job/Banner) for indeværende måned.
+        # Omsætning på service_activation_date som de danske budget-paneler;
+        # budget fra BudgetsIntoMedia, Brand 'Watch NO'.
+        budget_chart = []
+        for pipeline in ("Job", "Banner"):
+            cur.execute(f"""
+                SELECT ISNULL(SUM({_NO_VAL}),0) AS revenue
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status]='won' AND [account]=%s AND [pipeline_name]=%s
+                  AND [service_activation_date] >= %s AND [service_activation_date] < %s
+                  {_ADM_EXCLUDE}
+            """, (NO_ADV_ACCOUNT, pipeline, m_start.isoformat(), m_end.isoformat()))
+            revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+
+            cur.execute("""
+                SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+                WHERE [DealType]=%s AND [Brand]='Watch NO'
+                  AND [BudgetDate] >= %s AND [BudgetDate] < %s
+            """, (pipeline, m_start.isoformat(), m_end.isoformat()))
+            budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+            budget_chart.append({"brand": pipeline, "revenue": round(revenue, 2), "budget": round(budget, 2)})
+
+        # Mange norske job-deals har intet site angivet, så pipeline (Job/Banner)
+        # vises som type-kolonne i seneste-deals-tabellen.
+        cur.execute(f"""
+            SELECT TOP 20
+                COALESCE([owner_name],'Ukendt') AS owner_name,
+                COALESCE([org_name],'')         AS org_name,
+                COALESCE([sites],'')            AS brand,
+                [pipeline_name]                 AS pipeline,
+                {_NO_VAL} AS value,
+                CONVERT(VARCHAR(19),[won_time],120) AS won_time
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [account]=%s AND [pipeline_name] IN ('Job','Banner')
+            ORDER BY [won_time] DESC
+        """, (NO_ADV_ACCOUNT,))
+        seneste_deals = [{"owner_name": r["owner_name"], "org_name": r["org_name"], "brand": r["brand"],
+                          "pipeline": str(r["pipeline"] or ""), "value": float(r["value"] or 0),
+                          "won_time": str(r["won_time"] or "")} for r in cur.fetchall()]
+
+        conn.close()
+        return {
+            "kpis": kpis,
+            "maaned_chart": maaned_chart, "kvartal_chart": kvartal_chart,
+            "deals_oprettet": deals_oprettet, "deals_vundet": deals_vundet,
+            "deals_omsaetning": deals_omsaetning,
+            "budget_chart": budget_chart, "seneste_deals": seneste_deals,
+            "maaned_label": MONTH_NAMES_DA[today.month - 1] + " " + str(today.year),
+            "kvartal_label": _quarter_label(today) + " " + str(today.year),
+            "today": today.isoformat(),
+        }
+    except Exception:
+        logger.exception("db_no_advertising_performance fejlede")
+        raise
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -957,7 +1123,7 @@ def db_media_performance(selected_accounts: list | None = None,
             # Gross = abonnement/subscription INKL. Web Sale (uanset deal_type).
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS gross
+                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
                   AND [account] IN {acc_ph}
@@ -972,7 +1138,7 @@ def db_media_performance(selected_accounts: list | None = None,
             # Heraf web salg (pipeline Web Sale).
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS ws
+                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS ws
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name]='Web Sale'
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
@@ -984,7 +1150,7 @@ def db_media_performance(selected_accounts: list | None = None,
             # ellers overdrives churn og net bliver kunstigt lavt.
             cur.execute(f"""
                 SELECT [sites],
-                       ABS(ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0)) AS cancel
+                       ABS(ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0)) AS cancel
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {_CANCEL_PH}
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
@@ -1007,7 +1173,7 @@ def db_media_performance(selected_accounts: list | None = None,
 
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE([value_dkk],[value]) AS DECIMAL(18,2))),0) AS gross
+                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {pipes_ph}
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
@@ -1065,5 +1231,5 @@ def db_media_performance(selected_accounts: list | None = None,
             "account_labels":     dict(MEDIA_ACCOUNT_LABELS),
         }
     except Exception:
-        traceback.print_exc()
-        return empty
+        logger.exception("db_media_performance fejlede")
+        raise

@@ -1,20 +1,14 @@
+import logging
 import os
-import traceback
 import pymssql
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+logger = logging.getLogger(__name__)
+
+# Fælles pooled DB-forbindelse — se db.py.
+from db import get_conn  # noqa: E402,F401
 
 def db_get_all_users():
     try:
@@ -29,7 +23,7 @@ def db_get_all_users():
         conn.close()
         return users
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("db_get_all_users fejlede")
         return []
 
 def db_create_user(username, password_hash, name, initials, role, brand):
@@ -97,6 +91,21 @@ def db_set_manager_for(manager_id: int, managed_ids: list):
     conn.commit()
     conn.close()
 
+def db_delete_user(user_id: int):
+    """Sletter en bruger permanent og rydder op i relaterede rækker:
+    holdmedlemskaber, ressource-adgang og leder-henvisninger fra andre brugere."""
+    conn = get_conn()
+    cur = conn.cursor()
+    # Nulstil leder for medarbejdere som denne bruger var leder for
+    cur.execute("UPDATE HubUsers SET manager_id = NULL WHERE manager_id = %s", (user_id,))
+    # Fjern relaterede rækker (ingen FK-cascade i skemaet)
+    cur.execute("DELETE FROM TeamMemberships WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM UserResourceAccess WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM HubUsers WHERE id = %s", (user_id,))
+    conn.commit()
+    conn.close()
+
 def db_get_user_memberships(user_id):
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
@@ -152,6 +161,28 @@ def db_save_resource_access(user_id, all_resource_ids, form_data):
                 "INSERT INTO UserResourceAccess (user_id, resource_id, access) VALUES (%s, %s, %s)",
                 (user_id, rid, val),
             )
+    conn.commit()
+    conn.close()
+
+def db_get_user_team_access(user_id) -> set:
+    """Team-id'er brugeren er begrænset til at se data for (tom = ubegrænset)."""
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute("SELECT team_id FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
+    ids = {r["team_id"] for r in cur.fetchall()}
+    conn.close()
+    return ids
+
+def db_set_user_team_access(user_id, team_ids: list):
+    """Erstat brugerens team-dataadgang. Tom liste = fjern begrænsningen."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM HubUserTeamAccess WHERE user_id = %s", (user_id,))
+    for tid in team_ids:
+        cur.execute(
+            "INSERT INTO HubUserTeamAccess (user_id, team_id) VALUES (%s, %s)",
+            (user_id, tid),
+        )
     conn.commit()
     conn.close()
 
