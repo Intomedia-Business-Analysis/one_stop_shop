@@ -34,6 +34,7 @@ from moduler.modul_banner_job.router import router as banner_job_router
 from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
 from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_marketing.router import router as marketing_router
+from moduler.modul_saelger_portfolio.router import router as saelger_portfolio_router
 from moduler.modul_klippekort.router import router as klippekort_router
 from usage_tracking import record_pageview, start_usage_worker
 
@@ -127,6 +128,7 @@ app.include_router(banner_job_router)
 app.include_router(portfolio_alignment_router)
 app.include_router(rotation_router)
 app.include_router(marketing_router)
+app.include_router(saelger_portfolio_router)
 app.include_router(klippekort_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")

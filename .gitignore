@@ -8,6 +8,7 @@ logs/
 screen_configs.json
 .claude/worktrees/
 .claude/settings.local.json
+.vscode/
 
 # Klippekort-migrering: regenererbare arbejds-/datafiler (holdes lokalt)
 klippekort_mapping.csv
