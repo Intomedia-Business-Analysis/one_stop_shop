@@ -4,9 +4,13 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import get_current_user, has_access
+from auth import allowed_data_teams, get_current_user, has_access
 from nav_utils import register_nav_globals
-from moduler.modul_saelger_portfolio.queries import get_available_owners, get_kundeliste
+from moduler.modul_saelger_portfolio.queries import (
+    get_available_owners,
+    get_growth_timeline,
+    get_kundeliste,
+)
 
 router = APIRouter(prefix="/tools/saelger-portfolio", tags=["Sælger Portefølje"])
 templates = Jinja2Templates(directory="templates")
@@ -19,16 +23,21 @@ async def saelger_portfolio(
     user=Depends(get_current_user),
     owner: str = None,
 ):
-    is_admin = has_access(user, "admin")
+    is_manager = has_access(user, "sales_manager")
+    teams = allowed_data_teams(user)  # None = ubegrænset
 
-    # Admins kan vælge en anden sælger via ?owner=Navn
-    if is_admin and owner:
+    # Managers (og derover) kan vælge en anden sælger via ?owner=Navn —
+    # men kun blandt sælgere i deres tilladte teams (HubUserTeamAccess).
+    available_owners = get_available_owners(teams) if is_manager else []
+    if is_manager and owner and owner in available_owners:
         target_owner = owner
     else:
         target_owner = user["name"]
 
     kunder = get_kundeliste(target_owner)
-    available_owners = get_available_owners() if is_admin else []
+
+    # Porteføljevækst for den viste sælger (vundne deals på eksisterende kunder)
+    growth_timeline = get_growth_timeline(target_owner)
 
     return templates.TemplateResponse(
         request=request,
@@ -38,7 +47,9 @@ async def saelger_portfolio(
             "user": user,
             "kunder": kunder,
             "target_owner": target_owner,
-            "is_admin": is_admin,
+            "is_manager": is_manager,
             "available_owners": available_owners,
+            "growth_timeline": growth_timeline,
+            "current_year": date.today().year,
         }
     )
