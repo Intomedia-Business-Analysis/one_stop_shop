@@ -208,6 +208,7 @@ def _deal_info(cur, pd_deal_id: int) -> dict | None:
             org_id,
             org_name,
             TRY_CAST(clip_card_size AS INT) AS clip_card_size,
+            ISNULL(TRY_CAST(transfered_clip_cards AS INT), 0) AS clips_previous,
             CAST(value_dkk AS DECIMAL(18,2)) AS value_dkk
         FROM [dbo].[PipedriveDeals]
         WHERE pd_deal_id = %s
@@ -255,6 +256,8 @@ def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
             conn.close()
             return {"ok": False, "error": f"Deal {pd_deal_id} blev ikke fundet (job/jppol_advertising)"}
         size = int(deal["clip_card_size"] or 0)
+        tidligere = int(deal["clips_previous"] or 0)
+        kob = size + tidligere   # samlet antal klip på dealen, som i db_overblik
         value = float(deal["value_dkk"] or 0)
         pris_pr_klip = round(value / size, 2) if size > 0 else 0.0
 
@@ -278,7 +281,7 @@ def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
         return {
             "ok": True,
             "brugt": brugt,
-            "rest": size - brugt,
+            "rest": kob - brugt,
             "delta": klip,          # antal klip lige registreret (til additiv Pipedrive-push)
             "clip_card_size": size,
             "pris_pr_klip": pris_pr_klip,
