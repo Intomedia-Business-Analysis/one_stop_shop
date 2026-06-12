@@ -180,6 +180,112 @@ def test_budget_datafejl_giver_500_uden_interne_detaljer(client, make_user, auth
 
 
 # ---------------------------------------------------------------------------
+# Forecast: sælger laver eget forecast, manager ser overblik og vurderer
+# ---------------------------------------------------------------------------
+
+def test_forecast_tool_aaben_for_saelger(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/")
+    assert r.status_code == 200
+    assert "Mit forecast" in r.text
+
+
+def test_forecast_tool_viser_manager_overblik(client, make_user, auth_override):
+    auth_override(make_user(role="sales_manager"))
+    r = client.get("/tools/forecast/")
+    assert r.status_code == 200
+    assert "Team-overblik" in r.text
+
+
+def test_forecast_overview_kraever_manager(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/overview", params={"year": 2026, "month": 7})
+    assert r.status_code == 403
+
+
+def test_forecast_review_kraever_manager(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.post("/tools/forecast/review/save", json={
+        "year": 2026, "month": 7, "team": "Team Watch DK", "manager_amount": 100000,
+    })
+    assert r.status_code == 403
+
+
+def test_forecast_review_fremmed_team_giver_403(client, make_user, auth_override):
+    auth_override(make_user(role="sales_manager", data_teams=["Team FINANS Int"]))
+    r = client.post("/tools/forecast/review/save", json={
+        "year": 2026, "month": 7, "team": "Team Watch NO", "manager_amount": 100000,
+    })
+    assert r.status_code == 403
+
+
+def test_forecast_saelger_kan_kun_gemme_egne_teams(client, make_user, auth_override):
+    # Rækker på fremmede teams filtreres fra — er der ingen gyldige tilbage, afvises
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.post("/tools/forecast/my/save", json={
+        "year": 2026, "month": 7,
+        "rows": [{"team": "Team Watch NO", "pipeline_pct": 30, "manual_amount": 0, "forecast_total": 50000}],
+    })
+    assert r.status_code == 400
+
+
+def test_forecast_my_uden_teams_giver_tom_liste(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=[]))
+    r = client.get("/tools/forecast/my", params={"year": 2026, "month": 7})
+    assert r.status_code == 200
+    assert r.json()["rows"] == []
+
+
+def test_forecast_saelger_ser_kun_egne_raekker(client, make_user, auth_override, monkeypatch):
+    # Datalaget returnerer flere sælgere — /my må kun udlevere brugerens egen række
+    import moduler.modul_forcast.router as fc
+    monkeypatch.setattr(fc, "db_get_teams", lambda: [{"name": "Team Watch DK", "brand": ""}])
+    monkeypatch.setattr(fc, "db_forecast_data", lambda *a, **kw: (
+        {"Test Bruger": 100.0, "Anden Sælger": 999.0},  # hist_m1
+        {}, {}, {}, {}, {},
+    ))
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/my", params={"year": 2026, "month": 7})
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    assert [row["dimension_key"] for row in rows] == ["Test Bruger"]
+    assert rows[0]["team"] == "Team Watch DK"
+
+
+def test_forecast_overview_viser_kun_ansvarlige_teams(client, make_user, auth_override, monkeypatch):
+    # Manager med team-dataadgang begrænset til ét team ser kun dét team
+    import moduler.modul_forcast.router as fc
+    monkeypatch.setattr(fc, "db_get_teams", lambda: [
+        {"name": "Team Watch DK", "brand": ""},
+        {"name": "Team Watch NO", "brand": ""},
+    ])
+    monkeypatch.setattr(fc, "db_active_team_members", lambda names: {n: ["Sælger A"] for n in names})
+    monkeypatch.setattr(fc, "db_get_reviews", lambda y, m, names: {})
+    monkeypatch.setattr(fc, "db_forecast_data", lambda *a, **kw: ({}, {}, {}, {}, {}, {}))
+    auth_override(make_user(role="sales_manager", data_teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/overview", params={"year": 2026, "month": 7})
+    assert r.status_code == 200
+    assert [t["team"] for t in r.json()["teams"]] == ["Team Watch DK"]
+
+
+def test_forecast_reminder_vises_ikke_for_manager(client, make_user, auth_override):
+    auth_override(make_user(role="sales_manager", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/reminder")
+    assert r.status_code == 200
+    assert r.json()["show"] is False
+
+
+def test_forecast_nav_saelger_ser_forecast_men_ikke_budget(make_user):
+    from nav_utils import CATEGORIES, filter_categories
+    cats = filter_categories(CATEGORIES, make_user(role="salesperson", teams=["Team Watch DK"]))
+    salesops = next((c for c in cats if c["id"] == "sales-operations"), None)
+    assert salesops is not None
+    item_ids = {i["id"] for i in salesops["items"]}
+    assert "forecast-tool" in item_ids
+    assert "budget-upload-tool" not in item_ids
+
+
+# ---------------------------------------------------------------------------
 # Søge-API
 # ---------------------------------------------------------------------------
 

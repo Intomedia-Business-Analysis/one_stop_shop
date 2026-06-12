@@ -41,21 +41,70 @@ from db import get_conn  # noqa: E402,F401
 
 
 def ensure_schema():
+    """Migrér HubForecasts til den team-bevidste model og opret review-tabellen.
+
+    Hvert statement kører separat og fejler blødt, så en delvis migreret
+    database aldrig vælter opstarten — men fejlen skal i loggen.
+    """
+    statements = [
+        # Legacy-kolonne fra tidligere version
+        """IF NOT EXISTS (
+               SELECT * FROM sys.columns
+               WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'adjustment_pct'
+           )
+           ALTER TABLE HubForecasts ADD adjustment_pct DECIMAL(5,2) NULL""",
+        # team-kolonne: del af den unikke nøgle, så et sælger-forecast gemmes
+        # pr. team i stedet for at overskrive på tværs af teams
+        """IF NOT EXISTS (
+               SELECT * FROM sys.columns
+               WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'team'
+           )
+           ALTER TABLE HubForecasts ADD team NVARCHAR(100) NOT NULL
+           CONSTRAINT DF_HubForecasts_team DEFAULT ''""",
+        # Backfill: på team-niveau ER dimension_key teamnavnet
+        """UPDATE HubForecasts SET team = dimension_key
+           WHERE level = 'team' AND team = ''""",
+        # Udskift den gamle unikke nøgle (uden team) med den team-bevidste
+        """IF EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='UQ_HubForecasts_Key' AND object_id = OBJECT_ID('HubForecasts')
+           )
+           ALTER TABLE HubForecasts DROP CONSTRAINT UQ_HubForecasts_Key""",
+        """IF NOT EXISTS (
+               SELECT * FROM sys.indexes
+               WHERE name='UQ_HubForecasts_TeamKey' AND object_id = OBJECT_ID('HubForecasts')
+           )
+           ALTER TABLE HubForecasts
+           ADD CONSTRAINT UQ_HubForecasts_TeamKey
+           UNIQUE (forecast_year, forecast_month, level, dimension_key, team)""",
+        # Managerens vurdering af det samlede forecast pr. team
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecastReviews' AND xtype='U')
+           CREATE TABLE HubForecastReviews (
+               id              INT IDENTITY(1,1) PRIMARY KEY,
+               forecast_year   INT            NOT NULL,
+               forecast_month  INT            NOT NULL,
+               team            NVARCHAR(100)  NOT NULL,
+               manager_amount  DECIMAL(18,2)  NOT NULL DEFAULT 0.00,
+               comment         NVARCHAR(1000) NULL,
+               created_by      NVARCHAR(100)  NOT NULL,
+               created_at      DATETIME       DEFAULT GETDATE(),
+               updated_at      DATETIME       DEFAULT GETDATE(),
+               CONSTRAINT UQ_HubForecastReviews UNIQUE (forecast_year, forecast_month, team)
+           )""",
+    ]
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("""
-            IF NOT EXISTS (
-                SELECT * FROM sys.columns
-                WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'adjustment_pct'
-            )
-            ALTER TABLE HubForecasts ADD adjustment_pct DECIMAL(5,2) NULL
-        """)
-        conn.commit()
+        for sql in statements:
+            try:
+                cur.execute(sql)
+                conn.commit()
+            except Exception:
+                logger.warning("ensure_schema: statement fejlede:\n%s", sql, exc_info=True)
+                conn.rollback()
         conn.close()
     except Exception:
-        # Skemaopdatering må ikke vælte opstarten — men fejlen skal i loggen
-        logger.warning("ensure_schema fejlede — adjustment_pct-kolonnen kunne ikke sikres", exc_info=True)
+        logger.warning("ensure_schema fejlede — forecast-skemaet kunne ikke sikres", exc_info=True)
 
 
 def build_team_filter(team: str | None, team_brand: str | None):
@@ -84,41 +133,6 @@ def build_team_filter(team: str | None, team_brand: str | None):
 
     site_clause = f"AND [sites] IN {sites_ph}"
     return site_clause, site_list, owner_clause, owner_params
-
-
-def db_team_owner_names(team_names: list) -> set:
-    """Sælgernavne knyttet til de angivne teams — via aktivt holdmedlemskab,
-    sælgerbudget eller deals' team-felt.
-
-    Bruges til team-dataadgang: en team-begrænset bruger må kun se og gemme
-    forecasts på sælger-niveau for sælgere i sine tilladte teams.
-    """
-    if not team_names:
-        return set()
-    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute(f"""
-            SELECT u.name
-            FROM   HubUsers u
-            JOIN   TeamMemberships tm ON tm.user_id = u.id
-            JOIN   Teams t ON t.id = tm.team_id
-            WHERE  t.name IN {ph}
-              AND  (tm.end_date IS NULL OR tm.end_date >= GETDATE())
-            UNION
-            SELECT [Owner] FROM [dbo].[SalespersonBudget] WHERE [Team] IN {ph}
-            UNION
-            SELECT DISTINCT [owner_name] FROM [dbo].[PipedriveDeals]
-            WHERE [team] IN {ph} AND [owner_name] IS NOT NULL
-        """, tuple(team_names) * 3)
-        names = {r[0] for r in cur.fetchall() if r[0]}
-        conn.close()
-        return names
-    except Exception:
-        # Adgangsfiltrering: tom mængde = fail-closed (brugeren ser ingen fremmede rækker)
-        logger.exception("db_team_owner_names fejlede (teams=%s)", team_names)
-        return set()
 
 
 def db_get_teams():
@@ -591,45 +605,174 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         budgets = {r["dimension_key"]: float(r["budget"] or 0) for r in cur.fetchall()}
 
     # ── Q5: Gemte forecasts ────────────────────────────────────────────────
-    cur.execute("""
-        SELECT dimension_key, pipeline_pct, adjustment_pct, manual_amount, forecast_amount
-        FROM [dbo].[HubForecasts]
-        WHERE forecast_year = %s AND forecast_month = %s AND level = %s
-    """, (year, month, level))
-    saved = {r["dimension_key"]: r for r in cur.fetchall()}
+    if level == "saelger" and team:
+        # Team-bevidst: kun forecasts gemt for netop dette team. Legacy-rækker
+        # (team='') vises som fallback indtil sælgeren gemmer sit eget.
+        cur.execute("""
+            SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
+                   forecast_amount, created_by, updated_at, created_at
+            FROM [dbo].[HubForecasts]
+            WHERE forecast_year = %s AND forecast_month = %s AND level = %s
+              AND team IN (%s, '')
+        """, (year, month, level, team))
+        saved = {}
+        for r in cur.fetchall():
+            key = r["dimension_key"]
+            if key not in saved or r["team"] == team:
+                saved[key] = r
+    else:
+        cur.execute("""
+            SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
+                   forecast_amount, created_by, updated_at, created_at
+            FROM [dbo].[HubForecasts]
+            WHERE forecast_year = %s AND forecast_month = %s AND level = %s
+        """, (year, month, level))
+        saved = {r["dimension_key"]: r for r in cur.fetchall()}
 
     conn.close()
     return hist_m1, hist_m2, pipe, activation, budgets, saved
 
 
-def db_forecast_save(year: int, month: int, level: str, rows: list, created_by: str):
+def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
+    """Gem sælgerens eget forecast — én række pr. team, så forecasts på tværs
+    af teams aldrig overskriver hinanden.
+
+    Returnerer (saved_count, updated_teams) hvor updated_teams er de teams,
+    hvor et eksisterende forecast blev erstattet.
+    """
     saved_count = 0
+    updated_teams = []
     conn = get_conn()
     cur = conn.cursor()
     for row in rows:
-        dim_key        = str(row.get("dimension_key", "")).strip()
-        pipeline_pct   = float(row.get("pipeline_pct",   30.0))
-        adjustment_pct = float(row.get("adjustment_pct",  0.0))
-        manual_amount  = float(row.get("manual_amount",   0.0))
-        forecast_amt   = float(row.get("forecast_total",  0.0))
+        team          = str(row.get("team", "")).strip()
+        pipeline_pct  = float(row.get("pipeline_pct",  30.0))
+        manual_amount = float(row.get("manual_amount",  0.0))
+        forecast_amt  = float(row.get("forecast_total", 0.0))
 
-        if not dim_key:
+        if not team:
             continue
 
         cur.execute("""
             DELETE FROM [dbo].[HubForecasts]
-            WHERE forecast_year=%s AND forecast_month=%s AND level=%s AND dimension_key=%s
-        """, (year, month, level, dim_key))
+            WHERE forecast_year=%s AND forecast_month=%s AND level='saelger'
+              AND dimension_key=%s AND team=%s
+        """, (year, month, owner, team))
+        if cur.rowcount:
+            updated_teams.append(team)
 
         cur.execute("""
             INSERT INTO [dbo].[HubForecasts]
-                (forecast_year, forecast_month, level, dimension_key,
+                (forecast_year, forecast_month, level, dimension_key, team,
                  pipeline_pct, adjustment_pct, manual_amount, forecast_amount, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (year, month, level, dim_key,
-              pipeline_pct, adjustment_pct, manual_amount, forecast_amt, created_by))
+            VALUES (%s, %s, 'saelger', %s, %s, %s, 0, %s, %s, %s)
+        """, (year, month, owner, team,
+              pipeline_pct, manual_amount, forecast_amt, owner))
         saved_count += 1
 
     conn.commit()
     conn.close()
-    return saved_count
+    return saved_count, updated_teams
+
+
+def db_active_team_members(team_names: list) -> dict:
+    """{teamnavn: [sælgernavne]} for aktive holdmedlemskaber i dag."""
+    if not team_names:
+        return {}
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(f"""
+        SELECT t.name AS team, u.name AS member
+        FROM   TeamMemberships tm
+        JOIN   Teams t    ON t.id = tm.team_id
+        JOIN   HubUsers u ON u.id = tm.user_id
+        WHERE  t.name IN {ph}
+          AND  tm.start_date <= %s
+          AND  (tm.end_date IS NULL OR tm.end_date >= %s)
+        ORDER BY u.name
+    """, tuple(team_names) + (today, today))
+    members: dict[str, list] = {}
+    for r in cur.fetchall():
+        # DISTINCT pr. team: flere aktive medlemskabsrækker må ikke give
+        # samme sælger to gange i overblikket
+        team_list = members.setdefault(r["team"], [])
+        if r["member"] not in team_list:
+            team_list.append(r["member"])
+    conn.close()
+    return members
+
+
+def db_get_reviews(year: int, month: int, team_names: list) -> dict:
+    """{teamnavn: review-række} for managerens gemte vurderinger."""
+    if not team_names:
+        return {}
+    ph = "(" + ",".join(["%s"] * len(team_names)) + ")"
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(f"""
+        SELECT team, manager_amount, comment, created_by, updated_at
+        FROM [dbo].[HubForecastReviews]
+        WHERE forecast_year = %s AND forecast_month = %s AND team IN {ph}
+    """, (year, month) + tuple(team_names))
+    reviews = {r["team"]: r for r in cur.fetchall()}
+    conn.close()
+    return reviews
+
+
+def db_review_save(year: int, month: int, team: str, amount: float, comment: str, created_by: str):
+    """Gem managerens vurdering af team-forecastet.
+
+    Managerens bud er det officielle team-tal: udover review-tabellen
+    upsertes level='team'-rækken i HubForecasts, som Afdelingsleder-
+    dashboardet (modul_perf) læser fra.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE [dbo].[HubForecastReviews]
+        SET manager_amount=%s, comment=%s, created_by=%s, updated_at=GETDATE()
+        WHERE forecast_year=%s AND forecast_month=%s AND team=%s
+    """, (amount, comment, created_by, year, month, team))
+    if not cur.rowcount:
+        cur.execute("""
+            INSERT INTO [dbo].[HubForecastReviews]
+                (forecast_year, forecast_month, team, manager_amount, comment, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (year, month, team, amount, comment, created_by))
+
+    cur.execute("""
+        DELETE FROM [dbo].[HubForecasts]
+        WHERE forecast_year=%s AND forecast_month=%s AND level='team'
+          AND dimension_key=%s
+    """, (year, month, team))
+    cur.execute("""
+        INSERT INTO [dbo].[HubForecasts]
+            (forecast_year, forecast_month, level, dimension_key, team,
+             pipeline_pct, adjustment_pct, manual_amount, forecast_amount, created_by)
+        VALUES (%s, %s, 'team', %s, %s, 0, 0, 0, %s, %s)
+    """, (year, month, team, team, amount, created_by))
+
+    conn.commit()
+    conn.close()
+
+
+def db_missing_forecast_teams(owner: str, teams: list, year: int, month: int) -> list:
+    """Teams hvor sælgeren endnu ikke har gemt forecast for den givne måned."""
+    if not teams:
+        return []
+    ph = "(" + ",".join(["%s"] * len(teams)) + ")"
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT DISTINCT team
+        FROM [dbo].[HubForecasts]
+        WHERE forecast_year=%s AND forecast_month=%s AND level='saelger'
+          AND dimension_key=%s AND team IN {ph}
+    """, (year, month, owner) + tuple(teams))
+    filled = {r[0] for r in cur.fetchall()}
+    conn.close()
+    return [t for t in teams if t not in filled]
