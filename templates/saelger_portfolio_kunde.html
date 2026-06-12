@@ -22,6 +22,7 @@
 .kpi-value.neg{color:#B32E45}
 .kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
 
+.v-table-wrap{overflow-x:auto}
 .v-table{width:100%;border-collapse:collapse;font-size:12px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
@@ -31,7 +32,7 @@
 .v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
-.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 .v-table .ops-value{color:#B32E45}
 
@@ -152,6 +153,7 @@
               <button class="filter-reset" onclick="resetFilters()">Nulstil</button>
               <span class="deal-filter-count" id="filter-count"></span>
             </div>
+            <div class="v-table-wrap">
             <table class="v-table">
               <thead>
                 <tr>
@@ -168,6 +170,7 @@
                 <tr><td colspan="7" class="empty">Henter…</td></tr>
               </tbody>
             </table>
+            </div>
           </div>
 
         </div>
