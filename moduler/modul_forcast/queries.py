@@ -35,6 +35,14 @@ ADVERTISING_TEAMS: dict[str, str] = {
     "Team Banner": "banner",
 }
 
+# Banner/job-deals er autoritative i jppol_advertising-accounten. De gamle
+# accounts (monitor, watch_medier) indeholder spejlede kopier af de samme
+# deals, så uden account-filter dobbelt-tælles de. Samme konvention som
+# modul_perf og modul_banner_job. Watch NO har sit eget advertising-account
+# uden spejlinger og skal med i "alle teams"-visningen.
+ADVERTISING_ACCOUNT = "jppol_advertising"
+ADVERTISING_ACCOUNTS = ("jppol_advertising", "watch_no_advertising")
+
 
 # Fælles pooled DB-forbindelse — se db.py.
 from db import get_conn  # noqa: E402,F401
@@ -196,6 +204,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [owner_name], YEAR([service_activation_date])
@@ -207,11 +216,12 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [owner_name], YEAR([service_activation_date])
-            """, (adv_pipeline, team, date_m1[0], date_m1[1],
-                  adv_pipeline, team, date_m2[0], date_m2[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_m1[0], date_m1[1],
+                  adv_pipeline, team, ADVERTISING_ACCOUNT, date_m2[0], date_m2[1]))
         else:
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
@@ -257,6 +267,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team], YEAR([service_activation_date])
                 UNION ALL
@@ -267,10 +278,11 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team], YEAR([service_activation_date])
-            """, (adv_pipeline, team, date_m1[0], date_m1[1],
-                  adv_pipeline, team, date_m2[0], date_m2[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_m1[0], date_m1[1],
+                  adv_pipeline, team, ADVERTISING_ACCOUNT, date_m2[0], date_m2[1]))
         elif team:
             cur.execute("""
                 SELECT [team] AS dimension_key,
@@ -309,7 +321,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND [service_activation_date] BETWEEN %s AND %s
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
-                        OR [pipeline_name] IN ('job', 'banner')
+                        OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
                       )
                 GROUP BY [team], YEAR([service_activation_date])
                 UNION ALL
@@ -322,7 +334,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND [service_activation_date] BETWEEN %s AND %s
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
-                        OR [pipeline_name] IN ('job', 'banner')
+                        OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
                       )
                 GROUP BY [team], YEAR([service_activation_date])
             """, (date_m1[0], date_m1[1], date_m2[0], date_m2[1]))
@@ -380,10 +392,11 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [owner_name]
-            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         else:
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
@@ -410,9 +423,10 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team]
-            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         elif team:
             cur.execute("""
                 SELECT [team] AS dimension_key,
@@ -436,7 +450,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND [service_activation_date] BETWEEN %s AND %s
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
-                        OR [pipeline_name] IN ('job', 'banner')
+                        OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
                       )
                 GROUP BY [team]
             """, (date_cur[0], date_cur[1]))
@@ -470,11 +484,12 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'open'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [owner_name] IS NOT NULL
                   AND [value_dkk] <> '0'
                   AND [expected_close_date] BETWEEN %s AND %s
                 GROUP BY [owner_name]
-            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         else:
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
@@ -502,10 +517,11 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 WHERE [status] = 'open'
                   AND [pipeline_name] = %s
                   AND [team] = %s
+                  AND [account] = %s
                   AND [value_dkk] <> '0'
                   AND [expected_close_date] BETWEEN %s AND %s
                 GROUP BY [team]
-            """, (adv_pipeline, team, date_cur[0], date_cur[1]))
+            """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         elif team:
             cur.execute("""
                 SELECT [team] AS dimension_key,
@@ -531,7 +547,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND [expected_close_date] BETWEEN %s AND %s
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
-                        OR [pipeline_name] IN ('job', 'banner')
+                        OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
                       )
                 GROUP BY [team]
             """, (date_cur[0], date_cur[1]))
