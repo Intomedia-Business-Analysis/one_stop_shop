@@ -245,6 +245,27 @@ const FIXED_BRAND_COLORS = {
 // Fallback til brands uden fast farve — dæmpede jordtoner i samme stil
 const COLORS = ['#C9C1B5','#8A7E6B','#5C5346','#A89A7C','#776A58'];
 
+// Kundeniveau: PipeDrive_ACV har én række pr. (kunde, site), så kort der
+// tæller KUNDER skal arbejde på en org-dedupliceret liste. Debutår = kundens
+// tidligste first_activation på tværs af sites (med dét sites brand);
+// total_acv = summen af alle kundens site-rækker.
+const kunderUnik = (() => {
+  const byOrg = {};
+  kunder.forEach(k => {
+    const id = k.org_id ?? k.org_name;
+    if (!byOrg[id]) {
+      byOrg[id] = { ...k, total_acv: 0 };
+    }
+    const g = byOrg[id];
+    g.total_acv += k.acv_value_dkk || 0;
+    if (k.first_activation && (!g.first_activation || k.first_activation < g.first_activation)) {
+      g.first_activation = k.first_activation;
+      g.brand = k.brand;
+    }
+  });
+  return Object.values(byOrg);
+})();
+
 // Fælles brand→farve mapping: fast farve hvor den findes, ellers fallback
 // tildelt efter ACV-sorteret rækkefølge (samme som donut)
 const BRAND_COLOR = {};
@@ -392,12 +413,14 @@ function toggleRecencyFilter(key) {
 }
 
 function renderRecencyTimeline() {
+  // Tæller pr. KUNDE (org-deduplikeret) — last_deal_date er org-niveau,
+  // og total_acv dækker alle kundens sites, så beløbene er uændret korrekte.
   const byBucket = {};
-  kunder.forEach(k => {
+  kunderUnik.forEach(k => {
     const b = recencyBucket(k.last_deal_date);
     if (!byBucket[b]) byBucket[b] = { count: 0, acv: 0 };
     byBucket[b].count += 1;
-    byBucket[b].acv   += k.acv_value_dkk || 0;
+    byBucket[b].acv   += k.total_acv;
   });
   document.getElementById('recency-track').innerHTML = RECENCY_BUCKETS.map(b => {
     const d = byBucket[b.key] || { count: 0, acv: 0 };
@@ -416,10 +439,12 @@ function renderRecencyTimeline() {
 
 // ── Graf 1: Stablet søjlediagram — nye kunder pr. år pr. brand ──────────
 function renderBarChart() {
-  // Saml alle brands og år
-  const allBrands = [...new Set(kunder.map(k => k.brand).filter(Boolean))].sort();
+  // Tæller pr. KUNDE (org-deduplikeret): debutår = tidligste aktivering,
+  // brand = det site kunden debuterede på. Site-tilkøb i senere år tæller
+  // altså ikke som ny kunde igen.
+  const allBrands = [...new Set(kunderUnik.map(k => k.brand).filter(Boolean))].sort();
   const byYearBrand = {};
-  kunder.forEach(k => {
+  kunderUnik.forEach(k => {
     const yr = (k.first_activation || '').slice(0, 4);
     if (!yr || yr < '2015') return;
     if (!byYearBrand[yr]) byYearBrand[yr] = {};
@@ -598,8 +623,12 @@ function render() {
     th.classList.toggle('desc', th.dataset.col === sortCol && sortDir === 'desc');
   });
 
+  // "Kunder" = unikke organisationer; tabellen viser én række pr. (kunde, site)
+  const uniqShown = new Set(sorted.map(k => k.org_id ?? k.org_name)).size;
   document.getElementById('filter-count').textContent =
-    sorted.length < kunder.length ? `Viser ${sorted.length} af ${kunder.length} kunder` : `${kunder.length} kunder`;
+    sorted.length < kunder.length
+      ? `Viser ${uniqShown} af ${kunderUnik.length} kunder (${sorted.length} rækker)`
+      : `${kunderUnik.length} kunder (${kunder.length} rækker)`;
 
   const tbody = document.getElementById('kunde-tbody');
   if (!sorted.length) {

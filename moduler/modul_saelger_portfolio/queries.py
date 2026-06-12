@@ -123,8 +123,6 @@ def get_growth_timeline(owner_name: str) -> list:
             SUM(CASE WHEN d.pipeline_name IN ({cancel_ph})
                 THEN ABS({value_expr}) ELSE 0 END) AS ops_dkk
         FROM [dbo].[PipedriveDeals] d
-        JOIN [dbo].[PipeDrive_ACV] a
-          ON a.org_id = d.org_id AND a.owner_name = d.owner_name
         WHERE d.owner_name = %s
           AND d.status = 'won'
           AND d.pipeline_name <> 'Web Sale'
@@ -133,7 +131,14 @@ def get_growth_timeline(owner_name: str) -> list:
           AND UPPER(LTRIM(d.title)) NOT LIKE 'ADM %%'
           AND COALESCE(d.deal_type,'') <> 'Rapport'
           AND {act_date} IS NOT NULL
-          AND a.first_activation < DATEFROMPARTS(YEAR({act_date}), 1, 1)
+          -- EXISTS i stedet for JOIN: PipeDrive_ACV har én række pr. site,
+          -- så en JOIN ville tælle samme deal én gang pr. kundens sites.
+          AND EXISTS (
+              SELECT 1 FROM [dbo].[PipeDrive_ACV] a
+              WHERE a.org_id = d.org_id
+                AND a.owner_name = d.owner_name
+                AND a.first_activation < DATEFROMPARTS(YEAR({act_date}), 1, 1)
+          )
         GROUP BY YEAR({act_date}), MONTH({act_date})
         ORDER BY yr, mth
     """, tuple(CANCELLATION_PIPELINES) * 3 + (owner_name,))
