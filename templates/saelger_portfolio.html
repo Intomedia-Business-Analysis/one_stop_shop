@@ -39,8 +39,16 @@
 
   /* Seneste deal-timeline */
   .recency-axis{display:flex;justify-content:space-between;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px}
-  .recency-track{display:flex;gap:3px}
-  .recency-seg{flex:1;min-width:0;cursor:pointer;border-radius:var(--r-sm);padding:10px 8px;text-align:center;border:2px solid transparent;transition:transform .15s}
+  /* padding giver plads til den valgte boks' markeringsring (box-shadow),
+     som overflow-x ellers klipper af */
+  .recency-track{display:flex;gap:3px;overflow-x:auto;padding:7px 6px;margin:-7px -6px}
+
+  /* Klikbare kunderækker — fører til kundens deal-historik */
+  .v-table tbody tr.clickable{cursor:pointer}
+  .v-table tbody tr.clickable td:first-child{color:var(--green);font-weight:600}
+  /* min-width: tomme/små intervaller skal stadig kunne læses — bredden er
+     ellers proportional med antal kunder (flex-grow sættes inline) */
+  .recency-seg{flex:1;min-width:64px;cursor:pointer;border-radius:var(--r-sm);padding:10px 8px;text-align:center;border:2px solid transparent;transition:transform .15s}
   .recency-seg:hover{transform:translateY(-2px)}
   /* Dobbelt ring (hvidt mellemrum + mørk kant) er synlig uanset boksens farve */
   .recency-seg.active{box-shadow:0 0 0 3px var(--surface,#fff),0 0 0 5px var(--ink,#2B2A27);transform:translateY(-2px)}
@@ -132,7 +140,7 @@
           <div class="bar-chart" id="growth-chart"></div>
           <div style="display:flex;gap:16px;margin-top:12px">
             <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#2B2A27"></div>Vækst</div>
-            <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#B06A52"></div>Opsigelser</div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#B32E45"></div>Opsigelser</div>
           </div>
           <div class="growth-stats" id="growth-stats"></div>
         </div>
@@ -140,9 +148,15 @@
         <!-- Grafer -->
         <div class="dash-grid">
 
-          <!-- Graf 1: Kundeudvikling over tid -->
+          <!-- Graf 1: Kundeudvikling over tid (porteføljen / skaffet af sælger) -->
           <div class="dash-card">
-            <div class="dash-card-title">Kundeudvikling — nye kunder pr. år</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+              <div class="dash-card-title" style="margin-bottom:0" id="anc-title" title="Hvornår porteføljens kunder først blev aktiveret — uanset hvem der dengang ejede kunden. En overtaget portefølje viser derfor historik fra før sælgerens ansættelse.">Kundernes startår — antal kunder pr. år</div>
+              <div class="toggle-group">
+                <button class="toggle-btn active" id="anc-mode-all" onclick="setAncMode('all')">Porteføljen</button>
+                <button class="toggle-btn" id="anc-mode-own" onclick="setAncMode('own')">Skaffet af sælger</button>
+              </div>
+            </div>
             <div class="bar-chart" id="bar-chart"></div>
             <div id="bar-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
           </div>
@@ -224,6 +238,7 @@
 <script>
 const kunder = {{ kunder | tojson }};
 const growthTimeline = {{ growth_timeline | tojson }};
+const TARGET_OWNER = {{ target_owner | tojson }};
 const CURRENT_YEAR = {{ current_year }};
 const CURRENT_MONTH = new Date().getMonth() + 1;
 let sortCol = 'acv_value_dkk';
@@ -254,6 +269,7 @@ const kunderUnik = (() => {
   kunder.forEach(k => {
     const id = k.org_id ?? k.org_name;
     if (!byOrg[id]) {
+      // first_deal_owner er org-niveau (ens på alle kundens rækker)
       byOrg[id] = { ...k, total_acv: 0 };
     }
     const g = byOrg[id];
@@ -297,6 +313,12 @@ function fmtKrShort(v) {
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+// Visningsnavne for brands: ACV-brandet "Watch DK" rummer både DK- og
+// Int-kunder (og "Finans" ligeså) — navnet på skærmen skal ikke lyve.
+// Dataværdierne er uændrede, så farver, filtre og teamregel virker som før.
+const BRAND_DISPLAY = { 'Watch DK': 'Watch Medier', 'Finans': 'FINANS' };
+function displayBrand(b) { return BRAND_DISPLAY[b] || b || ''; }
 // Mere end 12 måneder siden seneste deal (eller aldrig) → markeres i tabellen
 function isStale(dateStr) {
   if (!dateStr) return true;
@@ -348,17 +370,19 @@ function renderGrowthChart() {
   }
   const max = Math.max(...wonVals, ...opsVals, 1);
   const CHART_H = 140;
+  // Opsigelser i RØD (ikke terracotta): terracotta er Watch NO's brandfarve,
+  // og de to må ikke kunne forveksles på samme side.
   const bar = (v, color) => {
     const h = v === 0 ? 2 : Math.max(Math.round((v / max) * CHART_H), 4);
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;min-width:0">
-      <div class="bar-value" style="font-size:9px;color:${color === '#B06A52' ? '#B06A52' : 'var(--ink)'}">${v !== 0 ? fmtKrShort(v) : ''}</div>
+      <div class="bar-value" style="font-size:9px;color:${color === '#B32E45' ? '#B32E45' : 'var(--ink)'}">${v !== 0 ? fmtKrShort(v) : ''}</div>
       <div style="height:${h}px;width:100%;background:${color};border-radius:3px 3px 0 0"></div>
     </div>`;
   };
   document.getElementById('growth-chart').innerHTML = labels.length ? labels.map((lbl, i) => `
     <div class="bar-col" title="${lbl} — Vækst: ${fmtKr(wonVals[i])} kr. / Opsigelser: ${fmtKr(opsVals[i])} kr. / Netto: ${fmtKr(wonVals[i] - opsVals[i])} kr.">
       <div style="display:flex;align-items:flex-end;gap:2px;width:100%;height:${CHART_H + 18}px">
-        ${bar(wonVals[i], '#2B2A27')}${bar(opsVals[i], '#B06A52')}
+        ${bar(wonVals[i], '#2B2A27')}${bar(opsVals[i], '#B32E45')}
       </div>
       <div class="bar-label">${lbl}</div>
     </div>`).join('') : '<div style="color:var(--ink-4);font-style:italic;font-size:12px">Ingen vækst-deals fundet.</div>';
@@ -377,12 +401,21 @@ function renderGrowthStats() {
   const won   = rows.reduce((s, r) => s + r.won_dkk, 0);
   const ops   = rows.reduce((s, r) => s + r.ops_dkk, 0);
   const deals = rows.reduce((s, r) => s + r.deals, 0);
-  const suffix = selYear === CURRENT_YEAR ? ' (YTD)' : '';
+  // Selvforklarende periode i stedet for "(YTD)": KPI'erne tæller kun til og
+  // med indeværende måned, mens grafens søjle viser hele året — det skel har
+  // vist sig let at misforstå.
+  const mthLbl = MONTH_LABELS[CURRENT_MONTH - 1].toLowerCase();
+  const suffix = selYear === CURRENT_YEAR
+    ? (CURRENT_MONTH === 1 ? ` (${mthLbl})` : ` (jan–${mthLbl})`)
+    : '';
+  const kpiTitle = selYear === CURRENT_YEAR
+    ? ` title="Tæller deals aktiveret 1/1–${new Date().getDate()}/${CURRENT_MONTH}. Grafens ${selYear}-søjle viser hele året, inkl. deals der først aktiveres senere."`
+    : '';
   document.getElementById('growth-stats').innerHTML = `
-    <div><div class="growth-stat-val">${fmtKr(won)} kr.</div><div class="growth-stat-label">Vækst ${selYear}${suffix}</div></div>
-    <div><div class="growth-stat-val" style="color:#B06A52">−${fmtKr(ops)} kr.</div><div class="growth-stat-label">Opsigelser${suffix}</div></div>
-    <div><div class="growth-stat-val">${fmtKr(won - ops)} kr.</div><div class="growth-stat-label">Netto${suffix}</div></div>
-    <div><div class="growth-stat-val">${deals}</div><div class="growth-stat-label">Deals på eksist. kunder</div></div>`;
+    <div${kpiTitle}><div class="growth-stat-val">${fmtKr(won)} kr.</div><div class="growth-stat-label">Vækst ${selYear}${suffix}</div></div>
+    <div${kpiTitle}><div class="growth-stat-val" style="color:#B32E45">−${fmtKr(ops)} kr.</div><div class="growth-stat-label">Opsigelser${suffix}</div></div>
+    <div${kpiTitle}><div class="growth-stat-val">${fmtKr(won - ops)} kr.</div><div class="growth-stat-label">Netto${suffix}</div></div>
+    <div${kpiTitle}><div class="growth-stat-val">${deals}</div><div class="growth-stat-label">Deals på eksist. kunder${suffix}</div></div>`;
 }
 
 // ── Timeline: hvornår blev der sidst lavet en deal pr. kunde ────────────
@@ -437,20 +470,49 @@ function renderRecencyTimeline() {
   }).join('');
 }
 
-// ── Graf 1: Stablet søjlediagram — nye kunder pr. år pr. brand ──────────
+// ── Graf 1: Stablet søjlediagram — kunder pr. aktiveringsår pr. brand ───
+// To visninger: hele porteføljen (anciennitet) eller kun kunder hvis
+// ALLERFØRSTE vundne deal blev lukket af den viste sælger ("skaffet af").
+let ancMode = 'all';
+
+function setAncMode(mode) {
+  ancMode = mode;
+  document.getElementById('anc-mode-all').classList.toggle('active', mode === 'all');
+  document.getElementById('anc-mode-own').classList.toggle('active', mode === 'own');
+  const title = document.getElementById('anc-title');
+  if (mode === 'own') {
+    title.textContent = 'Skaffet af sælger — antal kunder pr. startår';
+    title.title = 'Kunder i porteføljen, hvis allerførste vundne deal blev lukket af den viste sælger — fordelt på kundens startår. Kunder skaffet via webshop eller af andre sælgere tæller ikke.';
+  } else {
+    title.textContent = 'Kundernes startår — antal kunder pr. år';
+    title.title = 'Hvornår porteføljens kunder først blev aktiveret — uanset hvem der dengang ejede kunden. En overtaget portefølje viser derfor historik fra før sælgerens ansættelse.';
+  }
+  renderBarChart();
+}
+
 function renderBarChart() {
   // Tæller pr. KUNDE (org-deduplikeret): debutår = tidligste aktivering,
   // brand = det site kunden debuterede på. Site-tilkøb i senere år tæller
   // altså ikke som ny kunde igen.
-  const allBrands = [...new Set(kunderUnik.map(k => k.brand).filter(Boolean))].sort();
+  const data = ancMode === 'own'
+    ? kunderUnik.filter(k => k.first_deal_owner === TARGET_OWNER)
+    : kunderUnik;
+  const allBrands = [...new Set(data.map(k => k.brand).filter(Boolean))].sort();
   const byYearBrand = {};
-  kunderUnik.forEach(k => {
+  data.forEach(k => {
     const yr = (k.first_activation || '').slice(0, 4);
     if (!yr || yr < '2015') return;
     if (!byYearBrand[yr]) byYearBrand[yr] = {};
     const b = k.brand || 'Ukendt';
     byYearBrand[yr][b] = (byYearBrand[yr][b] || 0) + 1;
   });
+
+  if (!Object.keys(byYearBrand).length) {
+    document.getElementById('bar-chart').innerHTML =
+      '<div style="color:var(--ink-4);font-style:italic;font-size:12px;align-self:center;width:100%;text-align:center">Ingen kunder i porteføljen er skaffet af sælgeren selv.</div>';
+    document.getElementById('bar-legend').innerHTML = '';
+    return;
+  }
   const years  = Object.keys(byYearBrand).sort();
   const totals = years.map(yr => Object.values(byYearBrand[yr]).reduce((s, v) => s + v, 0));
   const max    = Math.max(...totals, 1);
@@ -460,7 +522,7 @@ function renderBarChart() {
   const legendHtml = allBrands.map((b) => `
     <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3);white-space:nowrap">
       <div style="width:10px;height:10px;border-radius:2px;background:${BRAND_COLOR[b] || '#ccc'};flex-shrink:0"></div>
-      ${escHtml(b)}
+      ${escHtml(displayBrand(b))}
     </div>`).join('');
 
   const barsHtml = years.map((yr, yi) => {
@@ -470,7 +532,7 @@ function renderBarChart() {
       const count = byYearBrand[yr][b] || 0;
       if (!count) return '';
       const h = Math.round((count / total) * totalH);
-      return `<div style="width:100%;height:${h}px;background:${BRAND_COLOR[b] || '#ccc'}" title="${escHtml(b)}: ${count}"></div>`;
+      return `<div style="width:100%;height:${h}px;background:${BRAND_COLOR[b] || '#ccc'}" title="${escHtml(displayBrand(b))}: ${count}"></div>`;
     }).reverse().join('');
     return `<div class="bar-col">
       <div class="bar-value">${total}</div>
@@ -501,11 +563,21 @@ function renderDonut() {
   const cx = 90, cy = 90, rOuter = 72, rInner = 44;
   const GAP = 1.5; // grader mellemrum mellem segmenter
 
+  // Tom/nul-portefølje: undgå division med nul (NaN-vinkler tegner i stykker)
+  if (total <= 0) {
+    document.getElementById('donut-svg').innerHTML = '';
+    document.getElementById('donut-total').textContent = '0';
+    document.getElementById('donut-legend').innerHTML =
+      '<div style="color:var(--ink-4);font-style:italic;font-size:12px">Ingen ACV i porteføljen.</div>';
+    return;
+  }
+
   let startAngle = 0;
   let paths = '';
 
   entries.forEach(([brand, val], i) => {
-    const sweep = (val / total) * 360 - GAP;
+    // Mindste-sweep: andele under GAP'en ville ellers give negativt udsnit
+    const sweep = Math.max((val / total) * 360 - GAP, 0.5);
     const end   = startAngle + sweep;
     const color = BRAND_COLOR[brand] || COLORS[i % COLORS.length];
 
@@ -532,7 +604,7 @@ function renderDonut() {
     const pct = total > 0 ? Math.round((val / total) * 100) : 0;
     return `<div class="donut-legend-item">
       <div class="donut-legend-dot" style="background:${BRAND_COLOR[brand] || COLORS[i % COLORS.length]}"></div>
-      <span class="donut-legend-name" title="${escHtml(brand)}">${escHtml(brand)}</span>
+      <span class="donut-legend-name" title="${escHtml(displayBrand(brand))}">${escHtml(displayBrand(brand))}</span>
       <span class="donut-legend-pct">${pct}%</span>
       <span class="donut-legend-val">${fmtKrShort(val)}</span>
     </div>`;
@@ -546,8 +618,11 @@ function renderDonut() {
 // udelukker Finans, uanset hvad dealens team-felt siger.
 function teamMatch(k, team) {
   const t = team.toUpperCase();
-  if (t.includes('FINANS'))   return k.brand === 'Finans';
-  if (t.includes('WATCH DK')) return k.team === team && k.brand !== 'Finans';
+  if (t.includes('FINANS')) return k.brand === 'Finans';
+  // Gælder ALLE Watch-teams (DK, Int, NO, SE...): Finans-brand-kunder hører
+  // under FINANS-teamet, også når dealens team-tag siger et Watch-team —
+  // ellers tæller de med under begge filtre.
+  if (t.includes('WATCH'))  return k.team === team && k.brand !== 'Finans';
   return k.team === team;
 }
 
@@ -579,7 +654,7 @@ function updateFilterOptions() {
     if (current && !opts.includes(current)) opts.push(current);
     opts.sort();
     sel.innerHTML = `<option value="">${FILTER_ALL_LABELS[key]}</option>` +
-      opts.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+      opts.map(v => `<option value="${escHtml(v)}">${escHtml(key === 'brand' ? displayBrand(v) : v)}</option>`).join('');
     sel.value = current;
   });
 }
@@ -636,11 +711,11 @@ function render() {
     return;
   }
   tbody.innerHTML = sorted.map(k => `
-    <tr>
+    <tr ${k.org_id ? `class="clickable" title="Klik for at se kundens deal-historik" onclick="window.location='/tools/saelger-portfolio/kunde?org_id=${encodeURIComponent(k.org_id)}&owner=${encodeURIComponent(TARGET_OWNER)}'"` : ''}>
       <td>${escHtml(k.org_name)}</td>
       <td>${escHtml(k.team)}</td>
       <td>${escHtml(k.site)}</td>
-      <td>${escHtml(k.brand)}</td>
+      <td>${escHtml(displayBrand(k.brand))}</td>
       <td class="num">${fmtKr(k.acv_value_dkk)}</td>
       <td>${escHtml(k.first_activation)}</td>
       <td>${escHtml(k.last_activation)}</td>
