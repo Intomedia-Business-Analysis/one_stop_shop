@@ -20,6 +20,7 @@ BRAND_GROUP_LABELS = {
     "finans":     "FINANS DK",
     "watch_no":   "Watch NO",
     "watch_se":   "Watch SE",
+    "watch_de":   "Watch DE",
     "monitor":    "Monitor",
     "marketwire": "MarketWire",
 }
@@ -2076,14 +2077,31 @@ def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
     # har IKKE sites udfyldt og matcher i stedet på account='marketwire'.
     # Banner og Job er annonce-salg og matcher på account + pipeline
     # (samme regel som modul_banner_job).
+    # Advertising-deals (banner/job) kan have sites udfyldt og ville ellers
+    # tælle BÅDE i deres eget kort og i abonnementsbrandet — abonnements-
+    # brandene ekskluderer derfor advertising-accounts, så kortene er
+    # disjunkte og kan summeres.
+    _ADV_EXCLUDE = "AND COALESCE([account],'') NOT IN ('jppol_advertising','watch_no_advertising')"
+    # Watch Int og FINANS Int deler sites med DK-brandene og kendes KUN på
+    # dealens team-felt — de skilles ud i egne kort, og sites-kortene
+    # ekskluderer dem tilsvarende.
+    _INT_EXCLUDE = "AND COALESCE([team],'') NOT IN ('Team Watch Int','Team FINANS Int')"
     group_defs = []
-    for key in ("watch_dk", "finans", "watch_no", "watch_se", "monitor"):
+    for key in ("watch_dk", "finans", "watch_no", "watch_se", "watch_de", "monitor"):
         sites = BRAND_GROUPS[key]
         sites_ph = "(" + ",".join(["%s"] * len(sites)) + ")"
-        group_defs.append((key, BRAND_GROUP_LABELS[key], f"[sites] IN {sites_ph}", tuple(sites)))
+        group_defs.append((key, BRAND_GROUP_LABELS[key],
+                           f"[sites] IN {sites_ph} {_ADV_EXCLUDE} {_INT_EXCLUDE}", tuple(sites)))
+    group_defs.append(("watch_int",  "Watch Int",
+                       f"[team]='Team Watch Int' {_ADV_EXCLUDE} AND COALESCE([account],'')<>'marketwire'", ()))
+    group_defs.append(("finans_int", "FINANS Int",
+                       f"[team]='Team FINANS Int' {_ADV_EXCLUDE} AND COALESCE([account],'')<>'marketwire'", ()))
     group_defs.append(("marketwire", "MarketWire", "[account]='marketwire'", ()))
     group_defs.append(("banner", "Banner", "[account]='jppol_advertising' AND UPPER([pipeline_name])='BANNER'", ()))
     group_defs.append(("job",    "Job",    "[account]='jppol_advertising' AND UPPER([pipeline_name])='JOB'",    ()))
+    # NO-annoncesalg (banner+job på norske sites) har egen Pipedrive-account
+    # og eget kort — det må ikke gemme sig i Watch NO-abonnementskortet.
+    group_defs.append(("advertising_no", "Advertising NO", "[account]='watch_no_advertising'", ()))
 
     conn = get_conn()
     cur  = conn.cursor(as_dict=True)

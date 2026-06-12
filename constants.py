@@ -43,6 +43,7 @@ BRAND_GROUPS: dict[str, list[str]] = {
         "HandelsWatch NO", "Medier24 NO", "All Watch Sites NO",
     ],
     "watch_se": ["FinansWatch SE"],
+    "watch_de": ["FinanzBusiness"],
     "monitor": [
         "Seniormonitor", "Byrummonitor", "Idrætsmonitor", "Justitsmonitor",
         "Naturmonitor", "Socialmonitor", "Uddannelsesmonitor", "Klimamonitor",
