@@ -76,7 +76,7 @@ app.add_middleware(
 # SameSite=lax på session-cookien lukker det CSRF uden tokens i alle formularer.
 # Requests uden Origin/Referer (curl, scripts, gamle klienter) tillades.
 # ---------------------------------------------------------------------------
-from urllib.parse import urlparse  # noqa: E402
+from urllib.parse import quote, urlparse  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 
@@ -138,8 +138,29 @@ register_nav_globals(templates)
 # Exception handlers
 # ---------------------------------------------------------------------------
 
+def _safe_next_url(value) -> str | None:
+    """Validér et ?next=-redirect-mål fra login-flowet.
+
+    Kun relative stier på eget site accepteres — alt andet (absolutte URL'er,
+    schema-relative '//host', backslash-tricks) afvises, så login ikke kan
+    bruges som open redirect til fremmede sites.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    if not value.startswith("/") or value.startswith("//") or "\\" in value:
+        return None
+    return value
+
+
 @app.exception_handler(RequiresLoginException)
 async def requires_login_handler(request: Request, exc: RequiresLoginException):
+    # Bevar destinationen (sti + query) gennem login-rundturen, så fx en
+    # skærm-URL (/tools/rotation/screen/<id>) lander rigtigt efter login i
+    # stedet for at smide konfigurationen væk og ende på forsiden.
+    if request.method == "GET":
+        next_url = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        if _safe_next_url(next_url) and next_url != "/":
+            return RedirectResponse(url="/login?next=" + quote(next_url, safe=""), status_code=302)
     return RedirectResponse(url="/login", status_code=302)
 
 
@@ -178,16 +199,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
+    next_url = _safe_next_url(request.query_params.get("next"))
     if os.getenv("DEV_MODE") == "1":
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse(next_url or "/", status_code=302)
     user_id = request.session.get("user_id")
     if user_id:
         from auth import get_user_by_id
         if get_user_by_id(user_id):
-            return RedirectResponse("/", status_code=302)
+            return RedirectResponse(next_url or "/", status_code=302)
         # Forældet session (DB nede eller bruger slettet) — ryd op
         request.session.clear()
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None, "next": next_url})
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -196,13 +218,19 @@ async def login_post(request: Request):
     username = form.get("username", "").strip()
     password = form.get("password", "")
     user = authenticate_user(username, password)
+    next_url = _safe_next_url(form.get("next"))
     if not user:
         audit_log("login_afvist", request=request, username=username)
         return templates.TemplateResponse(request, "login.html", {
             "error": "Forkert brugernavn eller adgangskode",
+            "next": next_url,
         })
     request.session["user_id"] = user["id"]
     audit_log("login_ok", user=user, request=request)
+    if next_url:
+        # Man var på vej et bestemt sted hen (fx en konfigureret skærm-URL) —
+        # land dér i stedet for på forsiden.
+        return RedirectResponse(next_url, status_code=302)
     # Skærm-brugere lander direkte på rotationen — de skal kun se den.
     if user.get("role") == "screen":
         return RedirectResponse("/tools/rotation/", status_code=302)
