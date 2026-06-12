@@ -46,6 +46,9 @@
       <h1 class="page-title">Business Media Hub</h1>
       <p class="page-sub">Samlet adgang til alle tools, dashboards og rapporter på tværs af brands og afdelinger</p>
 
+      <!-- Forecast-påmindelse til sælgere (udfyldes via JS hvis relevant) -->
+      <div id="forecastReminder" style="display:none;background:#fdf3e0;border:1px solid #e3b85c;border-radius:10px;padding:14px 20px;margin-bottom:20px;font-size:13px;color:#7a5410;font-weight:600"></div>
+
       <!-- Stats -->
       <div class="stat-bar">
         <div class="stat">
@@ -280,6 +283,22 @@ function renderRecentList() {
 }
 
 renderRecentList();
+
+// ── Forecast-påmindelse til sælgere ──────────────────────────────
+(async function () {
+  try {
+    const r = await fetch('/tools/forecast/reminder');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.show) return;
+    const el = document.getElementById('forecastReminder');
+    el.innerHTML = '⚠ Du mangler at udfylde dit <a href="/tools/forecast/" style="color:inherit;text-decoration:underline">forecast</a> for '
+      + d.month_name.toLowerCase() + ' ' + d.year
+      + (d.missing_teams && d.missing_teams.length ? ' (' + d.missing_teams.join(', ') + ')' : '')
+      + ' — gem det inden måneden starter.';
+    el.style.display = 'block';
+  } catch (e) { /* påmindelsen må aldrig forstyrre forsiden */ }
+})();
 </script>
 
 </body>

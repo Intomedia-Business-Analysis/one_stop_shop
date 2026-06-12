@@ -28,15 +28,17 @@ CATEGORIES = [
         "description": "Budget og forecast",
         "icon": "settings",
         "color": "amber",
-        "min_role": "sales_manager",
+        # Sælgere skal kunne lave deres eget forecast — kategorien er åben for
+        # salesperson, mens budget/alignment-items stadig kræver højere rang.
+        "min_role": "salesperson",
         "subcategories": [
             {"id": "budget",    "title": "Budget",    "description": "Budget upload og dashboard",       "brand": None, "min_role": "sales_manager"},
-            {"id": "forecast",  "title": "Forecast",  "description": "Salgsprognoser",                   "brand": None, "min_role": "sales_manager"},
+            {"id": "forecast",  "title": "Forecast",  "description": "Salgsprognoser",                   "brand": None, "min_role": "salesperson"},
             {"id": "alignment", "title": "Alignment", "description": "Pipedrive vs. Zuora ACV-kontrol",  "brand": None, "min_role": "sales_operations"},
         ],
         "items": [
             {"id": "budget-upload-tool",      "title": "Budget",              "type": "tool",      "subcategory": "budget",    "brand": None, "min_role": "sales_manager", "url": "/tools/budget/"},
-            {"id": "forecast-tool",           "title": "Forecast",            "type": "tool",      "subcategory": "forecast",  "brand": None, "min_role": "sales_manager",    "url": "/tools/forecast/"},
+            {"id": "forecast-tool",           "title": "Forecast",            "type": "tool",      "subcategory": "forecast",  "brand": None, "min_role": "salesperson",    "url": "/tools/forecast/"},
             {"id": "portfolio-alignment",     "title": "Portfolio Alignment", "type": "dashboard", "subcategory": "alignment", "brand": None, "min_role": "sales_operations", "url": "/tools/portfolio-alignment/"},
         ],
     },

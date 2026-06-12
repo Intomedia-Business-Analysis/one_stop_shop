@@ -122,7 +122,8 @@ def init_db():
                created_at  DATETIME DEFAULT GETDATE(),
                CONSTRAINT UQ_HubUserTeamAccess UNIQUE (user_id, team_id)
            )""",
-        # Forecast-gemte prognoser
+        # Forecast-gemte prognoser. team indgår i den unikke nøgle, så en
+        # sælger kan have ét forecast pr. team uden at de overskriver hinanden.
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecasts' AND xtype='U')
            CREATE TABLE HubForecasts (
                id               INT IDENTITY(1,1) PRIMARY KEY,
@@ -130,6 +131,7 @@ def init_db():
                forecast_month   INT           NOT NULL,
                level            NVARCHAR(10)  NOT NULL,
                dimension_key    NVARCHAR(200) NOT NULL,
+               team             NVARCHAR(100) NOT NULL DEFAULT '',
                pipeline_pct     DECIMAL(5,2)  NOT NULL DEFAULT 30.00,
                manual_amount    DECIMAL(18,2) NOT NULL DEFAULT 0.00,
                forecast_amount  DECIMAL(18,2) NOT NULL DEFAULT 0.00,
@@ -137,13 +139,29 @@ def init_db():
                created_at       DATETIME      DEFAULT GETDATE(),
                updated_at       DATETIME      DEFAULT GETDATE()
            )""",
-        """IF NOT EXISTS (
+        """IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'team')
+           AND NOT EXISTS (
                SELECT * FROM sys.indexes
-               WHERE name='UQ_HubForecasts_Key' AND object_id = OBJECT_ID('HubForecasts')
+               WHERE name='UQ_HubForecasts_TeamKey' AND object_id = OBJECT_ID('HubForecasts')
            )
            ALTER TABLE HubForecasts
-           ADD CONSTRAINT UQ_HubForecasts_Key
-           UNIQUE (forecast_year, forecast_month, level, dimension_key)""",
+           ADD CONSTRAINT UQ_HubForecasts_TeamKey
+           UNIQUE (forecast_year, forecast_month, level, dimension_key, team)""",
+        # Sales managerens vurdering af det samlede sælger-forecast pr. team —
+        # gemmes separat så den aldrig rører sælgernes egne tal.
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecastReviews' AND xtype='U')
+           CREATE TABLE HubForecastReviews (
+               id              INT IDENTITY(1,1) PRIMARY KEY,
+               forecast_year   INT            NOT NULL,
+               forecast_month  INT            NOT NULL,
+               team            NVARCHAR(100)  NOT NULL,
+               manager_amount  DECIMAL(18,2)  NOT NULL DEFAULT 0.00,
+               comment         NVARCHAR(1000) NULL,
+               created_by      NVARCHAR(100)  NOT NULL,
+               created_at      DATETIME       DEFAULT GETDATE(),
+               updated_at      DATETIME       DEFAULT GETDATE(),
+               CONSTRAINT UQ_HubForecastReviews UNIQUE (forecast_year, forecast_month, team)
+           )""",
         # Tilføj service_activation_date til PipedriveDeals hvis kolonnen mangler
         """IF EXISTS (SELECT * FROM sysobjects WHERE name='PipedriveDeals' AND xtype='U')
            AND NOT EXISTS (
