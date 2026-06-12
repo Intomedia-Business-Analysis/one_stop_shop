@@ -395,9 +395,28 @@
       if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
     }
 
-    function copyUrl(id) {
+    async function copyUrl(id) {
       const url = window.location.origin + '/tools/rotation/screen/' + id;
-      navigator.clipboard.writeText(url).then(() => alert('URL kopieret: ' + url));
+      // navigator.clipboard findes kun i secure context (HTTPS/localhost) —
+      // over alm. HTTP er den undefined, så der skal en fallback til.
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(url);
+          alert('URL kopieret: ' + url);
+          return;
+        } catch (e) { /* fald igennem til fallback */ }
+      }
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      if (ok) alert('URL kopieret: ' + url);
+      else prompt('Kopiér URL\'en manuelt (Ctrl+C):', url);
     }
 
     // Luk modal ved klik udenfor

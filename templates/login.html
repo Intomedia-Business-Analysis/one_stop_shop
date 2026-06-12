@@ -149,6 +149,7 @@
       {% endif %}
 
       <form method="post" action="/login">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
         <div class="field">
           <label for="username">Brugernavn</label>
           <input type="text" id="username" name="username" autocomplete="username" autofocus required>

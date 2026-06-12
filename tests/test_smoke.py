@@ -79,7 +79,10 @@ def test_csrf_egen_origin_tillades(client):
 def test_kraever_login_redirect(client, path):
     r = client.get(path)
     assert r.status_code == 302
-    assert r.headers["location"] == "/login"
+    # Destinationen bevares som ?next=, så man lander rigtigt efter login
+    from urllib.parse import quote
+    expected = "/login" if path == "/" else "/login?next=" + quote(path, safe="")
+    assert r.headers["location"] == expected
 
 
 def test_login_saetter_session(client, app_module, make_user, monkeypatch):
@@ -107,6 +110,45 @@ def test_screen_bruger_sendes_til_rotationen_efter_login(client, app_module, mak
     r = client.post("/login", data={"username": "skaerm", "password": "x"})
     assert r.status_code == 302
     assert r.headers["location"] == "/tools/rotation/"
+
+
+def test_login_lander_paa_next_destination(client, app_module, make_user, monkeypatch):
+    """Skærm-URL'er (og andre destinationer) skal overleve login-rundturen,
+    så en konfigureret skærm ikke taber sin opsætning ved login."""
+    user = make_user(role="screen")
+    monkeypatch.setattr(app_module, "authenticate_user", lambda u, p: user)
+    r = client.post("/login", data={
+        "username": "skaerm", "password": "x",
+        "next": "/tools/rotation/screen/c33de907",
+    })
+    assert r.status_code == 302
+    assert r.headers["location"] == "/tools/rotation/screen/c33de907"
+
+
+def test_login_next_bevarer_querystring(client):
+    # Uautoriseret GET med query-parametre → hele destinationen med i ?next=
+    r = client.get("/tools/rotation/", params={"dashboards": "sales,media", "interval": "60"})
+    assert r.status_code == 302
+    from urllib.parse import parse_qs, urlparse
+    loc = urlparse(r.headers["location"])
+    assert loc.path == "/login"
+    next_url = urlparse(parse_qs(loc.query)["next"][0])
+    assert next_url.path == "/tools/rotation/"
+    assert parse_qs(next_url.query) == {"dashboards": ["sales,media"], "interval": ["60"]}
+
+
+@pytest.mark.parametrize("evil_next", [
+    "https://ondsindet.example/phish",
+    "//ondsindet.example",
+    "/sti\\..\\fusk",
+    "relativ-uden-skraastreg",
+])
+def test_login_next_afviser_open_redirect(client, app_module, make_user, monkeypatch, evil_next):
+    user = make_user(role="salesperson")
+    monkeypatch.setattr(app_module, "authenticate_user", lambda u, p: user)
+    r = client.post("/login", data={"username": "x", "password": "y", "next": evil_next})
+    assert r.status_code == 302
+    assert r.headers["location"] == "/"
 
 
 # ---------------------------------------------------------------------------
