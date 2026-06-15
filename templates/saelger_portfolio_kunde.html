@@ -23,7 +23,16 @@
 .kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
 
 .v-table-wrap{overflow-x:auto}
-.v-table{width:100%;border-collapse:collapse;font-size:12px}
+/* table-layout:fixed + kolonnebredder, så lange titler/navne afkortes med
+   ellipsis i stedet for at skubbe tabellen bredere end kortet */
+.v-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.v-table col.c-titel{width:auto}
+.v-table col.c-pipeline{width:104px}
+.v-table col.c-site{width:130px}
+.v-table col.c-saelger{width:120px}
+.v-table col.c-dato{width:94px}
+.v-table col.c-value{width:104px}
+.v-table td.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
 .v-table th.sortable{cursor:pointer;user-select:none}
@@ -155,6 +164,10 @@
             </div>
             <div class="v-table-wrap">
             <table class="v-table">
+              <colgroup>
+                <col class="c-titel"><col class="c-pipeline"><col class="c-site">
+                <col class="c-saelger"><col class="c-dato"><col class="c-dato"><col class="c-value">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Titel</th>
@@ -327,10 +340,10 @@ function renderDeals(deals) {
   }
   tbody.innerHTML = deals.map(d => `
     <tr>
-      <td>${escHtml(d.title)}</td>
+      <td class="trunc" title="${escHtml(d.title)}">${escHtml(d.title)}</td>
       <td><span class="pipeline-badge ${d.er_opsigelse ? 'ops' : ''}">${escHtml(d.pipeline || '—')}</span></td>
-      <td>${escHtml(d.sites)}</td>
-      <td>${escHtml(d.owner_name)}</td>
+      <td class="trunc" title="${escHtml(d.sites)}">${escHtml(d.sites)}</td>
+      <td class="trunc" title="${escHtml(d.owner_name)}">${escHtml(d.owner_name)}</td>
       <td>${escHtml(d.vundet)}</td>
       <td>${escHtml(d.aktiveret)}</td>
       <td class="num ${d.er_opsigelse || d.value < 0 ? 'ops-value' : ''}">${fmtFull(d.value)}</td>
