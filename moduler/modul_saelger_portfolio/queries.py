@@ -194,8 +194,8 @@ def get_org_owners(org_id: str) -> list:
     return rows
 
 
-def get_customer_history(org_id: str) -> dict:
-    """Kundens fulde deal-historik på tværs af ejere + stamdata fra ACV.
+def get_customer_history(org_id: str, owner: str = "") -> dict:
+    """Kundens fulde deal-historik men kun for den valgte sælger + stamdata fra ACV.
 
     Vundne deals ekskl. administrativ/rapport-støj. Web Sale og opsigelser
     MEDTAGES — de er en del af kundens historie og er synlige via
@@ -206,6 +206,7 @@ def get_customer_history(org_id: str) -> dict:
     value_expr = ("CAST(COALESCE(CASE WHEN d.currency IN ('NOK','SEK') "
                   "THEN d.value ELSE d.value_dkk END, d.value) AS DECIMAL(18,2))")
     act = "COALESCE(d.service_activation_date, d.won_time)"
+    d_clause, d_params = _owner_clause("d", owner)
 
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
@@ -218,10 +219,11 @@ def get_customer_history(org_id: str) -> dict:
     name_row = cur.fetchone()
     cur.execute("""
         SELECT ISNULL(SUM(acv_value_dkk), 0) AS acv,
+                ISNULL(SUM(CASE WHEN owner_name = %s THEN acv_value_dkk ELSE 0 END), 0) AS acv_own,
                CONVERT(varchar(10), MIN(first_activation), 23) AS first_activation,
                COUNT(DISTINCT site) AS sites
         FROM [dbo].[PipeDrive_ACV] WHERE org_id = %s
-    """, (org_id,))
+    """, (owner,org_id))
     meta = cur.fetchone() or {}
 
     # Deal-historikken
@@ -238,13 +240,14 @@ def get_customer_history(org_id: str) -> dict:
             CASE WHEN d.pipeline_name IN ({cancel_ph}) THEN 1 ELSE 0 END AS er_opsigelse
         FROM [dbo].[PipedriveDeals] d
         WHERE d.org_id = %s
+        AND {d_clause}
           AND d.status = 'won'
           AND (COALESCE(d.administrativ,'') <> 'ja')
           AND UPPER(LTRIM(d.title)) NOT LIKE 'ADMINISTRATIV%%'
           AND UPPER(LTRIM(d.title)) NOT LIKE 'ADM %%'
           AND COALESCE(d.deal_type,'') <> 'Rapport'
         ORDER BY d.won_time DESC
-    """, tuple(CANCELLATION_PIPELINES) + (org_id,))
+    """, tuple(CANCELLATION_PIPELINES) + (org_id,) + d_params)
     deals = []
     for r in cur.fetchall():
         deals.append({
@@ -275,6 +278,7 @@ def get_customer_history(org_id: str) -> dict:
     return {
         "org_name":         (name_row or {}).get("org_name") or str(org_id),
         "acv":              float(meta.get("acv") or 0),
+        "acv_own":          float(meta.get("acv_own") or 0),
         "first_activation": meta.get("first_activation"),
         "site_count":       int(meta.get("sites") or 0),
         "by_year":          sorted(by_year.values(), key=lambda y: y["aar"]),

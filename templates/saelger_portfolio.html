@@ -151,12 +151,8 @@
           <!-- Graf 1: Kundeudvikling over tid (porteføljen / skaffet af sælger) -->
           <div class="dash-card">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-              <div class="dash-card-title" style="margin-bottom:0" id="anc-title" title="Hvornår porteføljens kunder først blev aktiveret — uanset hvem der dengang ejede kunden. En overtaget portefølje viser derfor historik fra før sælgerens ansættelse.">Kundernes startår — antal kunder pr. år</div>
-              <div class="toggle-group">
-                <button class="toggle-btn active" id="anc-mode-all" onclick="setAncMode('all')">Porteføljen</button>
-                <button class="toggle-btn" id="anc-mode-own" onclick="setAncMode('own')">Skaffet af sælger</button>
+              <div class="dash-card-title" style="margin-bottom:0" id="anc-title" title="Kunder i porteføljen, hvis allerførste vundne deal blev lukket af den viste sælger">Skaffet af sælger — antal kunder pr. startår</div>
               </div>
-            </div>
             <div class="bar-chart" id="bar-chart"></div>
             <div id="bar-legend" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
           </div>
@@ -471,32 +467,13 @@ function renderRecencyTimeline() {
 }
 
 // ── Graf 1: Stablet søjlediagram — kunder pr. aktiveringsår pr. brand ───
-// To visninger: hele porteføljen (anciennitet) eller kun kunder hvis
-// ALLERFØRSTE vundne deal blev lukket af den viste sælger ("skaffet af").
-let ancMode = 'all';
-
-function setAncMode(mode) {
-  ancMode = mode;
-  document.getElementById('anc-mode-all').classList.toggle('active', mode === 'all');
-  document.getElementById('anc-mode-own').classList.toggle('active', mode === 'own');
-  const title = document.getElementById('anc-title');
-  if (mode === 'own') {
-    title.textContent = 'Skaffet af sælger — antal kunder pr. startår';
-    title.title = 'Kunder i porteføljen, hvis allerførste vundne deal blev lukket af den viste sælger — fordelt på kundens startår. Kunder skaffet via webshop eller af andre sælgere tæller ikke.';
-  } else {
-    title.textContent = 'Kundernes startår — antal kunder pr. år';
-    title.title = 'Hvornår porteføljens kunder først blev aktiveret — uanset hvem der dengang ejede kunden. En overtaget portefølje viser derfor historik fra før sælgerens ansættelse.';
-  }
-  renderBarChart();
-}
+// En visninge: Kun kunder hvis ALLERFØRSTE vundne deal blev lukket af den viste sælger ("skaffet af").
 
 function renderBarChart() {
   // Tæller pr. KUNDE (org-deduplikeret): debutår = tidligste aktivering,
   // brand = det site kunden debuterede på. Site-tilkøb i senere år tæller
   // altså ikke som ny kunde igen.
-  const data = ancMode === 'own'
-    ? kunderUnik.filter(k => k.first_deal_owner === TARGET_OWNER)
-    : kunderUnik;
+  const data = kunderUnik.filter(k => k.first_deal_owner === TARGET_OWNER);
   const allBrands = [...new Set(data.map(k => k.brand).filter(Boolean))].sort();
   const byYearBrand = {};
   data.forEach(k => {

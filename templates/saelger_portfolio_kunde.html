@@ -138,11 +138,10 @@
 
           <!-- Deal historik -->
           <div class="dash-card">
-            <div class="dash-card-title">Deal-historik — alle sælgere, nyeste først</div>
+            <div class="dash-card-title">Deal-historik — egne deals</div>
             <div class="deal-filter-bar">
               <span class="filter-label">Filtrer</span>
               <select id="filter-aar" onchange="filterDeals()"><option value="">Alle år</option></select>
-              <select id="filter-saelger" onchange="filterDeals()"><option value="">Alle sælgere</option></select>
               <div class="ms-wrap" id="ms-site-wrap">
                 <div class="ms-trigger" id="ms-site-trigger" onclick="msToggle('site')">
                   <span class="ms-trigger-text" id="ms-site-label">Alle sites</span>
@@ -202,6 +201,7 @@
 
 <script>
 const orgId  = {{ org_id | tojson }};
+const backOwner = {{ back_owner | tojson }};
 let allDeals = [];
 
 function fmtFull(v) {
@@ -298,7 +298,6 @@ function populateFilters(deals) {
     });
   };
   fill('filter-aar',     [...new Set(deals.map(d => d.aar).filter(Boolean))].sort());
-  fill('filter-saelger', [...new Set(deals.map(d => d.owner_name).filter(Boolean))].sort());
   msBuild('site',     [...new Set(deals.flatMap(d => (d.sites || '').split(',').map(s => s.trim())).filter(s => s && s !== '—'))].sort());
   msBuild('pipeline', [...new Set(deals.map(d => d.pipeline).filter(Boolean))].sort());
 }
@@ -353,12 +352,10 @@ function renderDeals(deals) {
 
 function filterDeals() {
   const aar   = document.getElementById('filter-aar').value;
-  const slg   = document.getElementById('filter-saelger').value;
   const sites = msSelected.site;     // tom = alle
   const pipes = msSelected.pipeline; // tom = alle
   let filtered = allDeals.filter(d => {
     if (aar && String(d.aar) !== aar)  return false;
-    if (slg && d.owner_name !== slg)   return false;
     if (sites.size && !(d.sites || '').split(',').map(s => s.trim()).some(s => sites.has(s))) return false;
     if (pipes.size && !pipes.has(d.pipeline)) return false;
     return true;
@@ -375,7 +372,7 @@ function filterDeals() {
 }
 
 function resetFilters() {
-  ['filter-aar','filter-saelger'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('filter-aar').value = '';
   msSelected.site.clear();
   msSelected.pipeline.clear();
   msUpdateUI('site');
@@ -385,7 +382,7 @@ function resetFilters() {
 
 async function loadKunde() {
   try {
-    const res = await fetch(`/tools/saelger-portfolio/customer-history?org_id=${encodeURIComponent(orgId)}`);
+    const res = await fetch(`/tools/saelger-portfolio/customer-history?org_id=${encodeURIComponent(orgId)}&owner=${encodeURIComponent(backOwner)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
 
@@ -406,9 +403,9 @@ async function loadKunde() {
 
     document.getElementById('kpi-row').innerHTML = `
       <div class="kpi-card">
-        <div class="kpi-label">Samlet ACV</div>
-        <div class="kpi-value green">${fmtKr(d.acv)}</div>
-        <div class="kpi-sub">Løbende kontraktværdi i dag</div>
+        <div class="kpi-label">Eget ACV</div>
+        <div class="kpi-value green">${fmtKr(d.acv_own)}</div>
+        <div class="kpi-sub">Af kundens ${fmtKr(d.acv)} samlet</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Totalt salg</div>
