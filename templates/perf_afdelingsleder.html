@@ -609,17 +609,17 @@ function renderBrandGroup(g) {
   const bar = (v, color) => {
     const h = v === 0 ? 2 : Math.max(Math.round((v / max) * CHART_H), 4);
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;min-width:0">
-      <div class="bar-value" style="color:${color === '#B06A52' ? '#B06A52' : 'var(--ink)'}">${v !== 0 ? fmtKr(v) : ''}</div>
+      <div class="bar-value" style="color:${color === '#B32E45' ? '#B32E45' : 'var(--ink)'}">${v !== 0 ? fmtKr(v) : ''}</div>
       <div style="height:${h}px;width:100%;background:${color};border-radius:3px 3px 0 0"></div>
     </div>`;
   };
   const barsHtml = g.rows.map(r => `
     <div class="bar-col" title="${r.aar} — Salg: ${fmtFull(r.won)} / Opsigelser: ${fmtFull(r.ops)} / Netto: ${fmtFull(r.netto)}">
       <div style="display:flex;align-items:flex-end;gap:3px;width:100%;height:${CHART_H + 16}px">
-        ${bar(r.won, '#2B2A27')}${bar(r.ops, '#B06A52')}
+        ${bar(r.won, '#2B2A27')}${bar(r.ops, '#B32E45')}
       </div>
       <div class="bar-label">${r.aar}</div>
-      <div style="font-size:10px;font-weight:700;color:${r.netto >= 0 ? 'var(--ink-3)' : '#B06A52'}">Netto: ${fmtKr(r.netto)}</div>
+      <div style="font-size:10px;font-weight:700;color:${r.netto >= 0 ? 'var(--ink-3)' : '#B32E45'}">Netto: ${fmtKr(r.netto)}</div>
     </div>`).join('');
 
   const tableRows = g.rows.map((r, i) => {
@@ -627,7 +627,7 @@ function renderBrandGroup(g) {
     return `<tr>
       <td style="font-weight:700">${r.aar}</td>
       <td class="num">${fmtFull(r.won)}</td>
-      <td class="num" style="color:#B06A52">−${fmtFull(r.ops)}</td>
+      <td class="num" style="color:#B32E45">−${fmtFull(r.ops)}</td>
       <td class="num" style="font-weight:800">${fmtFull(r.netto)}</td>
       <td class="num">${r.won_count}</td>
       <td class="num">${brandDelta(r.netto, prev ? prev.netto : null)}</td>
@@ -639,7 +639,7 @@ function renderBrandGroup(g) {
     <div class="brand-bars">${barsHtml}</div>
     <div style="display:flex;gap:16px;margin-top:12px">
       <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#2B2A27"></div>Salg</div>
-      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#B06A52"></div>Opsigelser</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink-3)"><div style="width:10px;height:10px;border-radius:2px;background:#B32E45"></div>Opsigelser</div>
     </div>
     <table class="yoy-table">
       <thead><tr>
@@ -664,7 +664,7 @@ async function loadBrandData() {
       : 'Hele kalenderår';
     el.innerHTML = data.groups.map(renderBrandGroup).join('');
   } catch (e) {
-    el.innerHTML = '<div style="color:#B06A52;padding:20px">Data kunne ikke hentes. Prøv at genindlæse siden.</div>';
+    el.innerHTML = '<div style="color:#B32E45;padding:20px">Data kunne ikke hentes. Prøv at genindlæse siden.</div>';
   }
 }
 
