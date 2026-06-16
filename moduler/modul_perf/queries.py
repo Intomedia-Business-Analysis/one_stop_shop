@@ -46,7 +46,7 @@ _CONV_PH = "(" + ",".join(["%s"] * len(CONVERSION_PIPELINES_UPPER)) + ")"
 
 # Ekskluder administrative deals fra alle beregninger
 # Bruger dedikeret kolonne + titel-fallback
-_ADM_EXCLUDE = "AND (COALESCE([administrativ],'') <> 'ja') AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %' AND COALESCE([deal_type],'') <> 'Rapport'"
+_ADM_EXCLUDE = "AND (COALESCE([administrativ],'') <> 'ja') AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %' AND COALESCE([deal_type],'') <> 'Rapport' AND COALESCE([owner_name],'') <> 'System Admin'"
 
 DEAL_TYPE_ALIASES: dict[str, list[str]] = {
     "Abonnement":   ["Abonnement", "Subscription"],
@@ -687,6 +687,7 @@ def db_manager_data(today: date, team: str | None = None,
                 AND {_lp_sql}
                 {"AND COALESCE(d.[sites],'') = 'FINANS DK'" if is_finans_team else "AND (d.[team] = %s OR d.[team] IS NULL)"}
                 AND (COALESCE(d.[administrativ],'') <> 'ja')
+                AND COALESCE(d.[owner_name],'') <> 'System Admin'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
@@ -830,6 +831,7 @@ def db_manager_data(today: date, team: str | None = None,
             AND d.[pipeline_name] <> 'Web Sale'
             AND d.{d_col} >= %s AND d.{d_col} < %s
             AND COALESCE(d.[administrativ],'') <> 'ja'
+            AND COALESCE(d.[owner_name],'') <> 'System Admin'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
             AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
             AND COALESCE(d.[deal_type],'') <> 'Rapport'
@@ -890,6 +892,7 @@ def db_manager_data(today: date, team: str | None = None,
               AND {d_col} >= %s AND {d_col} < %s
               AND [team] = %s
               AND COALESCE([administrativ],'') <> 'ja'
+              AND COALESCE([owner_name],'') <> 'System Admin'
               AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
               AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
               AND COALESCE([deal_type],'') <> 'Rapport'
