@@ -128,13 +128,16 @@ async def saelger_portfolio_kunde(
 @router.get("/customer-history")
 async def saelger_portfolio_customer_history(
     org_id: str = "",
+    owner: str = "",
     user=Depends(get_current_user),
 ):
     if not org_id:
         raise HTTPException(400, "org_id påkrævet")
+    if not owner:
+        raise HTTPException(400, "owner påkrævet")
     _require_org_access(user, org_id)
     try:
-        return JSONResponse(get_customer_history(org_id))
+        return JSONResponse(get_customer_history(org_id, owner))
     except Exception:
         logger.exception("saelger_portfolio_customer_history fejlede (org_id=%s)", org_id)
         raise HTTPException(500, "Data kunne ikke hentes")
