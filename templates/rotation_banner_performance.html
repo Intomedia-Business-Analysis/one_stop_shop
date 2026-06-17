@@ -252,7 +252,7 @@ const { fmt, fmtAxis, fmtLabel } = makeMoneyFormatters('kr.');
 
 // Fast farve pr. hovedbrand (samme farve i måneds- og kvartals-chartet)
 const BRAND_COLORS = {
-  'Watch DK':'#2B2A27', 'FINANS DK':'#A98545', 'Monitor':'#5E7385',
+  'Watch DK':'#2B2A27', 'FINANS DK':'#A98545', 'Finans programmatisk':'#D9C28C', 'Monitor':'#5E7385',
   'Watch Int':'#B06A52', 'Marketwire':'#7E8F6F', 'Øvrige':'#C9C1B5'
 };
 
@@ -266,12 +266,14 @@ function buildStackedBar(id, payload) {
     series.reduce((sum, s) => sum + (s.data?.[i] || 0), 0));
   const maxTotal = Math.max(1, ...totals);
 
-  // Per søjle: er den så lav at segment-labels ikke kan være der? Find i så
-  // fald den øverste serie med data, som så bærer ét samlet totalbeløb.
-  const SMALL_COL = 0.12;   // søjle-total < 12% af højeste → "lille søjle"
-  const THIN_SEG  = 0.07;   // segment < 7% af højeste → "tyndt segment"
-  const smallCol = totals.map(t => t > 0 && t < maxTotal * SMALL_COL);
-  const topIdx   = Array.from({length:nPts}, (_, i) => {
+  // Label-strategi: hver søjle får ÉT samlet total-tal oven over baren, og hvert
+  // segment får sit eget tal CENTRERET inde i sit felt (aldrig udenfor, så tal
+  // ikke stabler sig oven på hinanden over baren). Segmenter der er for tynde til
+  // at rumme et tal springes over — værdien ses i tooltip/legende.
+  const MIN_SEG_LABEL = 0.045;   // segment skal fylde >=4,5% af højeste søjle for eget tal
+  // Lyse segmenter får mørk tekst (hvid ville drukne); mørke får hvid.
+  const LIGHT_BRANDS = { 'Finans programmatisk': 1, 'Øvrige': 1 };
+  const topIdx = Array.from({length:nPts}, (_, i) => {
     let idx = -1;
     series.forEach((s, di) => { if ((s.data?.[i] || 0) > 0) idx = di; });
     return idx;
@@ -284,34 +286,31 @@ function buildStackedBar(id, payload) {
     borderRadius: 2,
     stack: 'total',
     datalabels: {
-      // Lille søjle → kun øverste segment viser ét samlet total over baren.
-      // Ellers: alle segmenter med data viser deres eget beløb.
-      display: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        if (v <= 0) return false;
-        return smallCol[i] ? di === topIdx[i] : true;
+      labels: {
+        // Segment-beløb, centreret i feltet
+        value: {
+          display: ctx => {
+            const v = ctx.dataset.data[ctx.dataIndex] || 0;
+            return v > 0 && v >= maxTotal * MIN_SEG_LABEL;
+          },
+          anchor:'center', align:'center',
+          font:{family:'Montserrat',size:11,weight:'700'},
+          color: LIGHT_BRANDS[s.brand] ? '#3A2E12' : '#fff',
+          textStrokeColor: LIGHT_BRANDS[s.brand] ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.30)',
+          textStrokeWidth: 2,
+          formatter:(v) => fmtLabel(v),
+          clip:false,
+        },
+        // Ét samlet total oven over baren (på det øverste segment med data)
+        total: {
+          display: ctx => di === topIdx[ctx.dataIndex] && totals[ctx.dataIndex] > 0,
+          anchor:'end', align:'top', offset:3,
+          font:{family:'Montserrat',size:12,weight:'800'},
+          color:'#2B2A27',
+          formatter:(v, ctx) => fmtLabel(totals[ctx.dataIndex]),
+          clip:false,
+        },
       },
-      anchor: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'end' : 'center';
-      },
-      align: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 'top' : 'center';
-      },
-      offset: 2,
-      font:{family:'Montserrat',size:12,weight:'700'},
-      color: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? '#2B2A27' : '#fff';
-      },
-      textStrokeColor:'rgba(255,255,255,0.9)',
-      textStrokeWidth: ctx => {
-        const i = ctx.dataIndex, v = ctx.dataset.data[i] || 0;
-        return (smallCol[i] || v < maxTotal * THIN_SEG) ? 3 : 0;
-      },
-      formatter:(v, ctx) => smallCol[ctx.dataIndex] ? fmtLabel(totals[ctx.dataIndex]) : fmtLabel(v),
-      clip:false,
     },
   }));
   charts[id] = new Chart(ctx, {

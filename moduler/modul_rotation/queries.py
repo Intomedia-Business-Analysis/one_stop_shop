@@ -612,10 +612,12 @@ for _s in FINANS_SITES:     _SITE_TO_BRAND[_s] = "FINANS DK"
 for _s in MARKETWIRE_SITES: _SITE_TO_BRAND[_s] = "Marketwire"
 
 # Fast farve pr. hovedbrand, så samme brand har samme farve i begge charts.
-BRAND_ORDER = ["Watch DK", "FINANS DK", "Monitor", "Marketwire", "Øvrige"]
+# "Finans programmatisk" stables lige over "FINANS DK" så det tydeligt fremgår,
+# hvor meget af Finans banner-salget der er programmatisk vs. alm. salg.
+BRAND_ORDER = ["Watch DK", "FINANS DK", "Finans programmatisk", "Monitor", "Marketwire", "Øvrige"]
 
 
-def _adv_series_by_brand(cur, today, pipeline, granularity):
+def _adv_series_by_brand(cur, today, pipeline, granularity, include_programmatic=False):
     """Stablet tidsserie: omsætning pr. hovedbrand fordelt over enten måneder
     (Jan–Dec) eller kvartaler (Q1–Q4) for indeværende år.
 
@@ -624,18 +626,23 @@ def _adv_series_by_brand(cur, today, pipeline, granularity):
     læsbar med få serier.
 
     granularity: 'month' → 12 punkter, 'quarter' → 4 punkter.
+    include_programmatic: læg FINANS' programmatiske banner-salg (ProgrammaticSales)
+    oven i FINANS DK-serien, så tidsserien matcher det samlede Finans banner-salg.
     Returnerer {labels:[...], series:[{brand, data:[...]}, ...]}.
     """
     y_start, y_end = _year_range(today)
     pipeline_clause = "[pipeline_name] IN ('banner','job')" if pipeline == "advertising" else f"[pipeline_name] = '{pipeline}'"
-    period_expr = "MONTH([won_time])" if granularity == "month" else "DATEPART(QUARTER, [won_time])"
+    # Omsætning dateres på service_activation_date (aktiverings-dato) — samme
+    # grundlag som 'Omsætning vs. budget' og brand-panelerne, så tallene matcher
+    # på tværs af dashboardet (budgettet er sat pr. aktiveringsmåned).
+    period_expr = "MONTH([service_activation_date])" if granularity == "month" else "DATEPART(QUARTER, [service_activation_date])"
     cur.execute(f"""
         SELECT COALESCE([sites],'Ukendt') AS site,
                {period_expr} AS period,
                ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
         FROM [dbo].[PipedriveDeals]
         WHERE [status]='won' AND {pipeline_clause} AND [account]='jppol_advertising'
-          AND [won_time] >= %s AND [won_time] < %s
+          AND [service_activation_date] >= %s AND [service_activation_date] < %s
           AND [sites] IS NOT NULL AND [sites] <> ''
         GROUP BY [sites], {period_expr}
     """, (y_start.isoformat(), y_end.isoformat()))
@@ -656,17 +663,38 @@ def _adv_series_by_brand(cur, today, pipeline, granularity):
         by_brand.setdefault(brand, [0.0] * n)
         by_brand[brand][idx] = round(by_brand[brand][idx] + rev, 2)
 
+    # FINANS' programmatiske banner-salg ligger i ProgrammaticSales (ikke
+    # PipedriveDeals) og dateres på [Date]. Vis det som EGEN serie ("Finans
+    # programmatisk") oven på FINANS DK, så det fremgår tydeligt hvor meget af
+    # Finans banner-salget der er programmatisk vs. alm. salg.
+    if include_programmatic:
+        prog_period = "MONTH([Date])" if granularity == "month" else "DATEPART(QUARTER, [Date])"
+        cur.execute(f"""
+            SELECT {prog_period} AS period,
+                   ISNULL(SUM([Amount]),0) AS revenue
+            FROM [dbo].[ProgrammaticSales]
+            WHERE [Site]='FINANS DK' AND [Date] >= %s AND [Date] < %s
+            GROUP BY {prog_period}
+        """, (y_start.isoformat(), y_end.isoformat()))
+        for r in cur.fetchall():
+            idx = int(r["period"]) - 1
+            if idx < 0 or idx >= n:
+                continue
+            rev = round(float(r["revenue"] or 0), 2)
+            by_brand.setdefault("Finans programmatisk", [0.0] * n)
+            by_brand["Finans programmatisk"][idx] = round(by_brand["Finans programmatisk"][idx] + rev, 2)
+
     # Fast rækkefølge (kun brands der har data)
     series = [{"brand": b, "data": by_brand[b]} for b in BRAND_ORDER if b in by_brand]
     return {"labels": labels, "series": series}
 
 
-def _adv_maaned_series_by_brand(cur, today, pipeline):
-    return _adv_series_by_brand(cur, today, pipeline, "month")
+def _adv_maaned_series_by_brand(cur, today, pipeline, include_programmatic=False):
+    return _adv_series_by_brand(cur, today, pipeline, "month", include_programmatic)
 
 
-def _adv_kvartal_series_by_brand(cur, today, pipeline):
-    return _adv_series_by_brand(cur, today, pipeline, "quarter")
+def _adv_kvartal_series_by_brand(cur, today, pipeline, include_programmatic=False):
+    return _adv_series_by_brand(cur, today, pipeline, "quarter", include_programmatic)
 
 
 def _adv_deals_oprettet(cur, m_start, m_end, pipeline):
@@ -794,8 +822,8 @@ def db_banner_performance(today: date):
 
         result = {
             "kpis":             _revenue_kpis(cur, today, "banner"),
-            "maaned_chart":     _adv_maaned_series_by_brand(cur, today, "banner"),
-            "kvartal_chart":    _adv_kvartal_series_by_brand(cur, today, "banner"),
+            "maaned_chart":     _adv_maaned_series_by_brand(cur, today, "banner", include_programmatic=True),
+            "kvartal_chart":    _adv_kvartal_series_by_brand(cur, today, "banner", include_programmatic=True),
             "deals_oprettet":   _adv_deals_oprettet(cur, m_start, m_end, "banner"),
             "deals_vundet":     _adv_deals_vundet(cur, m_start, m_end, "banner"),
             "deals_omsaetning": _adv_omsaetning_by_owner(cur, m_start, m_end, "banner"),
