@@ -232,8 +232,42 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_t
 #  DASHBOARD 1 — Sales Performance (Monitor, Watch & FINANS)
 # ════════════════════════════════════════════════════════════════════════════
 
+# ── Budget-kategorier (Watch/Finans/…) til split-visning af sælger-index ─────
+# Næsten alle Watch-sælgere har også et Finans-budget. I "opdelt" visning splittes
+# hver sælger i én række pr. kategori, så samme sælger kan ligge i top på den ene
+# og bund på den anden. Kategorien udledes af budgettets Brand og af deal-sites.
+_FINANS_SET  = set(FINANS_SITES)
+_WATCH_SET   = set(WATCH_DK_SITES) | set(WATCH_INT_SITES)
+_MONITOR_SET = set(MONITOR_SITES)
+
+
+def _sales_category_for_deal(site: str | None, team: str | None) -> str:
+    if (team or "").strip().lower() == "team marketwire":
+        return "Marketwire"
+    if site in _FINANS_SET:
+        return "Finans"
+    if site in _WATCH_SET:
+        return "Watch"
+    if site in _MONITOR_SET:
+        return "Monitor"
+    return "Øvrige"
+
+
+def _sales_category_for_brand(brand: str | None) -> str:
+    b = (brand or "").strip()
+    if b == "FINANS DK":
+        return "Finans"
+    if b.lower().startswith("watch"):
+        return "Watch"
+    if b == "Monitor":
+        return "Monitor"
+    if b.lower() == "marketwire":
+        return "Marketwire"
+    return "Øvrige"
+
+
 def db_sales_performance(today: date, date_col: str = "won_time",
-                         teams: list | None = None):
+                         teams: list | None = None, split: bool = False):
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -424,12 +458,64 @@ def db_sales_performance(today: date, date_col: str = "won_time",
         deals_omsaetning = [{"owner_name": s, "revenue": round(oms_map.get(s, 0.0), 2)} for s in master_sellers]
         deals_omsaetning.sort(key=lambda x: (-x["revenue"], x["owner_name"]))
 
-        seller_index = []
-        for owner in master_sellers:
-            tv = seller_tilvaekst.get(owner, 0.0)
-            bd = round(seller_budget.get(owner, 0.0), 2)
-            idx = round(tv / bd * 100, 1) if bd > 0 else None
-            seller_index.append({"owner_name": owner, "tilvaekst": tv, "budget": bd, "index": idx})
+        if split:
+            # ── Opdelt visning: én række pr. (sælger, kategori) ────────────────
+            # Tilvækst pr. (sælger, site, team) → kategoriseres i Python.
+            cur.execute(f"""
+                SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
+                    COALESCE([sites],'') AS sites, COALESCE([team],'') AS team,
+                    ISNULL(SUM(CASE WHEN [pipeline_name] NOT IN {_CANCEL_PH}
+                        THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0) AS won,
+                    ABS(ISNULL(SUM(CASE WHEN [pipeline_name] IN {_CANCEL_PH}
+                        THEN CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) ELSE 0 END),0)) AS cancel
+                FROM [dbo].[PipedriveDeals]
+                WHERE [status]='won' AND [pipeline_name] NOT IN ('banner','job','Web Sale')
+                  AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [team] = 'Team Marketwire')
+                  AND [service_activation_date] >= %s AND [service_activation_date] < %s
+                  AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
+                  AND [team] IN {teams_ph}
+                  {_ADM_EXCLUDE}
+                GROUP BY [owner_name], [sites], [team]
+            """, tuple(CANCELLATION_PIPELINES) * 2 + (m_start.isoformat(), m_end.isoformat())
+                + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
+            tv_cat: dict = {}
+            for r in cur.fetchall():
+                cat = _sales_category_for_deal(r["sites"], r["team"])
+                net = float(r["won"] or 0) - float(r["cancel"] or 0)
+                tv_cat[(r["owner_name"], cat)] = tv_cat.get((r["owner_name"], cat), 0.0) + net
+
+            # Budget pr. (sælger, Brand) → kategoriseres i Python.
+            cur.execute(f"""
+                SELECT [Owner] AS owner_name, COALESCE([Brand],'') AS brand, SUM([BudgetAmount]) AS budget
+                FROM [dbo].[SalespersonBudget]
+                WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
+                  AND [Owner] IS NOT NULL AND [Owner] <> ''
+                  AND [Team] IN {teams_ph}
+                GROUP BY [Owner], [Brand]
+            """, (m_start.isoformat(), m_end.isoformat()) + tuple(perf_teams))
+            bd_cat: dict = {}
+            for r in cur.fetchall():
+                cat = _sales_category_for_brand(r["brand"])
+                bd_cat[(r["owner_name"], cat)] = bd_cat.get((r["owner_name"], cat), 0.0) + float(r["budget"] or 0)
+
+            seller_index = []
+            for key in set(list(tv_cat.keys()) + list(bd_cat.keys())):
+                owner, cat = key
+                if owner in ("Ukendt", ""):
+                    continue
+                tv = round(tv_cat.get(key, 0.0), 2)
+                bd = round(bd_cat.get(key, 0.0), 2)
+                idx = round(tv / bd * 100, 1) if bd > 0 else None
+                seller_index.append({"owner_name": owner, "kategori": cat,
+                                     "tilvaekst": tv, "budget": bd, "index": idx})
+        else:
+            seller_index = []
+            for owner in master_sellers:
+                tv = seller_tilvaekst.get(owner, 0.0)
+                bd = round(seller_budget.get(owner, 0.0), 2)
+                idx = round(tv / bd * 100, 1) if bd > 0 else None
+                seller_index.append({"owner_name": owner, "kategori": None,
+                                     "tilvaekst": tv, "budget": bd, "index": idx})
         # Sorter efter index (None nederst), så efter tilvækst
         seller_index.sort(key=lambda x: (x["index"] is None, -(x["index"] or 0), -x["tilvaekst"]))
 

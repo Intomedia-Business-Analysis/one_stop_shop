@@ -136,8 +136,11 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
   border-bottom: 1px solid var(--border);
   min-height: 22px;
 }
+/* Opdelt visning: bredere navne-kolonne, da kategori-mærket optager plads */
+.bullet-list.split .bullet-row { grid-template-columns: 240px 1fr 52px; gap: 8px; }
 .bullet-row:last-child { border-bottom: none; }
-.bullet-name { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bullet-name { font-size: 12px; font-weight: 600; color: var(--ink); display:flex; align-items:center; min-width:0; }
+.bullet-name .bn-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width:0; }
 .bullet-track {
   position: relative; height: 16px; background: #ECE8E2; border-radius: 8px; overflow: hidden;
 }
@@ -186,6 +189,16 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 }
 .index-card::before, .seneste-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--green); border-radius:var(--r) var(--r) 0 0; }
 .index-scroll { overflow-y: auto; flex: 1; }
+/* Samlet/Opdelt-toggle i index-kortet */
+.split-toggle { display:flex; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:2px; gap:2px; flex-shrink:0; }
+.split-btn { border:none; background:transparent; cursor:pointer; font-family:var(--font); font-size:11px; font-weight:700; color:var(--ink-3); padding:3px 10px; border-radius:4px; text-transform:none; letter-spacing:0; }
+.split-btn.active { background:var(--green); color:#fff; }
+/* Kategori-mærke (Watch/Finans) på sælger-rækker i opdelt visning */
+.bullet-cat { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; padding:1px 4px; border-radius:4px; margin-left:5px; vertical-align:middle; flex-shrink:0; }
+.bullet-cat.Finans { background:#EAE0CC; color:#7A5A1E; }
+.bullet-cat.Watch { background:#E3E0DA; color:#3A372F; }
+.bullet-cat.Monitor { background:#E2E8EC; color:#3E5663; }
+.bullet-cat.Marketwire { background:#E6EBE2; color:#4A5A3C; }
 .bullet-legend { display:flex; gap:14px; margin-bottom:5px; flex-shrink:0; font-size:11px; color:var(--ink-3); }
 .bullet-legend-item { display:flex; align-items:center; gap:5px; }
 .bullet-legend-dot { width:10px; height:10px; border-radius:50%; }
@@ -294,7 +307,13 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
       </div>
 
       <div class="index-card">
-        <div class="card-title">Tilvækst pr. sælger — index (måned)</div>
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span>Tilvækst pr. sælger — index (måned)</span>
+          <div class="split-toggle">
+            <button class="split-btn active" id="splitOff" onclick="setSplit(false)">Samlet</button>
+            <button class="split-btn" id="splitOn" onclick="setSplit(true)">Opdelt</button>
+          </div>
+        </div>
         <div class="bullet-legend">
           <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#3F6B4E"></div>≥ 100 %</div>
           <div class="bullet-legend-item"><div class="bullet-legend-dot" style="background:#C39A4A"></div>70–99 %</div>
@@ -326,6 +345,14 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
 <script>
 Chart.register(ChartDataLabels);
 let chartK = null, chartM = null;
+let splitIndex = false;   // false = samlet pr. sælger · true = opdelt (Watch/Finans)
+
+function setSplit(on) {
+  splitIndex = on;
+  document.getElementById('splitOff').classList.toggle('active', !on);
+  document.getElementById('splitOn').classList.toggle('active', on);
+  loadData();
+}
 
 // Beløbsenhed: norske teams handler i NOK. Der skrives kun NOK, når ALLE
 // valgte teams (?teams=...) er norske — ved blandede teams er valutaerne
@@ -381,8 +408,11 @@ function buildChart(id, rows, labelKey, existing) {
 async function loadData() {
   // Team-valg fra skærm-konfigurationen (?teams=...) føres videre til data-kaldet.
   const _teams = new URLSearchParams(location.search).get('teams');
-  const d = await fetchDashboardData('/tools/rotation/sales-performance-data' +
-                        (_teams ? '?teams=' + encodeURIComponent(_teams) : ''));
+  const params = new URLSearchParams();
+  if (_teams) params.set('teams', _teams);
+  if (splitIndex) params.set('split', '1');
+  const qs = params.toString();
+  const d = await fetchDashboardData('/tools/rotation/sales-performance-data' + (qs ? '?' + qs : ''));
   if (!d) return;
 
   document.getElementById('kpiDag').textContent    = fmt(d.kpis?.dag);
@@ -425,6 +455,8 @@ function idxFill(v) {
 }
 function renderIndexBullets(rows) {
   const host = document.getElementById('tblIndex');
+  // Opdelt visning får bredere navne-kolonne (kategori-mærket optager plads)
+  host.classList.toggle('split', splitIndex);
   if (!rows.length) {
     host.innerHTML = '<div style="text-align:center;color:var(--ink-4);padding:8px;font-style:italic;font-size:11px">Ingen data</div>';
     return;
@@ -464,9 +496,11 @@ function renderIndexBullets(rows) {
       amountHtml = `<div class="bullet-amount outside" style="left:${leftPct}%">${amountTxt}</div>`;
     }
 
+    const catBadge = r.kategori ? `<span class="bullet-cat ${r.kategori}">${r.kategori}</span>` : '';
+    const nameTitle = r.owner_name + (r.kategori ? ' · ' + r.kategori : '');
     return `
       <div class="bullet-row">
-        <div class="bullet-name" title="${r.owner_name}">${r.owner_name}</div>
+        <div class="bullet-name" title="${nameTitle}"><span class="bn-text">${r.owner_name}</span>${catBadge}</div>
         <div class="bullet-track">
           ${hasBudget ? '<div class="bullet-target"></div>' : ''}
           ${isNegative ? '<div class="bullet-negative"></div>' : ''}
