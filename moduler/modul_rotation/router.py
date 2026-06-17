@@ -233,8 +233,12 @@ async def screens_save(request: Request, user=Depends(get_current_user)):
         "years":    body.get("media_years", ""),
         "months":   body.get("media_months", ""),
     }
-    # Sales Performance: hvilke teams skærmen viser (tom = standard-teams).
-    sales = {"teams": body.get("sales_teams", "")}
+    # Sales Performance: hvilke teams skærmen viser (tom = standard-teams) og
+    # om sælger-indexet vises opdelt pr. budget-kategori (Watch/Finans/…).
+    sales = {
+        "teams": body.get("sales_teams", ""),
+        "split": bool(body.get("sales_split")),
+    }
 
     # Lås over hele læs-ændr-gem, så to samtidige gem ikke taber ændringer.
     with _configs_lock:
@@ -296,4 +300,6 @@ async def screen_player(screen_id: str, request: Request, user=Depends(get_curre
     sales = screen.get("sales", {})
     if sales.get("teams"):
         url += f"&teams={quote(sales['teams'])}"
+    if sales.get("split"):
+        url += "&split=1"
     return RedirectResponse(url)

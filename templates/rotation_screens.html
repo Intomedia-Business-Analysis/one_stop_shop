@@ -195,6 +195,15 @@
 
       <div class="form-group" id="salesSettings" style="display:none; border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--bg);">
         <label style="font-size:13px; font-weight:700; color:var(--ink); display:block; margin-bottom:12px;">📊 Sales Performance indstillinger</label>
+
+        <div class="form-group">
+          <label>Sælger-index — visning</label>
+          <div class="dashboard-grid">
+            <label class="dashboard-option"><input type="radio" name="salesSplit" value=""> Samlet pr. sælger</label>
+            <label class="dashboard-option"><input type="radio" name="salesSplit" value="1"> Opdelt (Watch/Finans/…)</label>
+          </div>
+        </div>
+
         <div class="form-group" style="margin-bottom:0;">
           <label>Teams <span style="font-weight:400; color:var(--ink-muted)">— tom = standard-teams (uden Norge)</span></label>
           <div class="dashboard-grid" id="salesTeamsGrid">
@@ -345,6 +354,12 @@
         cb.checked = salesTeams.includes(cb.value);
         cb.closest('.dashboard-option').classList.toggle('selected', cb.checked);
       });
+      // Sælger-index visning (radio): opdelt hvis sales.split er sat
+      const splitVal = sales.split ? '1' : '';
+      document.querySelectorAll('input[name="salesSplit"]').forEach(r => {
+        r.checked = r.value === splitVal;
+        r.closest('.dashboard-option').classList.toggle('selected', r.checked);
+      });
       toggleMediaSettings();
       toggleSalesSettings();
 
@@ -374,13 +389,14 @@
         months:   [...document.querySelectorAll('input[name="mediaMonths"]:checked')].map(c => c.value).join(','),
       };
       const salesTeams = [...document.querySelectorAll('input[name="salesTeams"]:checked')].map(c => c.value).join(',');
+      const salesSplit = document.querySelector('input[name="salesSplit"]:checked')?.value || '';
       const res = await fetch('/tools/rotation/screens/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: id || null, name, dashboards, interval,
           media_mode: media.mode, media_accounts: media.accounts,
           media_years: media.years, media_months: media.months,
-          sales_teams: salesTeams })
+          sales_teams: salesTeams, sales_split: salesSplit })
       });
       if (res.ok) { location.reload(); } else { alert('Noget gik galt'); }
     }

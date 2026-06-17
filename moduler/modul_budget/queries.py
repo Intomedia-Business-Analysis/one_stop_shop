@@ -238,7 +238,11 @@ def db_medie_query(year=None, month=None, site=None, brand=None, dealtype=None, 
     if brand:
         where.append("[Brand] = %s"); params.append(brand)
     if dealtype:
-        where.append("[DealType] = %s"); params.append(dealtype)
+        # dealtype kan være enten en enkelt streng eller en liste (multi-select).
+        dts = [dealtype] if isinstance(dealtype, str) else [d for d in dealtype if d]
+        if dts:
+            ph = ",".join(["%s"] * len(dts))
+            where.append(f"[DealType] IN ({ph})"); params.extend(dts)
     if salestype:
         where.append("[Salestype] = %s"); params.append(salestype)
 
@@ -277,7 +281,7 @@ def db_saelger_query(year=None, month=None, site=None, team=None, salesperson=No
         where.append("[Owner] = %s"); params.append(salesperson)
 
     cur.execute(f"""
-        SELECT [Owner] AS SalesPersonName, [Brand] AS Site, [Team],
+        SELECT [ID], [Owner] AS SalesPersonName, [Brand] AS Site, [Team],
                YEAR([BudgetDate]) AS År, MONTH([BudgetDate]) AS Måned, [BudgetAmount]
         FROM [dbo].[SalespersonBudget]
         WHERE {" AND ".join(where)}
@@ -307,5 +311,41 @@ def db_medie_update(row_id, site, brand, dealtype, salestype, year, month, amoun
             [BudgetDate]=%s, [BudgetAmount]=%s
         WHERE [ID]=%s
     """, (site, brand, dealtype, salestype, budget_date, amount, row_id))
+    conn.commit()
+    conn.close()
+
+
+def db_saelger_get(row_id: int) -> dict | None:
+    """Hent én sælger-budgetrække — til adgangstjek før update/delete."""
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(
+        "SELECT [ID],[Owner],[Brand],[Team] "
+        "FROM [dbo].[SalespersonBudget] WHERE [ID] = %s",
+        (row_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def db_saelger_delete(row_id: int):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM [dbo].[SalespersonBudget] WHERE [ID] = %s", (row_id,))
+    conn.commit()
+    conn.close()
+
+
+def db_saelger_update(row_id, owner, brand, team, year, month, amount):
+    # [Brand]-kolonnen vises som "Site" i sælger-overblikket.
+    conn = get_conn()
+    cur = conn.cursor()
+    budget_date = date(year, month, 1)
+    cur.execute("""
+        UPDATE [dbo].[SalespersonBudget]
+        SET [Owner]=%s, [Brand]=%s, [Team]=%s, [BudgetDate]=%s, [BudgetAmount]=%s
+        WHERE [ID]=%s
+    """, (owner, brand, team, budget_date, amount, row_id))
     conn.commit()
     conn.close()

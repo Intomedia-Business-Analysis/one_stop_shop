@@ -204,6 +204,7 @@ function frameUrl(d) {
     ['mode', 'accounts', 'years', 'months', 'embed'].forEach(k => { if (QS.get(k)) p.set(k, QS.get(k)); });
   } else if (d.key === 'sales') {
     if (QS.get('teams')) p.set('teams', QS.get('teams'));
+    if (QS.get('split')) p.set('split', QS.get('split'));
   }
   const qs = p.toString();
   return qs ? d.url + '?' + qs : d.url;

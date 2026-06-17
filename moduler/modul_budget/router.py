@@ -16,6 +16,7 @@ from moduler.modul_budget.queries import (
     db_saelger_upsert_rows, db_saelger_upload_df,
     db_medie_query, db_saelger_query,
     db_medie_delete, db_medie_update,
+    db_saelger_delete, db_saelger_update, db_saelger_get,
     db_budget_scope, db_owners_for_teams, db_medie_get,
 )
 
@@ -203,7 +204,9 @@ async def medie_data(
 ):
     require_budget_access(user)
     try:
-        rows = db_medie_query(year, month, site, brand, dealtype, salestype)
+        # dealtype kan være komma-separeret (multi-select i overblikket).
+        dealtypes = [d.strip() for d in dealtype.split(",") if d.strip()] if dealtype else None
+        rows = db_medie_query(year, month, site, brand, dealtypes, salestype)
         scope = _medie_scope(user)
         if scope is not None:
             rows = [r for r in rows if _medie_row_ok(scope, r["Brand"], r["DealType"])]
@@ -241,6 +244,51 @@ async def saelger_data(
     except Exception:
         logger.exception("saelger_data fejlede")
         raise HTTPException(500, "Data kunne ikke hentes")
+
+
+@router.put("/saelger/update/{row_id}")
+async def saelger_update(
+    row_id:      int,
+    salesperson: str   = Form(...),
+    site:        str   = Form(...),
+    team:        str   = Form(...),
+    year:        int   = Form(...),
+    month:       int   = Form(...),
+    amount:      float = Form(...),
+    user=Depends(get_current_user),
+):
+    require_budget_access(user)
+    allowed = allowed_data_teams(user)
+    if allowed is not None:
+        # Både den eksisterende rækkes team og det nye team skal være tilladt.
+        row = db_saelger_get(row_id)
+        if not row or row["Team"] not in allowed or team not in allowed:
+            raise HTTPException(403, "Ingen adgang til at redigere dette teams budget")
+    try:
+        db_saelger_update(row_id, salesperson, site, team, year, month, amount)
+        audit_log("budget_saelger_opdateret", user=user, row_id=row_id,
+                  saelger=salesperson, team=team, aar=year, maaned=month, beloeb=amount)
+        return JSONResponse({"status": "ok"})
+    except Exception:
+        logger.exception("saelger_update fejlede (row_id=%s)", row_id)
+        raise HTTPException(500, "Budgetrækken kunne ikke opdateres")
+
+
+@router.delete("/saelger/delete/{row_id}")
+async def saelger_delete(row_id: int, user=Depends(get_current_user)):
+    require_budget_access(user)
+    allowed = allowed_data_teams(user)
+    if allowed is not None:
+        row = db_saelger_get(row_id)
+        if not row or row["Team"] not in allowed:
+            raise HTTPException(403, "Ingen adgang til at slette denne budgetrække")
+    try:
+        db_saelger_delete(row_id)
+        audit_log("budget_saelger_slettet", user=user, row_id=row_id)
+        return JSONResponse({"status": "ok"})
+    except Exception:
+        logger.exception("saelger_delete fejlede (row_id=%s)", row_id)
+        raise HTTPException(500, "Budgetrækken kunne ikke slettes")
 
 
 @router.delete("/medie/delete/{row_id}")

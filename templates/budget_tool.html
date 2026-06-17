@@ -103,6 +103,20 @@
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
 .btn-cancel{padding:8px 18px;border-radius:var(--r-sm);border:1.5px solid var(--border-strong);background:var(--surface);font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink-2);cursor:pointer}
 .btn-cancel:hover{border-color:var(--ink-3)}
+
+/* Multi-select (checkbox-dropdown) */
+.ms{position:relative}
+.ms-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;font-family:var(--font);font-size:12px;padding:8px 11px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);cursor:pointer;text-align:left}
+.ms-toggle:hover{border-color:var(--green)}
+.ms.open .ms-toggle{border-color:var(--green)}
+.ms-toggle .ms-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-toggle svg{width:12px;height:12px;stroke:var(--ink-4);fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;transition:transform .13s}
+.ms.open .ms-toggle svg{transform:rotate(180deg)}
+.ms-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-sm);box-shadow:0 6px 20px rgba(0,0,0,.12);max-height:230px;overflow-y:auto;padding:4px}
+.ms.open .ms-menu{display:block}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--r-sm);font-size:12px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.ms-opt:hover{background:var(--green-light)}
+.ms-opt input{accent-color:var(--green);width:14px;height:14px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -218,7 +232,8 @@
             <div class="form-card">
               <div class="form-grid-3">
                 <div class="fld"><label>Sælger</label>
-                  <select id="s-person"><option value="">— Vælg sælger —</option>{% for p in sp_persons %}<option>{{ p }}</option>{% endfor %}</select>
+                  <input id="s-person" type="text" list="s-person-list" placeholder="Vælg eller skriv nyt navn" autocomplete="off">
+                  <datalist id="s-person-list">{% for p in sp_persons %}<option value="{{ p }}">{% endfor %}</datalist>
                 </div>
                 <div class="fld"><label>Site</label>
                   <select id="s-site"><option value="">— Vælg site —</option>{% for s in sp_sites %}<option>{{ s }}</option>{% endfor %}</select>
@@ -293,7 +308,17 @@
                 <select id="ov-m-brand"><option value="">Alle brands</option>{% for b in brands %}<option>{{ b }}</option>{% endfor %}</select>
               </div>
               <div class="fld"><label>Deal Type</label>
-                <select id="ov-m-dealtype"><option value="">Alle deal types</option>{% for d in deal_types %}<option>{{ d }}</option>{% endfor %}</select>
+                <div class="ms" id="ov-m-dealtype">
+                  <button type="button" class="ms-toggle" onclick="toggleMs('ov-m-dealtype')">
+                    <span class="ms-label" id="ov-m-dealtype-label">Alle deal types</span>
+                    <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="ms-menu">
+                    {% for d in deal_types %}
+                    <label class="ms-opt"><input type="checkbox" value="{{ d }}" onchange="msChanged('ov-m-dealtype')"> {{ d }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
               </div>
               <div class="fld"><label>Sales Type</label>
                 <select id="ov-m-salestype"><option value="">Alle salgstyper</option>{% for st in salestypes %}<option>{{ st }}</option>{% endfor %}</select>
@@ -369,6 +394,7 @@
                   <tr>
                     <th>År</th><th>Måned</th><th>Sælger</th><th>Site</th>
                     <th>Team</th><th class="num">Budget (kr.)</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="ov-s-tbody"></tbody>
@@ -391,7 +417,7 @@
   <div class="toast-sub" id="toast-sub"></div>
 </div>
 
-<!-- ── REDIGÉR MODAL ─────────────────────────────────────────────── -->
+<!-- ── REDIGÉR MODAL (MEDIE) ─────────────────────────────────────── -->
 <div class="modal-overlay" id="edit-modal">
   <div class="modal-box">
     <div class="modal-title">Redigér budgetrække</div>
@@ -407,6 +433,27 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeEdit()">Annuller</button>
       <button class="submit-btn" onclick="saveEdit()">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Gem ændringer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── REDIGÉR MODAL (SÆLGER) ────────────────────────────────────── -->
+<div class="modal-overlay" id="edit-modal-s">
+  <div class="modal-box">
+    <div class="modal-title">Redigér sælger-budgetrække</div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fld"><label>Sælger</label><input id="edit-s-person" type="text"></div>
+      <div class="fld"><label>Site</label><input id="edit-s-site" type="text"></div>
+      <div class="fld"><label>Team</label><input id="edit-s-team" type="text"></div>
+      <div class="fld"><label>År</label><input id="edit-s-year" type="number"></div>
+      <div class="fld"><label>Måned (1-12)</label><input id="edit-s-month" type="number" min="1" max="12"></div>
+      <div class="fld"><label>Beløb (kr.)</label><input id="edit-s-amount" type="number" min="0"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEditS()">Annuller</button>
+      <button class="submit-btn" onclick="saveEditS()">
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Gem ændringer
       </button>
     </div>
@@ -577,6 +624,30 @@ function switchOvTab(id, el) {
   el.classList.add('on');
 }
 
+// ── Multi-select (checkbox-dropdown) ─────────────────────────────
+function toggleMs(id) {
+  const el = document.getElementById(id);
+  const wasOpen = el.classList.contains('open');
+  document.querySelectorAll('.ms.open').forEach(m => m.classList.remove('open'));
+  if (!wasOpen) el.classList.add('open');
+}
+function msValues(id) {
+  return [...document.querySelectorAll('#' + id + ' input:checked')].map(c => c.value);
+}
+function msChanged(id) {
+  const vals = msValues(id);
+  const label = document.querySelector('#' + id + ' .ms-label');
+  const placeholder = label.dataset.placeholder || label.textContent;
+  label.dataset.placeholder = placeholder;
+  label.textContent = vals.length === 0 ? placeholder
+                    : vals.length === 1 ? vals[0]
+                    : vals.length + ' valgt';
+}
+// Luk åbne multi-selects ved klik udenfor
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms')) document.querySelectorAll('.ms.open').forEach(m => m.classList.remove('open'));
+});
+
 // ── Number formatter ─────────────────────────────────────────────
 function fmtKr(v) {
   if (v >= 1000000) return (v/1000000).toFixed(2).replace('.',',') + ' mio';
@@ -609,15 +680,15 @@ async function loadMedieData() {
   const month     = document.getElementById('ov-m-month').value;
   const site      = document.getElementById('ov-m-site').value;
   const brand     = document.getElementById('ov-m-brand').value;
-  const dealtype  = document.getElementById('ov-m-dealtype').value;
+  const dealtypes = msValues('ov-m-dealtype');
   const salestype = document.getElementById('ov-m-salestype').value;
   const params = new URLSearchParams();
-  if (year)      params.set('year',      year);
-  if (month)     params.set('month',     month);
-  if (site)      params.set('site',      site);
-  if (brand)     params.set('brand',     brand);
-  if (dealtype)  params.set('dealtype',  dealtype);
-  if (salestype) params.set('salestype', salestype);
+  if (year)            params.set('year',      year);
+  if (month)           params.set('month',     month);
+  if (site)            params.set('site',      site);
+  if (brand)           params.set('brand',     brand);
+  if (dealtypes.length) params.set('dealtype', dealtypes.join(','));
+  if (salestype)       params.set('salestype', salestype);
   try {
     const r = await fetch('/tools/budget/medie/data?' + params);
     if (!r.ok) { showToast('Fejl', (await r.json()).detail, 'error'); return; }
@@ -687,8 +758,9 @@ async function loadSaelgerData() {
     document.getElementById('ov-s-chart-wrap').style.display = '';
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen resultater for det valgte filter</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen resultater for det valgte filter</td></tr>';
     } else {
+      const esc = s => (s || '').replace(/'/g, "\\'");
       tbody.innerHTML = rows.map(r => `<tr>
         <td>${r['År']}</td>
         <td>${MONTH_NAMES[r['Måned']]}</td>
@@ -696,6 +768,10 @@ async function loadSaelgerData() {
         <td>${r.Site || ''}</td>
         <td>${r.Team || ''}</td>
         <td class="num">${Math.round(r.BudgetAmount || 0).toLocaleString('da-DK')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn-edit" onclick="openEditS(${r.ID},'${esc(r.SalesPersonName)}','${esc(r.Site)}','${esc(r.Team)}',${r['År']},${r['Måned']},${r.BudgetAmount||0})">Redigér</button>
+          <button class="btn-delete" onclick="deleteSaelgerRow(${r.ID})">Slet</button>
+        </td>
       </tr>`).join('');
     }
     document.getElementById('ov-s-table-wrap').style.display = '';
@@ -751,9 +827,57 @@ async function deleteRow(id) {
   } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
 }
 
-// Luk modal ved klik udenfor
+// ── Redigér modal (SÆLGER) ───────────────────────────────────────
+let editIdS = null;
+
+function openEditS(id, person, site, team, year, month, amount) {
+  editIdS = id;
+  document.getElementById('edit-s-person').value = person;
+  document.getElementById('edit-s-site').value   = site;
+  document.getElementById('edit-s-team').value   = team;
+  document.getElementById('edit-s-year').value   = year;
+  document.getElementById('edit-s-month').value  = month;
+  document.getElementById('edit-s-amount').value = amount;
+  document.getElementById('edit-modal-s').classList.add('open');
+}
+
+function closeEditS() {
+  document.getElementById('edit-modal-s').classList.remove('open');
+  editIdS = null;
+}
+
+async function saveEditS() {
+  const fd = new FormData();
+  fd.append('salesperson', document.getElementById('edit-s-person').value);
+  fd.append('site',        document.getElementById('edit-s-site').value);
+  fd.append('team',        document.getElementById('edit-s-team').value);
+  fd.append('year',        document.getElementById('edit-s-year').value);
+  fd.append('month',       document.getElementById('edit-s-month').value);
+  fd.append('amount',      document.getElementById('edit-s-amount').value);
+  try {
+    const r = await fetch(`/tools/budget/saelger/update/${editIdS}`, { method:'PUT', body:fd });
+    const d = await r.json();
+    if (r.ok) { showToast('Gemt!', 'Rækken er opdateret'); closeEditS(); loadSaelgerData(); }
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+async function deleteSaelgerRow(id) {
+  if (!confirm('Er du sikker på at du vil slette denne række?')) return;
+  try {
+    const r = await fetch(`/tools/budget/saelger/delete/${id}`, { method:'DELETE' });
+    const d = await r.json();
+    if (r.ok) { showToast('Slettet', 'Rækken er fjernet fra databasen'); loadSaelgerData(); }
+    else showToast('Fejl', d.detail, 'error');
+  } catch(e) { showToast('Netværksfejl', e.message, 'error'); }
+}
+
+// Luk modaler ved klik udenfor
 document.getElementById('edit-modal').addEventListener('click', function(e) {
   if (e.target === this) closeEdit();
+});
+document.getElementById('edit-modal-s').addEventListener('click', function(e) {
+  if (e.target === this) closeEditS();
 });
 </script>
 </body>

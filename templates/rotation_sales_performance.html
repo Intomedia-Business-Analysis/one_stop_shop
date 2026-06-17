@@ -514,6 +514,17 @@ function renderIndexBullets(rows) {
 
 initClock();
 
+// Skærm-konfigurationen kan forudvælge opdelt visning via ?split=1, så en skærm
+// altid starter i den ønskede tilstand (toggle'en kan stadig skiftes manuelt).
+(function initSplitFromUrl() {
+  const sp = (new URLSearchParams(location.search).get('split') || '').toLowerCase();
+  if (['1', 'true', 'yes'].includes(sp)) {
+    splitIndex = true;
+    document.getElementById('splitOff').classList.remove('active');
+    document.getElementById('splitOn').classList.add('active');
+  }
+})();
+
 loadData();
 setInterval(loadData, 5*60*1000);
 </script>
