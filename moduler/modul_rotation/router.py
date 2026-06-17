@@ -98,12 +98,15 @@ async def sales_performance_data(
     request: Request,
     user=Depends(get_current_user),
     teams: Optional[str] = None,
+    split: Optional[str] = None,
 ):
     _require(user, "salesperson")
     # teams (komma-sep.) kommer fra skærm-konfigurationen, så forskellige
     # kontorer kan køre forskellige team-visninger. Tom = standard-teams.
     selected_teams = [t.strip() for t in teams.split(",")] if teams else None
-    data = db_sales_performance(date.today(), teams=selected_teams)
+    # split=1 → sælger-index opdeles pr. budget-kategori (Watch/Finans/…).
+    split_view = str(split).lower() in ("1", "true", "yes")
+    data = db_sales_performance(date.today(), teams=selected_teams, split=split_view)
     return JSONResponse(content=data)
 
 
