@@ -1073,3 +1073,19 @@ a { text-decoration: none; color: inherit; }
      rammer kun <button> (fx "Anmod om adgang"), ikke <a>-tilbage-links */
   button.tb-btn:not(.primary) { display: none; }
 }
+
+/* ── Excel-eksport-knap (delt — bruges i widget-titelbjælker) ────────────
+   Lille, diskret sekundærknap. Sættes typisk i en .chart-title o.l. */
+.xls-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font); font-size: 11px; font-weight: 700;
+  text-transform: none; letter-spacing: 0;
+  color: var(--ink-2); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  padding: 5px 10px; cursor: pointer; white-space: nowrap;
+  transition: border-color .13s, color .13s, background .13s;
+}
+.xls-btn:hover { border-color: var(--green); color: var(--green); background: var(--bg); }
+.xls-btn:disabled { opacity: .5; cursor: default; }
+.xls-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }

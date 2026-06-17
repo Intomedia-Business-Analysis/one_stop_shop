@@ -222,9 +222,15 @@
     <div class="chart-card">
       <div class="chart-title">
         <span>Månedlig netto — år for år</span>
-        <div class="chart-legend">
-          <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
-          <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span><span id="legend-prev"></span></span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
+            <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span><span id="legend-prev"></span></span>
+          </div>
+          <button class="xls-btn" id="export-yoy-btn" onclick="exportYoY()" disabled title="Hent nøgletal og månedstal som Excel">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Excel
+          </button>
         </div>
       </div>
       <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
@@ -245,6 +251,10 @@
           <button class="toggle-btn active" id="brand-period-ytd" onclick="setBrandYtd(1)">ÅTD</button>
           <button class="toggle-btn" id="brand-period-full" onclick="setBrandYtd(0)">Hele året</button>
         </div>
+        <button class="xls-btn" id="export-brand-btn" onclick="exportBrand()" disabled title="Hent brand-tallene som Excel">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Excel
+        </button>
       </div>
     </div>
     <p style="font-size:11px;color:var(--ink-4);margin:-8px 0 16px" id="brand-sub"></p>
@@ -256,9 +266,14 @@
 </div><!-- tool-wrap -->
 </div><!-- content-area -->
 
+<script src="/static/export-utils.js"></script>
 <script>
 const CURRENT_YEAR  = {{ current_year }};
 const CURRENT_MONTH = {{ current_month }};
+
+// Seneste hentede data — bruges af Excel-eksporten (respekterer aktive filtre).
+let lastYoY   = null;
+let lastBrand = null;
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmtKr = v => {
@@ -454,6 +469,9 @@ async function loadData() {
 
     renderKPI(d);
     renderChart(d);
+
+    lastYoY = d;
+    document.getElementById('export-yoy-btn').disabled = false;
 
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('dash-content').style.display  = '';
@@ -663,9 +681,107 @@ async function loadBrandData() {
       ? `ÅTD — hvert år afgrænset 1/1 til ${d.toLocaleDateString('da-DK')}, så årene sammenlignes på lige fod`
       : 'Hele kalenderår';
     el.innerHTML = data.groups.map(renderBrandGroup).join('');
+    lastBrand = data;
+    document.getElementById('export-brand-btn').disabled = false;
   } catch (e) {
     el.innerHTML = '<div style="color:#B32E45;padding:20px">Data kunne ikke hentes. Prøv at genindlæse siden.</div>';
   }
+}
+
+// ── Excel-eksport ───────────────────────────────────────────────────────────
+// Eksporterer de underliggende rådata bag widget'erne (de tal der ligger til
+// grund for kort/grafer), så de aktive filtre automatisk afspejles.
+const KR_FMT = '#,##0';
+
+function exportYoY() {
+  const d = lastYoY;
+  if (!d) { HubExport.toast('Ingen data at eksportere'); return; }
+
+  const kpiRows = [
+    { navn: 'Omsætning',   key: 'won'       },
+    { navn: 'Opsigelser',  key: 'cancel'    },
+    { navn: 'Netto',       key: 'netto'     },
+    { navn: 'Antal deals', key: 'won_count' },
+  ].map(({ navn, key }) => ({
+    navn,
+    curr: d.curr[key],
+    prev: d.prev[key],
+    diff: d.deltas[key].diff,
+    pct:  d.deltas[key].pct,   // null hvis ingen sammenligning
+  }));
+
+  const monthRows = d.monthly_curr.map((m, i) => ({
+    maaned: m.maaned,
+    curr:   m.netto,
+    prev:   d.monthly_prev[i] ? d.monthly_prev[i].netto : 0,
+    diff:   m.netto - (d.monthly_prev[i] ? d.monthly_prev[i].netto : 0),
+  }));
+
+  HubExport.download({
+    filename: `afdelingsleder-noegletal-${d.ref_year}.xlsx`,
+    sheets: [
+      {
+        name:  'Nøgletal',
+        title: `Nøgletal — ${d.period_label}`,
+        columns: [
+          { header: 'Nøgletal',           key: 'navn', width: 16, align: 'left'  },
+          { header: String(d.ref_year),   key: 'curr', width: 16, align: 'right', numFmt: KR_FMT },
+          { header: String(d.prev_year),  key: 'prev', width: 16, align: 'right', numFmt: KR_FMT },
+          { header: 'Ændring',            key: 'diff', width: 16, align: 'right', numFmt: KR_FMT },
+          { header: 'Ændring %',          key: 'pct',  width: 12, align: 'right', numFmt: '0' },
+        ],
+        rows: kpiRows,
+      },
+      {
+        name:  'Månedlig netto',
+        title: `Månedlig netto — ${d.ref_year} vs ${d.prev_year}`,
+        columns: [
+          { header: 'Måned',                  key: 'maaned', width: 12, align: 'left'  },
+          { header: `Netto ${d.ref_year}`,    key: 'curr',   width: 16, align: 'right', numFmt: KR_FMT },
+          { header: `Netto ${d.prev_year}`,   key: 'prev',   width: 16, align: 'right', numFmt: KR_FMT },
+          { header: 'Ændring',                key: 'diff',   width: 16, align: 'right', numFmt: KR_FMT },
+        ],
+        rows: monthRows,
+      },
+    ],
+  });
+}
+
+function exportBrand() {
+  const data = lastBrand;
+  if (!data) { HubExport.toast('Ingen data at eksportere'); return; }
+
+  const rows = [];
+  data.groups.forEach(g => {
+    g.rows.forEach(r => {
+      rows.push({
+        brand: g.label,
+        aar:   r.aar,
+        won:   r.won,
+        ops:   r.ops,
+        netto: r.netto,
+        count: r.won_count,
+      });
+    });
+  });
+
+  const periode = data.ytd ? 'ÅTD' : 'Hele kalenderår';
+  HubExport.download({
+    filename: 'afdelingsleder-brand-overblik.xlsx',
+    sheets: [{
+      name:  'Brand Overblik',
+      title: `Brand Overblik — ${periode}`,
+      columns: [
+        { header: 'Brand',      key: 'brand', width: 22, align: 'left'  },
+        { header: 'År',         key: 'aar',   width: 8,  align: 'left'  },
+        { header: 'Salg',       key: 'won',   width: 16, align: 'right', numFmt: KR_FMT },
+        { header: 'Opsigelser', key: 'ops',   width: 16, align: 'right', numFmt: KR_FMT },
+        { header: 'Netto',      key: 'netto', width: 16, align: 'right', numFmt: KR_FMT },
+        { header: 'Deals',      key: 'count', width: 8,  align: 'right', numFmt: '0' },
+      ],
+      rows,
+    }],
+  });
 }
 
 window.addEventListener('resize', () => {
