@@ -11,8 +11,21 @@ logger = logging.getLogger(__name__)
 BASE_YEAR = 2023
 HEATMAP_YEARS = [2023, 2024, 2025, 2026]
 
+# Land → Pipedrive-account. Banner & Job-tool'et kan vises for enten DK eller NO;
+# pipelines (Banner/Job) og statusser er ens på tværs af landene, så et skift af
+# account er alt der skal til.
+COUNTRY_ACCOUNT = {
+    "dk": "jppol_advertising",
+    "no": "watch_no_advertising",
+}
+
+
+def account_for_country(country: str | None) -> str:
+    return COUNTRY_ACCOUNT.get((country or "dk").lower(), COUNTRY_ACCOUNT["dk"])
+
+
 _BASE_WHERE = """
-    account = 'jppol_advertising'
+    account = %s
     AND pipeline_name = %s
     AND org_id IS NOT NULL
     AND service_activation_date >= '2023-01-01'
@@ -62,8 +75,12 @@ PIPELINE_TEAM = {
 }
 
 
-def db_owners(pipeline: str) -> list[str]:
-    team_name = PIPELINE_TEAM.get(pipeline)
+def db_owners(pipeline: str, country: str = "dk") -> list[str]:
+    account = account_for_country(country)
+    # DK-sælgere kommer fra team-medlemskab (så også medlemmer uden deals vises).
+    # NO har ingen tilsvarende team-opsætning, så dér listes de sælgere der
+    # faktisk har deals i watch_no_advertising-kontoen.
+    team_name = PIPELINE_TEAM.get(pipeline) if country == "dk" else None
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -85,19 +102,20 @@ def db_owners(pipeline: str) -> list[str]:
                   AND owner_name IS NOT NULL
                   AND owner_name <> 'System Admin'
                 ORDER BY owner_name
-            """, (pipeline,))
+            """, (account, pipeline))
         rows = [r["owner_name"] for r in cur.fetchall()]
         conn.close()
         return rows
     except Exception:
-        logger.exception("db_owners fejlede (pipeline=%s)", pipeline)
+        logger.exception("db_owners fejlede (pipeline=%s, country=%s)", pipeline, country)
         raise
 
 
-def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> dict:
+def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk") -> dict:
+    account = account_for_country(country)
     yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
-    params = (pipeline,) + tuple(yp) + tuple(op)
+    params = (account, pipeline) + tuple(yp) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -129,32 +147,34 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         # Tilbagevendende kunder:
         # Hvis år valgt: købt i det valgte år OG mindst ét andet år
         # Hvis intet år: købt i mindst 2 forskellige år
+        # Owner-filteret skal med her ligesom de øvrige KPI'er — ellers viser
+        # tallet det samme for en enkelt sælger som for hele afdelingen.
         if year:
             cur.execute(f"""
                 SELECT COUNT(*) AS returning_customers
                 FROM (
                     SELECT org_id
                     FROM [dbo].[PipedriveDeals]
-                    WHERE {_BASE_WHERE}
+                    WHERE {_BASE_WHERE} {oc}
                       AND status = 'won'
                     GROUP BY org_id
                     HAVING
                         SUM(CASE WHEN YEAR(service_activation_date) = %s THEN 1 ELSE 0 END) > 0
                         AND COUNT(DISTINCT YEAR(service_activation_date)) > 1
                 ) t
-            """, (pipeline, year))
+            """, (account, pipeline) + tuple(op) + (year,))
         else:
             cur.execute(f"""
                 SELECT COUNT(*) AS returning_customers
                 FROM (
                     SELECT org_id
                     FROM [dbo].[PipedriveDeals]
-                    WHERE {_BASE_WHERE}
+                    WHERE {_BASE_WHERE} {oc}
                       AND status = 'won'
                     GROUP BY org_id
                     HAVING COUNT(DISTINCT YEAR(service_activation_date)) > 1
                 ) t
-            """, (pipeline,))
+            """, (account, pipeline) + tuple(op))
         returning_customers = int((cur.fetchone() or {}).get("returning_customers", 0) or 0)
 
         conn.close()
@@ -172,10 +192,11 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         raise
 
 
-def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None) -> list[dict]:
+def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk") -> list[dict]:
+    account = account_for_country(country)
     yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
-    params = (pipeline,) + tuple(yp) + tuple(op)
+    params = (account, pipeline) + tuple(yp) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -202,13 +223,15 @@ def db_top_customers(pipeline: str, year: int | None = None, month: str | None =
         raise
 
 
-def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None) -> list[dict]:
+def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None, country: str = "dk") -> list[dict]:
+    account = account_for_country(country)
     yc, yp = _period_clause(year, month)
-    params = (pipeline,) + tuple(yp)
+    params = (account, pipeline) + tuple(yp)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
-        team_name = PIPELINE_TEAM.get(pipeline)
+        # Team-afgrænsning gælder kun DK (NO har ingen tilsvarende team-opsætning).
+        team_name = PIPELINE_TEAM.get(pipeline) if country == "dk" else None
         team_filter = ""
         if team_name:
             team_filter = """
@@ -255,9 +278,10 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
         raise
 
 
-def db_customer_heatmap(pipeline: str, owner_name: str | None = None) -> list[dict]:
+def db_customer_heatmap(pipeline: str, owner_name: str | None = None, country: str = "dk") -> list[dict]:
+    account = account_for_country(country)
     oc, op = _owner_clause(owner_name)
-    params = (pipeline,) + tuple(op)
+    params = (account, pipeline) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -304,17 +328,18 @@ def db_customer_heatmap(pipeline: str, owner_name: str | None = None) -> list[di
         raise
 
 
-def db_customer_history(pipeline: str, org_id: str) -> dict:
+def db_customer_history(pipeline: str, org_id: str, country: str = "dk") -> dict:
+    account = account_for_country(country)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
 
         cur.execute("""
             SELECT org_name FROM [dbo].[PipedriveDeals]
-            WHERE org_id = %s AND account = 'jppol_advertising' AND pipeline_name = %s
+            WHERE org_id = %s AND account = %s AND pipeline_name = %s
               AND org_id IS NOT NULL
             ORDER BY service_activation_date DESC
-        """, (org_id, pipeline))
+        """, (org_id, account, pipeline))
         name_row = cur.fetchone()
         org_name = (name_row or {}).get("org_name", org_id)
 
@@ -325,14 +350,14 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
                 CAST(SUM(value_dkk) AS INT) AS total_value
             FROM [dbo].[PipedriveDeals]
             WHERE org_id = %s
-              AND account = 'jppol_advertising'
+              AND account = %s
               AND pipeline_name = %s
               AND org_id IS NOT NULL
               AND service_activation_date >= '2023-01-01'
               AND status = 'won'
             GROUP BY YEAR(service_activation_date)
             ORDER BY aar
-        """, (org_id, pipeline))
+        """, (org_id, account, pipeline))
         by_year = [
             {
                 "aar": int(r["aar"]),
@@ -345,6 +370,7 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
         cur.execute("""
             SELECT
                 title,
+                COALESCE(ad_type, '') AS ad_type,
                 CONVERT(NVARCHAR(10), service_activation_date, 23) AS dato,
                 CAST(value_dkk AS INT) AS value,
                 owner_name,
@@ -352,16 +378,17 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
                 COALESCE([sites], '') AS sites
             FROM [dbo].[PipedriveDeals]
             WHERE org_id = %s
-              AND account = 'jppol_advertising'
+              AND account = %s
               AND pipeline_name = %s
               AND org_id IS NOT NULL
               AND service_activation_date >= '2023-01-01'
               AND status = 'won'
             ORDER BY service_activation_date DESC
-        """, (org_id, pipeline))
+        """, (org_id, account, pipeline))
         deals = [
             {
                 "title":      r["title"] or "(Uden titel)",
+                "ad_type":    r["ad_type"] or "—",
                 "dato":       r["dato"] or "—",
                 "value":      int(r["value"] or 0),
                 "owner_name": r["owner_name"] or "—",
@@ -374,5 +401,56 @@ def db_customer_history(pipeline: str, org_id: str) -> dict:
         conn.close()
         return {"org_name": org_name, "by_year": by_year, "deals": deals}
     except Exception:
-        logger.exception("db_customer_history fejlede (pipeline=%s, org_id=%s)", pipeline, org_id)
+        logger.exception("db_customer_history fejlede (pipeline=%s, org_id=%s, country=%s)", pipeline, org_id, country)
+        raise
+
+
+def db_all_deals(pipeline: str, owner_name: str | None = None, country: str = "dk") -> list[dict]:
+    """Alle vundne deals på deal-niveau for en pipeline, grupperet pr. kunde.
+
+    Samme deal-felter som db_customer_history, men på tværs af alle kunder, så
+    heatmap-widget'en kan trække de enkelte deals under hver kunde til Excel i ét
+    udtræk. Spejler heatmap'ens afgrænsning (account/land + pipeline + valgfrit
+    owner, alle år).
+    """
+    account = account_for_country(country)
+    oc, op = _owner_clause(owner_name)
+    params = (account, pipeline) + tuple(op)
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                org_id,
+                org_name,
+                title,
+                COALESCE(ad_type, '') AS ad_type,
+                CONVERT(NVARCHAR(10), service_activation_date, 23) AS dato,
+                CAST(value_dkk AS INT) AS value,
+                owner_name,
+                YEAR(service_activation_date) AS aar,
+                COALESCE([sites], '') AS sites
+            FROM [dbo].[PipedriveDeals]
+            WHERE {_BASE_WHERE} {oc}
+              AND status = 'won'
+            ORDER BY org_name, service_activation_date DESC
+        """, params)
+        rows = [
+            {
+                "org_id":     r["org_id"],
+                "org_name":   r["org_name"] or "—",
+                "title":      r["title"] or "(Uden titel)",
+                "ad_type":    r["ad_type"] or "—",
+                "dato":       r["dato"] or "—",
+                "value":      int(r["value"] or 0),
+                "owner_name": r["owner_name"] or "—",
+                "aar":        int(r["aar"]),
+                "sites":      r["sites"] or "—",
+            }
+            for r in cur.fetchall()
+        ]
+        conn.close()
+        return rows
+    except Exception:
+        logger.exception("db_all_deals fejlede (pipeline=%s, owner=%s, country=%s)", pipeline, owner_name, country)
         raise

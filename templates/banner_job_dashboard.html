@@ -122,6 +122,10 @@
             <p class="page-sub" id="page-sub">Overblik over kundebase og omsætning</p>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
+            <div class="pipeline-toggle" title="Skift mellem Danmark (jppol_advertising) og Norge (watch_no_advertising)">
+              <button class="pipeline-btn active" id="btn-dk" onclick="setCountry('dk')">DK</button>
+              <button class="pipeline-btn" id="btn-no" onclick="setCountry('no')">NO</button>
+            </div>
             <div class="pipeline-toggle">
               <button class="pipeline-btn active" id="btn-banner" onclick="setPipeline('banner')">Banner</button>
               <button class="pipeline-btn" id="btn-job" onclick="setPipeline('job')">Job</button>
@@ -259,7 +263,13 @@
           <div class="dash-card" style="margin-bottom:20px">
             <div class="dash-card-title">
               <span>Kunde-aktivitet pr. År (Heatmap)</span>
-              <span style="font-weight:400;font-size:9px;color:var(--ink-4)">Alle aktive kunder · klik for kundehistorik</span>
+              <span style="display:flex;align-items:center;gap:12px">
+                <span style="font-weight:400;font-size:9px;color:var(--ink-4)">Alle aktive kunder · klik for kundehistorik</span>
+                <button class="xls-btn" id="export-deals-btn" onclick="exportHeatmapDeals()" title="Hent alle kunders enkelte deals som Excel">
+                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Alle deals
+                </button>
+              </span>
             </div>
 
             <!-- Søgefelt + legende -->
@@ -326,8 +336,10 @@
   </div>
 </div>
 
+<script src="/static/export-utils.js"></script>
 <script>
 let activePipeline = 'banner';
+let activeCountry  = 'dk';   // 'dk' = jppol_advertising · 'no' = watch_no_advertising
 let heatmapMode    = 'deals'; // 'deals' | 'value'
 let hmSortCol      = null;    // null = følger heatmapMode default
 let hmSortDir      = 'desc';
@@ -372,6 +384,7 @@ function fmtFull(v) {
 function getFilters() {
   return {
     pipeline: activePipeline,
+    country:  activeCountry,
     year:     document.getElementById('filter-year').value,
     month:    document.getElementById('filter-month').value,
     owner:    document.getElementById('filter-owner').value,
@@ -380,7 +393,7 @@ function getFilters() {
 
 function buildParams(extra = {}) {
   const f = getFilters();
-  const p = new URLSearchParams({ pipeline: f.pipeline });
+  const p = new URLSearchParams({ pipeline: f.pipeline, country: f.country });
   if (f.year)  p.set('year', f.year);
   if (f.month) p.set('month', f.month);
   if (f.owner) p.set('owner', f.owner);
@@ -400,13 +413,30 @@ function setPipeline(p) {
   activePipeline = p;
   document.getElementById('btn-banner').classList.toggle('active', p === 'banner');
   document.getElementById('btn-job').classList.toggle('active', p === 'job');
-  document.getElementById('page-title').textContent = (p === 'banner' ? 'Banner' : 'Job') + ' Kunde Dashboard';
+  updatePageTitle();
   // Reload owners for new pipeline, then reload data
   loadOwners().then(() => loadAll());
 }
 
+function setCountry(c) {
+  activeCountry = c;
+  document.getElementById('btn-dk').classList.toggle('active', c === 'dk');
+  document.getElementById('btn-no').classList.toggle('active', c === 'no');
+  updatePageTitle();
+  // Sælgerlisten er landeafhængig — hent owners igen før data
+  loadOwners().then(() => loadAll());
+}
+
+function updatePageTitle() {
+  const land = activeCountry === 'no' ? 'NO' : 'DK';
+  document.getElementById('page-title').textContent =
+    (activePipeline === 'banner' ? 'Banner' : 'Job') + ' Kunde Dashboard';
+  document.getElementById('page-sub').textContent =
+    `Overblik over kundebase og omsætning · ${land}`;
+}
+
 async function loadOwners() {
-  const r = await fetch(`/tools/banner-job/owners?pipeline=${activePipeline}`);
+  const r = await fetch(`/tools/banner-job/owners?pipeline=${activePipeline}&country=${activeCountry}`);
   const d = await r.json();
   const sel = document.getElementById('filter-owner');
   const cur = sel.value;
@@ -452,6 +482,7 @@ async function loadAll() {
       fetch('/tools/banner-job/top-customers?' + buildParams()),
       fetch('/tools/banner-job/customer-heatmap?' + new URLSearchParams({
         pipeline: activePipeline,
+        country:  activeCountry,
         ...(f.owner ? {owner: f.owner} : {}),
       })),
     ]);
@@ -464,7 +495,7 @@ async function loadAll() {
 
     if (isManager) {
       const perfRes = await fetch('/tools/banner-job/salesperson-performance?' +
-        new URLSearchParams({ pipeline: activePipeline, ...(f.year ? {year: f.year} : {}) }));
+        new URLSearchParams({ pipeline: activePipeline, country: activeCountry, ...(f.year ? {year: f.year} : {}) }));
       const perf = await perfRes.json();
       renderPerformance(perf.rows || []);
     } else {
@@ -662,7 +693,56 @@ function drawHeatmap() {
 }
 
 function goToKunde(orgId) {
-  window.location.href = '/tools/banner-job/kunde?pipeline=' + encodeURIComponent(activePipeline) + '&org_id=' + encodeURIComponent(orgId);
+  window.location.href = '/tools/banner-job/kunde?pipeline=' + encodeURIComponent(activePipeline)
+    + '&country=' + encodeURIComponent(activeCountry)
+    + '&org_id=' + encodeURIComponent(orgId);
+}
+
+// ── Excel-eksport: alle kunders enkelte deals (deal-niveau) ──────────────────
+// Spejler heatmap'ens afgrænsning: pipeline + aktivt sælger-filter, alle år.
+// Deals er grupperet pr. kunde (org_name) i regnearket.
+async function exportHeatmapDeals() {
+  const btn = document.getElementById('export-deals-btn');
+  const f   = getFilters();
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Henter…';
+  try {
+    const p = new URLSearchParams({ pipeline: f.pipeline, country: f.country });
+    if (f.owner) p.set('owner', f.owner);
+    const r = await fetch('/tools/banner-job/all-deals?' + p);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = (await r.json()).rows || [];
+    if (!rows.length) { HubExport.toast('Ingen deals at eksportere'); return; }
+
+    const pipeLabel = f.pipeline === 'banner' ? 'Banner' : 'Job';
+    const landLabel = f.country === 'no' ? 'NO' : 'DK';
+    const ownerPart = f.owner ? ` — ${f.owner}` : '';
+    HubExport.download({
+      filename: `banner-job-${f.country}-${f.pipeline}-alle-deals.xlsx`,
+      sheets: [{
+        name:  'Deals',
+        title: `${pipeLabel} ${landLabel} — alle kunders deals${ownerPart} (${rows.length})`,
+        columns: [
+          { header: 'Kunde',        key: 'org_name',   width: 34, align: 'left'  },
+          { header: 'Titel',        key: 'title',      width: 38, align: 'left'  },
+          { header: 'Annoncetype',  key: 'ad_type',    width: 16, align: 'left'  },
+          { header: 'Site / Medie', key: 'sites',      width: 20, align: 'left'  },
+          { header: 'Sælger',       key: 'owner_name', width: 20, align: 'left'  },
+          { header: 'Dato',         key: 'dato',       width: 13, align: 'left'  },
+          { header: 'År',           key: 'aar',        width: 7,  align: 'right', numFmt: '0' },
+          { header: 'Værdi',        key: 'value',      width: 15, align: 'right', numFmt: '#,##0' },
+        ],
+        rows,
+      }],
+    });
+  } catch (e) {
+    console.error(e);
+    HubExport.toast('Kunne ikke hente deals');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
 }
 
 async function openCustomerModal(orgId) {
@@ -673,7 +753,7 @@ async function openCustomerModal(orgId) {
   overlay.classList.remove('hidden');
 
   try {
-    const r = await fetch(`/tools/banner-job/customer-history?pipeline=${activePipeline}&org_id=${encodeURIComponent(orgId)}`);
+    const r = await fetch(`/tools/banner-job/customer-history?pipeline=${activePipeline}&country=${activeCountry}&org_id=${encodeURIComponent(orgId)}`);
     const d = await r.json();
     document.getElementById('modal-title').textContent = escHtml(d.org_name || orgId);
 
@@ -700,6 +780,7 @@ async function openCustomerModal(orgId) {
         <table class="v-table">
           <thead><tr>
             <th>Titel</th>
+            <th>Annoncetype</th>
             <th class="num">År</th>
             <th>Dato</th>
             <th>Sælger</th>
@@ -709,6 +790,7 @@ async function openCustomerModal(orgId) {
       d.deals.forEach(deal => {
         html += `<tr>
           <td>${escHtml(deal.title)}</td>
+          <td>${escHtml(deal.ad_type)}</td>
           <td class="num">${deal.aar}</td>
           <td>${escHtml(deal.dato)}</td>
           <td>${escHtml(deal.owner_name)}</td>

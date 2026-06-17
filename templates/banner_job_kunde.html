@@ -27,16 +27,18 @@
 .year-chip-value{font-size:14px;font-weight:700;color:var(--ink);margin-top:4px}
 .year-chip-deals{font-size:10px;color:var(--ink-4);margin-top:2px}
 
-.v-table{width:100%;border-collapse:collapse;font-size:12px}
-.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+/* table-layout:fixed + wrap → hele tabellen holder sig i view uden horisontal
+   scroll, og lange titler ombrydes pænt i stedet for at flyde sammen. */
+.v-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:9px 10px;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .v-table th.num{text-align:right}
 .v-table th.sortable{cursor:pointer;user-select:none}
 .v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
 .v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
 .v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
-.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:top;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
-.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 
 .back-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink-3);text-decoration:none;margin-bottom:16px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);transition:border-color .13s}
@@ -120,7 +122,13 @@
 
           <!-- Deal historik -->
           <div class="dash-card">
-            <div class="dash-card-title">Deal Historik</div>
+            <div class="dash-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <span>Deal Historik</span>
+              <button class="xls-btn" id="export-deals-btn" onclick="exportDeals()" disabled title="Hent kundens deals som Excel">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Excel
+              </button>
+            </div>
             <div class="deal-filter-bar" id="deal-filter-bar">
               <span class="filter-label">Filtrer</span>
               <select id="filter-aar" onchange="filterDeals()">
@@ -132,13 +140,21 @@
               <select id="filter-site" onchange="filterDeals()">
                 <option value="">Alle sites</option>
               </select>
+              <select id="filter-adtype" onchange="filterDeals()">
+                <option value="">Alle annoncetyper</option>
+              </select>
               <button class="filter-reset" onclick="resetFilters()">Nulstil</button>
               <span class="deal-filter-count" id="filter-count"></span>
             </div>
             <table class="v-table" id="deals-table">
+              <colgroup>
+                <col style="width:23%"><col style="width:13%"><col style="width:15%">
+                <col style="width:14%"><col style="width:11%"><col style="width:8%"><col style="width:16%">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Titel</th>
+                  <th>Annoncetype</th>
                   <th>Site / Medie</th>
                   <th>Sælger</th>
                   <th class="sortable" onclick="sortDeals('dato')">Dato<i class="sort-arrow" id="arr-dato">↕</i></th>
@@ -147,7 +163,7 @@
                 </tr>
               </thead>
               <tbody id="deals-tbody">
-                <tr><td colspan="6" class="empty">Henter…</td></tr>
+                <tr><td colspan="7" class="empty">Henter…</td></tr>
               </tbody>
             </table>
           </div>
@@ -166,10 +182,14 @@
   </div>
 </div>
 
+<script src="/static/export-utils.js"></script>
 <script>
 const pipeline = {{ pipeline | tojson }};
 const orgId    = {{ org_id | tojson }};
+const country  = {{ country | tojson }};   // 'dk' | 'no'
 let allDeals   = [];
+let shownDeals = [];   // aktuelt filtrerede + sorterede deals (til Excel-eksport)
+let custName   = '';   // kundens navn (til filnavn/overskrift)
 
 function fmtKr(v) {
   if (!v) return '0 kr.';
@@ -204,6 +224,11 @@ function populateFilters(deals) {
   )].sort();
   siteValues.forEach(v => {
     const o = document.createElement('option'); o.value = v; o.textContent = v; siteSel.appendChild(o);
+  });
+
+  const adtypeSel = document.getElementById('filter-adtype');
+  unique('ad_type').filter(v => v !== '—').forEach(v => {
+    const o = document.createElement('option'); o.value = v; o.textContent = v; adtypeSel.appendChild(o);
   });
 }
 
@@ -243,12 +268,13 @@ function renderDeals(deals) {
   });
 
   if (deals.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen deals matcher filteret</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen deals matcher filteret</td></tr>';
     return;
   }
   tbody.innerHTML = deals.map(deal => `
     <tr>
       <td>${escHtml(deal.title)}</td>
+      <td>${escHtml(deal.ad_type)}</td>
       <td>${escHtml(deal.sites)}</td>
       <td>${escHtml(deal.owner_name)}</td>
       <td>${escHtml(deal.dato)}</td>
@@ -262,10 +288,12 @@ function filterDeals() {
   const aar     = document.getElementById('filter-aar').value;
   const saelger = document.getElementById('filter-saelger').value;
   const site    = document.getElementById('filter-site').value;
+  const adtype  = document.getElementById('filter-adtype').value;
   let filtered = allDeals.filter(d => {
     if (aar     && String(d.aar) !== aar)                                                    return false;
     if (saelger && d.owner_name !== saelger)                                                 return false;
     if (site    && !(d.sites || '').split(',').map(s => s.trim()).includes(site))             return false;
+    if (adtype  && d.ad_type !== adtype)                                                     return false;
     return true;
   });
   // Sorter
@@ -277,6 +305,8 @@ function filterDeals() {
     const av = a.value ?? 0, bv = b.value ?? 0;
     return dealSortDir === 'desc' ? bv - av : av - bv;
   });
+  shownDeals = filtered;
+  document.getElementById('export-deals-btn').disabled = filtered.length === 0;
   renderDeals(filtered);
 }
 
@@ -284,12 +314,13 @@ function resetFilters() {
   document.getElementById('filter-aar').value     = '';
   document.getElementById('filter-saelger').value = '';
   document.getElementById('filter-site').value    = '';
+  document.getElementById('filter-adtype').value  = '';
   filterDeals();
 }
 
 async function loadKunde() {
   try {
-    const res = await fetch(`/tools/banner-job/customer-history?pipeline=${encodeURIComponent(pipeline)}&org_id=${encodeURIComponent(orgId)}`);
+    const res = await fetch(`/tools/banner-job/customer-history?pipeline=${encodeURIComponent(pipeline)}&country=${encodeURIComponent(country)}&org_id=${encodeURIComponent(orgId)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
 
@@ -303,6 +334,7 @@ async function loadKunde() {
 
     // Titles
     const orgName = d.org_name || orgId;
+    custName = orgName;
     document.getElementById('org-name-title').textContent = orgName;
     document.getElementById('bc-org-name').textContent = orgName;
     document.title = orgName + ' — Intomedia Hub';
@@ -371,7 +403,7 @@ async function loadKunde() {
     const deals = d.deals || [];
     allDeals = deals;
     populateFilters(deals);
-    renderDeals(deals);
+    filterDeals();   // sætter shownDeals + aktiverer Excel-knap (sorterer som sorteringspilen viser)
 
     document.getElementById('page-content').classList.remove('hidden');
 
@@ -380,6 +412,33 @@ async function loadKunde() {
     document.getElementById('error-state').classList.remove('hidden');
     document.getElementById('error-msg').textContent = e.message;
   }
+}
+
+// ── Excel-eksport: kundens enkelte deals (respekterer aktive filtre/sortering) ──
+function exportDeals() {
+  if (!shownDeals.length) { HubExport.toast('Ingen deals at eksportere'); return; }
+  const pipeLabel = pipeline === 'banner' ? 'Banner' : 'Job';
+  const landLabel = country === 'no' ? 'NO' : 'DK';
+  const slug = (custName || orgId).toString()
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kunde';
+
+  HubExport.download({
+    filename: `${slug}-${country}-${pipeline}-deals.xlsx`,
+    sheets: [{
+      name:  'Deals',
+      title: `${custName} — ${pipeLabel} ${landLabel} deals (${shownDeals.length})`,
+      columns: [
+        { header: 'Titel',        key: 'title',      width: 40, align: 'left'  },
+        { header: 'Annoncetype',  key: 'ad_type',    width: 16, align: 'left'  },
+        { header: 'Site / Medie', key: 'sites',      width: 22, align: 'left'  },
+        { header: 'Sælger',       key: 'owner_name', width: 20, align: 'left'  },
+        { header: 'Dato',         key: 'dato',       width: 14, align: 'left'  },
+        { header: 'År',           key: 'aar',        width: 8,  align: 'right', numFmt: '0' },
+        { header: 'Værdi',        key: 'value',      width: 16, align: 'right', numFmt: '#,##0' },
+      ],
+      rows: shownDeals,
+    }],
+  });
 }
 
 loadKunde();
