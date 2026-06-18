@@ -10,8 +10,7 @@ from nav_utils import register_nav_globals
 from moduler.modul_saelger_portfolio.queries import (
     UNASSIGNED_OWNER,
     get_available_owners,
-    get_customer_history,
-    get_growth_timeline,
+    get_customer_portfolio,
     get_kundeliste,
     get_led_teams,
     get_org_owners,
@@ -88,9 +87,6 @@ async def saelger_portfolio(
 
     kunder = get_kundeliste(target_owner)
 
-    # Porteføljevækst for den viste sælger (vundne deals på eksisterende kunder)
-    growth_timeline = get_growth_timeline(target_owner)
-
     return templates.TemplateResponse(
         request=request,
         name="saelger_portfolio.html",
@@ -101,8 +97,6 @@ async def saelger_portfolio(
             "target_owner": target_owner,
             "is_manager": is_manager,
             "available_owners": available_owners,
-            "growth_timeline": growth_timeline,
-            "current_year": date.today().year,
         }
     )
 
@@ -125,19 +119,17 @@ async def saelger_portfolio_kunde(
     })
 
 
-@router.get("/customer-history")
-async def saelger_portfolio_customer_history(
+@router.get("/customer-portfolio")
+async def saelger_portfolio_customer_portfolio(
     org_id: str = "",
     owner: str = "",
     user=Depends(get_current_user),
 ):
     if not org_id:
         raise HTTPException(400, "org_id påkrævet")
-    if not owner:
-        raise HTTPException(400, "owner påkrævet")
     _require_org_access(user, org_id)
     try:
-        return JSONResponse(get_customer_history(org_id, owner))
+        return JSONResponse(get_customer_portfolio(org_id, owner))
     except Exception:
-        logger.exception("saelger_portfolio_customer_history fejlede (org_id=%s)", org_id)
+        logger.exception("saelger_portfolio_customer_portfolio fejlede (org_id=%s)", org_id)
         raise HTTPException(500, "Data kunne ikke hentes")
