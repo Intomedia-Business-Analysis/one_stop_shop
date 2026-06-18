@@ -204,10 +204,12 @@ def get_customer_portfolio(org_id: str, owner: str = "") -> dict:
     """Kundens aktive abonnementer for sælgerens brand.
 
     Pr. deal: titel, deal-id, sælger, aktiveringsdato og porteføljeværdi
-    (SUM af value_dkk). Afgrænses til deal_type='abonnement' og — hvis
-    sælgerens brand kan udledes — til sælgerens account(s) (get_owner_accounts).
-    Kan sælgerens brand ikke udledes (fx (Uden ejer)), droppes account-filteret,
-    og alle kundens abonnementer vises.
+    (SUM af value_dkk). Afgrænses til deal_type='abonnement', til deals med en
+    service_activation_date (kun vundne/aktiverede deals tæller med — så
+    porteføljeværdien matcher ACV-tabellen) og — hvis sælgerens brand kan
+    udledes — til sælgerens account(s) (get_owner_accounts). Kan sælgerens
+    brand ikke udledes (fx (Uden ejer)), droppes account-filteret, og alle
+    kundens aktiverede abonnementer vises.
     """
     accounts = get_owner_accounts(owner)
     dt_ph = ",".join(["%s"] * len(SUBSCRIPTION_DEAL_TYPES))
@@ -232,6 +234,10 @@ def get_customer_portfolio(org_id: str, owner: str = "") -> dict:
     # value = lokal valuta (NOK/SEK/EUR/USD/DKK), value_dkk = omregnet til DKK
     # (bruges til sortering/totaler på tværs af valutaer). currency styrer hvad
     # frontend viser, så NO/SE-kunder vises i deres egen valuta.
+    # Kun aktiverede (vundne) deals tæller med i porteføljeværdien — det er
+    # service_activation_date, der markerer en deal som vundet. Deals uden
+    # aktiveringsdato (endnu ikke vundne) ville ellers oppuste porteføljeværdien
+    # og afvige fra ACV-tabellen, der kun rummer aktiverede deals.
     cur.execute(f"""
         SELECT
             d.title,
@@ -239,6 +245,7 @@ def get_customer_portfolio(org_id: str, owner: str = "") -> dict:
             d.org_id,
             d.org_name,
             d.owner_name,
+            d.sites,
             CONVERT(varchar(10), d.service_activation_date, 23) AS service_activation_date,
             SUM(d.value)     AS value,
             SUM(d.value_dkk) AS value_dkk,
@@ -246,9 +253,10 @@ def get_customer_portfolio(org_id: str, owner: str = "") -> dict:
         FROM [dbo].[PipedriveDeals] d
         WHERE d.org_id = %s
           AND d.deal_type IN ({dt_ph})
+          AND d.service_activation_date IS NOT NULL
           {account_clause}
         GROUP BY d.title, d.org_name, d.org_id, d.pd_deal_id,
-                 d.owner_name, d.service_activation_date
+                 d.owner_name, d.sites, d.service_activation_date
         ORDER BY value_dkk DESC
     """, params)
 
@@ -260,6 +268,7 @@ def get_customer_portfolio(org_id: str, owner: str = "") -> dict:
             "title":           r["title"] or "(Uden titel)",
             "pd_deal_id":      r["pd_deal_id"],
             "owner_name":      r["owner_name"] or "—",
+            "site":            r["sites"] or "(Uden medie)",
             "activation_date": r["service_activation_date"] or "—",
             "value":           float(r["value"] or 0),
             "value_dkk":       float(r["value_dkk"] or 0),

@@ -102,41 +102,24 @@
           <!-- KPI row -->
           <div class="kpi-row" id="kpi-row"></div>
 
-          <!-- Abonnementer -->
+          <!-- Abonnementer: filterlinje + én tabel pr. medie/site -->
           <div class="dash-card">
             <div class="dash-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-              <span>Abonnementer</span>
+              <span>Abonnementer pr. medie</span>
               <button class="xls-btn" id="export-btn" onclick="exportDeals()" disabled title="Hent kundens abonnementer som Excel">
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Excel
               </button>
             </div>
-            <div class="filter-bar">
+            <div class="filter-bar" style="margin-bottom:0">
               <span class="filter-label">Søg</span>
               <input type="text" id="filter-titel" placeholder="Søg titel…" oninput="renderDeals()" autocomplete="off" style="min-width:200px">
               <span class="deal-filter-count" id="filter-count"></span>
             </div>
-            <div class="v-table-wrap">
-            <table class="v-table">
-              <colgroup>
-                <col class="c-titel"><col class="c-id"><col class="c-saelger"><col class="c-dato"><col class="c-value">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Titel</th>
-                  <th>Deal-ID</th>
-                  <th>Sælger</th>
-                  <th class="sortable" onclick="sortDeals('activation_date')">Aktiveret<i class="sort-arrow" id="arr-activation_date">↕</i></th>
-                  <th class="num sortable" onclick="sortDeals('value')">Porteføljeværdi<i class="sort-arrow" id="arr-value">↕</i></th>
-                </tr>
-              </thead>
-              <tbody id="deals-tbody">
-                <tr><td colspan="5" class="empty">Henter…</td></tr>
-              </tbody>
-              <tfoot id="deals-tfoot"></tfoot>
-            </table>
-            </div>
           </div>
+
+          <!-- Én dash-card pr. medie indsættes her -->
+          <div id="sites-container"></div>
 
         </div>
 
@@ -207,38 +190,70 @@ function getShown() {
   return rows;
 }
 
+function arrowFor(col) {
+  if (col !== dealSortCol) return '↕';
+  return dealSortDir === 'desc' ? '↓' : '↑';
+}
+
+function siteTableHtml(site, rows) {
+  return `
+    <div class="dash-card">
+      <div class="dash-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <span>${escHtml(site)}</span>
+        <span style="color:var(--green);font-size:13px;font-weight:800;letter-spacing:0;text-transform:none">${totalsByCurrency(rows)} · ${rows.length} abon.</span>
+      </div>
+      <div class="v-table-wrap">
+      <table class="v-table">
+        <colgroup>
+          <col class="c-titel"><col class="c-id"><col class="c-saelger"><col class="c-dato"><col class="c-value">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Titel</th>
+            <th>Deal-ID</th>
+            <th>Sælger</th>
+            <th class="sortable ${dealSortCol==='activation_date'?'sort-active':''}" onclick="sortDeals('activation_date')">Aktiveret<i class="sort-arrow">${arrowFor('activation_date')}</i></th>
+            <th class="num sortable ${dealSortCol==='value'?'sort-active':''}" onclick="sortDeals('value')">Porteføljeværdi<i class="sort-arrow">${arrowFor('value')}</i></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(d => `
+            <tr>
+              <td class="trunc" title="${escHtml(d.title)}">${escHtml(d.title)}</td>
+              <td class="muted">${escHtml(d.pd_deal_id)}</td>
+              <td class="trunc" title="${escHtml(d.owner_name)}">${escHtml(d.owner_name)}</td>
+              <td>${escHtml(d.activation_date)}</td>
+              <td class="num">${fmtMoney(d.value, d.currency)}</td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot><tr><td colspan="4">I alt (${rows.length})</td><td class="num">${totalsByCurrency(rows)}</td></tr></tfoot>
+      </table>
+      </div>
+    </div>`;
+}
+
 function renderDeals() {
   const deals = getShown();
-  const tbody = document.getElementById('deals-tbody');
+  const container = document.getElementById('sites-container');
 
   document.getElementById('filter-count').textContent =
     deals.length < allDeals.length ? `Viser ${deals.length} af ${allDeals.length} abonnementer` : `${allDeals.length} abonnementer`;
 
-  ['activation_date','value'].forEach(col => {
-    const arrow = document.getElementById('arr-' + col);
-    const th    = arrow?.closest('th');
-    if (!arrow) return;
-    if (col === dealSortCol) { arrow.textContent = dealSortDir === 'desc' ? '↓' : '↑'; th?.classList.add('sort-active'); }
-    else { arrow.textContent = '↕'; th?.classList.remove('sort-active'); }
-  });
-
   if (!deals.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">Ingen abonnementer matcher søgningen</td></tr>';
-    document.getElementById('deals-tfoot').innerHTML = '';
+    container.innerHTML = '<div class="dash-card"><div class="empty">Ingen abonnementer matcher søgningen</div></div>';
     return;
   }
-  tbody.innerHTML = deals.map(d => `
-    <tr>
-      <td class="trunc" title="${escHtml(d.title)}">${escHtml(d.title)}</td>
-      <td class="muted">${escHtml(d.pd_deal_id)}</td>
-      <td class="trunc" title="${escHtml(d.owner_name)}">${escHtml(d.owner_name)}</td>
-      <td>${escHtml(d.activation_date)}</td>
-      <td class="num">${fmtMoney(d.value, d.currency)}</td>
-    </tr>
-  `).join('');
 
-  document.getElementById('deals-tfoot').innerHTML =
-    `<tr><td colspan="4">I alt (${deals.length})</td><td class="num">${totalsByCurrency(deals)}</td></tr>`;
+  // Gruppér efter medie/site og vis grupperne med størst ACV øverst
+  const groups = {};
+  deals.forEach(d => {
+    const s = d.site || '(Uden medie)';
+    (groups[s] = groups[s] || []).push(d);
+  });
+  const sumDkk = rows => rows.reduce((t, d) => t + (d.value_dkk || 0), 0);
+  const sites  = Object.keys(groups).sort((a, b) => sumDkk(groups[b]) - sumDkk(groups[a]));
+
+  container.innerHTML = sites.map(site => siteTableHtml(site, groups[site])).join('');
 }
 
 async function loadKunde() {
@@ -258,6 +273,8 @@ async function loadKunde() {
     allDeals = d.deals || [];
     const brandLabel = (d.accounts && d.accounts.length) ? d.accounts.join(', ') : 'alle brands';
 
+    const siteCount = new Set(allDeals.map(d => d.site || '(Uden medie)')).size;
+
     document.getElementById('kpi-row').innerHTML = `
       <div class="kpi-card">
         <div class="kpi-label">Porteføljeværdi</div>
@@ -267,7 +284,7 @@ async function loadKunde() {
       <div class="kpi-card">
         <div class="kpi-label">Antal abonnementer</div>
         <div class="kpi-value">${allDeals.length}</div>
-        <div class="kpi-sub">deal_type = abonnement</div>
+        <div class="kpi-sub">${siteCount} ${siteCount === 1 ? 'medie' : 'medier'} · deal_type = abonnement</div>
       </div>
     `;
 
@@ -284,8 +301,14 @@ async function loadKunde() {
 
 // ── Excel-eksport: respekterer aktiv søgning + sortering ────────────────
 function exportDeals() {
-  const rows = getShown();
-  if (!rows.length) { HubExport.toast('Ingen abonnementer at eksportere'); return; }
+  const shown = getShown();
+  if (!shown.length) { HubExport.toast('Ingen abonnementer at eksportere'); return; }
+  // Saml efter medie (størst ACV øverst), så Excel matcher visningen
+  const groups = {};
+  shown.forEach(d => { const s = d.site || '(Uden medie)'; (groups[s] = groups[s] || []).push(d); });
+  const sumDkk = r => r.reduce((t, d) => t + (d.value_dkk || 0), 0);
+  const rows = Object.keys(groups).sort((a, b) => sumDkk(groups[b]) - sumDkk(groups[a]))
+    .flatMap(s => groups[s]);
   const slug = (orgName || orgId).toString()
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kunde';
   HubExport.download({
@@ -294,6 +317,7 @@ function exportDeals() {
       name:  'Abonnementer',
       title: `${orgName} — abonnementer (${rows.length})`,
       columns: [
+        { header: 'Medie',            key: 'site',            width: 22, align: 'left'  },
         { header: 'Titel',            key: 'title',           width: 44, align: 'left'  },
         { header: 'Deal-ID',          key: 'pd_deal_id',      width: 12, align: 'left'  },
         { header: 'Sælger',           key: 'owner_name',      width: 22, align: 'left'  },
