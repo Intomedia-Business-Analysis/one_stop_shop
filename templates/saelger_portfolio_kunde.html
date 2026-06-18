@@ -3,82 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kundedetaljer — JP|Politiken Business Media Hub</title>
+<title>Kundedetaljer — Intomedia Hub</title>
 <link rel="stylesheet" href="/static/hub.css">
 <style>
-.tool-wrap{max-width:1100px;margin:0 auto}
+.tool-wrap{max-width:1000px;margin:0 auto}
 
 .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px}
 
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
-@media(max-width:900px){.kpi-row{grid-template-columns:1fr 1fr}}
+.kpi-row{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:700px){.kpi-row{grid-template-columns:1fr}}
 .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
 .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px}
 .kpi-value{font-size:28px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
 .kpi-value.green{color:var(--green)}
-.kpi-value.neg{color:#B32E45}
-.kpi-sub{font-size:11px;color:var(--ink-4);margin-top:6px}
 
 .v-table-wrap{overflow-x:auto}
-/* table-layout:fixed + kolonnebredder, så lange titler/navne afkortes med
-   ellipsis i stedet for at skubbe tabellen bredere end kortet */
 .v-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
 .v-table col.c-titel{width:auto}
-.v-table col.c-pipeline{width:104px}
-.v-table col.c-site{width:130px}
-.v-table col.c-saelger{width:120px}
-.v-table col.c-dato{width:94px}
-.v-table col.c-value{width:104px}
+.v-table col.c-id{width:90px}
+.v-table col.c-saelger{width:150px}
+.v-table col.c-dato{width:110px}
+.v-table col.c-value{width:130px}
 .v-table td.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table th.num{text-align:right}
 .v-table th.sortable{cursor:pointer;user-select:none}
 .v-table th.sortable:hover{background:var(--green-mid,#1a7a4a)}
-.v-table th .sort-arrow{margin-left:5px;opacity:0.5;font-style:normal;font-size:12px}
+.v-table th .sort-arrow{margin-left:5px;opacity:.5;font-style:normal;font-size:12px}
 .v-table th.sort-active .sort-arrow{opacity:1;font-size:13px}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
 .v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.v-table .muted{color:var(--ink-4)}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
-.v-table .ops-value{color:#B32E45}
-
-.pipeline-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;background:var(--green-light);color:var(--green);white-space:nowrap}
-.pipeline-badge.ops{background:#f6e4e0;color:#B32E45}
+.v-table tfoot td{padding:10px 12px;border-top:2px solid var(--border);font-weight:800;color:var(--ink)}
 
 .spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
 .spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .hidden{display:none}
 
-.deal-filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.deal-filter-bar .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
-.deal-filter-bar select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none}
-.deal-filter-bar select:focus{border-color:var(--green)}
-.deal-filter-bar .filter-reset{font-size:11px;font-weight:600;color:var(--ink-4);background:none;border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 10px;cursor:pointer}
-.deal-filter-bar .filter-reset:hover{border-color:var(--green);color:var(--green)}
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.filter-bar .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-bar input{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;outline:none}
+.filter-bar input:focus{border-color:var(--green)}
 .deal-filter-count{font-size:11px;color:var(--ink-4);margin-left:auto}
-
-.year-row{display:flex;gap:12px;align-items:flex-end;overflow-x:auto;padding-bottom:4px}
-
-/* ── Multi-select dropdown (PBI-stil, som manager-dashboardet) ────────── */
-.ms-wrap{position:relative;display:inline-block}
-.ms-trigger{display:flex;align-items:center;gap:6px;padding:6px 10px;min-width:130px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);cursor:pointer;user-select:none;transition:border-color .13s;white-space:nowrap}
-.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
-.ms-trigger-text{flex:1;overflow:hidden;text-overflow:ellipsis}
-.ms-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--green);color:#fff;font-size:10px;font-weight:700}
-.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
-.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
-.ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:200;min-width:200px;max-height:260px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 4px 16px rgba(0,0,0,.12);display:none}
-.ms-panel.open{display:block}
-.ms-list-header{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4);cursor:pointer}
-.ms-list-header:hover{background:var(--green-light)}
-.ms-item{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:12px;color:var(--ink-2);cursor:pointer;transition:background .1s}
-.ms-item:hover{background:var(--green-light)}
-.ms-item input[type=checkbox]{accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none}
-.ms-item span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 </style>
 </head>
 <body>
@@ -114,7 +86,7 @@
         <!-- Loading -->
         <div id="loading-state" class="spin-wrap">
           <div class="spinner"></div>
-          <div>Henter kundens deal-historik…</div>
+          <div>Henter kundens abonnementer…</div>
         </div>
 
         <!-- Content -->
@@ -130,57 +102,38 @@
           <!-- KPI row -->
           <div class="kpi-row" id="kpi-row"></div>
 
-          <!-- Salg og opsigelser pr. år -->
+          <!-- Abonnementer -->
           <div class="dash-card">
-            <div class="dash-card-title" title="Aktiveringsår — samme periodisering som Porteføljevækst-kortet">Salg og opsigelser pr. år</div>
-            <div class="year-row" id="year-chart"></div>
-          </div>
-
-          <!-- Deal historik -->
-          <div class="dash-card">
-            <div class="dash-card-title">Deal-historik — egne deals</div>
-            <div class="deal-filter-bar">
-              <span class="filter-label">Filtrer</span>
-              <select id="filter-aar" onchange="filterDeals()"><option value="">Alle år</option></select>
-              <div class="ms-wrap" id="ms-site-wrap">
-                <div class="ms-trigger" id="ms-site-trigger" onclick="msToggle('site')">
-                  <span class="ms-trigger-text" id="ms-site-label">Alle sites</span>
-                  <span class="ms-badge" id="ms-site-badge" style="display:none"></span>
-                  <span class="ms-arrow">▼</span>
-                </div>
-                <div class="ms-panel" id="ms-site-panel"></div>
-              </div>
-              <div class="ms-wrap" id="ms-pipeline-wrap">
-                <div class="ms-trigger" id="ms-pipeline-trigger" onclick="msToggle('pipeline')">
-                  <span class="ms-trigger-text" id="ms-pipeline-label">Alle pipelines</span>
-                  <span class="ms-badge" id="ms-pipeline-badge" style="display:none"></span>
-                  <span class="ms-arrow">▼</span>
-                </div>
-                <div class="ms-panel" id="ms-pipeline-panel"></div>
-              </div>
-              <button class="filter-reset" onclick="resetFilters()">Nulstil</button>
+            <div class="dash-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <span>Abonnementer</span>
+              <button class="xls-btn" id="export-btn" onclick="exportDeals()" disabled title="Hent kundens abonnementer som Excel">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Excel
+              </button>
+            </div>
+            <div class="filter-bar">
+              <span class="filter-label">Søg</span>
+              <input type="text" id="filter-titel" placeholder="Søg titel…" oninput="renderDeals()" autocomplete="off" style="min-width:200px">
               <span class="deal-filter-count" id="filter-count"></span>
             </div>
             <div class="v-table-wrap">
             <table class="v-table">
               <colgroup>
-                <col class="c-titel"><col class="c-pipeline"><col class="c-site">
-                <col class="c-saelger"><col class="c-dato"><col class="c-dato"><col class="c-value">
+                <col class="c-titel"><col class="c-id"><col class="c-saelger"><col class="c-dato"><col class="c-value">
               </colgroup>
               <thead>
                 <tr>
                   <th>Titel</th>
-                  <th>Pipeline</th>
-                  <th>Site</th>
+                  <th>Deal-ID</th>
                   <th>Sælger</th>
-                  <th class="sortable" onclick="sortDeals('vundet')">Vundet<i class="sort-arrow" id="arr-vundet">↕</i></th>
-                  <th>Aktiveret</th>
-                  <th class="num sortable" onclick="sortDeals('value')">Værdi<i class="sort-arrow" id="arr-value">↕</i></th>
+                  <th class="sortable" onclick="sortDeals('activation_date')">Aktiveret<i class="sort-arrow" id="arr-activation_date">↕</i></th>
+                  <th class="num sortable" onclick="sortDeals('value')">Porteføljeværdi<i class="sort-arrow" id="arr-value">↕</i></th>
                 </tr>
               </thead>
               <tbody id="deals-tbody">
-                <tr><td colspan="7" class="empty">Henter…</td></tr>
+                <tr><td colspan="5" class="empty">Henter…</td></tr>
               </tbody>
+              <tfoot id="deals-tfoot"></tfoot>
             </table>
             </div>
           </div>
@@ -199,111 +152,35 @@
   </div>
 </div>
 
+<script src="/static/export-utils.js"></script>
 <script>
-const orgId  = {{ org_id | tojson }};
+const orgId     = {{ org_id | tojson }};
 const backOwner = {{ back_owner | tojson }};
 let allDeals = [];
+let orgName  = '';
+let dealSortCol = 'value';
+let dealSortDir = 'desc';
 
 function fmtFull(v) {
   if (v === null || v === undefined) return '—';
   return Math.round(v).toLocaleString('da-DK') + ' kr.';
 }
-function fmtKr(v) {
-  if (!v) return '0 kr.';
-  const abs = Math.abs(v), sign = v < 0 ? '-' : '';
-  if (abs >= 1_000_000) return sign + (abs / 1_000_000).toFixed(1).replace('.', ',') + ' mio. kr.';
-  if (abs >= 1000)      return sign + Math.round(abs / 1000) + 'k kr.';
-  return sign + Math.round(abs) + ' kr.';
+// Dynamisk valuta: DKK → "kr.", øvrige (NOK/SEK/EUR/USD) med kode
+function fmtMoney(v, cur) {
+  if (v === null || v === undefined) return '—';
+  const n = Math.round(v).toLocaleString('da-DK');
+  return (cur && cur !== 'DKK') ? `${n} ${cur}` : `${n} kr.`;
+}
+function totalsByCurrency(rows) {
+  const by = {};
+  rows.forEach(d => { by[d.currency || 'DKK'] = (by[d.currency || 'DKK'] || 0) + (d.value || 0); });
+  const parts = Object.entries(by).filter(([, v]) => Math.round(v) !== 0)
+    .map(([cur, v]) => fmtMoney(v, cur));
+  return parts.join(' · ') || '0 kr.';
 }
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-// ── Multi-select (site + pipeline) — tom mængde = "alle" ────────────────
-const msSelected = { site: new Set(), pipeline: new Set() };
-const MS_ALL_LABEL = { site: 'Alle sites', pipeline: 'Alle pipelines' };
-
-function msToggle(key) {
-  const panel   = document.getElementById(`ms-${key}-panel`);
-  const trigger = document.getElementById(`ms-${key}-trigger`);
-  const open    = !panel.classList.contains('open');
-  // Luk alle paneler først, åbn så evt. dette
-  document.querySelectorAll('.ms-panel').forEach(p => p.classList.remove('open'));
-  document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('open'));
-  if (open) { panel.classList.add('open'); trigger.classList.add('open'); }
-}
-
-function msClearAll(key) {
-  msSelected[key].clear();
-  msUpdateUI(key);
-  filterDeals();
-}
-
-function msToggleItem(key, value) {
-  const set = msSelected[key];
-  set.has(value) ? set.delete(value) : set.add(value);
-  msUpdateUI(key);
-  filterDeals();
-}
-
-function msUpdateUI(key) {
-  const set = msSelected[key];
-  document.getElementById(`ms-${key}-panel`).querySelectorAll('input[data-value]').forEach(cb => {
-    cb.checked = set.has(cb.dataset.value);
-  });
-  const allCb = document.getElementById(`ms-${key}-all`);
-  if (allCb) allCb.checked = set.size === 0;
-  const label = document.getElementById(`ms-${key}-label`);
-  const badge = document.getElementById(`ms-${key}-badge`);
-  if (set.size === 0) {
-    label.textContent = MS_ALL_LABEL[key];
-    badge.style.display = 'none';
-  } else if (set.size === 1) {
-    label.textContent = [...set][0];
-    badge.style.display = 'none';
-  } else {
-    label.textContent = `${set.size} valgt`;
-    badge.style.display = '';
-    badge.textContent = set.size;
-  }
-}
-
-function msBuild(key, values) {
-  const panel = document.getElementById(`ms-${key}-panel`);
-  panel.innerHTML = `
-    <div class="ms-list-header" onclick="msClearAll('${key}')">
-      <input type="checkbox" id="ms-${key}-all" checked onclick="event.preventDefault()">
-      <span style="pointer-events:none">${MS_ALL_LABEL[key]}</span>
-    </div>` +
-    values.map(v => `
-      <div class="ms-item" onclick="msToggleItem('${key}', this.querySelector('input').dataset.value)">
-        <input type="checkbox" data-value="${escHtml(v)}">
-        <span>${escHtml(v)}</span>
-      </div>`).join('');
-}
-
-// Luk åbne paneler ved klik udenfor
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.ms-wrap')) {
-    document.querySelectorAll('.ms-panel').forEach(p => p.classList.remove('open'));
-    document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('open'));
-  }
-});
-
-function populateFilters(deals) {
-  const fill = (id, values) => {
-    const sel = document.getElementById(id);
-    values.forEach(v => {
-      const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
-    });
-  };
-  fill('filter-aar',     [...new Set(deals.map(d => d.aar).filter(Boolean))].sort());
-  msBuild('site',     [...new Set(deals.flatMap(d => (d.sites || '').split(',').map(s => s.trim())).filter(s => s && s !== '—'))].sort());
-  msBuild('pipeline', [...new Set(deals.map(d => d.pipeline).filter(Boolean))].sort());
-}
-
-let dealSortCol = 'vundet';
-let dealSortDir = 'desc';
 
 function sortDeals(col) {
   if (dealSortCol === col) {
@@ -312,149 +189,90 @@ function sortDeals(col) {
     dealSortCol = col;
     dealSortDir = 'desc';
   }
-  filterDeals();
+  renderDeals();
 }
 
-function renderDeals(deals) {
-  const tbody = document.getElementById('deals-tbody');
-  document.getElementById('filter-count').textContent =
-    deals.length < allDeals.length ? `Viser ${deals.length} af ${allDeals.length} deals` : `${allDeals.length} deals`;
+function getShown() {
+  const q = document.getElementById('filter-titel').value.trim().toLowerCase();
+  let rows = q ? allDeals.filter(d => (d.title || '').toLowerCase().includes(q)) : allDeals.slice();
+  rows.sort((a, b) => {
+    if (dealSortCol === 'value') {
+      // Sortér på DKK-værdien, så rækkefølgen er meningsfuld på tværs af valuta
+      const av = a.value_dkk ?? 0, bv = b.value_dkk ?? 0;
+      return dealSortDir === 'desc' ? bv - av : av - bv;
+    }
+    const av = a.activation_date || '', bv = b.activation_date || '';
+    return dealSortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv);
+  });
+  return rows;
+}
 
-  ['vundet','value'].forEach(col => {
+function renderDeals() {
+  const deals = getShown();
+  const tbody = document.getElementById('deals-tbody');
+
+  document.getElementById('filter-count').textContent =
+    deals.length < allDeals.length ? `Viser ${deals.length} af ${allDeals.length} abonnementer` : `${allDeals.length} abonnementer`;
+
+  ['activation_date','value'].forEach(col => {
     const arrow = document.getElementById('arr-' + col);
     const th    = arrow?.closest('th');
     if (!arrow) return;
-    if (col === dealSortCol) {
-      arrow.textContent = dealSortDir === 'desc' ? '↓' : '↑';
-      th?.classList.add('sort-active');
-    } else {
-      arrow.textContent = '↕';
-      th?.classList.remove('sort-active');
-    }
+    if (col === dealSortCol) { arrow.textContent = dealSortDir === 'desc' ? '↓' : '↑'; th?.classList.add('sort-active'); }
+    else { arrow.textContent = '↕'; th?.classList.remove('sort-active'); }
   });
 
   if (!deals.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">Ingen deals matcher filteret</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Ingen abonnementer matcher søgningen</td></tr>';
+    document.getElementById('deals-tfoot').innerHTML = '';
     return;
   }
   tbody.innerHTML = deals.map(d => `
     <tr>
       <td class="trunc" title="${escHtml(d.title)}">${escHtml(d.title)}</td>
-      <td><span class="pipeline-badge ${d.er_opsigelse ? 'ops' : ''}">${escHtml(d.pipeline || '—')}</span></td>
-      <td class="trunc" title="${escHtml(d.sites)}">${escHtml(d.sites)}</td>
+      <td class="muted">${escHtml(d.pd_deal_id)}</td>
       <td class="trunc" title="${escHtml(d.owner_name)}">${escHtml(d.owner_name)}</td>
-      <td>${escHtml(d.vundet)}</td>
-      <td>${escHtml(d.aktiveret)}</td>
-      <td class="num ${d.er_opsigelse || d.value < 0 ? 'ops-value' : ''}">${fmtFull(d.value)}</td>
+      <td>${escHtml(d.activation_date)}</td>
+      <td class="num">${fmtMoney(d.value, d.currency)}</td>
     </tr>
   `).join('');
-}
 
-function filterDeals() {
-  const aar   = document.getElementById('filter-aar').value;
-  const sites = msSelected.site;     // tom = alle
-  const pipes = msSelected.pipeline; // tom = alle
-  let filtered = allDeals.filter(d => {
-    if (aar && String(d.aar) !== aar)  return false;
-    if (sites.size && !(d.sites || '').split(',').map(s => s.trim()).some(s => sites.has(s))) return false;
-    if (pipes.size && !pipes.has(d.pipeline)) return false;
-    return true;
-  });
-  filtered = filtered.sort((a, b) => {
-    if (dealSortCol === 'vundet') {
-      const av = a.vundet || '', bv = b.vundet || '';
-      return dealSortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv);
-    }
-    const av = a.value ?? 0, bv = b.value ?? 0;
-    return dealSortDir === 'desc' ? bv - av : av - bv;
-  });
-  renderDeals(filtered);
-}
-
-function resetFilters() {
-  document.getElementById('filter-aar').value = '';
-  msSelected.site.clear();
-  msSelected.pipeline.clear();
-  msUpdateUI('site');
-  msUpdateUI('pipeline');
-  filterDeals();
+  document.getElementById('deals-tfoot').innerHTML =
+    `<tr><td colspan="4">I alt (${deals.length})</td><td class="num">${totalsByCurrency(deals)}</td></tr>`;
 }
 
 async function loadKunde() {
   try {
-    const res = await fetch(`/tools/saelger-portfolio/customer-history?org_id=${encodeURIComponent(orgId)}&owner=${encodeURIComponent(backOwner)}`);
+    const res = await fetch(`/tools/saelger-portfolio/customer-portfolio?org_id=${encodeURIComponent(orgId)}&owner=${encodeURIComponent(backOwner)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
 
     document.getElementById('loading-state').classList.add('hidden');
 
-    const orgName = d.org_name || orgId;
+    orgName = d.org_name || orgId;
     document.getElementById('org-name-title').textContent = orgName;
     document.getElementById('bc-org-name').textContent = orgName;
-    document.title = orgName + ' — JP|Politiken Business Media Hub';
-    document.getElementById('org-sub').textContent =
-      `Kunde siden ${d.first_activation || '—'} · ${d.site_count} site${d.site_count !== 1 ? 's' : ''}`;
+    document.title = orgName + ' — Intomedia Hub';
+    document.getElementById('org-sub').textContent = `Org-ID ${d.org_id}`;
 
-    const deals    = d.deals || [];
-    const salg     = deals.filter(x => !x.er_opsigelse).reduce((s, x) => s + (x.value || 0), 0);
-    const ops      = deals.filter(x =>  x.er_opsigelse).reduce((s, x) => s + Math.abs(x.value || 0), 0);
-    const salgN    = deals.filter(x => !x.er_opsigelse).length;
-    const latest   = deals[0];
+    allDeals = d.deals || [];
+    const brandLabel = (d.accounts && d.accounts.length) ? d.accounts.join(', ') : 'alle brands';
 
     document.getElementById('kpi-row').innerHTML = `
       <div class="kpi-card">
-        <div class="kpi-label">Eget ACV</div>
-        <div class="kpi-value green">${fmtKr(d.acv_own)}</div>
-        <div class="kpi-sub">Af kundens ${fmtKr(d.acv)} samlet</div>
+        <div class="kpi-label">Porteføljeværdi</div>
+        <div class="kpi-value green">${totalsByCurrency(allDeals)}</div>
+        <div class="kpi-sub">Brand: ${escHtml(brandLabel)}</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Totalt salg</div>
-        <div class="kpi-value">${fmtKr(salg)}</div>
-        <div class="kpi-sub">${salgN} vundne deals, alle år</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Opsigelser</div>
-        <div class="kpi-value ${ops > 0 ? 'neg' : ''}">${ops > 0 ? '−' + fmtKr(ops) : '0 kr.'}</div>
-        <div class="kpi-sub">Alle år samlet</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Seneste deal</div>
-        <div class="kpi-value" style="font-size:18px">${escHtml(latest?.vundet || '—')}</div>
-        <div class="kpi-sub">${escHtml(latest?.owner_name || '—')}</div>
+        <div class="kpi-label">Antal abonnementer</div>
+        <div class="kpi-value">${allDeals.length}</div>
+        <div class="kpi-sub">deal_type = abonnement</div>
       </div>
     `;
 
-    // Salg/opsigelser pr. år — samme to-søjle-udtryk som Porteføljevækst
-    const years = d.by_year || [];
-    if (years.length) {
-      const CHART_H = 120;
-      const maxVal = Math.max(...years.map(y => Math.max(y.salg, y.ops)), 1);
-      document.getElementById('year-chart').innerHTML = years.map(y => {
-        const hS = y.salg > 0 ? Math.max((y.salg / maxVal) * CHART_H, 4) : 2;
-        const hO = y.ops  > 0 ? Math.max((y.ops  / maxVal) * CHART_H, 4) : 2;
-        return `
-          <div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:96px">
-            <div style="height:${CHART_H}px;display:flex;align-items:flex-end;gap:3px;width:100%;padding:0 10px;box-sizing:border-box">
-              <div style="flex:1;height:${hS}px;background:#2B2A27;border-radius:4px 4px 0 0" title="Salg: ${fmtFull(y.salg)}"></div>
-              <div style="flex:1;height:${hO}px;background:#B32E45;border-radius:4px 4px 0 0" title="Opsigelser: ${fmtFull(y.ops)}"></div>
-            </div>
-            <div style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 6px;text-align:center;margin-top:8px">
-              <div style="font-size:17px;font-weight:800;color:var(--green)">${y.aar}</div>
-              <div style="font-size:12px;font-weight:700;color:var(--ink);margin-top:3px">${fmtKr(y.salg)}</div>
-              <div style="font-size:10px;font-weight:600;color:${y.ops > 0 ? '#B32E45' : 'var(--ink-4)'};margin-top:2px">${y.ops > 0 ? '−' + fmtKr(y.ops) : 'ingen ops.'}</div>
-              <div style="font-size:10px;color:var(--ink-4);margin-top:2px">${y.antal} deal${y.antal !== 1 ? 's' : ''}</div>
-            </div>
-          </div>`;
-      }).join('');
-    } else {
-      document.getElementById('year-chart').innerHTML =
-        '<div style="color:var(--ink-4);font-style:italic;font-size:12px">Ingen vundne deals fundet for kunden.</div>';
-    }
-
-    allDeals = deals;
-    populateFilters(deals);
-    renderDeals(deals);
-
+    document.getElementById('export-btn').disabled = allDeals.length === 0;
+    renderDeals();
     document.getElementById('page-content').classList.remove('hidden');
 
   } catch(e) {
@@ -462,6 +280,31 @@ async function loadKunde() {
     document.getElementById('error-state').classList.remove('hidden');
     document.getElementById('error-msg').textContent = e.message;
   }
+}
+
+// ── Excel-eksport: respekterer aktiv søgning + sortering ────────────────
+function exportDeals() {
+  const rows = getShown();
+  if (!rows.length) { HubExport.toast('Ingen abonnementer at eksportere'); return; }
+  const slug = (orgName || orgId).toString()
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kunde';
+  HubExport.download({
+    filename: `abonnementer-${slug}.xlsx`,
+    sheets: [{
+      name:  'Abonnementer',
+      title: `${orgName} — abonnementer (${rows.length})`,
+      columns: [
+        { header: 'Titel',            key: 'title',           width: 44, align: 'left'  },
+        { header: 'Deal-ID',          key: 'pd_deal_id',      width: 12, align: 'left'  },
+        { header: 'Sælger',           key: 'owner_name',      width: 22, align: 'left'  },
+        { header: 'Aktiveret',        key: 'activation_date', width: 14, align: 'left'  },
+        { header: 'Porteføljeværdi',  key: 'value',           width: 18, align: 'right', numFmt: '#,##0' },
+        { header: 'Valuta',           key: 'currency',        width: 10, align: 'left'  },
+        { header: 'Porteføljeværdi (DKK)', key: 'value_dkk',  width: 20, align: 'right', numFmt: '#,##0' },
+      ],
+      rows: rows,
+    }],
+  });
 }
 
 loadKunde();
