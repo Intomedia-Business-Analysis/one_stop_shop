@@ -88,6 +88,18 @@ CATEGORIES = [
         ],
     },
     {
+        "id": "rapportering",
+        "title": "Rapportering",
+        "description": "ARR-/salgsrapportering og afstemning",
+        "icon": "activity",
+        "color": "amber",
+        "min_role": "sales_operations",
+        "subcategories": [],
+        "items": [
+            {"id": "admin-nysalg", "title": "Monthly Performance Report", "type": "tool", "subcategory": None, "brand": None, "min_role": "management", "url": "/tools/admin-nysalg/"},
+        ],
+    },
+    {
         "id": "hr",
         "title": "HR",
         "description": "HR-værktøjer",

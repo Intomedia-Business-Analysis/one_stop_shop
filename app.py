@@ -36,6 +36,8 @@ from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_marketing.router import router as marketing_router
 from moduler.modul_saelger_portfolio.router import router as saelger_portfolio_router
 from moduler.modul_klippekort.router import router as klippekort_router
+from moduler.modul_admin_nysalg.router import router as admin_nysalg_router
+from moduler.modul_admin_nysalg.repo import init_admin_nysalg_db
 from usage_tracking import record_pageview, start_usage_worker
 
 load_dotenv()
@@ -48,6 +50,7 @@ if os.getenv("DEV_MODE") == "1":
 app = FastAPI(title="Intomedia Hub")
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
+init_admin_nysalg_db()  # Opret admin-nysalg-tabeller ved opstart (idempotent)
 start_usage_worker()  # Baggrundstråd der flusher usage-loggen til DB
 # Session-nøglen SKAL være sat i .env — med en kendt fallback-nøgle ville
 # enhver kunne forfalske session-cookies og logge ind som vilkårlig bruger.
@@ -130,6 +133,7 @@ app.include_router(rotation_router)
 app.include_router(marketing_router)
 app.include_router(saelger_portfolio_router)
 app.include_router(klippekort_router)
+app.include_router(admin_nysalg_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)

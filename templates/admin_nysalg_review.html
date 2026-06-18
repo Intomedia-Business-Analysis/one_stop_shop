@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review run #{{ run.run_id }} — Monthly performance report</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1100px;margin:0 auto}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card.warn::before{background:#d98a00}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:760px){.kpi-row{grid-template-columns:1fr}}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.kpi-card.minus::before{background:#b32e45}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:10px}
+.kpi-value{font-size:26px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.kpi-value.green{color:var(--green)}.kpi-value.red{color:#b32e45}
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;padding:8px 10px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.v-table .muted{color:var(--ink-4)}
+.v-table .empty{text-align:center;padding:32px;color:var(--ink-4);font-style:italic}
+.v-table tr.excluded td{opacity:.45;text-decoration:line-through}
+.bc{width:100%;min-width:220px;font-family:var(--font);font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;resize:vertical;min-height:34px;box-sizing:border-box}
+.bc:focus{outline:none;border-color:var(--green)}
+.toggle{font-size:11px;font-weight:700;border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:4px 9px;cursor:pointer}
+.toggle.on{background:#fdecef;border-color:#f3c2cd;color:#9a2741}
+.badge{display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:9px;text-transform:uppercase}
+.badge.amb{background:#fff3df;color:#9a6a18}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none;background:var(--bg);cursor:pointer;font-family:var(--font)}
+.dc{width:100%;font-family:var(--font);font-size:13px;border:1px solid var(--border);border-radius:8px;padding:10px;resize:vertical;min-height:80px;box-sizing:border-box}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.lockmsg{background:#e6f5ec;border:1px solid #b6e0c6;color:#14794a;border-radius:var(--r-sm);padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:16px}
+.tb-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/tools/admin-nysalg/' %}{% include "_sidebar.html" %}{% endwith %}
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0"><div class="st-icon"></div><span class="st-text">Søg…</span></div>
+      <div class="tb-right"><a href="/tools/admin-nysalg/" class="tb-btn">← Tilbage til runs</a></div>
+    </div>
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/admin-nysalg/" class="bc-link">Monthly performance report</a><span class="bc-sep">/</span>
+          <span>Run #{{ run.run_id }}</span>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Review — run #{{ run.run_id }}</h1>
+            <p class="page-sub">Periode {{ run.period or "alle" }} · {{ run.source_filename or run.source_path or "—" }} · status <span id="run-status">{{ run.status }}</span></p>
+          </div>
+        </div>
+
+        {% if locked %}
+          <div class="lockmsg">✓ Godkendt af {{ run.approved_by or "—" }}{% if run.approved_at %} den {{ run.approved_at.strftime("%Y-%m-%d %H:%M") }}{% endif %} — reviewet er låst.</div>
+        {% endif %}
+
+        <!-- Topkort -->
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Bruttonysalg (total)</div>
+            <div class="kpi-value">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }} kr.</div>
+          </div>
+          <div class="kpi-card minus">
+            <div class="kpi-label">Opsigelser (total)</div>
+            <div class="kpi-value red">{{ "{:,.0f}".format(summary.opsigelser)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_opsigelser)|replace(",", ".") }} kr.</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Netto tilvækst</div>
+            <div class="kpi-value green">{{ "{:,.0f}".format(summary.netto_tilvaekst)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">(brutto − adm.) − (opsigelser − adm.)</div>
+          </div>
+        </div>
+
+        <!-- Performance pr. brand (det direktøren kommenterer på) -->
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Performance pr. brand</span></div>
+          <div style="overflow-x:auto">
+          <table class="v-table">
+            <thead>
+              <tr>
+                <th>Brand</th>
+                <th class="num">Bruttonysalg</th>
+                <th class="num">− heraf adm. nysalg</th>
+                <th class="num">Opsigelser</th>
+                <th class="num">− heraf adm. opsigelser</th>
+                <th class="num">Netto tilvækst</th>
+                <th class="num">Budget</th>
+                <th>Kommentar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in brand_rows %}
+                {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
+                <tr>
+                  <td style="font-weight:700">{{ b.brand }}</td>
+                  <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num" style="color:{{ '#14794a' if b.netto >= 0 else '#b32e45' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
+                  <td><textarea class="bc" data-brand="{{ b.brand }}" {% if locked %}disabled{% endif %} placeholder="Kommentar til {{ b.brand }}…">{{ b.comment or "" }}</textarea></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- Administrative nysalg -->
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Administrative nysalg ({{ admin_rows|length }})</span></div>
+          <div style="overflow-x:auto">
+          <table class="v-table">
+            <thead>
+              <tr>
+                <th>Site</th><th>Kunde</th><th>Org</th><th>Konto</th><th>Måned</th>
+                <th class="num">Gross in</th><th class="num">Deal-værdi</th><th>Pipeline</th>
+                <th>Medtag/udeluk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if not admin_rows %}
+                <tr><td colspan="9" class="empty">Ingen administrative nysalg matchet for denne periode.</td></tr>
+              {% endif %}
+              {% for m in admin_rows %}
+                <tr data-match="{{ m.match_id }}">
+                  <td>{{ m.site }}{% if m.ambiguous %} <span class="badge amb">vurder</span>{% endif %}</td>
+                  <td>{{ m.matched_org_name or "—" }}</td>
+                  <td class="muted">{{ m.pipedrive_id }}</td>
+                  <td class="muted">{{ m.account_number }}</td>
+                  <td>{{ m.month_end }}</td>
+                  <td class="num">{{ "{:,.0f}".format(m.gross_in or 0)|replace(",", ".") }}</td>
+                  <td class="num">{{ "{:,.0f}".format(m.matched_value or 0)|replace(",", ".") }}</td>
+                  <td class="muted">{{ m.matched_pipeline or "—" }}</td>
+                  <td>
+                    <button class="toggle {% if m.override == 'exclude' %}on{% endif %}"
+                            data-match="{{ m.match_id }}"
+                            data-state="{{ 'exclude' if m.override == 'exclude' else 'include' }}"
+                            {% if locked %}disabled{% endif %}>
+                      {{ "Udeladt" if m.override == 'exclude' else "Medtaget" }}
+                    </button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <!-- Kræver vurdering -->
+        {% if ambiguous_rows %}
+        <div class="dash-card warn">
+          <div class="dash-card-title"><span>Kræver vurdering — samme-fortegns-dubletter ({{ ambiguous_rows|length }})</span></div>
+          <div style="overflow-x:auto">
+          <table class="v-table">
+            <thead><tr><th>Site</th><th>Kunde</th><th>Org</th><th>Måned</th><th class="num">Gross in</th><th class="num">Deal-værdi</th><th>Afgjort som</th><th>Medtag/udeluk</th></tr></thead>
+            <tbody>
+              {% for m in ambiguous_rows %}
+                <tr data-match="{{ m.match_id }}">
+                  <td>{{ m.site }}</td>
+                  <td>{{ m.matched_org_name or "—" }}</td>
+                  <td class="muted">{{ m.pipedrive_id }}</td>
+                  <td>{{ m.month_end }}</td>
+                  <td class="num">{{ "{:,.0f}".format(m.gross_in or 0)|replace(",", ".") }}</td>
+                  <td class="num">{{ "{:,.0f}".format(m.matched_value or 0)|replace(",", ".") }}</td>
+                  <td>{{ "Administrativt" if m.is_admin else "Normalt nysalg" }}</td>
+                  <td>
+                    <button class="toggle {% if m.override == 'exclude' %}on{% endif %}"
+                            data-match="{{ m.match_id }}"
+                            data-state="{{ 'exclude' if m.override == 'exclude' else 'include' }}"
+                            {% if locked %}disabled{% endif %}>
+                      {{ "Udeladt" if m.override == 'exclude' else "Medtaget" }}
+                    </button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Direktørens kommentar + godkend -->
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Samlede kommentar</span></div>
+          <textarea class="dc" id="director-comment" {% if locked %}disabled{% endif %} placeholder="Samlet vurdering…">{{ run.director_comment or "" }}</textarea>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+            {% if can_approve and not locked %}
+              <button class="btn-primary" id="btn-approve">Godkend review</button>
+            {% endif %}
+            {% if locked %}
+              <button class="btn-primary" id="btn-report">Generér rapport</button>
+              <a class="btn-ghost" id="dl-xlsx" href="/tools/admin-nysalg/{{ run.run_id }}/download?fmt=xlsx" {% if run.status != 'reported' %}style="display:none"{% endif %}>⬇ Excel</a>
+              <a class="btn-ghost" id="dl-pdf" href="/tools/admin-nysalg/{{ run.run_id }}/download?fmt=pdf" {% if run.status != 'reported' %}style="display:none"{% endif %}>⬇ PDF</a>
+            {% endif %}
+            {% if not can_approve and not locked %}
+              <span class="page-sub">Kun direktør/management kan godkende.</span>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+const RUN = {{ run.run_id | tojson }};
+const fmt = n => Math.round(n||0).toLocaleString('da-DK') + ' kr.';
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+
+async function postJSON(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  if(!r.ok){ let d={}; try{d=await r.json()}catch(e){}; throw new Error(d.detail||('HTTP '+r.status)); }
+  return r.json();
+}
+
+// Brand-kommentarer (gemmes ved blur)
+document.querySelectorAll('textarea.bc').forEach(ta => {
+  ta.addEventListener('blur', async () => {
+    try { await postJSON(`/tools/admin-nysalg/${RUN}/comment`, {scope:'brand', brand:ta.dataset.brand, comment:ta.value}); toast('Kommentar gemt'); }
+    catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Medtag/udeluk
+document.querySelectorAll('button.toggle').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const next = btn.dataset.state === 'exclude' ? 'include' : 'exclude';
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/override`, {match_id:Number(btn.dataset.match), override: next==='exclude'?'exclude':null});
+      // Brand-totaler og netto tilvækst genberegnes server-side → genindlæs.
+      toast('Opdateret'); setTimeout(()=>location.reload(), 350);
+    } catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Godkend
+const approveBtn = document.getElementById('btn-approve');
+if(approveBtn){
+  approveBtn.addEventListener('click', async () => {
+    approveBtn.disabled = true;
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/approve`, {director_comment: document.getElementById('director-comment').value});
+      toast('Godkendt'); setTimeout(()=>location.reload(), 600);
+    } catch(e){ toast('Fejl: '+e.message); approveBtn.disabled=false; }
+  });
+}
+
+// Generér rapport
+const reportBtn = document.getElementById('btn-report');
+if(reportBtn){
+  reportBtn.addEventListener('click', async () => {
+    reportBtn.disabled = true; reportBtn.textContent = 'Genererer…';
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/report`, {});
+      toast('Rapport genereret');
+      document.getElementById('dl-xlsx').style.display='';
+      document.getElementById('dl-pdf').style.display='';
+      document.getElementById('run-status').textContent='reported';
+    } catch(e){ toast('Fejl: '+e.message); }
+    finally { reportBtn.disabled=false; reportBtn.textContent='Generér rapport'; }
+  });
+}
+</script>
+</body>
+</html>
