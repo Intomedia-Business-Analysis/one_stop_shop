@@ -937,25 +937,57 @@ def db_job_performance(today: date):
         cur = conn.cursor(as_dict=True)
         m_start, m_end = _month_range(today)
 
-        # Omsætning mod budget: samme budget som i department-dashboardet
-        # (SalespersonBudget summeret på Team Job) vs. omsætning for indeværende
-        # måned (service_activation_date) for Team Job-deals.
+        # Omsætning mod budget, opdelt på Watch og Monitor (indeværende måned,
+        # service_activation_date) for Team Job-deals:
+        #  - Watch:   job-salg på alt der IKKE er et monitor-site → målt mod
+        #             sælger-budgetterne (SalespersonBudget, Team Job).
+        #  - Monitor: job-salg på monitor-sites → målt mod det fælles monitor-
+        #             budget i BudgetsIntoMedia (DealType=Job, Brand=monitor).
+        # Splittet er udtømmende (monitor vs. ikke-monitor), så Watch+Monitor
+        # summer til den samlede Team Job-omsætning.
+        monitor_ph = "(" + ",".join(["%s"] * len(MONITOR_SITES)) + ")"
+        val_expr = ("ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
+                    "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0)")
+
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT {val_expr} AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
+              AND COALESCE([sites],'') NOT IN {monitor_ph}
               {_ADM_EXCLUDE}
-        """, (m_start.isoformat(), m_end.isoformat()))
-        job_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+        """, (m_start.isoformat(), m_end.isoformat()) + tuple(MONITOR_SITES))
+        watch_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
+        cur.execute(f"""
+            SELECT {val_expr} AS revenue
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
+              AND [service_activation_date] >= %s AND [service_activation_date] < %s
+              AND [sites] IN {monitor_ph}
+              {_ADM_EXCLUDE}
+        """, (m_start.isoformat(), m_end.isoformat()) + tuple(MONITOR_SITES))
+        monitor_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+
+        # Watch-budget = sælger-budgetterne (SalespersonBudget, Team Job).
         cur.execute("""
             SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[SalespersonBudget]
             WHERE [Team]='Team Job' AND [BudgetDate] >= %s AND [BudgetDate] < %s
         """, (m_start.isoformat(), m_end.isoformat()))
-        job_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+        watch_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
 
-        budget_chart = [{"brand": "Job", "revenue": round(job_revenue, 2), "budget": round(job_budget, 2)}]
+        # Monitor-budget = fælles budget i BudgetsIntoMedia (DealType=Job, Brand=monitor).
+        cur.execute("""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+            WHERE LOWER([DealType])='job' AND LOWER([Brand])='monitor'
+              AND [BudgetDate] >= %s AND [BudgetDate] < %s
+        """, (m_start.isoformat(), m_end.isoformat()))
+        monitor_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+        budget_chart = [
+            {"brand": "Watch",   "revenue": round(watch_revenue, 2),   "budget": round(watch_budget, 2)},
+            {"brand": "Monitor", "revenue": round(monitor_revenue, 2), "budget": round(monitor_budget, 2)},
+        ]
 
         result = {
             "kpis":             _revenue_kpis(cur, today, "job"),
@@ -1152,10 +1184,11 @@ def db_media_performance(selected_accounts: list | None = None,
                      (tilvækst). Viser cancellations, net og 'heraf web salg'.
                      Budget = BudgetsIntoMedia DealType=Subscription (alle salestypes,
                      dvs. inkl. websale-budget) pr. Site.
-      "banner"     — kun banner-omsætning (pipeline Banner/Bannerads), [won_time].
-                     Budget = BudgetsIntoMedia DealType=Banner pr. Site.
-      "job"        — kun job-omsætning (pipeline Job/Jobmarked/Jobads), [won_time].
-                     Budget = BudgetsIntoMedia DealType=Job pr. Site.
+      "banner"     — kun banner-omsætning (pipeline Banner/Bannerads), placeres
+                     på [service_activation_date]. Inkl. programmatisk salg
+                     (ProgrammaticSales). Budget = BudgetsIntoMedia DealType=Banner pr. Site.
+      "job"        — kun job-omsætning (pipeline Job/Jobmarked/Jobads), placeres
+                     på [service_activation_date]. Budget = BudgetsIntoMedia DealType=Job pr. Site.
 
     selected_accounts: liste af accounts (watch_medier/monitor/watch_no/...).
     Site-universet udledes dynamisk af de valgte accounts. Budget matches på
@@ -1182,9 +1215,10 @@ def db_media_performance(selected_accounts: list | None = None,
             return empty
         acc_ph = "(" + ",".join(["%s"] * len(accounts)) + ")"
 
-        # Abonnement = tilvækst → placeres på service_activation_date.
-        # Annonce (banner/job) → placeres på won_time.
-        date_col = "service_activation_date" if mode == "abonnement" else "won_time"
+        # Alt placeres på service_activation_date (tilvækst/aktivering) — samme
+        # grundlag som budgettet (sat pr. aktiveringsmåned) og resten af
+        # annonce-dashboardet, så banner/job-omsætning og index matcher.
+        date_col = "service_activation_date"
 
         year_clause = ""
         year_params: tuple = ()
@@ -1294,6 +1328,37 @@ def db_media_performance(selected_accounts: list | None = None,
                 GROUP BY [sites]
             """, tuple(pipes) + tuple(accounts) + year_params + month_params)
             gross_map = {_norm(r["sites"]): float(r["gross"] or 0) for r in cur.fetchall()}
+
+            # Programmatisk salg (FINANS DK) ligger i ProgrammaticSales — ikke i
+            # PipedriveDeals — og lægges oven i banner-omsætningen pr. site, så
+            # totalen matcher banner performance-dashboardet. Budgettet i
+            # BudgetsIntoMedia (DealType=Banner) rummer allerede programmatic-
+            # budgettet (alle salestypes), så kun omsætningen mangler. Vi viser
+            # ikke andelen særskilt — den indgår bare i Banner-omsætningen.
+            # sites_ph afgrænser til de valgte accounts' site-univers (FINANS DK
+            # findes kun under jppol_advertising), så valg af account respekteres.
+            if mode == "banner":
+                prog_year_clause = ""
+                prog_year_params: tuple = ()
+                if selected_years:
+                    py_ph = "(" + ",".join(["%s"] * len(selected_years)) + ")"
+                    prog_year_clause = f"AND YEAR([Date]) IN {py_ph}"
+                    prog_year_params = tuple(int(y) for y in selected_years)
+                prog_month_clause = ""
+                prog_month_params: tuple = ()
+                if month_params:
+                    pm_ph = "(" + ",".join(["%s"] * len(month_params)) + ")"
+                    prog_month_clause = f"AND MONTH([Date]) IN {pm_ph}"
+                    prog_month_params = tuple(month_params)
+                cur.execute(f"""
+                    SELECT [Site] AS site, ISNULL(SUM([Amount]),0) AS prog
+                    FROM [dbo].[ProgrammaticSales]
+                    WHERE [Site] IN {sites_ph} {prog_year_clause} {prog_month_clause}
+                    GROUP BY [Site]
+                """, tuple(sites) + prog_year_params + prog_month_params)
+                for r in cur.fetchall():
+                    k = _norm(r["site"])
+                    gross_map[k] = gross_map.get(k, 0.0) + float(r["prog"] or 0)
 
             cur.execute(f"""
                 SELECT [Site] AS site, ISNULL(SUM([BudgetAmount]),0) AS budget
