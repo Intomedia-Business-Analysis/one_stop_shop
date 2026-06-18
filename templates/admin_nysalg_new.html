@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nyt run — Monthly performance report</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:760px;margin:0 auto}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.fld{margin-bottom:18px}
+.fld label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px}
+.fld input[type=text],.fld input[type=file]{width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;outline:none;box-sizing:border-box}
+.fld input:focus{border-color:var(--green)}
+.hint{font-size:11px;color:var(--ink-4);margin-top:5px}
+.sep{text-align:center;font-size:11px;color:var(--ink-4);text-transform:uppercase;letter-spacing:1.5px;margin:6px 0 18px}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);padding:10px 18px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer}
+.btn-primary:hover{filter:brightness(1.05)}
+.tb-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none}
+.err{background:#fdecef;border:1px solid #f3c2cd;color:#9a2741;border-radius:var(--r-sm);padding:12px 14px;font-size:13px;margin-bottom:18px}
+</style>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/tools/admin-nysalg/' %}{% include "_sidebar.html" %}{% endwith %}
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0"><div class="st-icon"></div><span class="st-text">Søg…</span></div>
+      <div class="tb-right"><a href="/tools/admin-nysalg/" class="tb-btn">← Tilbage</a></div>
+    </div>
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/admin-nysalg/" class="bc-link">Monthly performance report</a><span class="bc-sep">/</span>
+          <span>Nyt run</span>
+        </div>
+
+        <h1 class="page-title" style="margin-bottom:4px">Nyt run</h1>
+        <p class="page-sub" style="margin-bottom:20px">Vælg dataudtrækket (Zuora ARR-bevægelser) og kør matchning mod administrative PipeDrive-deals.</p>
+
+        {% if error %}<div class="err">⚠ {{ error }}</div>{% endif %}
+
+        <form class="dash-card" method="post" action="/tools/admin-nysalg/run" enctype="multipart/form-data">
+          <div class="fld">
+            <label>Periode (valgfri, YYYY-MM)</label>
+            <input type="text" name="period" placeholder="fx 2026-05" autocomplete="off">
+            <div class="hint">Afgrænser matchning og rapport til én måned. Lad stå tom for hele udtrækket.</div>
+          </div>
+
+          <div class="fld">
+            <label>Upload udtræk (.xlsx / .csv)</label>
+            <input type="file" name="file" accept=".xlsx,.csv">
+          </div>
+
+          <div class="sep">— eller —</div>
+
+          <div class="fld">
+            <label>Sti til udtræk på serveren</label>
+            <input type="text" name="source_path" value="{{ default_path }}" placeholder="C:\sti\til\udtraek.xlsx" autocomplete="off">
+            <div class="hint">Bruges hvis ingen fil uploades. Standardstien kan sættes i .env (ADMIN_NYSALG_EXTRACT_PATH).</div>
+          </div>
+
+          <button type="submit" class="btn-primary">Kør matchning →</button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

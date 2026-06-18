@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monthly performance report — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1000px;margin:0 auto}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
+.v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2)}
+.v-table tr:hover td{background:var(--green-light,#f0f8f4)}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.badge.matched{background:#eef2f7;color:#516a86}
+.badge.in_review{background:#fff3df;color:#9a6a18}
+.badge.approved{background:#e6f5ec;color:#14794a}
+.badge.reported{background:#e6f5ec;color:#0c5c38}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);padding:9px 16px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;text-decoration:none}
+.btn-primary:hover{filter:brightness(1.05)}
+.row-link{color:var(--green);font-weight:700;text-decoration:none}
+.actions{display:flex;gap:14px;align-items:center;justify-content:flex-end;white-space:nowrap}
+.del-link{color:#b32e45;font-weight:700;text-decoration:none;background:none;border:none;font-family:var(--font);font-size:12px;cursor:pointer;padding:0}
+.del-link:hover{text-decoration:underline}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink,#1c1c1c);color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/tools/admin-nysalg/' %}{% include "_sidebar.html" %}{% endwith %}
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <span>Monthly performance report</span>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Monthly performance report</h1>
+            <p class="page-sub">Match bruttonysalg mod administrative PipeDrive-deals, review og rapportér.</p>
+          </div>
+          <a href="/tools/admin-nysalg/new" class="btn-primary">+ Nyt run</a>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Tidligere runs</span></div>
+          <table class="v-table">
+            <thead>
+              <tr>
+                <th>Run</th><th>Periode</th><th>Kildefil</th><th>Oprettet</th>
+                <th>Af</th><th>Status</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if not runs %}
+                <tr><td colspan="7" class="empty">Ingen runs endnu — opret et nyt run for at komme i gang.</td></tr>
+              {% endif %}
+              {% for r in runs %}
+                <tr>
+                  <td>#{{ r.run_id }}</td>
+                  <td>{{ r.period or "—" }}</td>
+                  <td>{{ r.source_filename or r.source_path or "—" }}</td>
+                  <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—" }}</td>
+                  <td>{{ r.created_by or "—" }}</td>
+                  <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+                  <td>
+                    <div class="actions">
+                      <a class="row-link" href="/tools/admin-nysalg/{{ r.run_id }}/review">Åbn →</a>
+                      {% if is_admin %}
+                        <button class="del-link" data-run="{{ r.run_id }}" title="Slet rapport">Slet</button>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+document.querySelectorAll('button.del-link').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const id = btn.dataset.run;
+    if(!confirm(`Slet rapport #${id} permanent? Dette kan ikke fortrydes.`)) return;
+    btn.disabled = true;
+    try {
+      const r = await fetch(`/tools/admin-nysalg/${id}/delete`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+      if(!r.ok){ let d={}; try{d=await r.json()}catch(e){}; throw new Error(d.detail||('HTTP '+r.status)); }
+      const row = btn.closest('tr');
+      if(row) row.remove();
+      toast(`Rapport #${id} slettet`);
+    } catch(e){ toast('Fejl: '+e.message); btn.disabled=false; }
+  });
+});
+</script>
+</body>
+</html>
