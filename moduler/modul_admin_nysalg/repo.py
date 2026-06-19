@@ -501,6 +501,35 @@ def pipedrive_brand_rows(period: str | None, comments: dict | None = None,
     return rows
 
 
+def pipedrive_org_names() -> dict:
+    """{konto (lower): {org_id (str): org_name}} fra PipedriveDeals.
+
+    Bruges til at sætte virksomhedsnavn på Zuora-bevægelser der ikke matchede en
+    administrativ deal (de har kun org-id, ikke navn, fra udtrækket). Org-id er
+    IKKE unikke på tværs af konti, så opslaget er scopet pr. konto — opslagssiden
+    vælger kontoen ud fra brandet (brands.BRAND_ACCOUNT). Returnerer {} ved DB-fejl.
+    """
+    out: dict = {}
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+            SELECT [account], [org_id], MAX([org_name]) AS org_name
+            FROM [dbo].[PipedriveDeals]
+            WHERE [org_id] IS NOT NULL AND [account] IS NOT NULL
+              AND LTRIM(RTRIM(COALESCE([org_name],''))) <> ''
+            GROUP BY [account], [org_id]
+        """)
+        for r in cur.fetchall() or []:
+            acct = (r["account"] or "").strip().lower()
+            out.setdefault(acct, {})[str(r["org_id"]).strip()] = (r["org_name"] or "").strip()
+        conn.close()
+    except Exception:
+        logger.exception("pipedrive_org_names fejlede")
+        return {}
+    return out
+
+
 def period_pipedrive_deals(period: str | None) -> list[dict]:
     """Alle won PipeDrive-deals med service_activation_date i perioden.
 
@@ -607,7 +636,7 @@ def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
         g["opsigelser"] += _row_opsigelse(m)
         if effective_is_admin(m):
             g["adm_nysalg"] += (m.get("gross_in") or 0)
-        if m.get("administrativ"):
+        if is_admin_opsigelse(m):
             g["adm_opsigelser"] += _row_opsigelse(m)
         if m.get("ambiguous"):
             g["n_ambiguous"] += 1
@@ -650,6 +679,16 @@ def effective_is_admin(match_row: dict) -> bool:
     return bool(match_row.get("is_admin"))
 
 
+def is_admin_opsigelse(match_row: dict) -> bool:
+    """Administrativ opsigelse for en gemt match-række.
+
+    Tæller som administrativ hvis enten Zuoras `administrativ`-flag er sat, ELLER
+    rækken matchede en negativ administrativ deal i PipeDrive (match_sign='neg') —
+    så en opsigelse uden flaget i Zuora stadig fanges af det administrative match.
+    """
+    return bool(match_row.get("administrativ")) or match_row.get("match_sign") == "neg"
+
+
 def summarize(matches: list[dict]) -> dict:
     """Topkort-tal på tværs af alle brands:
 
@@ -669,7 +708,7 @@ def summarize(matches: list[dict]) -> dict:
         if effective_is_admin(m):
             adm_nysalg += gi
             n_admin += 1
-        if m.get("administrativ"):
+        if is_admin_opsigelse(m):
             adm_opsigelser += go
         if m.get("ambiguous"):
             n_ambiguous += 1

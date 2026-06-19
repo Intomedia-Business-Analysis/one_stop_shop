@@ -89,6 +89,25 @@ def brand_currency(label: str) -> str:
     return BRAND_CURRENCY.get(label, "DKK")
 
 
+# PipeDrive-kontoen hvor et brands organisationer (org-id) findes. Org-id er IKKE
+# unikke på tværs af konti (samme id = forskellig virksomhed i hver konto), så
+# navneopslag SKAL scopes til den rigtige konto. Watch DK og Finans deler
+# watch_medier-kontoen; Monitor og landene har egne konti.
+BRAND_ACCOUNT = {
+    "Watch DK":       "watch_medier",
+    "Finans":         "watch_medier",
+    "Monitor":        "monitor",
+    "Watch NO":       "watch_no",
+    "FinansWatch SE": "watch_se",
+    "FinanzBusiness": "watch_de",
+}
+
+
+def brand_account(label: str) -> str | None:
+    """PipeDrive-kontoen et brands org-id'er skal slås op i (None hvis ukendt)."""
+    return BRAND_ACCOUNT.get(label)
+
+
 # Eksakt site → gruppelabel (fra constants.BRAND_GROUPS), lowercased opslag.
 _SITE_TO_LABEL = {}
 for _key, _sites in BRAND_GROUPS.items():
