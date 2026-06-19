@@ -144,13 +144,12 @@
           <select class="filter-select" id="filter-year" onchange="onYearChange()">
             <option value="">Alle år (2023–)</option>
           </select>
-          <select class="filter-select" id="filter-month" onchange="loadAll()" disabled>
-            <option value="">Hele Året</option>
+          <select class="filter-select" id="filter-month" onchange="loadAll()" multiple size="6"
+                  title="Vælg en eller flere måneder/kvartaler (intet valgt = hele året)" disabled>
             <option value="Q1">Q1 (Jan–Mar)</option>
             <option value="Q2">Q2 (Apr–Jun)</option>
             <option value="Q3">Q3 (Jul–Sep)</option>
             <option value="Q4">Q4 (Okt–Dec)</option>
-            <option disabled>──────────</option>
             <option value="1">Januar</option>
             <option value="2">Februar</option>
             <option value="3">Marts</option>
@@ -167,6 +166,17 @@
           <div class="filter-sep"></div>
           <select class="filter-select" id="filter-owner" onchange="loadAll()">
             <option value="">Alle sælgere</option>
+          </select>
+          <div class="filter-sep"></div>
+          <select class="filter-select" id="filter-brand" onchange="loadAll()" title="Filtrér på brand">
+            <option value="">Alle brands</option>
+            <option value="watch_dk">Watch DK</option>
+            <option value="finans">Finans</option>
+            <option value="monitor">Monitor</option>
+            <option value="watch_no">Watch NO</option>
+            <option value="watch_se">FinansWatch SE</option>
+            <option value="watch_de">FinanzBusiness</option>
+            <option value="marketwire">MarketWire</option>
           </select>
           <div class="filter-sep"></div>
           <span class="filter-label">Vurdering</span>
@@ -382,12 +392,15 @@ function fmtFull(v) {
 }
 
 function getFilters() {
+  const monthSel = document.getElementById('filter-month');
+  const months = Array.from(monthSel.selectedOptions).map(o => o.value).filter(Boolean);
   return {
     pipeline: activePipeline,
     country:  activeCountry,
     year:     document.getElementById('filter-year').value,
-    month:    document.getElementById('filter-month').value,
+    month:    months.join(','),
     owner:    document.getElementById('filter-owner').value,
+    brand:    document.getElementById('filter-brand').value,
   };
 }
 
@@ -397,6 +410,7 @@ function buildParams(extra = {}) {
   if (f.year)  p.set('year', f.year);
   if (f.month) p.set('month', f.month);
   if (f.owner) p.set('owner', f.owner);
+  if (f.brand) p.set('brand', f.brand);
   Object.entries(extra).forEach(([k,v]) => p.set(k, v));
   return p;
 }
@@ -405,7 +419,7 @@ function onYearChange() {
   const year = document.getElementById('filter-year').value;
   const monthSel = document.getElementById('filter-month');
   monthSel.disabled = !year;
-  if (!year) monthSel.value = '';
+  if (!year) Array.from(monthSel.options).forEach(o => o.selected = false);
   loadAll();
 }
 
@@ -471,7 +485,10 @@ async function loadAll() {
   const KVARTALER = {Q1:'Q1 (Jan–Mar)',Q2:'Q2 (Apr–Jun)',Q3:'Q3 (Jul–Sep)',Q4:'Q4 (Okt–Dec)'};
   let periodLabel = f.year || '2023–';
   if (f.year && f.month) {
-    periodLabel = (KVARTALER[f.month] || MAANEDER[parseInt(f.month)]) + ' ' + f.year;
+    const parts = f.month.split(',');
+    periodLabel = (parts.length === 1
+      ? (KVARTALER[parts[0]] || MAANEDER[parseInt(parts[0])])
+      : parts.length + ' perioder') + ' ' + f.year;
   }
   document.getElementById('top-label').textContent = periodLabel;
   document.getElementById('perf-label').textContent = periodLabel;
@@ -484,6 +501,7 @@ async function loadAll() {
         pipeline: activePipeline,
         country:  activeCountry,
         ...(f.owner ? {owner: f.owner} : {}),
+        ...(f.brand ? {brand: f.brand} : {}),
       })),
     ]);
 
@@ -495,7 +513,9 @@ async function loadAll() {
 
     if (isManager) {
       const perfRes = await fetch('/tools/banner-job/salesperson-performance?' +
-        new URLSearchParams({ pipeline: activePipeline, country: activeCountry, ...(f.year ? {year: f.year} : {}) }));
+        new URLSearchParams({ pipeline: activePipeline, country: activeCountry,
+          ...(f.year ? {year: f.year} : {}), ...(f.month ? {month: f.month} : {}),
+          ...(f.brand ? {brand: f.brand} : {}) }));
       const perf = await perfRes.json();
       renderPerformance(perf.rows || []);
     } else {
