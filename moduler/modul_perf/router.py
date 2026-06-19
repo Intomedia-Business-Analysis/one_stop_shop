@@ -287,6 +287,7 @@ async def perf_saelger_data(
     month: str | None = None,
     date_col: str = "won_time",
     owner: str | None = None,
+    pipeline: str | None = None,
     user=Depends(get_current_user)
 ):
     try:
@@ -294,7 +295,7 @@ async def perf_saelger_data(
         return JSONResponse(db_saelger_data(
             date.today(), target_owner,
             team=team, selected_year=year, selected_month=month,
-            date_col=date_col,
+            date_col=date_col, pipeline_filter=pipeline,
         ))
     except Exception:
         logger.exception("saelger-data fejlede (owner=%s, team=%s, year=%s, month=%s)", owner, team, year, month)
