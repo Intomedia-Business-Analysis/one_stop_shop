@@ -121,9 +121,13 @@ def get_kundeliste(owner_name: str) -> list:
     til én porteføljeværdi pr. org. Ejer-filteret lægges PÅ den seneste række, så
     en kunde der er flyttet til en anden sælger korrekt forsvinder fra bogen.
     """
-    clause, params = _owner_clause("l", owner_name)
+    clause, params = _owner_clause("ps", owner_name)
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
+    # latest    = nyeste række pr. (org, site)
+    # per_site  = samme, plus recency_rn der rangerer kundens sites efter seneste
+    #             aktivering, så recency_rn=1 er kundens SENESTE deal — hvis værdi
+    #             vi udstiller separat (last_deal_value) ud over porteføljeværdien.
     cur.execute(f"""
         WITH latest AS (
             SELECT
@@ -133,27 +137,41 @@ def get_kundeliste(owner_name: str) -> list:
                     PARTITION BY org_id, site ORDER BY updated_at DESC
                 ) AS rn
             FROM [dbo].[PipeDrive_ACV]
+        ),
+        per_site AS (
+            SELECT *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY org_id, owner_name
+                    ORDER BY last_activation DESC, acv_value_dkk DESC
+                ) AS recency_rn
+            FROM latest
+            WHERE rn = 1
         )
         SELECT
-            l.org_name,
-            l.org_id,
-            l.owner_name,
-            SUM(l.acv_value)     AS value,
-            SUM(l.acv_value_dkk) AS value_dkk,
-            MAX(l.currency)      AS currency,
-            CONVERT(varchar(10), MAX(l.last_activation), 23) AS last_activation
-        FROM latest l
-        WHERE l.rn = 1
-          AND {clause}
-        GROUP BY l.org_id, l.org_name, l.owner_name
+            ps.org_name,
+            ps.org_id,
+            ps.owner_name,
+            SUM(ps.acv_value)     AS value,
+            SUM(ps.acv_value_dkk) AS value_dkk,
+            MAX(ps.currency)      AS currency,
+            CONVERT(varchar(10), MAX(ps.last_activation), 23) AS last_activation,
+            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.acv_value END)     AS last_deal_value,
+            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.acv_value_dkk END) AS last_deal_value_dkk,
+            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.currency END)      AS last_deal_currency
+        FROM per_site ps
+        WHERE {clause}
+        GROUP BY ps.org_id, ps.org_name, ps.owner_name
         ORDER BY value_dkk DESC
     """, params)
     rows = cur.fetchall()
     conn.close()
     for r in rows:
-        r["value"]     = float(r["value"] or 0)
-        r["value_dkk"] = float(r["value_dkk"] or 0)
-        r["currency"]  = r["currency"] or "DKK"
+        r["value"]               = float(r["value"] or 0)
+        r["value_dkk"]           = float(r["value_dkk"] or 0)
+        r["currency"]            = r["currency"] or "DKK"
+        r["last_deal_value"]     = float(r["last_deal_value"] or 0)
+        r["last_deal_value_dkk"] = float(r["last_deal_value_dkk"] or 0)
+        r["last_deal_currency"]  = r["last_deal_currency"] or r["currency"]
     return rows
 
 
