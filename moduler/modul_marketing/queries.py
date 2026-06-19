@@ -100,8 +100,19 @@ def _filter_clause(
     return where, params
 
 
-def db_filter_options() -> dict:
-    """Distinkte værdier til filter-dropdowns. Tomme/NULL frasorteres."""
+def db_filter_options(accounts=None) -> dict:
+    """Distinkte værdier til filter-dropdowns. Tomme/NULL frasorteres.
+
+    accounts (valgfri): når sat, afgrænses deal_sources til kun de kilder der
+    optræder på den/de valgte account(s) — så dropdownen kun viser relevante
+    kilder. account-listen selv forbliver global (man kan altid skifte account).
+    """
+    sel_accounts = _clean_list(accounts)
+    acc_clause = ""
+    acc_params: list = []
+    if sel_accounts:
+        acc_clause = f"AND d.account IN {_in_placeholders(len(sel_accounts))}"
+        acc_params = list(sel_accounts)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -127,10 +138,11 @@ def db_filter_options() -> dict:
             SELECT DISTINCT LTRIM(RTRIM(d.deal_source)) AS v
             FROM [dbo].[PipedriveDeals] d
             WHERE d.deal_source IS NOT NULL AND LTRIM(RTRIM(d.deal_source)) <> ''
+              {acc_clause}
               {_ADM_EXCLUDE}
               {_WEB_SALE_EXCLUDE}
             ORDER BY v
-        """)
+        """, tuple(acc_params))
         sources = [r["v"] for r in cur.fetchall()]
 
         cur.execute(f"""

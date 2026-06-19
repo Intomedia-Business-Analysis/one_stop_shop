@@ -166,14 +166,12 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     pd_rows = repo.pipedrive_brand_rows(run.get("period"), brand_comments, budgets)
     brand_rows = repo.summarize_by_brand(matches, budgets, brand_comments, extra_rows=pd_rows)
     admin_rows = [m for m in matches if repo.effective_is_admin(m)]
-    ambiguous_rows = [m for m in matches if m.get("ambiguous")]
     return templates.TemplateResponse(request, "admin_nysalg_review.html", {
         "user": user,
         "run": run,
         "summary": summary,
         "brand_rows": brand_rows,
         "admin_rows": admin_rows,
-        "ambiguous_rows": ambiguous_rows,
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
         "locked": run.get("status") in ("approved", "reported"),
     })
@@ -252,8 +250,10 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
         matches, budgets, brand_comments,
         extra_rows=repo.pipedrive_brand_rows(run.get("period"), brand_comments, budgets))
     pd_deals = repo.period_pipedrive_deals(run.get("period"))
+    org_names = repo.pipedrive_org_names()
     try:
-        xlsx_path = report.generate_excel(run, matches, summary, brand_rows, pd_deals=pd_deals)
+        xlsx_path = report.generate_excel(run, matches, summary, brand_rows,
+                                          pd_deals=pd_deals, org_names=org_names)
         try:
             report.generate_pdf(run, matches, summary, brand_rows)
         except Exception:

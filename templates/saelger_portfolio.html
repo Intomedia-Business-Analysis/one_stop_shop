@@ -126,6 +126,7 @@
                 <th class="sortable" onclick="sortTable('org_id')">Org-ID<i class="sort-arrow" data-col="org_id">↕</i></th>
                 <th class="sortable" onclick="sortTable('owner_name')">Sælger<i class="sort-arrow" data-col="owner_name">↕</i></th>
                 <th class="sortable" onclick="sortTable('last_activation')" title="Seneste aktiverede deal på kunden">Seneste deal<i class="sort-arrow" data-col="last_activation">↕</i></th>
+                <th class="num sortable" onclick="sortTable('last_deal_value_dkk')" title="Værdi på kundens seneste deal">Seneste deal-værdi<i class="sort-arrow" data-col="last_deal_value_dkk">↕</i></th>
                 <th class="num sortable" onclick="sortTable('value')">Porteføljeværdi<i class="sort-arrow" data-col="value">↕</i></th>
               </tr>
             </thead>
@@ -148,7 +149,7 @@
 <script>
 const kunder = {{ kunder | tojson }};
 const TARGET_OWNER = {{ target_owner | tojson }};
-let sortCol = 'value';
+let sortCol = 'last_activation';
 let sortDir = 'desc';
 
 function fmtKr(v) {
@@ -310,7 +311,7 @@ function render() {
   const tbody = document.getElementById('kunde-tbody');
   if (!tbody) return;
   if (!sorted.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">Ingen kunder matcher søgningen.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Ingen kunder matcher søgningen.</td></tr>';
     return;
   }
   tbody.innerHTML = sorted.map(k => {
@@ -321,6 +322,7 @@ function render() {
       <td class="muted">${escHtml(k.org_id)}</td>
       <td>${escHtml(k.owner_name)}</td>
       <td class="${stale ? 'deal-stale' : ''}" ${stale ? 'title="Over 12 måneder siden seneste deal"' : ''}>${escHtml(k.last_activation) || '—'}</td>
+      <td class="num">${k.last_deal_value ? fmtMoney(k.last_deal_value, k.last_deal_currency || k.currency) : '—'}</td>
       <td class="num">${fmtMoney(k.value, k.currency)}</td>
     </tr>`;
   }).join('');
@@ -342,6 +344,7 @@ function exportKunder() {
         { header: 'Org-ID',           key: 'org_id',          width: 12, align: 'left'  },
         { header: 'Sælger',           key: 'owner_name',      width: 24, align: 'left'  },
         { header: 'Seneste deal',     key: 'last_activation', width: 14, align: 'left'  },
+        { header: 'Seneste deal-værdi', key: 'last_deal_value', width: 18, align: 'right', numFmt: '#,##0' },
         { header: 'Porteføljeværdi',  key: 'value',           width: 18, align: 'right', numFmt: '#,##0' },
         { header: 'Valuta',           key: 'currency',        width: 10, align: 'left'  },
         { header: 'Porteføljeværdi (DKK)', key: 'value_dkk',  width: 20, align: 'right', numFmt: '#,##0' },

@@ -59,7 +59,19 @@ def test_make_key_identical_across_date_types():
 
 
 def test_make_key_normalizes_id_whitespace():
-    assert make_key("finans.dk", " 99 ", "2026-05-31") == "finans.dk|99|2026-05-31"
+    # .dk-domænesuffiks fjernes og navnet lowercases i normaliseringen.
+    assert make_key("finans.dk", " 99 ", "2026-05-31") == "finans|99|2026-05-31"
+
+
+def test_make_key_folds_domain_and_danish_chars():
+    # Zuora-domæneform og PipeDrive-brandform skal give samme nøgle.
+    assert make_key("uddannelsesmonitor.dk", "1", "2026-05-31") \
+        == make_key("Uddannelsesmonitor", "1", "2026-05-31")
+    assert make_key("idraetsmonitor.dk", "1", "2026-05-31") \
+        == make_key("Idrætsmonitor", "1", "2026-05-31")
+    # DK/NO-varianter af samme Watch-brand må IKKE smelte sammen.
+    assert make_key("MedWatch DK", "1", "2026-05-31") \
+        != make_key("MedWatch NO", "1", "2026-05-31")
 
 
 def test_sign_of():
@@ -95,16 +107,28 @@ def test_2874_positive_newsale_matches_positive_deal():
     assert row.ambiguous is False
 
 
-def test_negative_movement_is_not_matched():
-    """net_diff < 0 → ingen matchning; opsigelser styres af administrativ-flaget."""
+def test_negative_movement_matches_negative_deal():
+    """net_diff < 0 matcher den negative administrative deal → admin opsigelse."""
     deals = [_deal(876032.0, did="POS"), _deal(-278432.0, did="NEG")]
     idx, dups = build_index(deals)
 
     row = _row(-278432.0)            # net_diff < 0
     match_rows([row], idx, dups)
 
-    assert row.match is None
+    assert row.match is not None
+    assert row.match.deal_id == "NEG"
+    assert row.match_sign == "neg"
+    assert row.is_admin_opsigelse() is True
     assert row.is_admin_nysalg() is False
+
+
+def test_unmatched_cancellation_stays_plain():
+    """Opsigelse uden matchende admin-deal forbliver almindelig (ikke admin)."""
+    idx, dups = build_index([_deal(-50.0, org="9999")])
+    row = _row(-500.0, org="2874")   # ingen admin-deal på denne nøgle
+    match_rows([row], idx, dups)
+    assert row.match is None
+    assert row.is_admin_opsigelse() is False
 
 
 def test_zero_movement_no_processing():

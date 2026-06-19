@@ -86,7 +86,7 @@
         <!-- Loading -->
         <div id="loading-state" class="spin-wrap">
           <div class="spinner"></div>
-          <div>Henter kundens abonnementer…</div>
+          <div>Henter kundens deals…</div>
         </div>
 
         <!-- Content -->
@@ -105,8 +105,8 @@
           <!-- Abonnementer: filterlinje + én tabel pr. medie/site -->
           <div class="dash-card">
             <div class="dash-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-              <span>Abonnementer pr. medie</span>
-              <button class="xls-btn" id="export-btn" onclick="exportDeals()" disabled title="Hent kundens abonnementer som Excel">
+              <span>Deals pr. medie</span>
+              <button class="xls-btn" id="export-btn" onclick="exportDeals()" disabled title="Hent kundens deals som Excel">
                 <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Excel
               </button>
@@ -141,7 +141,7 @@ const orgId     = {{ org_id | tojson }};
 const backOwner = {{ back_owner | tojson }};
 let allDeals = [];
 let orgName  = '';
-let dealSortCol = 'value';
+let dealSortCol = 'activation_date';
 let dealSortDir = 'desc';
 
 function fmtFull(v) {
@@ -237,10 +237,10 @@ function renderDeals() {
   const container = document.getElementById('sites-container');
 
   document.getElementById('filter-count').textContent =
-    deals.length < allDeals.length ? `Viser ${deals.length} af ${allDeals.length} abonnementer` : `${allDeals.length} abonnementer`;
+    deals.length < allDeals.length ? `Viser ${deals.length} af ${allDeals.length} deals` : `${allDeals.length} deals`;
 
   if (!deals.length) {
-    container.innerHTML = '<div class="dash-card"><div class="empty">Ingen abonnementer matcher søgningen</div></div>';
+    container.innerHTML = '<div class="dash-card"><div class="empty">Ingen deals matcher søgningen</div></div>';
     return;
   }
 
@@ -282,9 +282,9 @@ async function loadKunde() {
         <div class="kpi-sub">Brand: ${escHtml(brandLabel)}</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Antal abonnementer</div>
+        <div class="kpi-label">Antal deals</div>
         <div class="kpi-value">${allDeals.length}</div>
-        <div class="kpi-sub">${siteCount} ${siteCount === 1 ? 'medie' : 'medier'} · deal_type = abonnement</div>
+        <div class="kpi-sub">${siteCount} ${siteCount === 1 ? 'medie' : 'medier'}</div>
       </div>
     `;
 
@@ -302,7 +302,7 @@ async function loadKunde() {
 // ── Excel-eksport: respekterer aktiv søgning + sortering ────────────────
 function exportDeals() {
   const shown = getShown();
-  if (!shown.length) { HubExport.toast('Ingen abonnementer at eksportere'); return; }
+  if (!shown.length) { HubExport.toast('Ingen deals at eksportere'); return; }
   // Saml efter medie (størst ACV øverst), så Excel matcher visningen
   const groups = {};
   shown.forEach(d => { const s = d.site || '(Uden medie)'; (groups[s] = groups[s] || []).push(d); });
@@ -312,10 +312,10 @@ function exportDeals() {
   const slug = (orgName || orgId).toString()
     .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'kunde';
   HubExport.download({
-    filename: `abonnementer-${slug}.xlsx`,
+    filename: `deals-${slug}.xlsx`,
     sheets: [{
       name:  'Abonnementer',
-      title: `${orgName} — abonnementer (${rows.length})`,
+      title: `${orgName} — deals (${rows.length})`,
       columns: [
         { header: 'Medie',            key: 'site',            width: 22, align: 'left'  },
         { header: 'Titel',            key: 'title',           width: 44, align: 'left'  },

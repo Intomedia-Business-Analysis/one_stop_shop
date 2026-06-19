@@ -37,24 +37,43 @@ from db import get_conn  # noqa: E402,F401
 
 
 def _period_clause(year: int | None, month: str | None) -> tuple[str, list]:
+    """Periodefilter på service_activation_date.
+
+    month understøtter FLERE perioder (komma-separeret): enkelt-måneder ('3,4,5'),
+    kvartaler ('Q1,Q3') eller en blanding — alle udfoldes til en måneds-mængde og
+    matches med MONTH(...) IN (...). Tom/ukendt → kun året.
+    """
     if not year:
         return "", []
     if not month:
         return "AND YEAR(service_activation_date) = %s", [year]
-    if month in ("Q1", "Q2", "Q3", "Q4"):
-        q = int(month[1])
-        m_from = (q - 1) * 3 + 1
-        m_to   = q * 3
-        return (
-            "AND YEAR(service_activation_date) = %s"
-            " AND MONTH(service_activation_date) BETWEEN %s AND %s",
-            [year, m_from, m_to],
-        )
+    months: set[int] = set()
+    for part in str(month).split(","):
+        p = part.strip()
+        if p in ("Q1", "Q2", "Q3", "Q4"):
+            q = int(p[1])
+            months.update(range((q - 1) * 3 + 1, q * 3 + 1))
+        elif p.isdigit() and 1 <= int(p) <= 12:
+            months.add(int(p))
+    if not months:
+        return "AND YEAR(service_activation_date) = %s", [year]
+    ph = ",".join(["%s"] * len(months))
     return (
-        "AND YEAR(service_activation_date) = %s"
-        " AND MONTH(service_activation_date) = %s",
-        [year, int(month)],
+        f"AND YEAR(service_activation_date) = %s"
+        f" AND MONTH(service_activation_date) IN ({ph})",
+        [year] + sorted(months),
     )
+
+
+def _brand_clause(brand: str | None) -> tuple[str, list]:
+    """Filtrér på brand-gruppe (nøgle i constants.BRAND_GROUPS) via deals' [sites].
+    Tom/ukendt brand → intet filter."""
+    from constants import BRAND_GROUPS
+    if not brand or brand not in BRAND_GROUPS:
+        return "", []
+    sites = BRAND_GROUPS[brand]
+    ph = ",".join(["%s"] * len(sites))
+    return f"AND [sites] IN ({ph})", list(sites)
 
 
 def _year_clause(year: int | None) -> tuple[str, list]:
@@ -111,11 +130,12 @@ def db_owners(pipeline: str, country: str = "dk") -> list[str]:
         raise
 
 
-def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk") -> dict:
+def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk", brand: str | None = None) -> dict:
     account = account_for_country(country)
     yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
-    params = (account, pipeline) + tuple(yp) + tuple(op)
+    bc, bp = _brand_clause(brand)
+    params = (account, pipeline) + tuple(bp) + tuple(yp) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -124,7 +144,7 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         cur.execute(f"""
             SELECT COUNT(DISTINCT org_id) AS active_customers
             FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE} {yc} {oc}
+            WHERE {_BASE_WHERE} {bc} {yc} {oc}
               AND status = 'won'
         """, params)
         active_customers = int((cur.fetchone() or {}).get("active_customers", 0) or 0)
@@ -135,7 +155,7 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
                 ISNULL(CAST(SUM(value_dkk) AS BIGINT), 0) AS total_value,
                 COUNT(*) AS total_deals
             FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE} {yc} {oc}
+            WHERE {_BASE_WHERE} {bc} {yc} {oc}
               AND status = 'won'
         """, params)
         row = cur.fetchone() or {}
@@ -155,26 +175,26 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
                 FROM (
                     SELECT org_id
                     FROM [dbo].[PipedriveDeals]
-                    WHERE {_BASE_WHERE} {oc}
+                    WHERE {_BASE_WHERE} {bc} {oc}
                       AND status = 'won'
                     GROUP BY org_id
                     HAVING
                         SUM(CASE WHEN YEAR(service_activation_date) = %s THEN 1 ELSE 0 END) > 0
                         AND COUNT(DISTINCT YEAR(service_activation_date)) > 1
                 ) t
-            """, (account, pipeline) + tuple(op) + (year,))
+            """, (account, pipeline) + tuple(bp) + tuple(op) + (year,))
         else:
             cur.execute(f"""
                 SELECT COUNT(*) AS returning_customers
                 FROM (
                     SELECT org_id
                     FROM [dbo].[PipedriveDeals]
-                    WHERE {_BASE_WHERE} {oc}
+                    WHERE {_BASE_WHERE} {bc} {oc}
                       AND status = 'won'
                     GROUP BY org_id
                     HAVING COUNT(DISTINCT YEAR(service_activation_date)) > 1
                 ) t
-            """, (account, pipeline) + tuple(op))
+            """, (account, pipeline) + tuple(bp) + tuple(op))
         returning_customers = int((cur.fetchone() or {}).get("returning_customers", 0) or 0)
 
         conn.close()
@@ -192,11 +212,12 @@ def db_kpi_data(pipeline: str, year: int | None = None, month: str | None = None
         raise
 
 
-def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk") -> list[dict]:
+def db_top_customers(pipeline: str, year: int | None = None, month: str | None = None, owner_name: str | None = None, country: str = "dk", brand: str | None = None) -> list[dict]:
     account = account_for_country(country)
     yc, yp = _period_clause(year, month)
     oc, op = _owner_clause(owner_name)
-    params = (account, pipeline) + tuple(yp) + tuple(op)
+    bc, bp = _brand_clause(brand)
+    params = (account, pipeline) + tuple(bp) + tuple(yp) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -206,7 +227,7 @@ def db_top_customers(pipeline: str, year: int | None = None, month: str | None =
                 CAST(SUM(value_dkk) AS BIGINT) AS total_value,
                 COUNT(*) AS deal_count
             FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE} {yc} {oc}
+            WHERE {_BASE_WHERE} {bc} {yc} {oc}
               AND status = 'won'
             GROUP BY org_id, org_name
             ORDER BY total_value DESC
@@ -223,10 +244,11 @@ def db_top_customers(pipeline: str, year: int | None = None, month: str | None =
         raise
 
 
-def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None, country: str = "dk") -> list[dict]:
+def db_salesperson_performance(pipeline: str, year: int | None = None, month: str | None = None, country: str = "dk", brand: str | None = None) -> list[dict]:
     account = account_for_country(country)
     yc, yp = _period_clause(year, month)
-    params = (account, pipeline) + tuple(yp)
+    bc, bp = _brand_clause(brand)
+    params = (account, pipeline) + tuple(bp) + tuple(yp)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -253,7 +275,7 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
                 CAST(SUM(value_dkk) AS BIGINT) AS total_value,
                 CAST(SUM(value_dkk) / COUNT(DISTINCT org_id) AS BIGINT) AS value_pr_kunde
             FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE} {yc}
+            WHERE {_BASE_WHERE} {bc} {yc}
               AND status = 'won'
               AND owner_name IS NOT NULL
               {team_filter}
@@ -278,10 +300,11 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
         raise
 
 
-def db_customer_heatmap(pipeline: str, owner_name: str | None = None, country: str = "dk") -> list[dict]:
+def db_customer_heatmap(pipeline: str, owner_name: str | None = None, country: str = "dk", brand: str | None = None) -> list[dict]:
     account = account_for_country(country)
     oc, op = _owner_clause(owner_name)
-    params = (account, pipeline) + tuple(op)
+    bc, bp = _brand_clause(brand)
+    params = (account, pipeline) + tuple(bp) + tuple(op)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -300,7 +323,7 @@ def db_customer_heatmap(pipeline: str, owner_name: str | None = None, country: s
                 COUNT(*) AS antal_total,
                 CAST(SUM(value_dkk) AS INT) AS total_value
             FROM [dbo].[PipedriveDeals]
-            WHERE {_BASE_WHERE} {oc}
+            WHERE {_BASE_WHERE} {bc} {oc}
               AND status = 'won'
             GROUP BY org_id, org_name
             ORDER BY total_value DESC

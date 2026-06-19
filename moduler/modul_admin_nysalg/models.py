@@ -60,3 +60,8 @@ class ExtractRow:
     def is_admin_nysalg(self) -> bool:
         """Administrativt nysalg = positiv bevægelse der matchede en positiv deal."""
         return self.match is not None and self.match_sign == "pos"
+
+    def is_admin_opsigelse(self) -> bool:
+        """Administrativ opsigelse = negativ bevægelse der matchede en negativ
+        (administrativ) deal i PipeDrive — også hvis Zuoras flag mangler."""
+        return self.match is not None and self.match_sign == "neg"

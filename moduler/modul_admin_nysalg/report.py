@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from moduler.modul_admin_nysalg.repo import effective_is_admin
+from moduler.modul_admin_nysalg.repo import effective_is_admin, is_admin_opsigelse
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def _num_fmt(cur: str | None) -> str:
     return _DKK if (cur or "DKK") == "DKK" else f'#,##0 "{cur}"'
 
 
-_HEAD_FILL = PatternFill("solid", fgColor="14794A")
+_HEAD_FILL = PatternFill("solid", fgColor="1C1C1A")  # hub-primær (nær-sort)
 _HEAD_FONT = Font(bold=True, color="FFFFFF", size=10)
 _TITLE_FONT = Font(bold=True, size=14)
 _THIN = Side(style="thin", color="DDDDDD")
@@ -63,8 +63,10 @@ def _autosize(ws, widths):
 
 def generate_excel(run: dict, matches: list[dict], summary: dict,
                    brand_rows: list[dict] | None = None, out_dir: str | None = None,
-                   pd_deals: list[dict] | None = None) -> str:
+                   pd_deals: list[dict] | None = None,
+                   org_names: dict | None = None) -> str:
     out_dir = out_dir or report_dir()
+    org_names = org_names or {}
     wb = Workbook()
 
     # ── Ark 1: Summary ────────────────────────────────────────────────────────
@@ -153,42 +155,35 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
             c.number_format = _DKK
     _autosize(ws2, [7, 11, 28, 28, 9, 14, 12, 14, 12, 14, 16, 10, 40])
 
-    # ── Ark 3: Kræver vurdering (ambiguous) ───────────────────────────────────
-    ws3 = wb.create_sheet("Kræver vurdering")
-    acols = ["Række", "Måned", "Site", "Org-ID", "Gross in", "Deal-værdi",
-             "Afgjort som", "Override", "Kommentar"]
-    ws3.append(acols)
-    _style_header(ws3, 1, len(acols))
-    for m in matches:
-        if not m.get("ambiguous"):
-            continue
-        ws3.append([
-            m.get("row_index"), m.get("month_end"), m.get("site"), m.get("pipedrive_id"),
-            m.get("gross_in"), m.get("matched_value"),
-            "Administrativt" if effective_is_admin(m) else "Normalt nysalg",
-            m.get("override") or "", m.get("row_comment") or "",
-        ])
-    _autosize(ws3, [7, 11, 30, 9, 14, 14, 16, 10, 40])
-
-    # ── Ark 4: Bevægelser pr. brand (Zuora) ───────────────────────────────────
+    # ── Ark 3: Bevægelser pr. brand (Zuora) ───────────────────────────────────
     # Alle rækker med gross in eller gross out i perioden — kilden bag brand-
-    # totalerne, så de kan holdes op imod PipeDrive-deals (Ark 5).
+    # totalerne, så de kan holdes op imod PipeDrive-deals (Ark 4).
     ws4 = wb.create_sheet("Bevægelser pr. brand")
     mcols = ["Brand", "Site", "Kunde", "Org-ID", "Konto", "Måned", "Movement",
-             "Valuta", "Gross in", "Gross out", "Netto", "Adm. nysalg", "Matchet deal"]
+             "Valuta", "Gross in", "Gross out", "Netto", "Administrativ", "Matchet deal"]
     ws4.append(mcols)
     _style_header(ws4, 1, len(mcols))
     moves = sorted(
         [m for m in matches if (m.get("gross_in") or 0) or (m.get("gross_out") or 0)],
         key=lambda m: ((m.get("brand") or ""), (m.get("site") or "")))
+    from moduler.modul_admin_nysalg.brands import brand_account
     for m in moves:
         gi = m.get("gross_in") or 0
         go = m.get("gross_out") or 0
+        # Navn fra matchet deal, ellers slå op på org-id i brandets KONTO (org-id
+        # er ikke unikke på tværs af konti) — også for ikke-admin rækker.
+        acct = brand_account(m.get("brand") or "")
+        pid = str(m.get("pipedrive_id") or "").strip()
+        kunde = (m.get("matched_org_name")
+                 or (org_names.get(acct, {}).get(pid, "") if acct else ""))
+        # Administrativ = matchede en administrativ deal (nysalg ELLER opsigelse)
+        # eller bærer Zuoras administrativ-flag.
+        adm = "Ja" if (effective_is_admin(m) or is_admin_opsigelse(m)) else ""
         ws4.append([
-            m.get("brand") or "", m.get("site"), m.get("matched_org_name") or "",
+            m.get("brand") or "", m.get("site"), kunde,
             m.get("pipedrive_id"), m.get("account_number"), m.get("month_end"),
             m.get("movement"), m.get("currency") or "", gi, go, gi - go,
-            "Ja" if effective_is_admin(m) else "", m.get("matched_deal_id") or "",
+            adm, m.get("matched_deal_id") or "",
         ])
     for col in (9, 10, 11):
         for cells in ws4.iter_rows(min_row=2, min_col=col, max_col=col):
@@ -196,9 +191,9 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                 c.number_format = "#,##0"
     _autosize(ws4, [16, 26, 26, 9, 14, 11, 12, 8, 14, 14, 14, 11, 12])
 
-    # ── Ark 5: PipeDrive-deals (måned) ────────────────────────────────────────
+    # ── Ark 4: PipeDrive-deals (måned) ────────────────────────────────────────
     # Alle won-deals med service_activation_date i perioden — PipeDrive-kilden,
-    # til afstemning mod Zuora-bevægelserne (Ark 4).
+    # til afstemning mod Zuora-bevægelserne (Ark 3).
     ws5 = wb.create_sheet("PipeDrive-deals")
     pcols = ["Brand", "Site", "Kunde", "Org-ID", "Account", "Team", "Pipeline",
              "Status", "Administrativ", "Service-akt.dato", "Valuta", "Værdi"]
@@ -237,14 +232,17 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         raise RuntimeError("reportlab er ikke installeret — PDF kan ikke genereres.") from e
 
     # ── Palet ──────────────────────────────────────────────────────────────────
-    GREEN  = colors.HexColor("#14794A")
-    GREEN2 = colors.HexColor("#0f5c39")
-    INK    = colors.HexColor("#1c211e")
-    MUTED  = colors.HexColor("#7c847f")
-    LIGHT  = colors.HexColor("#F4F6F4")
-    BORDER = colors.HexColor("#E2E6E3")
-    RED    = colors.HexColor("#b32e45")
-    WHITE  = colors.white
+    # Hub-palet (static/hub.css): JP|Politiken nær-sort + varm beige.
+    DARK    = colors.HexColor("#1C1C1A")   # --green (primær brand, nær-sort)
+    INK     = colors.HexColor("#1A1A17")   # --ink
+    MUTED   = colors.HexColor("#8B857A")   # --ink-3
+    FAINT   = colors.HexColor("#BEB7AC")   # --ink-4 (banner-subtitle på mørk)
+    LIGHT   = colors.HexColor("#F7F5F2")   # --bg (alternerende rækker)
+    BORDER  = colors.HexColor("#E9E5DE")   # --border
+    WIN     = colors.HexColor("#1F8A5B")   # --win (positiv netto)
+    RED     = colors.HexColor("#B32E45")   # --danger (negativ)
+    TAUPE   = colors.HexColor("#ACA199")   # --taupe (JP|Politiken signatur-bar)
+    WHITE   = colors.white
 
     def kr(v):
         return f"{round(v or 0):,.0f} kr.".replace(",", ".")
@@ -255,7 +253,9 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
 
     # ── Stilarter ────────────────────────────────────────────────────────────
     s_title   = ParagraphStyle("t",  fontName="Helvetica-Bold", fontSize=21, textColor=WHITE, leading=23)
-    s_sub     = ParagraphStyle("s",  fontName="Helvetica",      fontSize=9,  textColor=colors.HexColor("#d6ecdf"), leading=13)
+    s_sub     = ParagraphStyle("s",  fontName="Helvetica",      fontSize=9,  textColor=FAINT, leading=13)
+    s_logo    = ParagraphStyle("lg", fontName="Helvetica-Bold", fontSize=12, textColor=WHITE, leading=13)
+    s_logosub = ParagraphStyle("ls", fontName="Helvetica-Bold", fontSize=7,  textColor=FAINT, leading=9)
     s_kpi_lbl = ParagraphStyle("kl", fontName="Helvetica-Bold", fontSize=7,  textColor=MUTED, leading=10, spaceAfter=3)
     s_kpi_val = ParagraphStyle("kv", fontName="Helvetica-Bold", fontSize=15, textColor=INK,   leading=17)
     s_kpi_sub = ParagraphStyle("ks", fontName="Helvetica",      fontSize=6.5, textColor=MUTED, leading=9, spaceBefore=2)
@@ -285,17 +285,30 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                             title="Monthly performance report")
     el = []
 
-    # ── Header-banner ──────────────────────────────────────────────────────────
+    # ── Header-banner med JP|Politiken-logo ─────────────────────────────────────
     meta = (f"Periode {run.get('period') or 'alle'}  ·  Run #{run.get('run_id')}  ·  "
             f"Godkendt af {run.get('approved_by') or '—'}")
-    banner = Table([[
-        [Paragraph("Monthly performance report", s_title), Paragraph(meta, s_sub)],
-    ]], colWidths=[CW])
+    # Logoet er hubbens typografiske wordmark: taupe signatur-bar + JP|Politiken.
+    logo_bar = Table([[""]], colWidths=[20 * mm], rowHeights=[1.8 * mm])
+    logo_bar.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), TAUPE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    banner = Table([[[
+        logo_bar,
+        Spacer(1, 4),
+        Paragraph("JP|Politiken", s_logo),
+        Paragraph("BUSINESS MEDIA", s_logosub),
+        Spacer(1, 11),
+        Paragraph("Monthly performance report", s_title),
+        Paragraph(meta, s_sub),
+    ]]], colWidths=[CW])
     banner.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), GREEN),
-        ("LINEBELOW", (0, 0), (-1, -1), 2.5, GREEN2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 18), ("RIGHTPADDING", (0, 0), (-1, -1), 18),
-        ("TOPPADDING", (0, 0), (-1, -1), 16), ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+        ("BACKGROUND", (0, 0), (-1, -1), DARK),
+        ("LINEBELOW", (0, 0), (-1, -1), 3, TAUPE),
+        ("LEFTPADDING", (0, 0), (-1, -1), 20), ("RIGHTPADDING", (0, 0), (-1, -1), 20),
+        ("TOPPADDING", (0, 0), (-1, -1), 18), ("BOTTOMPADDING", (0, 0), (-1, -1), 18),
     ]))
     el.append(banner)
     el.append(Spacer(1, 9 * mm))
@@ -311,13 +324,13 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         kpi_cell("OPSIGELSER (TOTAL)", kr(summary["opsigelser"]),
                  f"heraf adm.: {kr(summary['adm_opsigelser'])}", RED),
         kpi_cell("NETTO TILVÆKST", kr(summary["netto_tilvaekst"]),
-                 "(brutto − adm.) − (opsig. − adm.)", GREEN),
+                 "(brutto − adm.) − (opsig. − adm.)", WIN),
     ]], colWidths=[CW / 3.0] * 3)
     kpis.setStyle(TableStyle([
         ("BOX", (0, 0), (0, 0), 0.75, BORDER), ("BOX", (1, 0), (1, 0), 0.75, BORDER),
         ("BOX", (2, 0), (2, 0), 0.75, BORDER),
-        ("LINEABOVE", (0, 0), (-1, 0), 2.5, GREEN),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FCFDFC")),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, DARK),
+        ("BACKGROUND", (0, 0), (-1, -1), WHITE),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
         ("TOPPADDING", (0, 0), (-1, -1), 12), ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
@@ -343,7 +356,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         t = Table(brand_data, colWidths=[30 * mm, 26 * mm, 23 * mm, 23 * mm,
                                          23 * mm, 26 * mm, 27 * mm], repeatRows=1)
         style = [
-            ("BACKGROUND", (0, 0), (-1, 0), GREEN),
+            ("BACKGROUND", (0, 0), (-1, 0), DARK),
             ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
             ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
             ("FONTSIZE", (1, 1), (-1, -1), 8),
@@ -358,7 +371,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
             ("TEXTCOLOR", (2, 1), (2, -1), MUTED), ("TEXTCOLOR", (4, 1), (4, -1), MUTED),
         ]
         for i, pos in enumerate(netto_signs, start=1):
-            style.append(("TEXTCOLOR", (5, i), (5, i), GREEN if pos else RED))
+            style.append(("TEXTCOLOR", (5, i), (5, i), WIN if pos else RED))
             style.append(("FONTNAME", (5, i), (5, i), "Helvetica-Bold"))
             style.append(("TEXTCOLOR", (6, i), (6, i), MUTED))
         t.setStyle(TableStyle(style))
@@ -381,7 +394,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                     colWidths=[CW])
         box.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), LIGHT),
-            ("LINEABOVE", (0, 0), (-1, -1), 2, GREEN),
+            ("LINEABOVE", (0, 0), (-1, -1), 2, DARK),
             ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
             ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ]))
@@ -393,8 +406,9 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
 
 def generate_report(run: dict, matches: list[dict], summary: dict,
                     brand_rows: list[dict] | None = None, fmt: str = "xlsx",
-                    out_dir: str | None = None, pd_deals: list[dict] | None = None) -> str:
+                    out_dir: str | None = None, pd_deals: list[dict] | None = None,
+                    org_names: dict | None = None) -> str:
     """fmt: 'xlsx' | 'pdf'. Returnerer stien til den genererede fil."""
     if fmt == "pdf":
         return generate_pdf(run, matches, summary, brand_rows, out_dir)
-    return generate_excel(run, matches, summary, brand_rows, out_dir, pd_deals)
+    return generate_excel(run, matches, summary, brand_rows, out_dir, pd_deals, org_names)

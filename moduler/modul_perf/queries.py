@@ -1312,7 +1312,7 @@ def db_yoy_data(today: date, team: str | None = None,
 
 def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                      selected_year: int | None = None, selected_month: str | None = None,
-                     date_col: str = "won_time"):
+                     date_col: str = "won_time", pipeline_filter: str | None = None):
     # Reference period — brug valgt år hvis angivet, ellers aktuelt år
     ref_year = selected_year or today.year
 
@@ -1343,8 +1343,18 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
     week_end   = week_start + timedelta(days=7)
 
     brands_ph   = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
-    team_clause = "AND [team] = %s" if team else ""
-    team_params = (team,) if team else ()
+    # Valgfrit pipeline-filter (dropdown ved siden af dato). Rammer ALLE widgets
+    # undtagen månedsmål/budget (budget er ikke pipeline-specifikt). Det foldes
+    # ind i team_clause/team_params, så alle team-baserede queries får det
+    # automatisk; won_by_team (budget-sammenligning) bruger budget_team_* uden
+    # filteret. Klausulen ligger sidst i WHERE, så params altid appendes til sidst.
+    pipeline_filter = (pipeline_filter or "").strip() or None
+    _pipe_clause = "AND [pipeline_name] = %s" if pipeline_filter else ""
+    _pipe_params = (pipeline_filter,) if pipeline_filter else ()
+    budget_team_clause = "AND [team] = %s" if team else ""           # uden pipeline-filter
+    budget_team_params = (team,) if team else ()
+    team_clause = (budget_team_clause + " " + _pipe_clause).strip()  # team + pipeline
+    team_params = budget_team_params + _pipe_params
     # Dato-kolonne: won_time (matcher Pipedrive) eller service_activation_date
     _VALID_DATE_COLS = {"won_time", "service_activation_date"}
     if date_col not in _VALID_DATE_COLS:
@@ -1428,8 +1438,9 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
+          {_pipe_clause}
         GROUP BY CAST({d_col} AS DATE)
-    """, (week_start.isoformat(), week_end.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+    """, (week_start.isoformat(), week_end.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + _pipe_params)
     spark_raw = {str(r["dag"]): float(r["total"] or 0) for r in cur.fetchall()}
     sparkline = [{"dag": (week_start + timedelta(days=i)).isoformat(),
                   "total": round(spark_raw.get((week_start + timedelta(days=i)).isoformat(), 0), 2)}
@@ -1447,7 +1458,8 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
-    """, (today.isoformat(), (today + timedelta(days=1)).isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS))
+          {_pipe_clause}
+    """, (today.isoformat(), (today + timedelta(days=1)).isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + _pipe_params)
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
 
     cur.execute(f"""
@@ -1568,7 +1580,8 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "is_cancel": r["pipeline_name"] in ('Cancellation', 'Cancellations', 'Opsigelser')
     } for r in (cur.fetchall() or [])]
 
-    # Won-beløb per team (til budget-breakdown)
+    # Won-beløb per team (til budget-breakdown). Budget-widget → IKKE pipeline-
+    # filtreret (budget_team_*), så budget vs. won-sammenligningen forbliver hel.
     cur.execute(f"""
         SELECT [team],
                ISNULL(SUM((CASE
@@ -1586,9 +1599,9 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           {_ADM_EXCLUDE}
-          {team_clause}
+          {budget_team_clause}
         GROUP BY [team]
-    """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
+    """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + budget_team_params)
     won_by_team_raw = {r["team"]: float(r["won"] or 0) for r in cur.fetchall() if r["team"]}
 
     # ── Widget: Pipeline-fordeling af tilvækst ───────────────────────────────
@@ -1614,9 +1627,10 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         ORDER BY total DESC
     """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     tilvaekst_fordeling = [{
-        "navn":  r["pipeline_name"] or "Ukendt",
-        "total": round(float(r["total"] or 0), 2),
-        "antal": int(r["antal"] or 0),
+        "navn":       r["pipeline_name"] or "Ukendt",
+        "total":      round(float(r["total"] or 0), 2),
+        "antal":      int(r["antal"] or 0),
+        "gennemsnit": round(float(r["total"] or 0) / int(r["antal"]), 2) if int(r["antal"] or 0) else 0.0,
     } for r in (cur.fetchall() or [])]
 
     # ── Widget: Konverteringsrate (won vs. lost) baseret på close_time ────────
@@ -2016,8 +2030,19 @@ def db_saelger_meta(owner_name: str):
     """, (owner_name,))
     teams = [r["team"] for r in cur.fetchall()]
 
+    # Pipelines sælgeren har deals i (won/open) — til pipeline-filter-dropdownen.
+    cur.execute("""
+        SELECT DISTINCT [pipeline_name]
+        FROM [dbo].[PipedriveDeals]
+        WHERE [owner_name] = %s AND [pipeline_name] IS NOT NULL
+          AND [pipeline_name] <> '' AND [pipeline_name] <> 'Web Sale'
+          AND [status] IN ('won','open')
+        ORDER BY [pipeline_name]
+    """, (owner_name,))
+    pipelines = [r["pipeline_name"] for r in cur.fetchall()]
+
     conn.close()
-    return {"years": years, "teams": teams}
+    return {"years": years, "teams": teams, "pipelines": pipelines}
 
 
 def db_saelger_available_owners():

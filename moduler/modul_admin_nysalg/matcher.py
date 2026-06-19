@@ -65,13 +65,25 @@ def last_day_of_month(value) -> str:
 
 
 def normalize_site(site: str, site_map: Optional[dict] = None) -> str:
-    """Site-navne matcher 1:1 i de fleste tilfælde. site_map (config/DB) håndterer
-    de få afvigelser mellem Zuora og PipeDrive uden kodeændring.
+    """Normalisér et site-navn så Zuora og PipeDrive er sammenlignelige.
+
+    site_map (config/DB) oversætter først kendte afvigelser. Derefter en generisk
+    normalisering der fanger de systematiske forskelle mellem kilderne:
+      • Zuora bruger domæneform ('uddannelsesmonitor.dk'), PipeDrive brandform
+        ('Uddannelsesmonitor') → .dk/.no/.se-suffiks fjernes, alt lowercases.
+      • æ/ø/å foldes til ae/oe/aa ('idraetsmonitor.dk' ↔ 'Idrætsmonitor').
+    Lande-suffikset i Watch-sites (' DK'/' NO' med mellemrum) bevares, så DK- og
+    NO-varianter af samme brand IKKE smelter sammen.
     """
     s = (site or "").strip()
     if site_map:
-        return site_map.get(s, site_map.get(s.lower(), s))
-    return s
+        s = site_map.get(s, site_map.get(s.lower(), s))
+    n = s.lower().replace("æ", "ae").replace("ø", "oe").replace("å", "aa")
+    for suf in (".dk", ".no", ".se"):
+        if n.endswith(suf):
+            n = n[:-len(suf)]
+            break
+    return n.strip()
 
 
 def make_key(site, org_id, month_end, site_map: Optional[dict] = None) -> str:
@@ -125,17 +137,19 @@ def match_rows(rows: Iterable[ExtractRow], idx: dict, dups: set,
                site_map: Optional[dict] = None) -> None:
     """Sæt match-resultatet på hver række (muterer rækkerne).
 
-    KUN nysalgssiden matches:
-      net_diff > 0  → slå op mod (nøgle, 'pos') → administrativt nysalg ved match.
-      net_diff < 0  → ingen matchning (opsigelser styres af `administrativ`-flaget).
+    BEGGE sider matches mod administrative deals (fortegnsbærende nøgle):
+      net_diff > 0  → slå op mod (nøgle, 'pos') → administrativt NYSALG ved match.
+      net_diff < 0  → slå op mod (nøgle, 'neg') → administrativ OPSIGELSE ved match.
       net_diff = 0  → ingen behandling.
 
-    Blank/intet match = almindeligt nysalg (match forbliver None).
+    Opsigelsessiden tæller som administrativ hvis enten Zuoras `administrativ`-flag
+    er sat ELLER rækken matcher en negativ administrativ deal i PipeDrive — så en
+    opsigelse der mangler flaget i Zuora stadig fanges. Blank/intet match =
+    almindelig bevægelse (match forbliver None).
     """
     for r in rows:
         s = sign_of(r.net_diff)
-        # Vi matcher kun nysalgssiden (positive bevægelser).
-        if s != "pos":
+        if s is None:           # net_diff == 0 → ingen bevægelse at matche
             r.match = None
             r.match_sign = None
             r.ambiguous = False

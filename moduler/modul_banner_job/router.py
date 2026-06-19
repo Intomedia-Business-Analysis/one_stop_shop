@@ -59,12 +59,13 @@ async def banner_job_kpi(
     month: str | None = None,
     owner: str | None = None,
     country: str = "dk",
+    brand: str | None = None,
     user=Depends(get_current_user),
 ):
     _check_pipeline(pipeline)
     _check_country(country)
     try:
-        return JSONResponse(db_kpi_data(pipeline, year, month, owner, country))
+        return JSONResponse(db_kpi_data(pipeline, year, month, owner, country, brand))
     except Exception:
         logger.exception("banner_job_kpi fejlede (pipeline=%s, year=%s, month=%s, owner=%s, country=%s)",
                          pipeline, year, month, owner, country)
@@ -78,12 +79,13 @@ async def banner_job_top_customers(
     month: str | None = None,
     owner: str | None = None,
     country: str = "dk",
+    brand: str | None = None,
     user=Depends(get_current_user),
 ):
     _check_pipeline(pipeline)
     _check_country(country)
     try:
-        return JSONResponse({"rows": db_top_customers(pipeline, year, month, owner, country)})
+        return JSONResponse({"rows": db_top_customers(pipeline, year, month, owner, country, brand)})
     except Exception:
         logger.exception("banner_job_top_customers fejlede (pipeline=%s, year=%s, month=%s, owner=%s, country=%s)",
                          pipeline, year, month, owner, country)
@@ -96,6 +98,7 @@ async def banner_job_salesperson(
     year: int | None = None,
     month: str | None = None,
     country: str = "dk",
+    brand: str | None = None,
     user=Depends(get_current_user),
 ):
     if not has_access(user, "sales_manager"):
@@ -103,7 +106,7 @@ async def banner_job_salesperson(
     _check_pipeline(pipeline)
     _check_country(country)
     try:
-        return JSONResponse({"rows": db_salesperson_performance(pipeline, year, month, country)})
+        return JSONResponse({"rows": db_salesperson_performance(pipeline, year, month, country, brand)})
     except Exception:
         logger.exception("banner_job_salesperson fejlede (pipeline=%s, year=%s, month=%s, country=%s)",
                          pipeline, year, month, country)
@@ -115,12 +118,13 @@ async def banner_job_heatmap(
     pipeline: str = "banner",
     owner: str | None = None,
     country: str = "dk",
+    brand: str | None = None,
     user=Depends(get_current_user),
 ):
     _check_pipeline(pipeline)
     _check_country(country)
     try:
-        return JSONResponse({"rows": db_customer_heatmap(pipeline, owner, country)})
+        return JSONResponse({"rows": db_customer_heatmap(pipeline, owner, country, brand)})
     except Exception:
         logger.exception("banner_job_heatmap fejlede (pipeline=%s, owner=%s, country=%s)", pipeline, owner, country)
         raise HTTPException(500, "Data kunne ikke hentes")

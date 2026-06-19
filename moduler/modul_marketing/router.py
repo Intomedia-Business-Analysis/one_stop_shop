@@ -42,10 +42,13 @@ async def marketing_deal_source_page(request: Request, user=Depends(get_current_
 
 
 @router.get("/filters")
-async def marketing_filters(user=Depends(get_current_user)):
+async def marketing_filters(
+    account: list[str] | None = Query(default=None),
+    user=Depends(get_current_user),
+):
     _require_access(user)
     try:
-        return JSONResponse(db_filter_options())
+        return JSONResponse(db_filter_options(accounts=account))
     except Exception:
         logger.exception("marketing_filters fejlede")
         raise HTTPException(500, "Data kunne ikke hentes")

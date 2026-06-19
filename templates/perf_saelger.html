@@ -210,6 +210,9 @@
             <option value="won_time">Won time</option>
             <option value="service_activation_date" selected>Service activation date</option>
           </select>
+          <select class="filter-select" id="filter-pipeline" onchange="loadData()">
+            <option value="">Alle pipelines</option>
+          </select>
         </div>
 
         <div id="loading-state" class="spin-wrap">
@@ -578,6 +581,15 @@ async function loadMeta(opts = {}) {
       teamSel.innerHTML = '<option value="">Alle teams</option>';
       teamSel.style.display = 'none';
     }
+
+    const pipeSel = document.getElementById('filter-pipeline');
+    if (pipeSel) {
+      const prevPipe = preserve ? pipeSel.value : '';
+      pipeSel.innerHTML = '<option value="">Alle pipelines</option>' +
+        (m.pipelines || []).map(p =>
+          `<option value="${encodeURIComponent(p)}"${encodeURIComponent(p) === prevPipe ? ' selected' : ''}>${p}</option>`
+        ).join('');
+    }
   } catch(e) {
     console.error(e);
   }
@@ -598,12 +610,14 @@ async function loadData() {
     const month   = msMonthParam();
     const team    = document.getElementById('filter-team').value;
     const dateCol = document.getElementById('filter-date-col').value;
+    const pipeline = document.getElementById('filter-pipeline').value;
 
     const params = new URLSearchParams();
     if (year)           params.set('year',     year);
     if (month)          params.set('month',    month);
     if (team)           params.set('team',     decodeURIComponent(team));
     if (dateCol)        params.set('date_col', dateCol);
+    if (pipeline)       params.set('pipeline', decodeURIComponent(pipeline));
     if (_currentOwner)  params.set('owner',    _currentOwner);
 
     const r = await fetch('/tools/performance/saelger-data?' + params);
@@ -961,7 +975,7 @@ function renderTilvaekstFordeling(d) {
     const clr    = isNeg ? '#B32E45' : 'var(--green)';
     return `<div style="margin-bottom:13px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:11px;margin-bottom:5px">
-        <span style="color:var(--ink-2);font-weight:600">${escHtml(r.navn)} <span style="color:var(--ink-4);font-weight:400">(${r.antal})</span></span>
+        <span style="color:var(--ink-2);font-weight:600">${escHtml(r.navn)} <span style="color:var(--ink-4);font-weight:400">(${r.antal} · ⌀ ${fmtKr(r.gennemsnit)})</span></span>
         <span style="font-weight:700;color:${clr};font-variant-numeric:tabular-nums">${fmtKr(r.total)}</span>
       </div>
       <div class="team-budget-bar"><div class="team-budget-bar-fill" style="width:${barPct}%;background:${clr}"></div></div>
