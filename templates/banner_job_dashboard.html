@@ -37,6 +37,48 @@
 .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
 .filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
 .filter-select:focus{border-color:var(--green)}
+/* ── Multi-select dropdown (PBI-stil, samme som sælger-dashboardet) ──── */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;min-width:140px;
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);
+  cursor:pointer;user-select:none;transition:border-color .13s;white-space:nowrap;
+}
+.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
+.ms-trigger.disabled{opacity:.45;cursor:not-allowed;border-color:var(--border)}
+.ms-trigger-text{flex:1;overflow:hidden;text-overflow:ellipsis}
+.ms-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--green);color:#fff;font-size:10px;font-weight:700;
+}
+.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
+.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
+.ms-panel{
+  position:absolute;top:calc(100% + 4px);left:0;z-index:200;
+  min-width:200px;max-height:260px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 4px 16px rgba(0,0,0,.12);display:none;
+}
+.ms-panel.open{display:block}
+.ms-list-header{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;border-bottom:1px solid var(--border);
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+  color:var(--ink-4);cursor:pointer;
+}
+.ms-list-header:hover{background:var(--green-light,#f0f8f4)}
+.ms-item{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  font-size:12px;color:var(--ink-2);cursor:pointer;transition:background .1s;
+}
+.ms-item:hover{background:var(--green-light,#f0f8f4)}
+.ms-item input[type=checkbox]{
+  accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none;
+}
+.ms-item label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 .refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
 .refresh-btn:hover{background:var(--green-mid)}
@@ -144,25 +186,37 @@
           <select class="filter-select" id="filter-year" onchange="onYearChange()">
             <option value="">Alle år (2023–)</option>
           </select>
-          <select class="filter-select" id="filter-month" onchange="loadAll()" multiple size="6"
-                  title="Vælg en eller flere måneder/kvartaler (intet valgt = hele året)" disabled>
-            <option value="Q1">Q1 (Jan–Mar)</option>
-            <option value="Q2">Q2 (Apr–Jun)</option>
-            <option value="Q3">Q3 (Jul–Sep)</option>
-            <option value="Q4">Q4 (Okt–Dec)</option>
-            <option value="1">Januar</option>
-            <option value="2">Februar</option>
-            <option value="3">Marts</option>
-            <option value="4">April</option>
-            <option value="5">Maj</option>
-            <option value="6">Juni</option>
-            <option value="7">Juli</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">Oktober</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
+          <!-- Periode multi-select dropdown (PBI-stil, samme som sælger-dashboardet) -->
+          <div class="ms-wrap" id="ms-month-wrap">
+            <div class="ms-trigger disabled" id="ms-month-trigger" onclick="msToggle('month')"
+                 title="Vælg en eller flere måneder/kvartaler (intet valgt = hele året)">
+              <span class="ms-trigger-text" id="ms-month-label">Hele Året</span>
+              <span class="ms-badge" id="ms-month-badge" style="display:none"></span>
+              <span class="ms-arrow">▼</span>
+            </div>
+            <div class="ms-panel" id="ms-month-panel">
+              <div class="ms-list-header" onclick="msClearAll('month')">
+                <input type="checkbox" id="ms-month-all" checked readonly onclick="event.preventDefault()">
+                <label for="ms-month-all" style="cursor:pointer" onclick="msClearAll('month')">Hele Året</label>
+              </div>
+              <div class="ms-item" onclick="msToggleQuarter('Q1')"><input type="checkbox" id="ms-m-Q1" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q1 (Jan–Mar)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q2')"><input type="checkbox" id="ms-m-Q2" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q2 (Apr–Jun)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q3')"><input type="checkbox" id="ms-m-Q3" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q3 (Jul–Sep)</label></div>
+              <div class="ms-item" onclick="msToggleQuarter('Q4')"><input type="checkbox" id="ms-m-Q4" onclick="event.preventDefault();event.stopPropagation()"><label style="pointer-events:none">Q4 (Okt–Dec)</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','1')"><input type="checkbox" id="ms-m-1"><label for="ms-m-1">Januar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','2')"><input type="checkbox" id="ms-m-2"><label for="ms-m-2">Februar</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','3')"><input type="checkbox" id="ms-m-3"><label for="ms-m-3">Marts</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','4')"><input type="checkbox" id="ms-m-4"><label for="ms-m-4">April</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','5')"><input type="checkbox" id="ms-m-5"><label for="ms-m-5">Maj</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','6')"><input type="checkbox" id="ms-m-6"><label for="ms-m-6">Juni</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','7')"><input type="checkbox" id="ms-m-7"><label for="ms-m-7">Juli</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','8')"><input type="checkbox" id="ms-m-8"><label for="ms-m-8">August</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','9')"><input type="checkbox" id="ms-m-9"><label for="ms-m-9">September</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','10')"><input type="checkbox" id="ms-m-10"><label for="ms-m-10">Oktober</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','11')"><input type="checkbox" id="ms-m-11"><label for="ms-m-11">November</label></div>
+              <div class="ms-item" onclick="msToggleItem('month','12')"><input type="checkbox" id="ms-m-12"><label for="ms-m-12">December</label></div>
+            </div>
+          </div>
           <div class="filter-sep"></div>
           <select class="filter-select" id="filter-owner" onchange="loadAll()">
             <option value="">Alle sælgere</option>
@@ -391,14 +445,97 @@ function fmtFull(v) {
   return Math.round(v).toLocaleString('da-DK') + ' kr.';
 }
 
+// ── Periode multi-select (PBI-stil, samme som sælger-dashboardet) ──────────
+const selectedMonths = new Set();
+const MONTH_NAMES_S  = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+const QUARTER_MONTHS = { Q1:[1,2,3], Q2:[4,5,6], Q3:[7,8,9], Q4:[10,11,12] };
+
+function setMonthEnabled(enabled) {
+  const trig = document.getElementById('ms-month-trigger');
+  trig.classList.toggle('disabled', !enabled);
+  if (!enabled) {
+    document.getElementById('ms-month-panel').classList.remove('open');
+    trig.classList.remove('open');
+  }
+}
+
+function msToggle(key) {
+  const trigger = document.getElementById(`ms-${key}-trigger`);
+  if (trigger.classList.contains('disabled')) return;   // måned kræver valgt år
+  const panel  = document.getElementById(`ms-${key}-panel`);
+  const isOpen = panel.classList.contains('open');
+  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  if (!isOpen) { panel.classList.add('open'); trigger.classList.add('open'); }
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-wrap')) {
+    document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.ms-trigger.open').forEach(t => t.classList.remove('open'));
+  }
+});
+
+function msToggleItem(key, val) {
+  const cb = document.getElementById(`ms-m-${val}`);
+  if (selectedMonths.has(val)) { selectedMonths.delete(val); if (cb) cb.checked = false; }
+  else                         { selectedMonths.add(val);    if (cb) cb.checked = true;  }
+  msUpdateLabel();
+  loadAll();
+}
+
+function msToggleQuarter(q) {
+  const strMonths   = QUARTER_MONTHS[q].map(String);
+  const allSelected = strMonths.every(m => selectedMonths.has(m));
+  strMonths.forEach(m => {
+    const cb = document.getElementById(`ms-m-${m}`);
+    if (allSelected) { selectedMonths.delete(m); if (cb) cb.checked = false; }
+    else             { selectedMonths.add(m);    if (cb) cb.checked = true;  }
+  });
+  msUpdateLabel();
+  loadAll();
+}
+
+function msClearAll() {
+  selectedMonths.clear();
+  document.querySelectorAll('#ms-month-panel input[type=checkbox]').forEach(cb => cb.checked = false);
+  document.getElementById('ms-month-all').checked = true;
+  msUpdateLabel();
+  loadAll();
+}
+
+function msUpdateLabel() {
+  const labelEl = document.getElementById('ms-month-label');
+  const badgeEl = document.getElementById('ms-month-badge');
+  const allCb   = document.getElementById('ms-month-all');
+  if (selectedMonths.size === 0) {
+    labelEl.textContent   = 'Hele Året';
+    badgeEl.style.display = 'none';
+    if (allCb) allCb.checked = true;
+  } else {
+    if (allCb) allCb.checked = false;
+    badgeEl.textContent   = selectedMonths.size;
+    badgeEl.style.display = '';
+    const names = [...selectedMonths].sort((a,b)=>+a-+b).map(m => MONTH_NAMES_S[+m-1]);
+    labelEl.textContent = names.length <= 3 ? names.join(', ') : `${names.length} måneder`;
+    Object.entries(QUARTER_MONTHS).forEach(([q, months]) => {
+      const qCb = document.getElementById(`ms-m-${q}`);
+      if (qCb) qCb.checked = months.every(m => selectedMonths.has(String(m)));
+    });
+  }
+}
+
+// Returnerer komma-separeret periode-streng til backend (tom = Hele Året)
+function msMonthParam() {
+  return [...selectedMonths].sort((a,b)=>+a-+b).join(',');
+}
+
 function getFilters() {
-  const monthSel = document.getElementById('filter-month');
-  const months = Array.from(monthSel.selectedOptions).map(o => o.value).filter(Boolean);
   return {
     pipeline: activePipeline,
     country:  activeCountry,
     year:     document.getElementById('filter-year').value,
-    month:    months.join(','),
+    month:    msMonthParam(),
     owner:    document.getElementById('filter-owner').value,
     brand:    document.getElementById('filter-brand').value,
   };
@@ -417,9 +554,8 @@ function buildParams(extra = {}) {
 
 function onYearChange() {
   const year = document.getElementById('filter-year').value;
-  const monthSel = document.getElementById('filter-month');
-  monthSel.disabled = !year;
-  if (!year) Array.from(monthSel.options).forEach(o => o.selected = false);
+  setMonthEnabled(!!year);
+  if (!year) { selectedMonths.clear(); msUpdateLabel(); }
   loadAll();
 }
 
