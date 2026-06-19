@@ -497,10 +497,31 @@ function resetFilters(){
 async function loadFilterOptions(){
   const r = await fetch('/tools/marketing/filters');
   const d = await r.json();
-  setupMultiSelect('ms-account', d.accounts     || [], 'Alle accounts', onFilterChange);
+  // Account-ændring skal også indsnævre kilde-listen til kilder PÅ den account.
+  setupMultiSelect('ms-account', d.accounts     || [], 'Alle accounts', onAccountChange);
   setupMultiSelect('ms-site',    d.sites        || [], 'Alle sites',    onFilterChange);
   setupMultiSelect('ms-source',  d.deal_sources || [], 'Alle kilder',   onFilterChange);
   setupMultiSelect('ms-owner',   d.owners       || [], 'Alle sælgere',  onFilterChange);
+}
+
+// Når account vælges: hent kun de deal sources der findes på den/de account(s),
+// bevar de tidligere valgte kilder der stadig er gyldige, og genindlæs data.
+async function refreshSourceOptions(){
+  const accs    = getSelected('ms-account') || [];
+  const prevSel = new Set(getSelected('ms-source') || []);
+  const p = new URLSearchParams();
+  accs.forEach(a => p.append('account', a));
+  const r = await fetch('/tools/marketing/filters?' + p.toString());
+  const d = await r.json();
+  const sources = d.deal_sources || [];
+  setupMultiSelect('ms-source', sources, 'Alle kilder', onFilterChange);
+  sources.forEach(s => { if(prevSel.has(s)) MS['ms-source'].selected.add(s); });
+  renderMS('ms-source');
+}
+
+async function onAccountChange(){
+  await refreshSourceOptions();
+  onFilterChange();
 }
 
 async function loadAll(){
