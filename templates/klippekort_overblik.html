@@ -153,7 +153,13 @@
             <button class="toggle-btn" id="btn-udloebne" onclick="setStatus('udloebne')">Udløbne</button>
           </div>
           SLUT SKJULT (udløbne klippekort) -->
-          <button class="refresh-btn" onclick="loadAll()">
+          <a class="refresh-btn" href="/tools/klippekort/export"
+             style="margin-left:auto;background:var(--bg);color:var(--green);border:1px solid var(--border);text-decoration:none"
+             title="Hent alle aktive klippekort (oprindelige/brugte/resterende klip) til Koncern Økonomi">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Eksportér til Økonomi
+          </a>
+          <button class="refresh-btn" onclick="loadAll()" style="margin-left:0">
             <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
             Opdater
           </button>

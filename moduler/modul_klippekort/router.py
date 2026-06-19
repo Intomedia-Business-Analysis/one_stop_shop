@@ -1,8 +1,10 @@
+import io
 import logging
 import threading
+from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import get_current_user, has_access
@@ -78,6 +80,57 @@ async def klippekort_overblik(mine: int = 0, status: str = "aktive", user=Depend
     except Exception:
         logger.exception("klippekort_overblik fejlede (mine=%s, status=%s)", mine, status)
         raise HTTPException(500, "Data kunne ikke hentes")
+
+
+@router.get("/export")
+async def klippekort_export(user=Depends(get_current_user)):
+    """Excel-fil over ALLE aktive klippekort til Koncern Økonomi ved månedsluk:
+    oprindelige klip, brugte klip og resterende klip pr. kunde/klippekort."""
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        rows = db_overblik(None, "aktive")
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Aktive klippekort"
+        cols = ["Kunde", "Sælger", "Medie(r)", "Stilling", "Deal-ID",
+                "Oprindelige klip", "Brugte klip", "Resterende klip",
+                "Værdi (DKK)", "Periode start", "Periode slut", "Dage til udløb"]
+        ws.append(cols)
+        head_fill = PatternFill("solid", fgColor="1C1C1A")
+        head_font = Font(bold=True, color="FFFFFF", size=10)
+        for c in range(1, len(cols) + 1):
+            cell = ws.cell(row=1, column=c)
+            cell.fill = head_fill
+            cell.font = head_font
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+        for r in rows:
+            ws.append([
+                r.get("org_name"), r.get("owner_name"), r.get("sites"), r.get("title"),
+                r.get("pd_deal_id"), r.get("clip_card_size"), r.get("brugt"), r.get("rest"),
+                r.get("value_dkk"), r.get("periode_start"), r.get("periode_slut"),
+                r.get("dage_til_udloeb"),
+            ])
+        for i, w in enumerate([34, 22, 28, 30, 10, 16, 13, 16, 14, 13, 13, 14], start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = "A2"
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"aktive-klippekort-{datetime.now():%Y-%m}.xlsx"
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    except Exception:
+        logger.exception("klippekort_export fejlede")
+        raise HTTPException(500, "Eksporten kunne ikke genereres")
 
 
 @router.get("/udloebende")
