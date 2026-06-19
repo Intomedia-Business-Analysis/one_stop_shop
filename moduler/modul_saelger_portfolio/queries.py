@@ -109,6 +109,58 @@ def _owner_clause(alias: str, owner_name: str) -> tuple[str, tuple]:
     return f"{alias}.owner_name = %s", (owner_name,)
 
 
+def _last_deals_by_org(owner_name: str) -> dict:
+    """Pr. org_id: værdien på kundens SENESTE deal i PipedriveDeals.
+
+    "Seneste deal" = den deal med højeste service_activation_date, der ikke
+    ligger i fremtiden (<= i dag). Værdien tages fra PipedriveDeals (den
+    faktiske deal-værdi), IKKE fra PipeDrive_ACV's acv_value — det er forskellen
+    mod porteføljeværdien, som stadig kommer fra ACV-tabellen.
+
+    Scopet til sælgerens account(s) (get_owner_accounts), præcis som
+    get_customer_portfolio, så en Watch-sælger kun ser kundens Watch-deal.
+    Kan brandet ikke udledes (fx (Uden ejer)), droppes account-filteret.
+    """
+    accounts = get_owner_accounts(owner_name)
+    account_clause = ""
+    params: tuple = ()
+    if accounts:
+        ph = ",".join(["%s"] * len(accounts))
+        account_clause = f"AND d.account IN ({ph})"
+        params = tuple(accounts)
+
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(f"""
+        WITH ranked AS (
+            SELECT
+                d.org_id,
+                d.value,
+                d.value_dkk,
+                d.currency,
+                ROW_NUMBER() OVER (
+                    PARTITION BY d.org_id
+                    ORDER BY d.service_activation_date DESC, d.value_dkk DESC
+                ) AS rn
+            FROM [dbo].[PipedriveDeals] d
+            WHERE d.service_activation_date <= CAST(GETDATE() AS date)
+              {account_clause}
+        )
+        SELECT org_id, value, value_dkk, currency
+        FROM ranked
+        WHERE rn = 1
+    """, params)
+    out = {}
+    for r in cur.fetchall():
+        out[str(r["org_id"])] = {
+            "value":     float(r["value"] or 0),
+            "value_dkk": float(r["value_dkk"] or 0),
+            "currency":  r["currency"],
+        }
+    conn.close()
+    return out
+
+
 def get_kundeliste(owner_name: str) -> list:
     """Sælgerens kundeportefølje: ACV pr. kunde, kun NYESTE række pr. (kunde, site).
 
@@ -120,14 +172,14 @@ def get_kundeliste(owner_name: str) -> list:
     Vi tager derfor den seneste række pr. (org_id, site) og summer kundens sites
     til én porteføljeværdi pr. org. Ejer-filteret lægges PÅ den seneste række, så
     en kunde der er flyttet til en anden sælger korrekt forsvinder fra bogen.
+
+    "Seneste deal-værdi" hentes separat fra PipedriveDeals (_last_deals_by_org) —
+    den faktiske værdi på kundens nyeste aktiverede deal, ikke ACV-værdien.
     """
     clause, params = _owner_clause("ps", owner_name)
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
-    # latest    = nyeste række pr. (org, site)
-    # per_site  = samme, plus recency_rn der rangerer kundens sites efter seneste
-    #             aktivering, så recency_rn=1 er kundens SENESTE deal — hvis værdi
-    #             vi udstiller separat (last_deal_value) ud over porteføljeværdien.
+    # latest = nyeste række pr. (org, site); summeres til én porteføljeværdi pr. org.
     cur.execute(f"""
         WITH latest AS (
             SELECT
@@ -137,15 +189,6 @@ def get_kundeliste(owner_name: str) -> list:
                     PARTITION BY org_id, site ORDER BY updated_at DESC
                 ) AS rn
             FROM [dbo].[PipeDrive_ACV]
-        ),
-        per_site AS (
-            SELECT *,
-                ROW_NUMBER() OVER (
-                    PARTITION BY org_id, owner_name
-                    ORDER BY last_activation DESC, acv_value_dkk DESC
-                ) AS recency_rn
-            FROM latest
-            WHERE rn = 1
         )
         SELECT
             ps.org_name,
@@ -154,24 +197,26 @@ def get_kundeliste(owner_name: str) -> list:
             SUM(ps.acv_value)     AS value,
             SUM(ps.acv_value_dkk) AS value_dkk,
             MAX(ps.currency)      AS currency,
-            CONVERT(varchar(10), MAX(ps.last_activation), 23) AS last_activation,
-            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.acv_value END)     AS last_deal_value,
-            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.acv_value_dkk END) AS last_deal_value_dkk,
-            MAX(CASE WHEN ps.recency_rn = 1 THEN ps.currency END)      AS last_deal_currency
-        FROM per_site ps
-        WHERE {clause}
+            CONVERT(varchar(10), MAX(ps.last_activation), 23) AS last_activation
+        FROM latest ps
+        WHERE ps.rn = 1 AND {clause}
         GROUP BY ps.org_id, ps.org_name, ps.owner_name
         ORDER BY value_dkk DESC
     """, params)
     rows = cur.fetchall()
     conn.close()
+
+    # Seneste deal-værdi pr. kunde fra PipedriveDeals (faktisk deal-værdi).
+    last_deals = _last_deals_by_org(owner_name)
     for r in rows:
-        r["value"]               = float(r["value"] or 0)
-        r["value_dkk"]           = float(r["value_dkk"] or 0)
-        r["currency"]            = r["currency"] or "DKK"
-        r["last_deal_value"]     = float(r["last_deal_value"] or 0)
-        r["last_deal_value_dkk"] = float(r["last_deal_value_dkk"] or 0)
-        r["last_deal_currency"]  = r["last_deal_currency"] or r["currency"]
+        r["value"]     = float(r["value"] or 0)
+        r["value_dkk"] = float(r["value_dkk"] or 0)
+        r["currency"]  = r["currency"] or "DKK"
+        ld = last_deals.get(str(r["org_id"]))
+        r["last_deal_value"]     = ld["value"]     if ld else 0.0
+        r["last_deal_value_dkk"] = ld["value_dkk"] if ld else 0.0
+        r["last_deal_currency"]  = (ld["currency"] if ld and ld["currency"]
+                                    else r["currency"])
     return rows
 
 
