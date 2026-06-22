@@ -245,3 +245,82 @@ def db_afdelingsleder_churn(today: date):
         "top5_andel": top5_andel,
         "cutoff":     today.isoformat(),
     }
+
+
+def db_afdelingsleder_vaekst(today: date):
+    """Blok ④: vaekst fra nye vs. eksisterende kunder.
+
+    Ny kunde = org_id hvis foerste won-deal (ekskl. Web Sale/opsigelser/admin)
+    ligger i indevaerende aar. Splittet daekker hele faktisk-salget AATD.
+    """
+    year     = today.year
+    cut_excl = today + timedelta(days=1)
+    jan1     = date(year, 1, 1)
+    jan1_str = f"'{year}0101'"          # sikkert YYYYMMDD-literal til CASE/filter
+    dcol     = "COALESCE([service_activation_date],[won_time])"
+
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    # 1. Split AATD-salg paa ny vs. eksisterende kunde
+    cur.execute(f"""
+        WITH first_deal AS (
+            SELECT org_id, MIN({dcol}) AS first_dato
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND [pipeline_name] NOT IN {_CANCEL_PH} {_ADM_EXCLUDE}
+            GROUP BY org_id
+        )
+        SELECT
+            CASE WHEN fd.first_dato >= {jan1_str} THEN 'ny' ELSE 'eks' END AS type,
+            ISNULL(SUM({_VAL}),0) AS salg,
+            COUNT(DISTINCT d.org_id) AS kunder
+        FROM [dbo].[PipedriveDeals] d
+        JOIN first_deal fd ON fd.org_id = d.org_id
+        WHERE d.[status]='won' AND d.[pipeline_name]<>'Web Sale'
+          AND d.[pipeline_name] NOT IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s {_ADM_EXCLUDE}
+        GROUP BY CASE WHEN fd.first_dato >= {jan1_str} THEN 'ny' ELSE 'eks' END
+    """, tuple(CANCELLATION_PIPELINES) + tuple(CANCELLATION_PIPELINES) + (jan1, cut_excl))
+
+    rows     = {r["type"]: r for r in cur.fetchall()}
+    ny_salg  = float((rows.get("ny")  or {}).get("salg") or 0)
+    ny_k     = (rows.get("ny")  or {}).get("kunder") or 0
+    eks_salg = float((rows.get("eks") or {}).get("salg") or 0)
+    eks_k    = (rows.get("eks") or {}).get("kunder") or 0
+    tot      = ny_salg + eks_salg
+
+    # 2. Top 5 nye logoer i aar
+    cur.execute(f"""
+        WITH first_deal AS (
+            SELECT org_id, MIN({dcol}) AS first_dato
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND [pipeline_name] NOT IN {_CANCEL_PH} {_ADM_EXCLUDE}
+            GROUP BY org_id
+        )
+        SELECT TOP 5 MAX(d.[org_name]) AS kunde, ISNULL(SUM({_VAL}),0) AS salg
+        FROM [dbo].[PipedriveDeals] d
+        JOIN first_deal fd ON fd.org_id = d.org_id
+        WHERE d.[status]='won' AND d.[pipeline_name]<>'Web Sale'
+          AND d.[pipeline_name] NOT IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s {_ADM_EXCLUDE}
+          AND fd.first_dato >= {jan1_str}
+        GROUP BY d.org_id
+        ORDER BY salg DESC
+    """, tuple(CANCELLATION_PIPELINES) + tuple(CANCELLATION_PIPELINES) + (jan1, cut_excl))
+    top_nye = [{"kunde": r["kunde"] or "(uden navn)", "belob": round(float(r["salg"] or 0))}
+               for r in cur.fetchall()]
+
+    conn.close()
+
+    return {
+        "ny_salg":    round(ny_salg),
+        "ny_kunder":  ny_k,
+        "eks_salg":   round(eks_salg),
+        "eks_kunder": eks_k,
+        "ny_andel":   round(ny_salg / tot * 100, 1) if tot else None,
+        "eks_andel":  round(eks_salg / tot * 100, 1) if tot else None,
+        "top_nye":    top_nye,
+        "cutoff":     today.isoformat(),
+    }

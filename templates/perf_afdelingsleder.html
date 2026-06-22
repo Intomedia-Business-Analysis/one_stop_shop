@@ -299,7 +299,13 @@
 
 <!-- ===== VÆKST (blok ④) ===== -->
 <div class="tab-panel" id="tab-vaekst">
-  <div class="chart-card"><p style="color:var(--ink-4);margin:0">Vækst-analyse kommer her (blok ④).</p></div>
+  <div class="hero-card" id="vaekst-split">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Største nye kunder — år til dato</span></div>
+    <div id="vaekst-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
 </div><!-- tab-vaekst -->
 
 </div><!-- tool-wrap -->
@@ -456,7 +462,8 @@ const loadedTabs = new Set();       // Husker hvilken fane der er loadet
 const tabLoaders = {                 // Hvilken loader-funktion der hører til hvilken fane
   overblik: loadData,
   brands: loadBrandData,
-  churn: loadChurn
+  churn: loadChurn,
+  vaekst: loadVaekst
 };
 
 function switchTab(name) {
@@ -528,6 +535,37 @@ async function loadChurn() {
       </table>`;
   } catch (e) {
     card.innerHTML = '<div style="color:var(--danger);padding:20px">Churn-data kunne ikke hentes.</div>';
+    list.innerHTML = '';
+  }
+}
+
+// ── Vækst (blok ④): nye vs. eksisterende kunder ────────────────────────────────
+async function loadVaekst() {
+  const split = document.getElementById('vaekst-split');
+  const list  = document.getElementById('vaekst-top');
+  try {
+    const r = await fetch('/tools/performance/afdelingsleder-vaekst-data');
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    const pct = v => v != null ? v.toFixed(1).replace('.', ',') + ' %' : '—';
+    split.innerHTML = `
+      <div class="hero-main" style="flex:1">
+        <div class="hero-label">Nye kunder</div>
+        <div class="hero-pct" style="font-size:40px;color:var(--green)">${pct(d.ny_andel)}</div>
+        <div class="hero-sub"><b>${fmtKr(d.ny_salg)}</b> · ${d.ny_kunder} kunder</div>
+      </div>
+      <div class="hero-main" style="flex:1">
+        <div class="hero-label">Eksisterende kunder</div>
+        <div class="hero-pct" style="font-size:40px;color:var(--ink)">${pct(d.eks_andel)}</div>
+        <div class="hero-sub"><b>${fmtKr(d.eks_salg)}</b> · ${d.eks_kunder} kunder</div>
+      </div>`;
+    list.innerHTML = `
+      <table class="yoy-table">
+        <thead><tr><th>Ny kunde</th><th class="num">Salg ÅTD</th></tr></thead>
+        <tbody>${d.top_nye.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+      </table>`;
+  } catch (e) {
+    split.innerHTML = '<div style="color:var(--danger);padding:20px">Vækst-data kunne ikke hentes.</div>';
     list.innerHTML = '';
   }
 }

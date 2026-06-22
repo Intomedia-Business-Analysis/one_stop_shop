@@ -16,7 +16,7 @@ from moduler.modul_perf.queries import (
     db_owner_in_teams,
 )
 
-from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik, db_afdelingsleder_hero, db_afdelingsleder_churn
+from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik, db_afdelingsleder_hero, db_afdelingsleder_churn, db_afdelingsleder_vaekst
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +151,20 @@ async def afdelingsleder_churn_data(user=Depends(get_current_user)):
         return JSONResponse(db_afdelingsleder_churn(date.today()))
     except Exception:
         logger.exception("afdelingsleder-churn-data fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        AFDELINGSLEDER VAEKST-DATA (blok 4: nye vs eksisterende kunder)
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/afdelingsleder-vaekst-data")
+async def afdelingsleder_vaekst_data(user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_afdelingsleder_vaekst(date.today()))
+    except Exception:
+        logger.exception("afdelingsleder-vaekst-data fejlede")
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
