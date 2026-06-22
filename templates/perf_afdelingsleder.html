@@ -15,6 +15,18 @@
 .filter-select:focus{border-color:var(--green)}
 .filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 
+/* Fane-navigation */
+.tab-nav{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab-btn{font-family:var(--font);font-size:13px;font-weight:700;color:var(--ink-4);
+  background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
+  padding:10px 18px;cursor:pointer;transition:color .13s,border-color .13s}
+.tab-btn:hover{color:var(--ink-2)}
+.tab-btn.active{color:var(--ink);border-bottom-color:var(--green)}
+
+/* Fane-paneler */
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
 /* KPI cards grid */
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
 @media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
@@ -122,6 +134,17 @@
           <p class="page-sub" id="period-subtitle">Indlæser…</p>
         </div>
       </div>
+
+  <!-- Fane-navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="overblik" onclick="switchTab('overblik')">Overblik</button>
+  <button class="tab-btn" data-tab="brands"   onclick="switchTab('brands')">Brands</button>
+  <button class="tab-btn" data-tab="churn"    onclick="switchTab('churn')">Churn</button>
+  <button class="tab-btn" data-tab="vaekst"   onclick="switchTab('vaekst')">Vækst</button>
+</div>
+
+<!-- ===== OVERBLIK (blok ①) ===== -->
+<div class="tab-panel active" id="tab-overblik">
 
   <!-- Filter-bar (YoY) -->
   <div class="filter-bar">
@@ -236,8 +259,14 @@
       <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
     </div>
 
+
+
   </div><!-- dash-content -->
 
+</div><!-- tab-overblik -->
+
+<!-- ===== BRANDS (blok ②) ===== -->
+<div class="tab-panel" id="tab-brands">
   <!-- Brand Overblik -->
   <div class="chart-card">
     <div class="chart-title">
@@ -262,6 +291,17 @@
       <div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div>
     </div>
   </div>
+</div><!-- tab-brands -->
+
+<!-- ===== CHURN (blok ③) ===== -->
+<div class="tab-panel" id="tab-churn">
+  <div class="chart-card"><p style="color:var(--ink-4);margin:0">Churn-analyse kommer her (blok ③).</p></div>
+</div><!-- tab-churn -->
+
+<!-- ===== VÆKST (blok ④) ===== -->
+<div class="tab-panel" id="tab-vaekst">
+  <div class="chart-card"><p style="color:var(--ink-4);margin:0">Vækst-analyse kommer her (blok ④).</p></div>
+</div><!-- tab-vaekst -->
 
 </div><!-- tool-wrap -->
 </div><!-- content-area -->
@@ -412,6 +452,27 @@ document.addEventListener('click', e => {
   }
 });
 
+// Fane-navigation + lazy load
+const loadedTabs = new Set();       // Husker hvilken fane der er loadet
+const tabLoaders = {                 // Hvilken loader-funktion der hører til hvilken fane
+  overblik: loadData,
+  brands: loadBrandData
+};
+
+function switchTab(name) {
+  // 1. marker den klikkede fane
+  document.querySelectorAll('.tab-btn').forEach(b =>
+  b.classList.toggle('active', b.dataset.tab === name));
+  // 2. vis det matchende panel
+  document.querySelectorAll('.tab-panel').forEach(p =>
+  p.classList.toggle('active', p.id === 'tab-' + name));
+  // 3. Lazy-load henter fanens data første gang den åbnes
+  if (!loadedTabs.has(name)) {
+    loadedTabs.add(name);
+    tabLoaders[name]?.();
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const ySel  = document.getElementById('filter-year');
@@ -429,8 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (y === CURRENT_YEAR - 1) o2.selected = true;
     cySel.appendChild(o2);
   }
-  loadData();
-  loadBrandData();
+    switchTab('overblik');
 });
 
 // ── YoY: Load ─────────────────────────────────────────────────────────────────
