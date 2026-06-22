@@ -99,6 +99,29 @@ def ensure_schema():
                updated_at      DATETIME       DEFAULT GETDATE(),
                CONSTRAINT UQ_HubForecastReviews UNIQUE (forecast_year, forecast_month, team)
            )""",
+        # Sælgeren indtaster nu selv hele forecastet. pipeline_close_amount er
+        # det beløb, sælgeren forventer at lukke fra sin åbne pipeline (valgt i
+        # pipeline-modalen); manual_amount bruges fortsat som "ekstra oveni".
+        """IF NOT EXISTS (
+               SELECT * FROM sys.columns
+               WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'pipeline_close_amount'
+           )
+           ALTER TABLE HubForecasts ADD pipeline_close_amount DECIMAL(18,2) NULL""",
+        # Sælgerens deal-niveau valg i pipeline-modalen. Den justerede værdi er
+        # KUN lokal til forecastet — den skrives aldrig tilbage til Pipedrive.
+        """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecastPipelineDeals' AND xtype='U')
+           CREATE TABLE HubForecastPipelineDeals (
+               id              INT IDENTITY(1,1) PRIMARY KEY,
+               forecast_year   INT            NOT NULL,
+               forecast_month  INT            NOT NULL,
+               dimension_key   NVARCHAR(100)  NOT NULL,
+               team            NVARCHAR(100)  NOT NULL,
+               deal_id         NVARCHAR(50)   NOT NULL,
+               amount          DECIMAL(18,2)  NOT NULL DEFAULT 0.00,
+               created_at      DATETIME       DEFAULT GETDATE(),
+               CONSTRAINT UQ_HubForecastPipelineDeals
+                   UNIQUE (forecast_year, forecast_month, dimension_key, team, deal_id)
+           )""",
     ]
     try:
         conn = get_conn()
@@ -626,7 +649,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         # (team='') vises som fallback indtil sælgeren gemmer sit eget.
         cur.execute("""
             SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
-                   forecast_amount, created_by, updated_at, created_at
+                   pipeline_close_amount, forecast_amount, created_by, updated_at, created_at
             FROM [dbo].[HubForecasts]
             WHERE forecast_year = %s AND forecast_month = %s AND level = %s
               AND team IN (%s, '')
@@ -639,7 +662,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     else:
         cur.execute("""
             SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
-                   forecast_amount, created_by, updated_at, created_at
+                   pipeline_close_amount, forecast_amount, created_by, updated_at, created_at
             FROM [dbo].[HubForecasts]
             WHERE forecast_year = %s AND forecast_month = %s AND level = %s
         """, (year, month, level))
@@ -653,6 +676,13 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
     """Gem sælgerens eget forecast — én række pr. team, så forecasts på tværs
     af teams aldrig overskriver hinanden.
 
+    Sælgeren indtaster nu selv hele forecastet:
+        forecast_total = pipeline_close + ekstra (manual_amount)
+    hvor pipeline_close er summen af de deals, sælgeren har valgt (med evt.
+    justeret beløb) i pipeline-modalen. Beløbene er autoritative server-side:
+    pipeline_close og forecast_total genberegnes ud fra de gemte deals, så
+    klienten ikke kan sende et tal, der ikke matcher de valgte deals.
+
     Returnerer (saved_count, updated_teams) hvor updated_teams er de teams,
     hvor et eksisterende forecast blev erstattet.
     """
@@ -662,33 +692,180 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
     cur = conn.cursor()
     for row in rows:
         team          = str(row.get("team", "")).strip()
-        pipeline_pct  = float(row.get("pipeline_pct",  30.0))
-        manual_amount = float(row.get("manual_amount",  0.0))
-        forecast_amt  = float(row.get("forecast_total", 0.0))
+        manual_amount = float(row.get("manual_amount", 0.0))
+        # "deals" mangler, hvis sælgeren ikke har åbnet pipeline-modalen for
+        # denne række — så bevares det tidligere gemte pipeline-valg.
+        deals         = row.get("deals")
 
         if not team:
             continue
 
+        if deals is None:
+            # Bevar eksisterende pipeline_close + deal-valg
+            cur.execute("""
+                SELECT pipeline_close_amount FROM [dbo].[HubForecasts]
+                WHERE forecast_year=%s AND forecast_month=%s AND level='saelger'
+                  AND dimension_key=%s AND team=%s
+            """, (year, month, owner, team))
+            existing = cur.fetchone()
+            pipeline_close = float(existing[0]) if existing and existing[0] is not None else 0.0
+        else:
+            # Genberegn pipeline_close server-side fra de valgte deals
+            chosen = [d for d in deals if d.get("included")]
+            pipeline_close = round(sum(float(d.get("amount") or 0) for d in chosen), 2)
+
+        forecast_amt = round(pipeline_close + manual_amount, 2)
+
+        # Ryd altid et evt. tidligere forecast for teamet først — så et team,
+        # sælgeren tømmer (ingen pipeline-valg, ingen ekstra), også fjernes i
+        # stedet for at blive stående.
         cur.execute("""
             DELETE FROM [dbo].[HubForecasts]
             WHERE forecast_year=%s AND forecast_month=%s AND level='saelger'
               AND dimension_key=%s AND team=%s
         """, (year, month, owner, team))
-        if cur.rowcount:
+        had_existing = bool(cur.rowcount)
+
+        # Deal-valgene erstattes kun, når modalen var i brug for rækken
+        if deals is not None:
+            cur.execute("""
+                DELETE FROM [dbo].[HubForecastPipelineDeals]
+                WHERE forecast_year=%s AND forecast_month=%s
+                  AND dimension_key=%s AND team=%s
+            """, (year, month, owner, team))
+
+        # Gem ingen tom 0-række for et team, sælgeren ikke har indtastet noget
+        # for — ellers ville det fejlagtigt tælle som "udfyldt" i overblikket.
+        if pipeline_close == 0 and manual_amount == 0:
+            if had_existing:
+                updated_teams.append(team)
+            continue
+
+        if had_existing:
             updated_teams.append(team)
 
         cur.execute("""
             INSERT INTO [dbo].[HubForecasts]
                 (forecast_year, forecast_month, level, dimension_key, team,
-                 pipeline_pct, adjustment_pct, manual_amount, forecast_amount, created_by)
-            VALUES (%s, %s, 'saelger', %s, %s, %s, 0, %s, %s, %s)
+                 pipeline_pct, adjustment_pct, manual_amount,
+                 pipeline_close_amount, forecast_amount, created_by)
+            VALUES (%s, %s, 'saelger', %s, %s, 0, 0, %s, %s, %s, %s)
         """, (year, month, owner, team,
-              pipeline_pct, manual_amount, forecast_amt, owner))
+              manual_amount, pipeline_close, forecast_amt, owner))
         saved_count += 1
+
+        if deals is not None:
+            for d in chosen:
+                deal_id = str(d.get("deal_id") or "").strip()
+                if not deal_id:
+                    continue
+                cur.execute("""
+                    INSERT INTO [dbo].[HubForecastPipelineDeals]
+                        (forecast_year, forecast_month, dimension_key, team, deal_id, amount)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (year, month, owner, team, deal_id, float(d.get("amount") or 0)))
 
     conn.commit()
     conn.close()
     return saved_count, updated_teams
+
+
+def db_open_pipeline_deals(year: int, month: int, owner: str, team: str, team_brand: str | None):
+    """Deal-niveau åben pipeline for én sælger på ét team i forecast-måneden.
+
+    Samme WHERE-logik som den aggregerede åbne pipeline (db_forecast_data Q3),
+    men på deal-niveau, så sælgeren kan undersøge og vælge enkelte deals.
+    Hvert deal flettes med sælgerens evt. tidligere gemte valg:
+        included = om sælgeren har taget dealen med i forecastet
+        amount   = sælgerens (evt. justerede) forventede beløb — defaulter til
+                   dealens Pipedrive-værdi indtil sælgeren ændrer det
+    Den justerede værdi er kun lokal og skrives aldrig tilbage til Pipedrive.
+    """
+    import calendar
+    last_day = calendar.monthrange(year, month)[1]
+    date_lo  = f"{year}-{month:02d}-01"
+    date_hi  = f"{year}-{month:02d}-{last_day}"
+
+    val_expr = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
+                "ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))")
+
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+
+    if team and team in ADVERTISING_TEAMS:
+        adv_pipeline = ADVERTISING_TEAMS[team]
+        cur.execute(f"""
+            SELECT [pd_deal_id] AS deal_id,
+                   [title] AS title,
+                   COALESCE([org_name], '') AS org_name,
+                   COALESCE([stage_name], '') AS stage_name,
+                   {val_expr} AS value,
+                   CONVERT(NVARCHAR(10), [expected_close_date], 23) AS expected_close
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status] = 'open'
+              AND [pipeline_name] = %s
+              AND [team] = %s
+              AND [account] = %s
+              AND [owner_name] = %s
+              AND [value_dkk] <> '0'
+              AND [expected_close_date] BETWEEN %s AND %s
+            ORDER BY [expected_close_date], {val_expr} DESC
+        """, (adv_pipeline, team, ADVERTISING_ACCOUNT, owner, date_lo, date_hi))
+    else:
+        _, _, owner_clause, owner_params = build_team_filter(team, team_brand)
+        cur.execute(f"""
+            SELECT [pd_deal_id] AS deal_id,
+                   [title] AS title,
+                   COALESCE([org_name], '') AS org_name,
+                   COALESCE([stage_name], '') AS stage_name,
+                   {val_expr} AS value,
+                   CONVERT(NVARCHAR(10), [expected_close_date], 23) AS expected_close
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status] = 'open'
+              AND [pipeline_name] <> 'Web sale'
+              AND [deal_type] IN ('Abonnement', 'Subscription')
+              AND [administrativ] IS NULL
+              AND [owner_name] = %s
+              AND [value_dkk] <> '0'
+              AND [expected_close_date] BETWEEN %s AND %s
+              {owner_clause}
+              AND [team] = %s
+            ORDER BY [expected_close_date], {val_expr} DESC
+        """, (owner, date_lo, date_hi, *owner_params, team))
+
+    deals = []
+    for r in cur.fetchall():
+        deal_id = str(r["deal_id"]) if r["deal_id"] is not None else None
+        if not deal_id:
+            continue
+        deals.append({
+            "deal_id":        deal_id,
+            "title":          r["title"] or "(uden titel)",
+            "org_name":       r["org_name"] or "—",
+            "stage_name":     r["stage_name"] or "",
+            "value":          float(r["value"] or 0),
+            "expected_close": r["expected_close"] or "—",
+        })
+
+    # Flet med sælgerens tidligere gemte valg
+    cur.execute("""
+        SELECT deal_id, amount
+        FROM [dbo].[HubForecastPipelineDeals]
+        WHERE forecast_year=%s AND forecast_month=%s
+          AND dimension_key=%s AND team=%s
+    """, (year, month, owner, team))
+    saved = {str(r["deal_id"]): float(r["amount"] or 0) for r in cur.fetchall()}
+    conn.close()
+
+    for d in deals:
+        if d["deal_id"] in saved:
+            d["included"] = True
+            d["amount"]   = saved[d["deal_id"]]
+        else:
+            d["included"] = False
+            d["amount"]   = d["value"]
+
+    return deals
 
 
 def db_active_team_members(team_names: list) -> dict:

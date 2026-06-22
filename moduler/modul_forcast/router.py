@@ -10,6 +10,7 @@ from moduler.modul_forcast.queries import (
     ensure_schema, db_get_teams, db_forecast_data,
     db_saelger_forecast_save, db_active_team_members,
     db_get_reviews, db_review_save, db_missing_forecast_teams,
+    db_open_pipeline_deals,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,8 +81,7 @@ def _empty_row(name: str, team: str) -> dict:
         "adjusted_hist":  0.0,
         "activation":     0.0,
         "open_pipeline":  0.0,
-        "pipeline_pct":   30.0,
-        "adjustment_pct": 0.0,
+        "pipeline_close": 0.0,
         "manual_amount":  0.0,
         "forecast_total": 0.0,
         "budget":         0.0,
@@ -107,8 +107,6 @@ def _build_rows(year: int, month: int, team: str, team_brand: str | None) -> lis
     rows = []
     for key in all_keys:
         sv             = saved.get(key, {})
-        pipeline_pct   = float(sv.get("pipeline_pct")   or 30.0)
-        adjustment_pct = float(sv.get("adjustment_pct") or 0.0)
         manual_amount  = float(sv.get("manual_amount")  or 0.0)
         h1             = hist_m1.get(key, 0.0)
         h2             = hist_m2.get(key, 0.0)
@@ -119,9 +117,18 @@ def _build_rows(year: int, month: int, team: str, team_brand: str | None) -> lis
         a             = activation.get(key, 0.0)
         b             = budgets.get(key, 0.0)
 
-        adj_factor     = 1.0 + adjustment_pct / 100.0
-        adjusted_hist  = hist_avg * adj_factor
-        forecast_total = round(adjusted_hist + (p * pipeline_pct / 100) + manual_amount, 2)
+        # Sælgeren indtaster selv forecastet: pipeline_close (valgt i modalen)
+        # + ekstra (manual_amount). Historik/pipeline vises kun til reference.
+        # Legacy-rækker uden pipeline_close_amount falder tilbage til det gamle
+        # 30%-bud, så ældre gemte forecasts stadig vises meningsfuldt.
+        pc_raw = sv.get("pipeline_close_amount")
+        if pc_raw is not None:
+            pipeline_close = float(pc_raw)
+        elif sv:
+            pipeline_close = round(p * float(sv.get("pipeline_pct") or 30.0) / 100, 2)
+        else:
+            pipeline_close = 0.0
+        forecast_total = round(pipeline_close + manual_amount, 2)
 
         is_saved = key in saved
         rows.append({
@@ -131,11 +138,9 @@ def _build_rows(year: int, month: int, team: str, team_brand: str | None) -> lis
             "hist_year_m2":   round(h2, 2),
             "hist_year_m1":   round(h1, 2),
             "historical_avg": round(hist_avg, 2),
-            "adjusted_hist":  round(adjusted_hist, 2),
             "activation":     round(a, 2),
             "open_pipeline":  round(p, 2),
-            "pipeline_pct":   pipeline_pct,
-            "adjustment_pct": adjustment_pct,
+            "pipeline_close": round(pipeline_close, 2),
             "manual_amount":  manual_amount,
             "forecast_total": forecast_total,
             "budget":         round(b, 2),
@@ -195,6 +200,30 @@ async def my_forecast(year: int, month: int, user=Depends(get_current_user)):
     except Exception:
         logger.exception("my_forecast fejlede (year=%s, month=%s, user=%s)", year, month, user.get("name"))
         raise HTTPException(500, "Data kunne ikke hentes")
+
+
+@router.get("/pipeline")
+async def my_pipeline(year: int, month: int, team: str, user=Depends(get_current_user)):
+    """Deal-niveau åben pipeline til pipeline-modalen — kun for sælgeren selv
+    og kun på teams, vedkommende er aktivt medlem af."""
+    require_forecast_access(user)
+    team = team.strip()
+    if team not in set(user.get("_teams") or []):
+        raise HTTPException(403, "Du er ikke medlem af dette team")
+
+    try:
+        team_brand = _team_brand_map().get(team)
+        deals = db_open_pipeline_deals(year, month, user["name"], team, team_brand)
+        return JSONResponse({
+            "deals":          deals,
+            "team":           team,
+            "open_pipeline":  round(sum(d["value"] for d in deals), 2),
+            "selected_total": round(sum(d["amount"] for d in deals if d["included"]), 2),
+        })
+    except Exception:
+        logger.exception("my_pipeline fejlede (year=%s, month=%s, team=%s, user=%s)",
+                         year, month, team, user.get("name"))
+        raise HTTPException(500, "Pipeline kunne ikke hentes")
 
 
 @router.post("/my/save")
