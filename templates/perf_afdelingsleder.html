@@ -291,6 +291,10 @@
     <div class="chart-title"><span>Top-opsigelser — år til dato</span></div>
     <div id="churn-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
   </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Afhængighedsrisiko — koncentration i porteføljen</span></div>
+    <div id="churn-konc"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
 </div><!-- tab-churn -->
 
 <!-- ===== VÆKST (blok ④) ===== -->
@@ -507,6 +511,20 @@ async function loadChurn() {
       <table class="yoy-table">
         <thead><tr><th>Kunde</th><th class="num">Opsagt ÅTD</th></tr></thead>
         <tbody>${d.top.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+      </table>`;
+
+    const konc = document.getElementById('churn-konc');
+    const r5 = d.top5_andel;
+    const risk      = r5 == null ? '—' : r5 < 15 ? 'lav afhængighedsrisiko' : r5 < 30 ? 'moderat afhængighedsrisiko' : 'høj afhængighedsrisiko';
+    const riskColor = r5 == null ? 'var(--ink-4)' : r5 < 15 ? 'var(--win)' : r5 < 30 ? '#C98A00' : 'var(--danger)';
+    konc.innerHTML = `
+      <p style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 14px">
+        Top 5 kunder = <span style="color:${riskColor}">${r5 != null ? r5.toFixed(1).replace('.', ',') + ' %' : '—'}</span> af porteføljen
+        <span style="font-weight:600;color:${riskColor}">— ${risk}</span>
+      </p>
+      <table class="yoy-table">
+        <thead><tr><th>Kunde</th><th class="num">Portefølje</th><th class="num">Andel</th></tr></thead>
+        <tbody>${d.top_kunder.map(k => `<tr><td>${k.kunde}</td><td class="num">${fmtFull(k.belob)}</td><td class="num">${k.andel != null ? k.andel.toFixed(1).replace('.', ',') + ' %' : '—'}</td></tr>`).join('')}</tbody>
       </table>`;
   } catch (e) {
     card.innerHTML = '<div style="color:var(--danger);padding:20px">Churn-data kunne ikke hentes.</div>';

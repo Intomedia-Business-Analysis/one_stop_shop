@@ -214,6 +214,24 @@ def db_afdelingsleder_churn(today: date):
     top = [{"kunde": r["kunde"] or "(uden navn)", "belob": round(float(r["belob"] or 0))}
            for r in cur.fetchall()]
 
+    # Afhaengighedsrisiko: top 5 navngivne kunder (ekskl. Web Sale) mod fuld portefolje.
+    cur.execute("""
+        WITH latest AS (
+            SELECT org_id, org_name, site, acv_value_dkk,
+                ROW_NUMBER() OVER (PARTITION BY org_id, site ORDER BY updated_at DESC) AS rn
+            FROM [dbo].[PipeDrive_ACV]
+        )
+        SELECT TOP 5 MAX(org_name) AS kunde, SUM(acv_value_dkk) AS val
+        FROM latest WHERE rn = 1 AND org_name <> 'Web Sale'
+        GROUP BY org_id
+        ORDER BY val DESC
+    """)
+    top_kunder = [{"kunde": r["kunde"] or "(uden navn)",
+                   "belob": round(float(r["val"] or 0)),
+                   "andel": round(float(r["val"] or 0) / portefolje * 100, 1) if portefolje else None}
+                  for r in cur.fetchall()]
+    top5_andel = round(sum(k["belob"] for k in top_kunder) / portefolje * 100, 1) if portefolje else None
+
     conn.close()
 
     churn_rate = round(ops_atd / portefolje * 100, 1) if portefolje else None
@@ -223,5 +241,7 @@ def db_afdelingsleder_churn(today: date):
         "portefolje": round(portefolje),
         "churn_rate": churn_rate,
         "top":        top,
+        "top_kunder": top_kunder,
+        "top5_andel": top5_andel,
         "cutoff":     today.isoformat(),
     }
