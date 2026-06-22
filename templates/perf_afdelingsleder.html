@@ -36,29 +36,6 @@
 .tab-panel{display:none}
 .tab-panel.active{display:block}
 
-/* KPI cards grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
-@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:500px){.kpi-grid{grid-template-columns:1fr}}
-
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
-.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:14px}
-
-.kpi-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
-.kpi-year{font-size:10px;font-weight:700;color:var(--ink-4)}
-.kpi-val{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
-.kpi-val.curr{font-size:22px;color:var(--ink)}
-
-.kpi-divider{height:1px;background:var(--border);margin:10px 0}
-
-.kpi-delta{display:flex;align-items:center;gap:8px;margin-top:4px}
-.kpi-diff{font-size:12px;font-weight:700}
-.kpi-pct{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
-.pos{color:var(--win)}.neg{color:var(--danger)}.neu{color:var(--ink-4)}
-.pct-pos{background:var(--win-light);color:var(--win)}
-.pct-neg{background:var(--danger-light);color:var(--danger)}
-.pct-neu{background:var(--border);color:var(--ink-4)}
 
 /* Chart card */
 .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px}
