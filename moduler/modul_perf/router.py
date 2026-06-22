@@ -13,8 +13,10 @@ from moduler.modul_perf.queries import (
     db_get_filters, db_manager_data, db_yoy_data, db_saelger_data, db_saelger_meta,
     db_saelger_available_owners, db_saelger_conversion_deals,
     db_manager_saelger_deals, db_manager_saelger_pipeline, db_manager_saelger_filters,
-    db_owner_in_teams, db_brand_overblik,
+    db_owner_in_teams,
 )
+
+from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik
 
 logger = logging.getLogger(__name__)
 
