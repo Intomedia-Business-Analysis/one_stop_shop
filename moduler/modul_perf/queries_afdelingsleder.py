@@ -148,6 +148,25 @@ def db_afdelingsleder_hero(today: date):
         WHERE YEAR([BudgetDate]) = %s
     """, (year,))
 
+    # Maanedlige serier til Overblik-grafen (hele aaret: faktisk salg + budget pr. maaned)
+    cur.execute(f"""
+        SELECT MONTH({dcol}) AS m, ISNULL(SUM({_VAL}),0) AS v
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [pipeline_name] NOT IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s {_ADM_EXCLUDE}
+        GROUP BY MONTH({dcol})
+    """, tuple(CANCELLATION_PIPELINES) + (date(year, 1, 1), date(year + 1, 1, 1)))
+    fak_m = {int(r["m"]): float(r["v"] or 0) for r in cur.fetchall()}
+
+    cur.execute("""
+        SELECT MONTH([BudgetDate]) AS m, ISNULL(SUM([BudgetAmount]),0) AS v
+        FROM [dbo].[BudgetsIntoMedia]
+        WHERE YEAR([BudgetDate]) = %s
+        GROUP BY MONTH([BudgetDate])
+    """, (year,))
+    bud_m = {int(r["m"]): float(r["v"] or 0) for r in cur.fetchall()}
+
     conn.close()
 
     budget_atd = bud_hele + bud_md * frac
@@ -156,13 +175,15 @@ def db_afdelingsleder_hero(today: date):
     status     = ("rod" if pct < 90 else "gul" if pct < 100 else "gron") if pct is not None else "ukendt"
 
     return {
-        "faktisk_atd":    round(faktisk_atd),
-        "budget_atd":     round(budget_atd),
-        "fuldaar_budget": round(fuldaar_budget),
-        "pct":            pct,
-        "prognose":       prognose,
-        "status":         status,
-        "cutoff":         today.isoformat(),
+        "faktisk_atd":     round(faktisk_atd),
+        "budget_atd":      round(budget_atd),
+        "fuldaar_budget":  round(fuldaar_budget),
+        "pct":             pct,
+        "prognose":        prognose,
+        "status":          status,
+        "monthly_faktisk": [round(fak_m.get(i, 0)) for i in range(1, 13)],
+        "monthly_budget":  [round(bud_m.get(i, 0)) for i in range(1, 13)],
+        "cutoff":          today.isoformat(),
     }
 
 
