@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from constants import CANCELLATION_PIPELINES
 from db import get_conn
 from moduler.modul_perf.queries import _ADM_EXCLUDE
+import calendar
 
 # Pladsholder for opsigelses-pipelines — gen-afledt lokalt (jf. queries.py linje 34).
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
@@ -97,4 +98,61 @@ def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
         "ytd":    ytd,
         "cutoff": today.isoformat(),
         "groups": groups,
+    }
+
+def db_afdelingsleder_hero(today: date):
+    """Blok ①: budget-vs-faktisk ÅTD + run-rate-prognose for hele afdelingen.
+
+    Faktisk = salg ÅTD fra vw_afdelingsleder_faktisk (salg, ekskl. opsigelser).
+    Budget  = dag-proreret ÅTD fra vw_afdelingsleder_budget.
+    Prognose = faktisk-pct × fuldaarsbudget.
+    """
+    year = today.year
+    m    = today.month
+    frac = today.day / calendar.monthrange(year, m)[1]   # andel af indevaerende maaned
+    cut_excl = today + timedelta(days=1)                 # til og med i dag
+
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    def _scalar(sql, params=()):
+        cur.execute(sql, params)
+        row = cur.fetchone() or {}
+        return float(list(row.values())[0] or 0)
+
+    faktisk_atd = _scalar("""
+        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_faktisk]
+        WHERE dato >= %s AND dato < %s
+    """, (date(year, 1, 1), cut_excl))
+
+    bud_hele = _scalar("""
+        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
+        WHERE aar = %s AND maaned < %s
+    """, (year, m))
+
+    bud_md = _scalar("""
+        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
+        WHERE aar = %s AND maaned = %s
+    """, (year, m))
+
+    fuldaar_budget = _scalar("""
+        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
+        WHERE aar = %s
+    """, (year,))
+
+    conn.close()
+
+    budget_atd = bud_hele + bud_md * frac
+    pct        = round(faktisk_atd / budget_atd * 100, 1) if budget_atd else None
+    prognose   = round(pct / 100 * fuldaar_budget) if pct is not None else None
+    status     = ("rod" if pct < 90 else "gul" if pct < 100 else "gron") if pct is not None else "ukendt"
+
+    return {
+        "faktisk_atd":    round(faktisk_atd),
+        "budget_atd":     round(budget_atd),
+        "fuldaar_budget": round(fuldaar_budget),
+        "pct":            pct,
+        "prognose":       prognose,
+        "status":         status,
+        "cutoff":         today.isoformat(),
     }

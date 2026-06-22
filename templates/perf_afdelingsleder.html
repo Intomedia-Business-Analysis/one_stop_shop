@@ -23,6 +23,15 @@
 .tab-btn:hover{color:var(--ink-2)}
 .tab-btn.active{color:var(--ink);border-bottom-color:var(--green)}
 
+/* Hero (blok ①) */
+.hero-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px 32px;margin-bottom:20px;display:flex;align-items:center;gap:36px;flex-wrap:wrap}
+.hero-pct{font-size:56px;font-weight:800;letter-spacing:-1px;line-height:1}
+.hero-pct.gron{color:var(--win)}.hero-pct.gul{color:#C98A00}.hero-pct.rod{color:var(--danger)}
+.hero-main{display:flex;flex-direction:column;gap:6px}
+.hero-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4)}
+.hero-sub{font-size:13px;color:var(--ink-3);font-weight:600}
+.hero-sub b{color:var(--ink);font-weight:800}
+
 /* Fane-paneler */
 .tab-panel{display:none}
 .tab-panel.active{display:block}
@@ -145,6 +154,11 @@
 
 <!-- ===== OVERBLIK (blok ①) ===== -->
 <div class="tab-panel active" id="tab-overblik">
+
+  <!-- Hero: budget vs faktisk (blok ①) -->
+  <div class="hero-card" id="hero-card">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+  </div>
 
   <!-- Filter-bar (YoY) -->
   <div class="filter-bar">
@@ -473,6 +487,25 @@ function switchTab(name) {
   }
 }
 
+// ── Hero (blok ①): budget vs faktisk — filter-uafhaengig ────────────────────────
+async function loadHero() {
+  const el = document.getElementById('hero-card');
+  try {
+    const r = await fetch('/tools/performance/afdelingsleder-hero-data');
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    el.innerHTML = `
+      <div class="hero-pct ${d.status}">${d.pct != null ? d.pct.toFixed(1).replace('.', ',') + ' %' : '—'}</div>
+      <div class="hero-main">
+        <div class="hero-label">Faktisk vs. budget — år til dato</div>
+        <div class="hero-sub">Solgt <b>${fmtKr(d.faktisk_atd)}</b> af budget <b>${fmtKr(d.budget_atd)}</b> ÅTD</div>
+        <div class="hero-sub">Prognose fuldår: <b>${fmtKr(d.prognose)}</b> mod budget <b>${fmtKr(d.fuldaar_budget)}</b></div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--danger);padding:20px">Hero-data kunne ikke hentes.</div>';
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const ySel  = document.getElementById('filter-year');
@@ -491,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cySel.appendChild(o2);
   }
     switchTab('overblik');
+  loadHero();
 });
 
 // ── YoY: Load ─────────────────────────────────────────────────────────────────

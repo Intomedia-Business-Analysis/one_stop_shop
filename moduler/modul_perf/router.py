@@ -16,7 +16,7 @@ from moduler.modul_perf.queries import (
     db_owner_in_teams,
 )
 
-from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik
+from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik, db_afdelingsleder_hero
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,20 @@ async def brand_overblik_data(
         return JSONResponse(db_brand_overblik(date.today(), date_col=date_col, ytd=bool(ytd)))
     except Exception:
         logger.exception("brand-overblik-data fejlede (date_col=%s, ytd=%s)", date_col, ytd)
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        AFDELINGSLEDER HERO-DATA (blok 1: budget vs faktisk)
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/afdelingsleder-hero-data")
+async def afdelingsleder_hero_data(user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        return JSONResponse(db_afdelingsleder_hero(date.today()))
+    except Exception:
+        logger.exception("afdelingsleder-hero-data fejlede")
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
