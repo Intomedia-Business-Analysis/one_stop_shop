@@ -8,6 +8,10 @@ import calendar
 # Pladsholder for opsigelses-pipelines — gen-afledt lokalt (jf. queries.py linje 34).
 _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 
+# Belob i lokal valuta (NO/SE i lokal, ellers DKK) — delt af modulets queries.
+_VAL = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
+        "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+
 def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
                       years: list[int] | None = None):
     """Salg, opsigelser og netto pr. brand-gruppe (alle brands) for flere år.
@@ -32,8 +36,6 @@ def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
         except ValueError:  # 29/2 i skudår
             return date(y, today.month, 28) + timedelta(days=1)
 
-    _VAL = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
-            "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
     range_sql = " OR ".join([f"({d_col} >= %s AND {d_col} < %s)"] * len(years))
     range_params: list = []
     for y in years:
@@ -103,9 +105,9 @@ def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
 def db_afdelingsleder_hero(today: date):
     """Blok ①: budget-vs-faktisk ÅTD + run-rate-prognose for hele afdelingen.
 
-    Faktisk = salg ÅTD fra vw_afdelingsleder_faktisk (salg, ekskl. opsigelser).
-    Budget  = dag-proreret ÅTD fra vw_afdelingsleder_budget.
-    Prognose = faktisk-pct × fuldaarsbudget.
+    Faktisk = salg ÅTD (won, ekskl. opsigelser/Web Sale/admin, NO/SE i lokal
+    valuta) direkte fra PipedriveDeals. Budget = dag-proreret ÅTD fra
+    BudgetsIntoMedia. Prognose = faktisk-pct × fuldaarsbudget.
     """
     year = today.year
     m    = today.month
@@ -120,24 +122,30 @@ def db_afdelingsleder_hero(today: date):
         row = cur.fetchone() or {}
         return float(list(row.values())[0] or 0)
 
-    faktisk_atd = _scalar("""
-        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_faktisk]
-        WHERE dato >= %s AND dato < %s
-    """, (date(year, 1, 1), cut_excl))
+    dcol = "COALESCE([service_activation_date],[won_time])"
+
+    faktisk_atd = _scalar(f"""
+        SELECT ISNULL(SUM({_VAL}),0) AS v
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+          AND [pipeline_name] NOT IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s
+          {_ADM_EXCLUDE}
+    """, tuple(CANCELLATION_PIPELINES) + (date(year, 1, 1), cut_excl))
 
     bud_hele = _scalar("""
-        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
-        WHERE aar = %s AND maaned < %s
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS v FROM [dbo].[BudgetsIntoMedia]
+        WHERE YEAR([BudgetDate]) = %s AND MONTH([BudgetDate]) < %s
     """, (year, m))
 
     bud_md = _scalar("""
-        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
-        WHERE aar = %s AND maaned = %s
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS v FROM [dbo].[BudgetsIntoMedia]
+        WHERE YEAR([BudgetDate]) = %s AND MONTH([BudgetDate]) = %s
     """, (year, m))
 
     fuldaar_budget = _scalar("""
-        SELECT ISNULL(SUM(belob),0) AS v FROM [dbo].[vw_afdelingsleder_budget]
-        WHERE aar = %s
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS v FROM [dbo].[BudgetsIntoMedia]
+        WHERE YEAR([BudgetDate]) = %s
     """, (year,))
 
     conn.close()
