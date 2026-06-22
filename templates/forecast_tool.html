@@ -98,6 +98,38 @@
 
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Klikbar pipeline-celle + "Fra pipeline"-celle */
+.pipe-link{font-family:var(--font);font-size:11px;font-weight:600;color:var(--ink);background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:var(--r-sm);font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:5px}
+.pipe-link:hover{background:var(--green-light);color:var(--green)}
+.pipe-search{font-size:10px;opacity:.7}
+.frompipe-cell{font-family:var(--font);font-size:12px;font-weight:700;color:var(--green);background:none;border:1px dashed var(--border-strong);cursor:pointer;padding:4px 10px;border-radius:var(--r-sm);font-variant-numeric:tabular-nums}
+.frompipe-cell:hover{border-color:var(--green);background:var(--green-light)}
+
+/* Pipeline-modal */
+.pipe-modal{background:var(--surface);border-radius:var(--r);max-width:760px;width:94%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+.pipe-modal-head{padding:20px 24px 14px;border-bottom:1px solid var(--border)}
+.pipe-modal-head h3{margin:0 0 4px;font-size:15px;color:var(--ink)}
+.pipe-modal-head p{margin:0;font-size:11px;color:var(--ink-3)}
+.pipe-modal-tools{display:flex;gap:10px;align-items:center;margin-top:10px}
+.pipe-mini-btn{font-family:var(--font);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);background:var(--green-light);border:1px solid var(--green);border-radius:var(--r-sm);padding:5px 10px;cursor:pointer}
+.pipe-mini-btn.clear{color:var(--ink-3);background:var(--bg);border-color:var(--border-strong)}
+.pipe-modal-body{overflow-y:auto;padding:6px 24px}
+.pipe-deals{width:100%;border-collapse:collapse;font-size:11px}
+.pipe-deals th{position:sticky;top:0;background:var(--surface);text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-4);padding:9px 8px;border-bottom:1px solid var(--border)}
+.pipe-deals th.num{text-align:right}
+.pipe-deals td{padding:8px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.pipe-deals tr.included td{background:var(--green-light)}
+.pipe-deals .deal-title{font-weight:600;color:var(--ink)}
+.pipe-deals .deal-org{font-size:10px;color:var(--ink-4)}
+.pipe-deals .deal-amt{font-family:var(--font);font-size:11px;padding:5px 7px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--bg);color:var(--ink);outline:none;width:96px;text-align:right;font-variant-numeric:tabular-nums}
+.pipe-deals .deal-amt:focus{border-color:var(--green)}
+.pipe-deals .deal-amt:disabled{opacity:.45;background:var(--bg)}
+.pipe-deals .raised{color:#9a6a12;font-size:9px;font-weight:700;white-space:nowrap}
+.pipe-modal-foot{padding:14px 24px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px}
+.pipe-foot-total{font-size:12px;color:var(--ink-3)}
+.pipe-foot-total strong{font-size:16px;color:var(--green);font-variant-numeric:tabular-nums}
+.pipe-empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
 </style>
 </head>
 <body>
@@ -174,11 +206,12 @@
         <div class="reminder-banner" id="reminder-banner"></div>
 
         <div class="info-box">
-          <strong>Sådan virker dit forecast:</strong>
+          <strong>Sådan laver du dit forecast:</strong> Historik, realiseret tilvækst og åben pipeline vises som <strong>reference</strong> — du indtaster selv hele dit forecast.
           <ol>
             <li>Vælg måned — <strong>næste måned er valgt på forhånd</strong>, og dit forecast skal være gemt, inden måneden starter.</li>
-            <li>Justér <strong>Pipeline&nbsp;%</strong> (hvor stor en andel af din åbne pipeline du forventer at lukke) og evt. en manuel <strong>justering i kr.</strong> — Forecast total beregnes automatisk ud fra din historik og pipeline.</li>
-            <li>Klik <strong>"Gem mit forecast"</strong>. Din sales manager kan herefter se dit forecast i team-overblikket og bruger det i det samlede forecast.</li>
+            <li>Klik på <strong>åben pipeline</strong> for at undersøge dine deals. Vælg dem, du forventer at lukke, og <strong>justér beløbet</strong> hvis kundens tilbud er blevet større. Summen lægges i <strong>"Fra pipeline"</strong>. (Justeringen er kun til dit forecast — den sendes ikke tilbage til Pipedrive.)</li>
+            <li>Skriv evt. <strong>"Ekstra (kr.)"</strong> oveni — fx forventet nysalg, der endnu ikke ligger i pipeline. <strong>Forecast total</strong> = Fra pipeline + Ekstra.</li>
+            <li>Klik <strong>"Gem mit forecast"</strong>. Din sales manager kan herefter se det i team-overblikket.</li>
           </ol>
           Du kan opdatere dit forecast lige så ofte, du vil — men når du gemmer igen, <strong>erstattes dine tidligere tal for måneden</strong>. Er du med i flere teams, gemmes der ét selvstændigt forecast pr. team.
         </div>
@@ -220,8 +253,8 @@
                 <th class="num hist" id="th-year-m1">—</th>
                 <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
                 <th class="num">Åben pipeline</th>
-                <th class="num">Pipeline %</th>
-                <th class="num">Justering (kr.)</th>
+                <th class="num">Fra pipeline</th>
+                <th class="num">Ekstra (kr.)</th>
                 <th class="num">Forecast total</th>
                 <th class="num">Budget</th>
                 <th>Status</th>
@@ -255,6 +288,31 @@
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeConfirm()">Annullér</button>
       <button class="submit-btn" id="confirm-ok-btn">Erstat forecast</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIPELINE-MODAL -->
+<div class="modal-backdrop" id="pipe-backdrop">
+  <div class="pipe-modal">
+    <div class="pipe-modal-head">
+      <h3 id="pipe-title">Pipeline</h3>
+      <p id="pipe-sub"></p>
+      <div class="pipe-modal-tools">
+        <button class="pipe-mini-btn" onclick="pipeSelectAll(true)">Vælg alle</button>
+        <button class="pipe-mini-btn clear" onclick="pipeSelectAll(false)">Ryd</button>
+        <span style="font-size:10px;color:var(--ink-4)">Marker de deals, du forventer at lukke — justér beløbet, hvis tilbuddet er blevet større.</span>
+      </div>
+    </div>
+    <div class="pipe-modal-body" id="pipe-body">
+      <div class="pipe-empty"><div class="spinner"></div> Indlæser pipeline…</div>
+    </div>
+    <div class="pipe-modal-foot">
+      <div class="pipe-foot-total">Forventet fra pipeline: <strong id="pipe-sum">0 kr.</strong></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn-secondary" onclick="closePipe()">Annullér</button>
+        <button class="submit-btn" id="pipe-apply-btn" onclick="applyPipe()">Brug i forecast</button>
+      </div>
     </div>
   </div>
 </div>
@@ -368,23 +426,22 @@ function renderMyTable() {
       : `<span class="badge badge-warn">Ikke udfyldt</span>`;
     const fcClass = row.forecast_total >= 0 ? 'forecast-total' : 'forecast-neg';
 
+    const pipeBtn = row.open_pipeline
+      ? `<button type="button" class="pipe-link" onclick="openPipelineModal(${i})" title="Undersøg din pipeline og vælg, hvad du forventer at lukke">${fmtFull(row.open_pipeline)} <span class="pipe-search">🔍</span></button>`
+      : `<span style="color:var(--ink-4)">—</span>`;
+    const fromPipe = `<button type="button" class="frompipe-cell" onclick="openPipelineModal(${i})" id="frompipe-${i}" title="Klik for at vælge deals fra din pipeline">${row.pipeline_close ? fmtFull(row.pipeline_close) : 'Vælg…'}</button>`;
+
     return `<tr>
       <td><strong>${escHtml(row.team)}</strong></td>
       ${histCell(row.hist_year_m2)}
       ${histCell(row.hist_year_m1)}
       <td class="activation-cell">${fmtFull(row.activation)}</td>
-      <td class="num">${row.open_pipeline ? fmtFull(row.open_pipeline) : '—'}</td>
-      <td>
-        <div class="fc-pct-wrap">
-          <input class="fc-input" type="number" min="0" max="100" step="1"
-                 value="${row.pipeline_pct}" id="pct-${i}" onchange="recalcMyRow(${i})">
-          <span>%</span>
-        </div>
-      </td>
+      <td class="num">${pipeBtn}</td>
+      <td class="num">${fromPipe}</td>
       <td>
         <input class="fc-input" type="number" step="1" value="${row.manual_amount || 0}"
                id="adj-${i}" placeholder="0"
-               title="Manuelt beløb i kr. der lægges oveni dit forecast"
+               title="Ekstra beløb i kr. der lægges oveni — fx forventet nysalg, der endnu ikke ligger i pipeline"
                onchange="recalcMyRow(${i})">
       </td>
       <td class="${fcClass}" id="ftotal-${i}">${fmtFull(row.forecast_total)}</td>
@@ -403,15 +460,16 @@ function renderMyTable() {
 
 function recalcMyRow(i) {
   const row = _myRows[i];
-  const pct = parseFloat(document.getElementById(`pct-${i}`).value) || 0;
   const man = parseFloat(document.getElementById(`adj-${i}`).value) || 0;
-  row.pipeline_pct   = pct;
   row.manual_amount  = man;
-  row.forecast_total = row.historical_avg + (row.open_pipeline * pct / 100) + man;
+  row.forecast_total = (row.pipeline_close || 0) + man;
 
   const totEl = document.getElementById(`ftotal-${i}`);
   totEl.textContent = fmtFull(row.forecast_total);
   totEl.className   = row.forecast_total >= 0 ? 'forecast-total' : 'forecast-neg';
+
+  const fpEl = document.getElementById(`frompipe-${i}`);
+  if (fpEl) fpEl.textContent = row.pipeline_close ? fmtFull(row.pipeline_close) : 'Vælg…';
   updateMyTotals();
 }
 
@@ -460,12 +518,21 @@ async function saveMyForecast() {
   const btn   = document.getElementById('my-save-btn');
   btn.disabled = true;
 
-  const rows = _myRows.map(r => ({
-    team:           r.team,
-    pipeline_pct:   r.pipeline_pct,
-    manual_amount:  r.manual_amount,
-    forecast_total: Math.round(r.forecast_total * 100) / 100,
-  }));
+  const rows = _myRows.map(r => {
+    const out = {
+      team:           r.team,
+      manual_amount:  r.manual_amount,
+      forecast_total: Math.round(r.forecast_total * 100) / 100,
+    };
+    // Send kun deal-valgene, hvis sælgeren faktisk har åbnet pipeline-modalen
+    // for denne række — ellers bevarer serveren det tidligere gemte valg.
+    if (r._dealsLoaded) {
+      out.deals = (r._deals || [])
+        .filter(d => d.included)
+        .map(d => ({deal_id: d.deal_id, included: true, amount: d.amount}));
+    }
+    return out;
+  });
 
   try {
     const r = await fetch('/tools/forecast/my/save', {
@@ -509,6 +576,142 @@ async function loadReminder() {
     }
   } catch(e) { /* påmindelsen må aldrig forstyrre */ }
 }
+
+// ---------------------------------------------------------------------------
+// Pipeline-modal: undersøg deals og vælg, hvad du forventer at lukke
+// ---------------------------------------------------------------------------
+let _pipeRowIdx = null;
+let _pipeDeals  = [];
+
+async function openPipelineModal(i) {
+  _pipeRowIdx = i;
+  const row = _myRows[i];
+  document.getElementById('pipe-title').textContent = 'Pipeline — ' + row.team;
+  document.getElementById('pipe-sub').textContent   = periodLabel();
+  document.getElementById('pipe-backdrop').classList.add('show');
+
+  if (row._dealsLoaded && row._deals) {
+    _pipeDeals = JSON.parse(JSON.stringify(row._deals));
+    renderPipe();
+    return;
+  }
+
+  document.getElementById('pipe-body').innerHTML =
+    '<div class="pipe-empty"><div class="spinner"></div> Indlæser pipeline…</div>';
+  const year  = document.getElementById('fc-year').value;
+  const month = document.getElementById('fc-month').value;
+  try {
+    const r = await fetch(`/tools/forecast/pipeline?year=${year}&month=${month}&team=${encodeURIComponent(row.team)}`);
+    const d = await r.json();
+    if (!r.ok) {
+      document.getElementById('pipe-body').innerHTML =
+        `<div class="pipe-empty">${escHtml(d.detail || 'Kunne ikke hente pipeline')}</div>`;
+      return;
+    }
+    _pipeDeals = d.deals || [];
+    renderPipe();
+  } catch(e) {
+    document.getElementById('pipe-body').innerHTML =
+      `<div class="pipe-empty">Netværksfejl: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderPipe() {
+  const body = document.getElementById('pipe-body');
+  if (!_pipeDeals.length) {
+    body.innerHTML = '<div class="pipe-empty">Ingen åbne deals med forventet luk i denne måned.</div>';
+    updatePipeSum();
+    return;
+  }
+  const rows = _pipeDeals.map((d, j) => {
+    return `<tr class="${d.included ? 'included' : ''}">
+      <td><input type="checkbox" ${d.included ? 'checked' : ''} onchange="pipeToggle(${j}, this.checked)"></td>
+      <td>
+        <div class="deal-title">${escHtml(d.title)}</div>
+        <div class="deal-org">${escHtml(d.org_name)}${d.stage_name ? ' · ' + escHtml(d.stage_name) : ''}</div>
+      </td>
+      <td style="color:var(--ink-4);white-space:nowrap">${escHtml(d.expected_close)}</td>
+      <td class="num" style="white-space:nowrap;font-variant-numeric:tabular-nums">${fmtFull(d.value)}</td>
+      <td class="num">
+        <input class="deal-amt" type="number" step="1" value="${Math.round(d.amount)}"
+               ${d.included ? '' : 'disabled'} id="pipe-amt-${j}"
+               oninput="pipeAmount(${j}, this.value)">
+        <div class="raised" id="raised-${j}">${raisedLabel(d)}</div>
+      </td>
+    </tr>`;
+  }).join('');
+  body.innerHTML = `<table class="pipe-deals">
+    <thead><tr>
+      <th style="width:34px"></th><th>Deal</th><th>Forventet luk</th>
+      <th class="num">Pipedrive-værdi</th><th class="num">Forventet beløb</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  updatePipeSum();
+}
+
+function pipeToggle(j, on) {
+  _pipeDeals[j].included = on;
+  const amtEl = document.getElementById(`pipe-amt-${j}`);
+  if (amtEl) {
+    amtEl.disabled = !on;
+    const tr = amtEl.closest('tr');
+    if (tr) tr.classList.toggle('included', on);
+  }
+  updatePipeSum();
+}
+
+function raisedLabel(d) {
+  return d.amount > d.value ? '▲ forhøjet fra ' + fmtFull(d.value) : '';
+}
+
+function pipeAmount(j, val) {
+  _pipeDeals[j].amount = parseFloat(val) || 0;
+  // Opdatér badge + sum live uden fuld re-render, så feltet beholder fokus
+  const badge = document.getElementById(`raised-${j}`);
+  if (badge) badge.textContent = raisedLabel(_pipeDeals[j]);
+  updatePipeSum();
+}
+
+function pipeSelectAll(on) {
+  _pipeDeals.forEach(d => { d.included = on; });
+  renderPipe();
+}
+
+function updatePipeSum() {
+  const sum = _pipeDeals.filter(d => d.included)
+                        .reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  document.getElementById('pipe-sum').textContent = fmtFull(sum);
+}
+
+function applyPipe() {
+  if (_pipeRowIdx === null) return;
+  const row = _myRows[_pipeRowIdx];
+  row._deals        = JSON.parse(JSON.stringify(_pipeDeals));
+  row._dealsLoaded  = true;
+  row.pipeline_close = _pipeDeals.filter(d => d.included)
+                                 .reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+  recalcMyRow(_pipeRowIdx);
+  closePipe();
+}
+
+function closePipe() {
+  document.getElementById('pipe-backdrop').classList.remove('show');
+  _pipeRowIdx = null;
+  _pipeDeals  = [];
+}
+
+document.getElementById('pipe-backdrop').addEventListener('click', (e) => {
+  if (e.target.id === 'pipe-backdrop') closePipe();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('pipe-backdrop').classList.contains('show')) closePipe();
+});
+
+// async-funktioner deklareret i en blok hænges ikke op globalt (Annex B gælder
+// kun almindelige funktioner) — gør dem tilgængelige for inline onclick/onchange
+window.loadMyForecast    = loadMyForecast;
+window.openPipelineModal = openPipelineModal;
 
 loadMyForecast();
 loadReminder();
@@ -671,6 +874,7 @@ async function saveReview(ti) {
   }
 }
 
+window.loadOverview = loadOverview;
 loadOverview();
 }
 </script>
