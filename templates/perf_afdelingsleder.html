@@ -284,7 +284,13 @@
 
 <!-- ===== CHURN (blok ③) ===== -->
 <div class="tab-panel" id="tab-churn">
-  <div class="chart-card"><p style="color:var(--ink-4);margin:0">Churn-analyse kommer her (blok ③).</p></div>
+  <div class="hero-card" id="churn-rate-card">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Top-opsigelser — år til dato</span></div>
+    <div id="churn-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
 </div><!-- tab-churn -->
 
 <!-- ===== VÆKST (blok ④) ===== -->
@@ -445,7 +451,8 @@ document.addEventListener('click', e => {
 const loadedTabs = new Set();       // Husker hvilken fane der er loadet
 const tabLoaders = {                 // Hvilken loader-funktion der hører til hvilken fane
   overblik: loadData,
-  brands: loadBrandData
+  brands: loadBrandData,
+  churn: loadChurn
 };
 
 function switchTab(name) {
@@ -478,6 +485,32 @@ async function loadHero() {
       </div>`;
   } catch (e) {
     el.innerHTML = '<div style="color:var(--danger);padding:20px">Hero-data kunne ikke hentes.</div>';
+  }
+}
+
+// ── Churn (blok ③): churn-rate + top-opsigelser ─────────────────────────────────
+async function loadChurn() {
+  const card = document.getElementById('churn-rate-card');
+  const list = document.getElementById('churn-top');
+  try {
+    const r = await fetch('/tools/performance/afdelingsleder-churn-data');
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    card.innerHTML = `
+      <div class="hero-pct" style="color:var(--danger)">${d.churn_rate != null ? d.churn_rate.toFixed(1).replace('.', ',') + ' %' : '—'}</div>
+      <div class="hero-main">
+        <div class="hero-label">Churn-rate — år til dato</div>
+        <div class="hero-sub">Mistet <b>${fmtKr(d.ops_atd)}</b> af portefølje <b>${fmtKr(d.portefolje)}</b></div>
+        <div class="hero-sub" style="color:var(--ink-4)">Nævner = nuværende portefølje (ACV-historik rækker ikke til 1/1)</div>
+      </div>`;
+    list.innerHTML = `
+      <table class="yoy-table">
+        <thead><tr><th>Kunde</th><th class="num">Opsagt ÅTD</th></tr></thead>
+        <tbody>${d.top.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+      </table>`;
+  } catch (e) {
+    card.innerHTML = '<div style="color:var(--danger);padding:20px">Churn-data kunne ikke hentes.</div>';
+    list.innerHTML = '';
   }
 }
 

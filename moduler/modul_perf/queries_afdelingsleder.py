@@ -164,3 +164,64 @@ def db_afdelingsleder_hero(today: date):
         "status":         status,
         "cutoff":         today.isoformat(),
     }
+
+
+def db_afdelingsleder_churn(today: date):
+    """Blok ③: churn-rate (B') + top-opsigelser for hele afdelingen.
+
+    Churn-rate = opsigelser ÅTD / NUVAERENDE portefoelje (PipeDrive_ACV, nyeste
+    raekke pr. kunde x site). Naevneren er den nuvaerende base, fordi ACV-historik
+    ikke raekker tilbage foer 1/1 — "base ved aarets start" er ikke muligt.
+    """
+    year     = today.year
+    cut_excl = today + timedelta(days=1)
+    dcol     = "COALESCE([service_activation_date],[won_time])"
+
+    conn = get_conn()
+    cur  = conn.cursor(as_dict=True)
+
+    def _scalar(sql, params=()):
+        cur.execute(sql, params)
+        row = cur.fetchone() or {}
+        return float(list(row.values())[0] or 0)
+
+    ops_atd = _scalar(f"""
+        SELECT ISNULL(ABS(SUM({_VAL})),0) AS v
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name] IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s
+          {_ADM_EXCLUDE}
+    """, tuple(CANCELLATION_PIPELINES) + (date(year, 1, 1), cut_excl))
+
+    portefolje = _scalar("""
+        WITH latest AS (
+            SELECT acv_value_dkk, ROW_NUMBER() OVER
+                (PARTITION BY org_id, site ORDER BY updated_at DESC) AS rn
+            FROM [dbo].[PipeDrive_ACV]
+        )
+        SELECT ISNULL(SUM(acv_value_dkk),0) AS v FROM latest WHERE rn = 1
+    """)
+
+    cur.execute(f"""
+        SELECT TOP 10 [org_name] AS kunde, ABS(SUM({_VAL})) AS belob
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name] IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s
+          {_ADM_EXCLUDE}
+        GROUP BY [org_name]
+        ORDER BY belob DESC
+    """, tuple(CANCELLATION_PIPELINES) + (date(year, 1, 1), cut_excl))
+    top = [{"kunde": r["kunde"] or "(uden navn)", "belob": round(float(r["belob"] or 0))}
+           for r in cur.fetchall()]
+
+    conn.close()
+
+    churn_rate = round(ops_atd / portefolje * 100, 1) if portefolje else None
+
+    return {
+        "ops_atd":    round(ops_atd),
+        "portefolje": round(portefolje),
+        "churn_rate": churn_rate,
+        "top":        top,
+        "cutoff":     today.isoformat(),
+    }
