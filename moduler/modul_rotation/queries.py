@@ -1052,14 +1052,15 @@ def db_no_advertising_performance(today: date):
         # 'brand' så frontenden kan genbruge samme stacked-bar-builder som de
         # danske annonce-dashboards.
         def _series(granularity):
-            period_expr = "MONTH([won_time])" if granularity == "month" else "DATEPART(QUARTER, [won_time])"
+            period_expr = ("MONTH([service_activation_date])" if granularity == "month"
+                           else "DATEPART(QUARTER, [service_activation_date])")
             cur.execute(f"""
                 SELECT [pipeline_name] AS pipeline, {period_expr} AS period,
                        ISNULL(SUM({_NO_VAL}),0) AS revenue
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [account]=%s
                   AND [pipeline_name] IN ('Job','Banner')
-                  AND [won_time] >= %s AND [won_time] < %s
+                  AND [service_activation_date] >= %s AND [service_activation_date] < %s
                 GROUP BY [pipeline_name], {period_expr}
             """, (NO_ADV_ACCOUNT, y_start.isoformat(), y_end.isoformat()))
             n = 12 if granularity == "month" else 4
