@@ -252,8 +252,6 @@
 
   <div id="dash-content" style="display:none">
 
-    <!-- KPI cards -->
-    <div class="kpi-grid" id="kpi-grid"></div>
 
     <!-- Monthly chart -->
     <div class="chart-card">
@@ -561,7 +559,6 @@ async function loadData() {
     document.getElementById('legend-curr').textContent = d.ref_year;
     document.getElementById('legend-prev').textContent = d.prev_year;
 
-    renderKPI(d);
     renderChart(d);
 
     lastYoY = d;
@@ -572,56 +569,6 @@ async function loadData() {
   } catch(e) {
     console.error(e);
   }
-}
-
-// ── KPI cards ─────────────────────────────────────────────────────────────────
-function renderKPI(d) {
-  const cards = [
-    { label: 'Omsætning',    key: 'won',       isCount: false },
-    { label: 'Opsigelser',   key: 'cancel',    isCount: false },
-    { label: 'Netto',        key: 'netto',     isCount: false },
-    { label: 'Antal deals',  key: 'won_count', isCount: true  },
-  ];
-
-  const grid = document.getElementById('kpi-grid');
-  grid.innerHTML = '';
-
-  cards.forEach(({label, key, isCount}) => {
-    const cv  = d.curr[key];
-    const pv  = d.prev[key];
-    const dlt = d.deltas[key];
-
-    const diff    = dlt.diff;
-    const pct     = dlt.pct;
-    const diffPos = diff >= 0;
-    // For opsigelser: højere churn er dårligt → omvendt farve
-    const isCancel = key === 'cancel';
-    const good = isCancel ? !diffPos : diffPos;
-
-    const colorCls  = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
-    const pctCls    = diff === 0 ? 'pct-neu' : (good ? 'pct-pos' : 'pct-neg');
-    const diffSign  = diff > 0 ? '+' : '';
-    const diffFmt   = isCount ? diffSign + diff : diffSign + fmtKr(diff);
-    const pctFmt    = pct !== null ? fmtPct(pct) : '—';
-
-    grid.innerHTML += `
-      <div class="kpi-card">
-        <div class="kpi-label">${label}</div>
-        <div class="kpi-row">
-          <span class="kpi-year">${d.ref_year}</span>
-          <span class="kpi-val curr">${isCount ? cv : fmtKr(cv)}</span>
-        </div>
-        <div class="kpi-row">
-          <span class="kpi-year">${d.prev_year}</span>
-          <span class="kpi-val">${isCount ? pv : fmtKr(pv)}</span>
-        </div>
-        <div class="kpi-divider"></div>
-        <div class="kpi-delta">
-          <span class="kpi-diff ${colorCls}">${diffFmt}</span>
-          <span class="kpi-pct ${pctCls}">${pctFmt}</span>
-        </div>
-      </div>`;
-  });
 }
 
 // ── Monthly chart ─────────────────────────────────────────────────────────────
