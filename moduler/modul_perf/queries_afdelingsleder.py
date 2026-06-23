@@ -235,15 +235,16 @@ def db_afdelingsleder_churn(today: date):
     top = [{"kunde": r["kunde"] or "(uden navn)", "belob": round(float(r["belob"] or 0))}
            for r in cur.fetchall()]
 
-    # Afhaengighedsrisiko: top 5 navngivne kunder (ekskl. Web Sale) mod fuld portefolje.
+    # Afhaengighedsrisiko: de 10 stoerste navngivne kunder (ekskl. Web Sale) mod fuld
+    # portefolje. Headline-maalet er top 5 (top_kunder[:5]); tabellen viser top 10.
     cur.execute("""
         WITH latest AS (
             SELECT org_id, org_name, site, acv_value_dkk,
                 ROW_NUMBER() OVER (PARTITION BY org_id, site ORDER BY updated_at DESC) AS rn
             FROM [dbo].[PipeDrive_ACV]
         )
-        SELECT TOP 5 MAX(org_name) AS kunde, SUM(acv_value_dkk) AS val
-        FROM latest WHERE rn = 1 AND org_name <> 'Web Sale'
+        SELECT TOP 10 MAX(org_name) AS kunde, SUM(acv_value_dkk) AS val
+        FROM latest WHERE rn = 1 AND org_name NOT LIKE 'Web Sale%'
         GROUP BY org_id
         ORDER BY val DESC
     """)
@@ -251,7 +252,8 @@ def db_afdelingsleder_churn(today: date):
                    "belob": round(float(r["val"] or 0)),
                    "andel": round(float(r["val"] or 0) / portefolje * 100, 1) if portefolje else None}
                   for r in cur.fetchall()]
-    top5_andel = round(sum(k["belob"] for k in top_kunder) / portefolje * 100, 1) if portefolje else None
+    top5_andel  = round(sum(k["belob"] for k in top_kunder[:5]) / portefolje * 100, 1) if portefolje else None
+    top10_andel = round(sum(k["belob"] for k in top_kunder)      / portefolje * 100, 1) if portefolje else None
 
     conn.close()
 
@@ -262,9 +264,10 @@ def db_afdelingsleder_churn(today: date):
         "portefolje": round(portefolje),
         "churn_rate": churn_rate,
         "top":        top,
-        "top_kunder": top_kunder,
-        "top5_andel": top5_andel,
-        "cutoff":     today.isoformat(),
+        "top_kunder":  top_kunder,
+        "top5_andel":  top5_andel,
+        "top10_andel": top10_andel,
+        "cutoff":      today.isoformat(),
     }
 
 
@@ -333,15 +336,38 @@ def db_afdelingsleder_vaekst(today: date):
     top_nye = [{"kunde": r["kunde"] or "(uden navn)", "belob": round(float(r["salg"] or 0))}
                for r in cur.fetchall()]
 
+    # 3. Maanedlig kundeudvikling: salg fra ny vs. eksisterende pr. maaned (hele aaret)
+    cur.execute(f"""
+        WITH first_deal AS (
+            SELECT org_id, MIN({dcol}) AS first_dato
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
+              AND [pipeline_name] NOT IN {_CANCEL_PH} {_ADM_EXCLUDE}
+            GROUP BY org_id
+        )
+        SELECT MONTH({dcol}) AS m,
+            ISNULL(SUM(CASE WHEN fd.first_dato >= {jan1_str} THEN {_VAL} ELSE 0 END),0) AS ny,
+            ISNULL(SUM(CASE WHEN fd.first_dato <  {jan1_str} THEN {_VAL} ELSE 0 END),0) AS eks
+        FROM [dbo].[PipedriveDeals] d
+        JOIN first_deal fd ON fd.org_id = d.org_id
+        WHERE d.[status]='won' AND d.[pipeline_name]<>'Web Sale'
+          AND d.[pipeline_name] NOT IN {_CANCEL_PH}
+          AND {dcol} >= %s AND {dcol} < %s {_ADM_EXCLUDE}
+        GROUP BY MONTH({dcol})
+    """, tuple(CANCELLATION_PIPELINES) + tuple(CANCELLATION_PIPELINES) + (jan1, date(year + 1, 1, 1)))
+    by_m = {int(r["m"]): (float(r["ny"] or 0), float(r["eks"] or 0)) for r in cur.fetchall()}
+
     conn.close()
 
     return {
-        "ny_salg":    round(ny_salg),
-        "ny_kunder":  ny_k,
-        "eks_salg":   round(eks_salg),
-        "eks_kunder": eks_k,
-        "ny_andel":   round(ny_salg / tot * 100, 1) if tot else None,
-        "eks_andel":  round(eks_salg / tot * 100, 1) if tot else None,
-        "top_nye":    top_nye,
-        "cutoff":     today.isoformat(),
+        "ny_salg":     round(ny_salg),
+        "ny_kunder":   ny_k,
+        "eks_salg":    round(eks_salg),
+        "eks_kunder":  eks_k,
+        "ny_andel":    round(ny_salg / tot * 100, 1) if tot else None,
+        "eks_andel":   round(eks_salg / tot * 100, 1) if tot else None,
+        "top_nye":     top_nye,
+        "monthly_ny":  [round(by_m.get(i, (0, 0))[0]) for i in range(1, 13)],
+        "monthly_eks": [round(by_m.get(i, (0, 0))[1]) for i in range(1, 13)],
+        "cutoff":      today.isoformat(),
     }

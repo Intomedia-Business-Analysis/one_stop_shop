@@ -303,6 +303,16 @@
     <div class="chart-title"><span>Største nye kunder — år til dato</span></div>
     <div id="vaekst-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
   </div>
+  <div class="chart-card">
+    <div class="chart-title">
+      <span>Salg fra nye vs. eksisterende kunder pr. måned</span>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#2B2A27"></span>Ny</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span>Eksisterende</span>
+      </div>
+    </div>
+    <svg id="vaekst-chart" width="100%" height="200" style="overflow:visible"></svg>
+  </div>
 </div><!-- tab-vaekst -->
 
 </div><!-- tool-wrap -->
@@ -559,16 +569,16 @@ async function loadChurn() {
     list.innerHTML = `
       <table class="yoy-table">
         <thead><tr><th>Kunde</th><th class="num">Opsagt ÅTD</th></tr></thead>
-        <tbody>${d.top.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+        <tbody>${d.top.map(t => `<tr><td>${t.kunde}</td><td class="num" style="color:var(--danger);font-weight:700">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
       </table>`;
 
     const konc = document.getElementById('churn-konc');
-    const r5 = d.top5_andel;
-    const risk      = r5 == null ? '—' : r5 < 15 ? 'lav afhængighedsrisiko' : r5 < 30 ? 'moderat afhængighedsrisiko' : 'høj afhængighedsrisiko';
-    const riskColor = r5 == null ? 'var(--ink-4)' : r5 < 15 ? 'var(--win)' : r5 < 30 ? '#C98A00' : 'var(--danger)';
+    const r10 = d.top10_andel;
+    const risk      = r10 == null ? '—' : r10 < 20 ? 'lav afhængighedsrisiko' : r10 < 40 ? 'moderat afhængighedsrisiko' : 'høj afhængighedsrisiko';
+    const riskColor = r10 == null ? 'var(--ink-4)' : r10 < 20 ? 'var(--win)' : r10 < 40 ? '#C98A00' : 'var(--danger)';
     konc.innerHTML = `
       <p style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 14px">
-        Top 5 kunder = <span style="color:${riskColor}">${r5 != null ? r5.toFixed(1).replace('.', ',') + ' %' : '—'}</span> af porteføljen
+        Top 10 kunder = <span style="color:${riskColor}">${r10 != null ? r10.toFixed(1).replace('.', ',') + ' %' : '—'}</span> af porteføljen
         <span style="font-weight:600;color:${riskColor}">— ${risk}</span>
       </p>
       <table class="yoy-table">
@@ -606,10 +616,45 @@ async function loadVaekst() {
         <thead><tr><th>Ny kunde</th><th class="num">Salg ÅTD</th></tr></thead>
         <tbody>${d.top_nye.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
       </table>`;
+    renderStackedChart('vaekst-chart', d.monthly_ny || [], d.monthly_eks || []);
   } catch (e) {
     split.innerHTML = '<div style="color:var(--danger);padding:20px">Vækst-data kunne ikke hentes.</div>';
     list.innerHTML = '';
   }
+}
+
+// ── Stablet søjle-graf: ny (mørk) + eksisterende (lys) pr. måned ────────────────
+function renderStackedChart(svgId, ny, eks) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const labels = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+  const W = svg.getBoundingClientRect().width || 900, H = 200;
+  const PAD = { t: 10, r: 10, b: 30, l: 48 };
+  const chartW = W - PAD.l - PAD.r, chartH = H - PAD.t - PAD.b;
+  const maxV = Math.max(1, ...labels.map((_, i) => (ny[i] || 0) + (eks[i] || 0)));
+  const toY = v => PAD.t + chartH - (v / maxV) * chartH;
+  const n = 12, groupW = chartW / n, barW = groupW * 0.5;
+  const zy = toY(0);
+  let paths = '';
+  for (let i = 0; i < n; i++) {
+    const x = PAD.l + i * groupW + (groupW - barW) / 2;
+    const nyV = ny[i] || 0, eksV = eks[i] || 0;
+    const nyY = toY(nyV);
+    paths += `<rect x="${x}" y="${nyY}" width="${barW}" height="${Math.max(zy - nyY, 0)}" fill="#2B2A27">
+      <title>${labels[i]} ny: ${fmtFull(nyV)}</title></rect>`;
+    const eksY = toY(nyV + eksV);
+    paths += `<rect x="${x}" y="${eksY}" width="${barW}" height="${Math.max(nyY - eksY, 0)}" fill="#C9C1B5">
+      <title>${labels[i]} eksisterende: ${fmtFull(eksV)}</title></rect>`;
+    paths += `<text x="${x + barW / 2}" y="${H - PAD.b + 14}" text-anchor="middle" font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
+    const total = nyV + eksV;
+    if (total > 0) paths += `<text x="${x + barW / 2}" y="${Math.max(toY(total) - 5, 9)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink-2)">${fmtKr(total)}</text>`;
+  }
+  for (let i = 0; i <= 4; i++) {
+    const v = (maxV / 4) * i, y = toY(v);
+    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
+  }
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = paths;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
