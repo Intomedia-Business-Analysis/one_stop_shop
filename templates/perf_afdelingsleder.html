@@ -8,36 +8,36 @@
 <style>
 .tool-wrap{max-width:1280px;margin:0 auto}
 
-/* Filter-bar */
-.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:20px}
-.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
-.filter-select{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;outline:none;transition:border-color .13s}
-.filter-select:focus{border-color:var(--green)}
-.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 
-/* KPI cards grid */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
-@media(max-width:900px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:500px){.kpi-grid{grid-template-columns:1fr}}
+/* Fane-navigation */
+.tab-nav{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab-btn{font-family:var(--font);font-size:13px;font-weight:700;color:var(--ink-4);
+  background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
+  padding:10px 18px;cursor:pointer;transition:color .13s,border-color .13s}
+.tab-btn:hover{color:var(--ink-2)}
+.tab-btn.active{color:var(--ink);border-bottom-color:var(--green)}
 
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
-.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:14px}
+/* Hero (blok ①) */
+.hero-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px 32px;margin-bottom:20px;display:flex;align-items:center;gap:36px;flex-wrap:wrap}
+.hero-pct{font-size:56px;font-weight:800;letter-spacing:-1px;line-height:1}
+.hero-pct.gron{color:var(--win)}.hero-pct.gul{color:#C98A00}.hero-pct.rod{color:var(--danger)}
+.hero-main{display:flex;flex-direction:column;gap:6px}
+.hero-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4)}
+.hero-sub{font-size:13px;color:var(--ink-3);font-weight:600}
+.hero-sub b{color:var(--ink);font-weight:800}
+.hero-pct-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-top:6px;text-align:center}
+.hero-bar{height:10px;background:var(--border);border-radius:6px;overflow:hidden;margin:10px 0 16px}
+.hero-bar-fill{height:100%;border-radius:6px;transition:width .4s}
+.hero-stats{display:flex;gap:32px;flex-wrap:wrap}
+.hero-stat-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:2px}
+.hero-stat-val{font-size:20px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
+.hero-verdict{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;text-align:center;margin-top:8px}
+.hero-verdict.gron{color:var(--win)}.hero-verdict.gul{color:#C98A00}.hero-verdict.rod{color:var(--danger)}
 
-.kpi-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
-.kpi-year{font-size:10px;font-weight:700;color:var(--ink-4)}
-.kpi-val{font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.3px}
-.kpi-val.curr{font-size:22px;color:var(--ink)}
+/* Fane-paneler */
+.tab-panel{display:none}
+.tab-panel.active{display:block}
 
-.kpi-divider{height:1px;background:var(--border);margin:10px 0}
-
-.kpi-delta{display:flex;align-items:center;gap:8px;margin-top:4px}
-.kpi-diff{font-size:12px;font-weight:700}
-.kpi-pct{font-size:11px;font-weight:700;padding:2px 7px;border-radius:20px}
-.pos{color:var(--win)}.neg{color:var(--danger)}.neu{color:var(--ink-4)}
-.pct-pos{background:var(--win-light);color:var(--win)}
-.pct-neg{background:var(--danger-light);color:var(--danger)}
-.pct-neu{background:var(--border);color:var(--ink-4)}
 
 /* Chart card */
 .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px}
@@ -76,28 +76,6 @@
 .spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* Multi-select dropdowns */
-.ms-wrap{position:relative;display:inline-block}
-.ms-trigger{display:flex;align-items:center;gap:6px;padding:6px 10px;min-width:140px;
-  background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);
-  font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;user-select:none}
-.ms-trigger:hover,.ms-trigger.open{border-color:var(--green)}
-.ms-badge{display:inline-flex;align-items:center;justify-content:center;
-  min-width:16px;height:16px;padding:0 4px;border-radius:8px;
-  background:var(--green);color:#fff;font-size:10px;font-weight:700}
-.ms-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;margin-left:auto}
-.ms-trigger.open .ms-arrow{transform:rotate(180deg)}
-.ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:200;
-  min-width:200px;max-height:280px;overflow-y:auto;
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-  box-shadow:0 4px 16px rgba(0,0,0,.12);display:none}
-.ms-panel.open{display:block}
-.ms-list-header,.ms-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer}
-.ms-list-header:hover,.ms-item:hover{background:var(--green-light)}
-.ms-item input[type=checkbox]{accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none}
-.ms-item label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;font-size:12px}
-.ms-list-header input[type=checkbox]{accent-color:var(--green);width:14px;height:14px;flex-shrink:0;pointer-events:none}
-.ms-list-header label{flex:1;font-size:12px;font-weight:700;pointer-events:none}
 </style>
 </head>
 <body>
@@ -123,121 +101,45 @@
         </div>
       </div>
 
-  <!-- Filter-bar (YoY) -->
-  <div class="filter-bar">
-    <span class="filter-label">Filter</span>
-    <div class="filter-sep"></div>
-    <select class="filter-select" id="filter-year" onchange="loadData()">
-      <option value="">Indlæser år…</option>
-    </select>
-    <span style="font-size:11px;font-weight:700;color:var(--ink-4)">vs</span>
-    <select class="filter-select" id="filter-compare-year" onchange="loadData()">
-      <option value="">Indlæser år…</option>
-    </select>
-    <!-- Month multi-select -->
-    <div class="ms-wrap" id="ms-month-wrap">
-      <div class="ms-trigger" id="ms-month-trigger" onclick="msToggle('month')">
-        <span id="ms-month-label">Hele Året</span>
-        <span class="ms-badge" id="ms-month-badge" style="display:none"></span>
-        <span class="ms-arrow">▾</span>
-      </div>
-      <div class="ms-panel" id="ms-month-panel">
-        <div class="ms-list-header" onclick="msClearAll('month')">
-          <input type="checkbox" id="ms-m-all" checked onclick="event.preventDefault();event.stopPropagation()">
-          <label>Hele Året</label>
-        </div>
-        <div class="ms-item" onclick="msToggleQuarter('Q1')"><input type="checkbox" id="ms-m-Q1" onclick="event.preventDefault();event.stopPropagation()"><label>Q1 (Jan–Mar)</label></div>
-        <div class="ms-item" onclick="msToggleQuarter('Q2')"><input type="checkbox" id="ms-m-Q2" onclick="event.preventDefault();event.stopPropagation()"><label>Q2 (Apr–Jun)</label></div>
-        <div class="ms-item" onclick="msToggleQuarter('Q3')"><input type="checkbox" id="ms-m-Q3" onclick="event.preventDefault();event.stopPropagation()"><label>Q3 (Jul–Sep)</label></div>
-        <div class="ms-item" onclick="msToggleQuarter('Q4')"><input type="checkbox" id="ms-m-Q4" onclick="event.preventDefault();event.stopPropagation()"><label>Q4 (Okt–Dec)</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','1','Januar')"><input type="checkbox" id="ms-m-1" onclick="event.preventDefault();event.stopPropagation()"><label>Januar</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','2','Februar')"><input type="checkbox" id="ms-m-2" onclick="event.preventDefault();event.stopPropagation()"><label>Februar</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','3','Marts')"><input type="checkbox" id="ms-m-3" onclick="event.preventDefault();event.stopPropagation()"><label>Marts</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','4','April')"><input type="checkbox" id="ms-m-4" onclick="event.preventDefault();event.stopPropagation()"><label>April</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','5','Maj')"><input type="checkbox" id="ms-m-5" onclick="event.preventDefault();event.stopPropagation()"><label>Maj</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','6','Juni')"><input type="checkbox" id="ms-m-6" onclick="event.preventDefault();event.stopPropagation()"><label>Juni</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','7','Juli')"><input type="checkbox" id="ms-m-7" onclick="event.preventDefault();event.stopPropagation()"><label>Juli</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','8','August')"><input type="checkbox" id="ms-m-8" onclick="event.preventDefault();event.stopPropagation()"><label>August</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','9','September')"><input type="checkbox" id="ms-m-9" onclick="event.preventDefault();event.stopPropagation()"><label>September</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','10','Oktober')"><input type="checkbox" id="ms-m-10" onclick="event.preventDefault();event.stopPropagation()"><label>Oktober</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','11','November')"><input type="checkbox" id="ms-m-11" onclick="event.preventDefault();event.stopPropagation()"><label>November</label></div>
-        <div class="ms-item" onclick="msToggleItem('month','12','December')"><input type="checkbox" id="ms-m-12" onclick="event.preventDefault();event.stopPropagation()"><label>December</label></div>
-      </div>
-    </div>
+  <!-- Fane-navigation -->
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="overblik" onclick="switchTab('overblik')">Overblik</button>
+  <button class="tab-btn" data-tab="brands"   onclick="switchTab('brands')">Brands</button>
+  <button class="tab-btn" data-tab="churn"    onclick="switchTab('churn')">Churn</button>
+  <button class="tab-btn" data-tab="vaekst"   onclick="switchTab('vaekst')">Vækst</button>
+</div>
 
-    <!-- Team multi-select -->
-    <div class="ms-wrap" id="ms-team-wrap">
-      <div class="ms-trigger" id="ms-team-trigger" onclick="msToggle('team')">
-        <span id="ms-team-label">Alle teams</span>
-        <span class="ms-badge" id="ms-team-badge" style="display:none"></span>
-        <span class="ms-arrow">▾</span>
-      </div>
-      <div class="ms-panel" id="ms-team-panel">
-        <div class="ms-list-header" onclick="msClearAll('team')">
-          <input type="checkbox" id="ms-team-all" checked onclick="event.preventDefault();event.stopPropagation()">
-          <label>Alle teams</label>
-        </div>
-        <!-- populated dynamically by buildTeamDropdown() -->
-      </div>
-    </div>
+<!-- ===== OVERBLIK (blok ①) ===== -->
+<div class="tab-panel active" id="tab-overblik">
 
-    <div class="filter-sep"></div>
-
-    <!-- Pipeline multi-select -->
-    <div class="ms-wrap" id="ms-pipeline-wrap">
-      <div class="ms-trigger" id="ms-pipeline-trigger" onclick="msToggle('pipeline')">
-        <span id="ms-pipeline-label">Alle pipelines</span>
-        <span class="ms-badge" id="ms-pipeline-badge" style="display:none"></span>
-        <span class="ms-arrow">▾</span>
-      </div>
-      <div class="ms-panel" id="ms-pipeline-panel">
-        <div class="ms-list-header" onclick="msClearAll('pipeline')">
-          <input type="checkbox" id="ms-p-all" checked onclick="event.preventDefault();event.stopPropagation()">
-          <label>Alle pipelines</label>
-        </div>
-        <div class="ms-item" data-val="Customer" onclick="msToggleItem('pipeline','Customer','Customer')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Customer</label></div>
-        <div class="ms-item" data-val="Newbizz" onclick="msToggleItem('pipeline','Newbizz','Newbizz')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Newbizz</label></div>
-        <div class="ms-item" data-val="Company Trial" onclick="msToggleItem('pipeline','Company Trial','Company Trial')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Company Trial</label></div>
-        <div class="ms-item" data-val="Cancellations" onclick="msToggleItem('pipeline','Cancellations','Opsigelser')"><input type="checkbox" onclick="event.preventDefault();event.stopPropagation()"><label>Opsigelser</label></div>
-      </div>
-    </div>
-    <div class="filter-sep"></div>
-    <select class="filter-select" id="filter-date-col" onchange="loadData()">
-      <option value="won_time">Won time</option>
-      <option value="service_activation_date" selected>Service activation date</option>
-    </select>
+  <!-- Hero: budget vs faktisk (blok ①) -->
+  <div class="hero-card" id="hero-card">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
   </div>
 
-  <!-- Spinner -->
-  <div id="loading-state" class="spin-wrap">
-    <div class="spinner"></div><br>Henter data…
-  </div>
+  <div id="dash-content">
 
-  <div id="dash-content" style="display:none">
-
-    <!-- KPI cards -->
-    <div class="kpi-grid" id="kpi-grid"></div>
 
     <!-- Monthly chart -->
     <div class="chart-card">
       <div class="chart-title">
-        <span>Månedlig netto — år for år</span>
-        <div style="display:flex;align-items:center;gap:16px">
-          <div class="chart-legend">
-            <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span id="legend-curr"></span></span>
-            <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span><span id="legend-prev"></span></span>
-          </div>
-          <button class="xls-btn" id="export-yoy-btn" onclick="exportYoY()" disabled title="Hent nøgletal og månedstal som Excel">
-            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Excel
-          </button>
+        <span>Salg vs. budget pr. måned</span>
+        <div class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#2B2A27"></span>Faktisk</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span>Budget</span>
         </div>
       </div>
       <svg id="monthly-chart" width="100%" height="200" style="overflow:visible"></svg>
     </div>
 
+
+
   </div><!-- dash-content -->
 
+</div><!-- tab-overblik -->
+
+<!-- ===== BRANDS (blok ②) ===== -->
+<div class="tab-panel" id="tab-brands">
   <!-- Brand Overblik -->
   <div class="chart-card">
     <div class="chart-title">
@@ -262,6 +164,43 @@
       <div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div>
     </div>
   </div>
+</div><!-- tab-brands -->
+
+<!-- ===== CHURN (blok ③) ===== -->
+<div class="tab-panel" id="tab-churn">
+  <div class="hero-card" id="churn-rate-card">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Top-opsigelser — år til dato</span></div>
+    <div id="churn-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Afhængighedsrisiko — koncentration i porteføljen</span></div>
+    <div id="churn-konc"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
+</div><!-- tab-churn -->
+
+<!-- ===== VÆKST (blok ④) ===== -->
+<div class="tab-panel" id="tab-vaekst">
+  <div class="hero-card" id="vaekst-split">
+    <div class="spin-wrap" style="padding:20px"><div class="spinner"></div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title"><span>Største nye kunder — år til dato</span></div>
+    <div id="vaekst-top"><div class="spin-wrap"><div class="spinner"></div><br>Henter data…</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">
+      <span>Salg fra nye vs. eksisterende kunder pr. måned</span>
+      <div class="chart-legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#2B2A27"></span>Ny</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#C9C1B5"></span>Eksisterende</span>
+      </div>
+    </div>
+    <svg id="vaekst-chart" width="100%" height="200" style="overflow:visible"></svg>
+  </div>
+</div><!-- tab-vaekst -->
 
 </div><!-- tool-wrap -->
 </div><!-- content-area -->
@@ -288,313 +227,204 @@ const fmtFull = v => {
 };
 const fmtPct = v => (v > 0 ? '+' : '') + v + '%';
 
-// ── Multi-select state ────────────────────────────────────────────────────────
-const selectedMonths    = new Set();
-const selectedTeams     = new Set();
-const selectedPipelines = new Set();
 
-const MONTH_NAMES_FULL = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
-const QUARTER_MONTHS   = { Q1:[1,2,3], Q2:[4,5,6], Q3:[7,8,9], Q4:[10,11,12] };
-const MS_ALL_LABELS    = { month: 'Hele Året', team: 'Alle teams', pipeline: 'Alle pipelines' };
+// Fane-navigation + lazy load
+const loadedTabs = new Set();       // Husker hvilken fane der er loadet
+const tabLoaders = {                 // Hvilken loader-funktion der hører til hvilken fane
+  overblik: loadHero,
+  brands: loadBrandData,
+  churn: loadChurn,
+  vaekst: loadVaekst
+};
 
-function msToggle(key) {
-  const panel   = document.getElementById(`ms-${key}-panel`);
-  const trigger = document.getElementById(`ms-${key}-trigger`);
-  const isOpen  = panel.classList.contains('open');
-  ['month','team','pipeline'].forEach(k => {
-    document.getElementById(`ms-${k}-panel`).classList.remove('open');
-    document.getElementById(`ms-${k}-trigger`).classList.remove('open');
-  });
-  if (!isOpen) { panel.classList.add('open'); trigger.classList.add('open'); }
-}
-
-function msToggleItem(key, val, label) {
-  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
-  let cb;
-  if (key === 'month') {
-    cb = document.getElementById(`ms-m-${val}`);
-  } else if (key === 'pipeline') {
-    const item = document.querySelector(`#ms-pipeline-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
-    cb = item ? item.querySelector('input[type=checkbox]') : null;
-  } else {
-    const item = document.querySelector(`#ms-team-panel .ms-item[data-val="${val.replace(/"/g,'\\"')}"]`);
-    cb = item ? item.querySelector('input[type=checkbox]') : null;
-  }
-  if (sel.has(val)) { sel.delete(val); if (cb) cb.checked = false; }
-  else              { sel.add(val);    if (cb) cb.checked = true; }
-  msUpdateLabel(key);
-  loadData();
-}
-
-function msToggleQuarter(q) {
-  const months     = QUARTER_MONTHS[q];
-  const strMonths  = months.map(String);
-  const allSelected = strMonths.every(m => selectedMonths.has(m));
-  strMonths.forEach(m => {
-    const cb = document.getElementById(`ms-m-${m}`);
-    if (allSelected) { selectedMonths.delete(m); if (cb) cb.checked = false; }
-    else             { selectedMonths.add(m);    if (cb) cb.checked = true; }
-  });
-  msUpdateLabel('month');
-  loadData();
-}
-
-function msClearAll(key) {
-  const sel = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
-  sel.clear();
-  const panel = document.getElementById(`ms-${key}-panel`);
-  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = false);
-  const allCb = panel.querySelector('.ms-list-header input[type=checkbox]');
-  if (allCb) allCb.checked = true;
-  msUpdateLabel(key);
-  loadData();
-}
-
-function msUpdateLabel(key) {
-  const sel     = key === 'month' ? selectedMonths : key === 'team' ? selectedTeams : selectedPipelines;
-  const label   = document.getElementById(`ms-${key}-label`);
-  const badge   = document.getElementById(`ms-${key}-badge`);
-  const panel   = document.getElementById(`ms-${key}-panel`);
-  const allCb   = panel.querySelector('.ms-list-header input[type=checkbox]');
-  if (sel.size === 0) {
-    label.textContent = MS_ALL_LABELS[key];
-    badge.style.display = 'none';
-    if (allCb) allCb.checked = true;
-  } else {
-    badge.textContent   = sel.size;
-    badge.style.display = '';
-    if (allCb) allCb.checked = false;
-    if (key === 'month') {
-      const names = [...sel].map(m => MONTH_NAMES_FULL[parseInt(m) - 1]);
-      label.textContent = names.length === 1 ? names[0] : `${names.length} måneder`;
-    } else if (key === 'team') {
-      label.textContent = sel.size === 1 ? [...sel][0] : `${sel.size} teams`;
-    } else {
-      label.textContent = sel.size === 1 ? [...sel][0] : `${sel.size} pipelines`;
-    }
-  }
-  // Sync Q-checkboxes
-  if (key === 'month') {
-    Object.entries(QUARTER_MONTHS).forEach(([q, months]) => {
-      const qCb = document.getElementById(`ms-m-${q}`);
-      if (qCb) qCb.checked = months.every(m => sel.has(String(m)));
-    });
+function switchTab(name) {
+  // 1. marker den klikkede fane
+  document.querySelectorAll('.tab-btn').forEach(b =>
+  b.classList.toggle('active', b.dataset.tab === name));
+  // 2. vis det matchende panel
+  document.querySelectorAll('.tab-panel').forEach(p =>
+  p.classList.toggle('active', p.id === 'tab-' + name));
+  // 3. Lazy-load henter fanens data første gang den åbnes
+  if (!loadedTabs.has(name)) {
+    loadedTabs.add(name);
+    tabLoaders[name]?.();
   }
 }
 
-function buildTeamDropdown(teams) {
-  const panel = document.getElementById('ms-team-panel');
-  panel.querySelectorAll('.ms-item').forEach(el => el.remove());
-  teams.forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'ms-item';
-    div.dataset.val = t;
-    const cb  = document.createElement('input');
-    cb.type   = 'checkbox';
-    cb.setAttribute('onclick', 'event.preventDefault();event.stopPropagation()');
-    if (selectedTeams.has(t)) cb.checked = true;
-    const lbl = document.createElement('label');
-    lbl.textContent = t;
-    lbl.style.cssText = 'pointer-events:none;font-size:12px';
-    div.appendChild(cb); div.appendChild(lbl);
-    div.addEventListener('click', () => msToggleItem('team', t, t));
-    panel.appendChild(div);
-  });
-}
-
-// Close panels on outside click
-document.addEventListener('click', e => {
-  if (!e.target.closest('.ms-wrap')) {
-    ['month','team','pipeline'].forEach(k => {
-      document.getElementById(`ms-${k}-panel`)?.classList.remove('open');
-      document.getElementById(`ms-${k}-trigger`)?.classList.remove('open');
-    });
-  }
-});
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  const ySel  = document.getElementById('filter-year');
-  const cySel = document.getElementById('filter-compare-year');
-  ySel.innerHTML = '';
-  cySel.innerHTML = '';
-  for (let y = CURRENT_YEAR + 1; y >= 2024; y--) {
-    const o1 = document.createElement('option');
-    o1.value = y; o1.textContent = y;
-    if (y === CURRENT_YEAR) o1.selected = true;
-    ySel.appendChild(o1);
-
-    const o2 = document.createElement('option');
-    o2.value = y; o2.textContent = y;
-    if (y === CURRENT_YEAR - 1) o2.selected = true;
-    cySel.appendChild(o2);
-  }
-  loadData();
-  loadBrandData();
-});
-
-// ── YoY: Load ─────────────────────────────────────────────────────────────────
-async function loadData() {
-  const year        = document.getElementById('filter-year').value;
-  const compareYear = document.getElementById('filter-compare-year').value;
-  const dateCol     = document.getElementById('filter-date-col').value;
-
-  const month    = selectedMonths.size    ? [...selectedMonths].join(',')    : '';
-  const team     = selectedTeams.size     ? [...selectedTeams].join(',')     : '';
-  const pipeline = selectedPipelines.size ? [...selectedPipelines].join(',') : '';
-
-  const params = new URLSearchParams();
-  if (year)        params.set('year',            year);
-  if (compareYear) params.set('compare_year',    compareYear);
-  if (month)       params.set('month',           month);
-  if (team)        params.set('team',            team);
-  if (dateCol)     params.set('date_col',        dateCol);
-  if (pipeline)    params.set('pipeline_filter', pipeline);
-
-  document.getElementById('loading-state').style.display = '';
-  document.getElementById('dash-content').style.display  = 'none';
-
+// ── Hero (blok ①): budget vs faktisk — filter-uafhaengig ────────────────────────
+async function loadHero() {
+  const el = document.getElementById('hero-card');
   try {
-    const r = await fetch('/tools/performance/yoy-data?' + params);
+    const r = await fetch('/tools/performance/afdelingsleder-hero-data');
     const d = await r.json();
-    if (!r.ok) return;
-
-    if (d.teams?.length && document.getElementById('ms-team-panel').querySelectorAll('.ms-item').length === 0) {
-      buildTeamDropdown(d.teams);
-    }
-
-    document.getElementById('period-subtitle').textContent = d.period_label;
-    document.getElementById('legend-curr').textContent = d.ref_year;
-    document.getElementById('legend-prev').textContent = d.prev_year;
-
-    renderKPI(d);
-    renderChart(d);
-
-    lastYoY = d;
-    document.getElementById('export-yoy-btn').disabled = false;
-
-    document.getElementById('loading-state').style.display = 'none';
-    document.getElementById('dash-content').style.display  = '';
-  } catch(e) {
-    console.error(e);
-  }
-}
-
-// ── KPI cards ─────────────────────────────────────────────────────────────────
-function renderKPI(d) {
-  const cards = [
-    { label: 'Omsætning',    key: 'won',       isCount: false },
-    { label: 'Opsigelser',   key: 'cancel',    isCount: false },
-    { label: 'Netto',        key: 'netto',     isCount: false },
-    { label: 'Antal deals',  key: 'won_count', isCount: true  },
-  ];
-
-  const grid = document.getElementById('kpi-grid');
-  grid.innerHTML = '';
-
-  cards.forEach(({label, key, isCount}) => {
-    const cv  = d.curr[key];
-    const pv  = d.prev[key];
-    const dlt = d.deltas[key];
-
-    const diff    = dlt.diff;
-    const pct     = dlt.pct;
-    const diffPos = diff >= 0;
-    // For opsigelser: højere churn er dårligt → omvendt farve
-    const isCancel = key === 'cancel';
-    const good = isCancel ? !diffPos : diffPos;
-
-    const colorCls  = diff === 0 ? 'neu' : (good ? 'pos' : 'neg');
-    const pctCls    = diff === 0 ? 'pct-neu' : (good ? 'pct-pos' : 'pct-neg');
-    const diffSign  = diff > 0 ? '+' : '';
-    const diffFmt   = isCount ? diffSign + diff : diffSign + fmtKr(diff);
-    const pctFmt    = pct !== null ? fmtPct(pct) : '—';
-
-    grid.innerHTML += `
-      <div class="kpi-card">
-        <div class="kpi-label">${label}</div>
-        <div class="kpi-row">
-          <span class="kpi-year">${d.ref_year}</span>
-          <span class="kpi-val curr">${isCount ? cv : fmtKr(cv)}</span>
-        </div>
-        <div class="kpi-row">
-          <span class="kpi-year">${d.prev_year}</span>
-          <span class="kpi-val">${isCount ? pv : fmtKr(pv)}</span>
-        </div>
-        <div class="kpi-divider"></div>
-        <div class="kpi-delta">
-          <span class="kpi-diff ${colorCls}">${diffFmt}</span>
-          <span class="kpi-pct ${pctCls}">${pctFmt}</span>
+    if (!r.ok) throw new Error();
+    const barColor = d.status === 'gron' ? 'var(--win)' : d.status === 'gul' ? '#C98A00' : 'var(--danger)';
+    const verdict  = d.status === 'gron' ? 'Foran budget' : d.status === 'gul' ? 'På sporet' : d.status === 'rod' ? 'Bagud' : '';
+    const fill = Math.min(Math.max(d.pct || 0, 0), 100);
+    el.innerHTML = `
+      <div style="flex:0 0 auto">
+        <div class="hero-pct ${d.status}">${d.pct != null ? d.pct.toFixed(1).replace('.', ',') + ' %' : '—'}</div>
+        <div class="hero-verdict ${d.status}">${verdict}</div>
+        <div class="hero-pct-label">af budget ÅTD</div>
+      </div>
+      <div class="hero-main" style="flex:1;min-width:300px;gap:0">
+        <div class="hero-label">Faktisk vs. budget — år til dato</div>
+        <div class="hero-bar"><div class="hero-bar-fill" style="width:${fill}%;background:${barColor}"></div></div>
+        <div class="hero-stats">
+          <div><div class="hero-stat-label">Solgt ÅTD</div><div class="hero-stat-val">${fmtKr(d.faktisk_atd)}</div></div>
+          <div><div class="hero-stat-label">Budget ÅTD</div><div class="hero-stat-val">${fmtKr(d.budget_atd)}</div></div>
+          <div><div class="hero-stat-label">Prognose fuldår</div><div class="hero-stat-val">${fmtKr(d.prognose)}</div></div>
+          <div><div class="hero-stat-label">Fuldårsbudget</div><div class="hero-stat-val">${fmtKr(d.fuldaar_budget)}</div></div>
         </div>
       </div>`;
-  });
+    document.getElementById('period-subtitle').textContent = 'Hele afdelingen · år til dato';
+    renderBudgetChart(d.monthly_faktisk || [], d.monthly_budget || []);
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--danger);padding:20px">Hero-data kunne ikke hentes.</div>';
+  }
 }
 
-// ── Monthly chart ─────────────────────────────────────────────────────────────
-function renderChart(d) {
-  const svg   = document.getElementById('monthly-chart');
-  const W     = svg.getBoundingClientRect().width || 900;
-  const H     = 200;
-  const PAD   = { t: 10, r: 10, b: 30, l: 48 };
-  const chartW = W - PAD.l - PAD.r;
-  const chartH = H - PAD.t - PAD.b;
-
-  const curr = d.monthly_curr.map(m => m.netto);
-  const prev = d.monthly_prev.map(m => m.netto);
-  const labels = d.monthly_curr.map(m => m.maaned);
-  const n = 12;
-
-  const allVals = [...curr, ...prev];
-  const minV = Math.min(0, ...allVals);
-  const maxV = Math.max(1, ...allVals);
-  const range = maxV - minV || 1;
-
-  const toY = v => PAD.t + chartH - ((v - minV) / range) * chartH;
-
-  const groupW = chartW / n;
-  const barW   = groupW * 0.32;
-  const gap    = groupW * 0.06;
-
+// ── Salg vs. budget pr. måned (Overblik-graf) ──────────────────────────────────
+function renderBudgetChart(faktisk, budget) {
+  const svg = document.getElementById('monthly-chart');
+  if (!svg) return;
+  const labels = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+  const W = svg.getBoundingClientRect().width || 900, H = 200;
+  const PAD = { t: 10, r: 10, b: 30, l: 48 };
+  const chartW = W - PAD.l - PAD.r, chartH = H - PAD.t - PAD.b;
+  const maxV = Math.max(1, ...faktisk, ...budget);
+  const toY = v => PAD.t + chartH - (v / maxV) * chartH;
+  const n = 12, groupW = chartW / n, barW = groupW * 0.32, gap = groupW * 0.06;
+  const zy = toY(0);
   let paths = '';
-  if (minV < 0) {
-    const zy = toY(0);
-    paths += `<line x1="${PAD.l}" y1="${zy}" x2="${PAD.l + chartW}" y2="${zy}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
-  }
-
   for (let i = 0; i < n; i++) {
     const gx = PAD.l + i * groupW + groupW * 0.04;
-    const zy = toY(0);
-
-    const cy  = toY(curr[i]);
-    const ch  = Math.abs(cy - zy);
-    const cTop = curr[i] >= 0 ? cy : zy;
-    paths += `<rect x="${gx}" y="${cTop}" width="${barW}" height="${Math.max(ch,1)}"
-      fill="var(--green)" rx="2" opacity="0.9">
-      <title>${labels[i]} ${d.ref_year}: ${fmtFull(curr[i])}</title></rect>`;
-
-    const px2 = gx + barW + gap;
-    const py  = toY(prev[i]);
-    const ph  = Math.abs(py - zy);
-    const pTop = prev[i] >= 0 ? py : zy;
-    paths += `<rect x="${px2}" y="${pTop}" width="${barW}" height="${Math.max(ph,1)}"
-      fill="#C9C1B5" rx="2" opacity="0.85">
-      <title>${labels[i]} ${d.prev_year}: ${fmtFull(prev[i])}</title></rect>`;
-
-    paths += `<text x="${gx + barW + gap/2}" y="${H - PAD.b + 14}" text-anchor="middle"
-      font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
+    const fy = toY(faktisk[i] || 0);
+    paths += `<rect x="${gx}" y="${fy}" width="${barW}" height="${Math.max(zy - fy, 1)}" fill="#2B2A27" rx="2">
+      <title>${labels[i]} faktisk: ${fmtFull(faktisk[i] || 0)}</title></rect>`;
+    const bx = gx + barW + gap, by = toY(budget[i] || 0);
+    paths += `<rect x="${bx}" y="${by}" width="${barW}" height="${Math.max(zy - by, 1)}" fill="#C9C1B5" rx="2">
+      <title>${labels[i]} budget: ${fmtFull(budget[i] || 0)}</title></rect>`;
+    paths += `<text x="${gx + barW + gap / 2}" y="${H - PAD.b + 14}" text-anchor="middle" font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
   }
-
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const v = minV + (range / ticks) * i;
-    const y = toY(v);
-    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end"
-      font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
+  for (let i = 0; i <= 4; i++) {
+    const v = (maxV / 4) * i, y = toY(v);
+    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
   }
-
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = paths;
 }
+
+// ── Churn (blok ③): churn-rate + top-opsigelser ─────────────────────────────────
+async function loadChurn() {
+  const card = document.getElementById('churn-rate-card');
+  const list = document.getElementById('churn-top');
+  try {
+    const r = await fetch('/tools/performance/afdelingsleder-churn-data');
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    card.innerHTML = `
+      <div class="hero-pct" style="color:var(--danger)">${d.churn_rate != null ? d.churn_rate.toFixed(1).replace('.', ',') + ' %' : '—'}</div>
+      <div class="hero-main">
+        <div class="hero-label">Churn-rate — år til dato</div>
+        <div class="hero-sub">Mistet <b>${fmtKr(d.ops_atd)}</b> af portefølje <b>${fmtKr(d.portefolje)}</b></div>
+        <div class="hero-sub" style="color:var(--ink-4)">Nævner = nuværende portefølje (ACV-historik rækker ikke til 1/1)</div>
+      </div>`;
+    list.innerHTML = `
+      <table class="yoy-table">
+        <thead><tr><th>Kunde</th><th class="num">Opsagt ÅTD</th></tr></thead>
+        <tbody>${d.top.map(t => `<tr><td>${t.kunde}</td><td class="num" style="color:var(--danger);font-weight:700">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+      </table>`;
+
+    const konc = document.getElementById('churn-konc');
+    const r10 = d.top10_andel;
+    const risk      = r10 == null ? '—' : r10 < 20 ? 'lav afhængighedsrisiko' : r10 < 40 ? 'moderat afhængighedsrisiko' : 'høj afhængighedsrisiko';
+    const riskColor = r10 == null ? 'var(--ink-4)' : r10 < 20 ? 'var(--win)' : r10 < 40 ? '#C98A00' : 'var(--danger)';
+    konc.innerHTML = `
+      <p style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 14px">
+        Top 10 kunder = <span style="color:${riskColor}">${r10 != null ? r10.toFixed(1).replace('.', ',') + ' %' : '—'}</span> af porteføljen
+        <span style="font-weight:600;color:${riskColor}">— ${risk}</span>
+      </p>
+      <table class="yoy-table">
+        <thead><tr><th>Kunde</th><th class="num">Portefølje</th><th class="num">Andel</th></tr></thead>
+        <tbody>${d.top_kunder.map(k => `<tr><td>${k.kunde}</td><td class="num">${fmtFull(k.belob)}</td><td class="num">${k.andel != null ? k.andel.toFixed(1).replace('.', ',') + ' %' : '—'}</td></tr>`).join('')}</tbody>
+      </table>`;
+  } catch (e) {
+    card.innerHTML = '<div style="color:var(--danger);padding:20px">Churn-data kunne ikke hentes.</div>';
+    list.innerHTML = '';
+  }
+}
+
+// ── Vækst (blok ④): nye vs. eksisterende kunder ────────────────────────────────
+async function loadVaekst() {
+  const split = document.getElementById('vaekst-split');
+  const list  = document.getElementById('vaekst-top');
+  try {
+    const r = await fetch('/tools/performance/afdelingsleder-vaekst-data');
+    const d = await r.json();
+    if (!r.ok) throw new Error();
+    const pct = v => v != null ? v.toFixed(1).replace('.', ',') + ' %' : '—';
+    split.innerHTML = `
+      <div class="hero-main" style="flex:1">
+        <div class="hero-label">Nye kunder</div>
+        <div class="hero-pct" style="font-size:40px;color:var(--green)">${pct(d.ny_andel)}</div>
+        <div class="hero-sub"><b>${fmtKr(d.ny_salg)}</b> · ${d.ny_kunder} kunder</div>
+      </div>
+      <div class="hero-main" style="flex:1">
+        <div class="hero-label">Eksisterende kunder</div>
+        <div class="hero-pct" style="font-size:40px;color:var(--ink)">${pct(d.eks_andel)}</div>
+        <div class="hero-sub"><b>${fmtKr(d.eks_salg)}</b> · ${d.eks_kunder} kunder</div>
+      </div>`;
+    list.innerHTML = `
+      <table class="yoy-table">
+        <thead><tr><th>Ny kunde</th><th class="num">Salg ÅTD</th></tr></thead>
+        <tbody>${d.top_nye.map(t => `<tr><td>${t.kunde}</td><td class="num">${fmtFull(t.belob)}</td></tr>`).join('')}</tbody>
+      </table>`;
+    renderStackedChart('vaekst-chart', d.monthly_ny || [], d.monthly_eks || []);
+  } catch (e) {
+    split.innerHTML = '<div style="color:var(--danger);padding:20px">Vækst-data kunne ikke hentes.</div>';
+    list.innerHTML = '';
+  }
+}
+
+// ── Stablet søjle-graf: ny (mørk) + eksisterende (lys) pr. måned ────────────────
+function renderStackedChart(svgId, ny, eks) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const labels = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+  const W = svg.getBoundingClientRect().width || 900, H = 200;
+  const PAD = { t: 10, r: 10, b: 30, l: 48 };
+  const chartW = W - PAD.l - PAD.r, chartH = H - PAD.t - PAD.b;
+  const maxV = Math.max(1, ...labels.map((_, i) => (ny[i] || 0) + (eks[i] || 0)));
+  const toY = v => PAD.t + chartH - (v / maxV) * chartH;
+  const n = 12, groupW = chartW / n, barW = groupW * 0.5;
+  const zy = toY(0);
+  let paths = '';
+  for (let i = 0; i < n; i++) {
+    const x = PAD.l + i * groupW + (groupW - barW) / 2;
+    const nyV = ny[i] || 0, eksV = eks[i] || 0;
+    const nyY = toY(nyV);
+    paths += `<rect x="${x}" y="${nyY}" width="${barW}" height="${Math.max(zy - nyY, 0)}" fill="#2B2A27">
+      <title>${labels[i]} ny: ${fmtFull(nyV)}</title></rect>`;
+    const eksY = toY(nyV + eksV);
+    paths += `<rect x="${x}" y="${eksY}" width="${barW}" height="${Math.max(nyY - eksY, 0)}" fill="#C9C1B5">
+      <title>${labels[i]} eksisterende: ${fmtFull(eksV)}</title></rect>`;
+    paths += `<text x="${x + barW / 2}" y="${H - PAD.b + 14}" text-anchor="middle" font-size="9" fill="var(--ink-4)">${labels[i]}</text>`;
+    const total = nyV + eksV;
+    if (total > 0) paths += `<text x="${x + barW / 2}" y="${Math.max(toY(total) - 5, 9)}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink-2)">${fmtKr(total)}</text>`;
+  }
+  for (let i = 0; i <= 4; i++) {
+    const v = (maxV / 4) * i, y = toY(v);
+    paths += `<text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--ink-4)">${fmtKr(v)}</text>`;
+  }
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = paths;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    switchTab('overblik');
+});
 
 // ── Brand Overblik ────────────────────────────────────────────────────────────
 let brandDateCol = 'won_time';
@@ -693,60 +523,6 @@ async function loadBrandData() {
 // grund for kort/grafer), så de aktive filtre automatisk afspejles.
 const KR_FMT = '#,##0';
 
-function exportYoY() {
-  const d = lastYoY;
-  if (!d) { HubExport.toast('Ingen data at eksportere'); return; }
-
-  const kpiRows = [
-    { navn: 'Omsætning',   key: 'won'       },
-    { navn: 'Opsigelser',  key: 'cancel'    },
-    { navn: 'Netto',       key: 'netto'     },
-    { navn: 'Antal deals', key: 'won_count' },
-  ].map(({ navn, key }) => ({
-    navn,
-    curr: d.curr[key],
-    prev: d.prev[key],
-    diff: d.deltas[key].diff,
-    pct:  d.deltas[key].pct,   // null hvis ingen sammenligning
-  }));
-
-  const monthRows = d.monthly_curr.map((m, i) => ({
-    maaned: m.maaned,
-    curr:   m.netto,
-    prev:   d.monthly_prev[i] ? d.monthly_prev[i].netto : 0,
-    diff:   m.netto - (d.monthly_prev[i] ? d.monthly_prev[i].netto : 0),
-  }));
-
-  HubExport.download({
-    filename: `afdelingsleder-noegletal-${d.ref_year}.xlsx`,
-    sheets: [
-      {
-        name:  'Nøgletal',
-        title: `Nøgletal — ${d.period_label}`,
-        columns: [
-          { header: 'Nøgletal',           key: 'navn', width: 16, align: 'left'  },
-          { header: String(d.ref_year),   key: 'curr', width: 16, align: 'right', numFmt: KR_FMT },
-          { header: String(d.prev_year),  key: 'prev', width: 16, align: 'right', numFmt: KR_FMT },
-          { header: 'Ændring',            key: 'diff', width: 16, align: 'right', numFmt: KR_FMT },
-          { header: 'Ændring %',          key: 'pct',  width: 12, align: 'right', numFmt: '0' },
-        ],
-        rows: kpiRows,
-      },
-      {
-        name:  'Månedlig netto',
-        title: `Månedlig netto — ${d.ref_year} vs ${d.prev_year}`,
-        columns: [
-          { header: 'Måned',                  key: 'maaned', width: 12, align: 'left'  },
-          { header: `Netto ${d.ref_year}`,    key: 'curr',   width: 16, align: 'right', numFmt: KR_FMT },
-          { header: `Netto ${d.prev_year}`,   key: 'prev',   width: 16, align: 'right', numFmt: KR_FMT },
-          { header: 'Ændring',                key: 'diff',   width: 16, align: 'right', numFmt: KR_FMT },
-        ],
-        rows: monthRows,
-      },
-    ],
-  });
-}
-
 function exportBrand() {
   const data = lastBrand;
   if (!data) { HubExport.toast('Ingen data at eksportere'); return; }
@@ -785,8 +561,7 @@ function exportBrand() {
 }
 
 window.addEventListener('resize', () => {
-  const content = document.getElementById('dash-content');
-  if (content.style.display !== 'none') loadData();
+  if (document.getElementById('tab-overblik').classList.contains('active')) loadHero();
 });
 </script>
 
