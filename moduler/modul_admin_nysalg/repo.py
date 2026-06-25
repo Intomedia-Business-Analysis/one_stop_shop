@@ -6,8 +6,10 @@ genoptages i en senere session.
 """
 from __future__ import annotations
 
+import calendar
 import logging
 import os
+from datetime import date
 from typing import Optional
 
 from db import get_conn
@@ -89,6 +91,23 @@ INIT_STMTS = [
        AND NOT EXISTS (SELECT * FROM sys.columns
            WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'currency')
        ALTER TABLE admin_nysalg_match ADD currency NVARCHAR(10) NULL""",
+    # Migration: datointerval (period_from/period_to) — afløser enkelt-måneds-perioden.
+    # [period] beholdes som læsbar label (fx '2026-01 – 2026-05'); from/to bærer
+    # det faktiske filter.
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_run' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'period_from')
+       ALTER TABLE admin_nysalg_run ADD period_from NVARCHAR(10) NULL""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_run' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'period_to')
+       ALTER TABLE admin_nysalg_run ADD period_to NVARCHAR(10) NULL""",
+    # Udvid [period] så den kan rumme en interval-label ('YYYY-MM-DD – YYYY-MM-DD').
+    # NVARCHAR(20) => max_length 40 (bytes); NVARCHAR(60) => 120.
+    """IF EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'period'
+             AND max_length < 120)
+       ALTER TABLE admin_nysalg_run ALTER COLUMN period NVARCHAR(60) NULL""",
     # Pr-brand-kommentar (direktøren kommenterer på den samlede brand-performance).
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_comment' AND xtype='U')
        CREATE TABLE admin_nysalg_brand_comment (
@@ -142,13 +161,16 @@ def load_site_map() -> dict:
 # ── Runs ─────────────────────────────────────────────────────────────────────
 
 def create_run(created_by: str, source_path: Optional[str], source_filename: Optional[str],
-               period: Optional[str]) -> int:
+               period: Optional[str], period_from: Optional[str] = None,
+               period_to: Optional[str] = None) -> int:
+    """period = læsbar label; period_from/period_to = ISO YYYY-MM-DD-interval (filter)."""
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        """INSERT INTO admin_nysalg_run (created_by, source_path, source_filename, period, status)
-           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, 'matched')""",
-        (created_by, source_path, source_filename, period),
+        """INSERT INTO admin_nysalg_run
+               (created_by, source_path, source_filename, period, period_from, period_to, status)
+           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, %s, %s, 'matched')""",
+        (created_by, source_path, source_filename, period, period_from, period_to),
     )
     run_id = int(cur.fetchone()[0])
     conn.commit()
@@ -156,10 +178,13 @@ def create_run(created_by: str, source_path: Optional[str], source_filename: Opt
     return run_id
 
 
-def insert_matches(run_id: int, rows: list[ExtractRow]) -> None:
+def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> None:
+    """progress_cb(i, total) kaldes undervejs (hver 25. række + til sidst) så en
+    baggrundsjob-kører kan rapportere fremdrift."""
     conn = get_conn()
     cur = conn.cursor()
-    for r in rows:
+    total = len(rows)
+    for i, r in enumerate(rows, start=1):
         m = r.match
         cur.execute(
             """INSERT INTO admin_nysalg_match
@@ -181,6 +206,11 @@ def insert_matches(run_id: int, rows: list[ExtractRow]) -> None:
                 1 if r.ambiguous else 0,
             ),
         )
+        if progress_cb and (i % 25 == 0 or i == total):
+            try:
+                progress_cb(i, total)
+            except Exception:
+                pass   # progress-rapportering må aldrig vælte indsættelsen
     conn.commit()
     conn.close()
 
@@ -355,26 +385,43 @@ def set_brand_comment(run_id: int, brand: str, comment: str) -> None:
 
 # ── Brand-budgetter (samlet mediebudget pr. brand) ───────────────────────────
 
-def brand_budgets(period: str | None, subscription_only: bool = True) -> dict:
-    """{brand-label: abonnements-mediebudget} fra BudgetsIntoMedia for perioden.
+def _date_between(col: str, date_from: str | None, date_to: str | None,
+                  cast_to_date: bool = False) -> tuple[list[str], list]:
+    """(clause-liste, params) for et inklusivt datointerval på en kolonne.
+
+    cast_to_date=True bruges på datetime-kolonner (fx service_activation_date) så
+    den øvre grænse også fanger rækker senere på slutdagen.
+    """
+    clauses: list[str] = []
+    params: list = []
+    upper = f"CAST({col} AS DATE)" if cast_to_date else col
+    if date_from:
+        clauses.append(f"{col} >= %s")
+        params.append(date_from)
+    if date_to:
+        clauses.append(f"{upper} <= %s")
+        params.append(date_to)
+    return clauses, params
+
+
+def brand_budgets(date_from: str | None, date_to: str | None,
+                  subscription_only: bool = True) -> dict:
+    """{brand-label: abonnements-mediebudget} fra BudgetsIntoMedia for intervallet.
 
     Rapporten er en abonnementsvisning, så budgettet afgrænses til DealType
     'Subscription' — ellers tæller fx Banner-/Job-budget med i abonnements-
-    brandenes budget. period = 'YYYY-MM' afgrænser på BudgetDate; None summerer
-    alle datoer. subscription_only=False = hele budgettet (alle DealTypes).
+    brandenes budget. date_from/date_to = ISO YYYY-MM-DD afgrænser på BudgetDate
+    (inkl.); begge None summerer alle datoer. subscription_only=False = hele
+    budgettet (alle DealTypes).
     """
     from moduler.modul_admin_nysalg.brands import BUDGET_BRANDS
     where = []
     params: list = []
     if subscription_only:
         where.append("LOWER(LTRIM(RTRIM(COALESCE([DealType],'')))) = 'subscription'")
-    if period:
-        try:
-            y, m = period.split("-")
-            where.append("YEAR([BudgetDate]) = %s AND MONTH([BudgetDate]) = %s")
-            params.extend([int(y), int(m)])
-        except (ValueError, AttributeError):
-            pass
+    dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
+    where += dclauses
+    params += dparams
     sql = "SELECT [Brand] AS brand, ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -399,7 +446,7 @@ def brand_budgets(period: str | None, subscription_only: bool = True) -> dict:
 
 # ── Reklame-rækker (PipeDrive-deals, ikke abonnement) ────────────────────────
 
-def _ad_budget(cur, label: str, period: str | None) -> float:
+def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> float:
     """Budget for en reklame-række fra BudgetsIntoMedia (0 ved manglende mapping)."""
     from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
     frag = AD_BUDGET_WHERE.get(label)
@@ -407,13 +454,9 @@ def _ad_budget(cur, label: str, period: str | None) -> float:
         return 0.0
     where = [frag]
     params: list = []
-    if period:
-        try:
-            y, m = period.split("-")
-            where.append("YEAR([BudgetDate]) = %s AND MONTH([BudgetDate]) = %s")
-            params.extend([int(y), int(m)])
-        except (ValueError, AttributeError):
-            pass
+    dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
+    where += dclauses
+    params += dparams
     cur.execute(
         "SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia] "
         "WHERE " + " AND ".join(where), tuple(params))
@@ -421,7 +464,8 @@ def _ad_budget(cur, label: str, period: str | None) -> float:
     return float((row["budget"] if row else 0) or 0)
 
 
-def pipedrive_brand_rows(period: str | None, comments: dict | None = None,
+def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
+                         comments: dict | None = None,
                          budgets: dict | None = None) -> list[dict]:
     """Brand-rækker hentet direkte fra PipedriveDeals (findes ikke i Zuora).
 
@@ -430,9 +474,9 @@ def pipedrive_brand_rows(period: str | None, comments: dict | None = None,
     Σ ABS af cancellation-pipelines; netto = brutto − opsigelser. Job/Banner/Norge
     har ingen cancellation-pipelines → opsigelser=0; MarketWire har rigtige
     opsigelser. Værdi i lokal valuta for NOK/SEK, ellers DKK. Filtreres på
-    service_activation_date i perioden og status='won'. Budget: Job/Banner/Norge
-    fra AD_BUDGET_WHERE, øvrige (MarketWire) fra det normale brand-budget.
-    Returnerer [] ved DB-fejl.
+    service_activation_date i intervallet (ISO YYYY-MM-DD, inkl.) og status='won'.
+    Budget: Job/Banner/Norge fra AD_BUDGET_WHERE, øvrige (MarketWire) fra det
+    normale brand-budget. Returnerer [] ved DB-fejl.
     """
     from constants import CANCELLATION_PIPELINES
     from moduler.modul_admin_nysalg.brands import (AD_BUDGET_WHERE, PIPEDRIVE_ROWS,
@@ -460,14 +504,10 @@ def pipedrive_brand_rows(period: str | None, comments: dict | None = None,
                 pipe_ph = "(" + ",".join(["%s"] * len(pipes)) + ")"
                 where.append(f"LOWER(LTRIM(RTRIM(COALESCE([pipeline_name],'')))) IN {pipe_ph}")
                 where_params += [p.lower() for p in pipes]
-            if period:
-                try:
-                    y, m = period.split("-")
-                    where.append("YEAR([service_activation_date]) = %s "
-                                 "AND MONTH([service_activation_date]) = %s")
-                    where_params += [int(y), int(m)]
-                except (ValueError, AttributeError):
-                    pass
+            dclauses, dparams = _date_between(
+                "[service_activation_date]", date_from, date_to, cast_to_date=True)
+            where += dclauses
+            where_params += dparams
             sql = f"""
                 SELECT
                   ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
@@ -484,15 +524,41 @@ def pipedrive_brand_rows(period: str | None, comments: dict | None = None,
             ops = round(float(row.get("ops") or 0), 2)
             label = spec["label"]
             if label in AD_BUDGET_WHERE:
-                budget = round(_ad_budget(cur, label, period), 2)
+                budget = round(_ad_budget(cur, label, date_from, date_to), 2)
             else:
                 budget = round(float(budgets.get(label, 0.0) or 0.0), 2)
+
+            # Underrækker (drill-down): samme scope + ét site pr. underrække.
+            # Delmængde af brutto/opsigelser — totalen i hovedrækken er uændret.
+            subrows: list[dict] = []
+            for sr in spec.get("subrows", []):
+                sr_where = where + ["LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"]
+                sr_params = where_params + [sr["site"].lower()]
+                cur.execute(f"""
+                    SELECT
+                      ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
+                          THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+                      ISNULL(ABS(SUM(CASE WHEN UPPER([pipeline_name]) IN {cancel_ph}
+                          THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END)), 0) AS ops
+                    FROM [dbo].[PipedriveDeals]
+                    WHERE {' AND '.join(sr_where)}
+                """, tuple(cancel_up) * 2 + tuple(sr_params))
+                srow = cur.fetchone() or {}
+                s_brutto = round(float(srow.get("won") or 0), 2)
+                s_ops = round(float(srow.get("ops") or 0), 2)
+                subrows.append({
+                    "brand": sr["label"], "brutto": s_brutto, "adm_nysalg": 0.0,
+                    "opsigelser": s_ops, "adm_opsigelser": 0.0,
+                    "netto": round(s_brutto - s_ops, 2), "budget": None,
+                    "comment": "", "n_ambiguous": 0, "currency": brand_currency(label),
+                })
+
             rows.append({
                 "brand": label, "brutto": brutto, "adm_nysalg": 0.0,
                 "opsigelser": ops, "adm_opsigelser": 0.0,
                 "netto": round(brutto - ops, 2), "budget": budget,
                 "comment": comments.get(label, "") or "", "n_ambiguous": 0,
-                "currency": brand_currency(label),
+                "currency": brand_currency(label), "subrows": subrows,
             })
         conn.close()
     except Exception:
@@ -530,25 +596,21 @@ def pipedrive_org_names() -> dict:
     return out
 
 
-def period_pipedrive_deals(period: str | None) -> list[dict]:
-    """Alle won PipeDrive-deals med service_activation_date i perioden.
+def period_pipedrive_deals(date_from: str | None, date_to: str | None) -> list[dict]:
+    """Alle won PipeDrive-deals med service_activation_date i intervallet.
 
     Bruges til afstemningsfanen i Excel-rapporten, så PipeDrive-kilden kan holdes
     op imod Zuora-bevægelserne. Brandet udledes med samme classify() som
-    bevægelserne, så de to faner kan sammenlignes pr. brand. period = 'YYYY-MM';
-    None = alle datoer. Returnerer [] ved DB-fejl.
+    bevægelserne, så de to faner kan sammenlignes pr. brand. date_from/date_to =
+    ISO YYYY-MM-DD (inkl.); begge None = alle datoer. Returnerer [] ved DB-fejl.
     """
     from moduler.modul_admin_nysalg.brands import classify
     where = ["[status] = 'won'", "[service_activation_date] IS NOT NULL"]
     params: list = []
-    if period:
-        try:
-            y, m = period.split("-")
-            where.append("YEAR([service_activation_date]) = %s "
-                         "AND MONTH([service_activation_date]) = %s")
-            params.extend([int(y), int(m)])
-        except (ValueError, AttributeError):
-            pass
+    dclauses, dparams = _date_between(
+        "[service_activation_date]", date_from, date_to, cast_to_date=True)
+    where += dclauses
+    params += dparams
     sql = f"""
         SELECT [pd_deal_id], [org_id], [org_name], [sites],
                [value], [value_dkk], [currency],
@@ -662,6 +724,76 @@ def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
         return DISPLAY_ORDER.index(label) if label in DISPLAY_ORDER else len(DISPLAY_ORDER)
 
     return sorted(groups.values(), key=lambda x: (_order(x["brand"]), x["brand"]))
+
+
+# ── Måneds-opdeling ──────────────────────────────────────────────────────────
+
+def months_in_range(date_from: str | None, date_to: str | None) -> list[str]:
+    """Kalendermåneder ('YYYY-MM') fra date_from til date_to (inkl.). [] hvis ukendt."""
+    if not date_from or not date_to:
+        return []
+    try:
+        f = date.fromisoformat(date_from)
+        t = date.fromisoformat(date_to)
+    except ValueError:
+        return []
+    out: list[str] = []
+    y, m = f.year, f.month
+    while (y, m) <= (t.year, t.month):
+        out.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
+def _month_bounds(ym: str) -> tuple[str, str]:
+    """('YYYY-MM') -> (første dag, sidste dag) som ISO-strenge."""
+    y, m = int(ym[:4]), int(ym[5:7])
+    last = calendar.monthrange(y, m)[1]
+    return f"{y:04d}-{m:02d}-01", f"{y:04d}-{m:02d}-{last:02d}"
+
+
+def run_date_range(run: dict) -> tuple[str | None, str | None]:
+    """(date_from, date_to) for et run.
+
+    Bruger de nye period_from/period_to-kolonner. For gamle runs (NULL) falder den
+    tilbage til den ældre enkelt-måneds 'YYYY-MM'-periode, så historiske runs stadig
+    afgrænses korrekt på budget-/PipeDrive-queries.
+    """
+    df, dt = run.get("period_from"), run.get("period_to")
+    if df or dt:
+        return df, dt
+    period = (run.get("period") or "").strip()
+    if (len(period) == 7 and period[4] == "-"
+            and period[:4].isdigit() and period[5:].isdigit()):
+        return _month_bounds(period)
+    return None, None
+
+
+def brand_rows_by_month(matches: list[dict], date_from: str | None, date_to: str | None,
+                        comments: dict | None = None) -> dict[str, list[dict]]:
+    """{'YYYY-MM': [brand_rows]} pr. måned i intervallet.
+
+    Mangler datointervallet udledes månederne af bevægelsernes month_end. For hver
+    måned genberegnes brand-rækkerne (Zuora-matches + PipeDrive-only-rækker + budget)
+    med de eksisterende helpere, så summen pr. måned matcher den samlede visning.
+    """
+    comments = comments or {}
+    months = months_in_range(date_from, date_to)
+    if not months:
+        months = sorted({(m.get("month_end") or "")[:7]
+                         for m in matches if m.get("month_end")})
+    out: dict[str, list[dict]] = {}
+    for ym in months:
+        if not ym:
+            continue
+        m_from, m_to = _month_bounds(ym)
+        matches_m = [m for m in matches if (m.get("month_end") or "")[:7] == ym]
+        budgets_m = brand_budgets(m_from, m_to)
+        pd_rows = pipedrive_brand_rows(m_from, m_to, comments, budgets_m)
+        out[ym] = summarize_by_brand(matches_m, budgets_m, comments, extra_rows=pd_rows)
+    return out
 
 
 def effective_is_admin(match_row: dict) -> bool:

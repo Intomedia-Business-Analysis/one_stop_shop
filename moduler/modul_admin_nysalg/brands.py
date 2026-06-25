@@ -47,7 +47,12 @@ ALWAYS_SHOWN = ["Marketwire"]
 PIPEDRIVE_ROWS = [
     {"label": "Job",               "scope_col": "account", "scope_val": "jppol_advertising",    "pipelines": ["job"]},
     {"label": "Banner",            "scope_col": "account", "scope_val": "jppol_advertising",    "pipelines": ["banner"]},
-    {"label": "Norge advertising", "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["job", "banner"]},
+    {"label": "Norge advertising", "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["job", "banner"],
+     # Drill-down (kun review-siden): underrækker pr. site, delmængde af totalen.
+     "subrows": [
+         {"label": "M24",   "site": "Medier24 NO"},
+         {"label": "KOM24", "site": "Kom24 NO"},
+     ]},
     {"label": "Marketwire",        "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
 ]
 

@@ -27,6 +27,9 @@
 .v-table .muted{color:var(--ink-4)}
 .v-table .empty{text-align:center;padding:32px;color:var(--ink-4);font-style:italic}
 .v-table tr.excluded td{opacity:.45;text-decoration:line-through}
+.v-table tr.subrow td{background:var(--bg);font-size:11px;border-bottom:1px solid var(--border)}
+.v-table tr.subrow td:first-child{padding-left:30px;color:var(--ink-3)}
+.v-table tr.subrow .sub-caret{color:var(--ink-4);margin-right:6px}
 .bc{width:100%;min-width:220px;font-family:var(--font);font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;resize:vertical;min-height:34px;box-sizing:border-box}
 .bc:focus{outline:none;border-color:var(--green)}
 .toggle{font-size:11px;font-weight:700;border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:4px 9px;cursor:pointer}
@@ -41,6 +44,11 @@
 .toast.show{opacity:1}
 .lockmsg{background:var(--win-light);border:1px solid #BFE0CD;color:var(--win);border-radius:var(--r-sm);padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:16px}
 .tb-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none}
+.mtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.mtab{font-size:11px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--ink-2);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:var(--font)}
+.mtab.on{background:var(--green);border-color:var(--green);color:#fff}
+.mpanel{display:none}
+.mpanel.on{display:block}
 </style>
 </head>
 <body>
@@ -119,11 +127,69 @@
                   <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
                   <td><textarea class="bc" data-brand="{{ b.brand }}" {% if locked %}disabled{% endif %} placeholder="Kommentar til {{ b.brand }}…">{{ b.comment or "" }}</textarea></td>
                 </tr>
+                {% for s in b.subrows or [] %}
+                  {% set scur = 'kr.' if (s.currency or 'DKK') == 'DKK' else s.currency %}
+                  <tr class="subrow">
+                    <td><span class="sub-caret">↳</span>{{ s.brand }}</td>
+                    <td class="num">{{ "{:,.0f}".format(s.brutto)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num muted">{{ "{:,.0f}".format(s.adm_nysalg)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(s.opsigelser)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num muted">{{ "{:,.0f}".format(s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num" style="color:{{ 'var(--win)' if s.netto >= 0 else 'var(--danger)' }}">{{ "{:,.0f}".format(s.netto)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num muted">—</td>
+                    <td></td>
+                  </tr>
+                {% endfor %}
               {% endfor %}
             </tbody>
           </table>
           </div>
         </div>
+
+        <!-- Performance pr. brand pr. måned (vises kun ved interval over flere måneder) -->
+        {% if months_breakdown and months_breakdown|length > 1 %}
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Performance pr. brand pr. måned</span></div>
+          <div class="mtabs">
+            {% for blk in months_breakdown %}
+              <button class="mtab {% if loop.first %}on{% endif %}" data-mpanel="m{{ loop.index }}">{{ blk.label }}</button>
+            {% endfor %}
+          </div>
+          {% for blk in months_breakdown %}
+          <div class="mpanel {% if loop.first %}on{% endif %}" id="m{{ loop.index }}">
+            <div style="overflow-x:auto">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Brand</th>
+                  <th class="num">Bruttonysalg</th>
+                  <th class="num">− heraf adm. nysalg</th>
+                  <th class="num">Opsigelser</th>
+                  <th class="num">− heraf adm. opsigelser</th>
+                  <th class="num">Netto tilvækst</th>
+                  <th class="num">Budget</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for b in blk.rows %}
+                  {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
+                  <tr>
+                    <td style="font-weight:700">{{ b.brand }}</td>
+                    <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
 
         <!-- Administrative nysalg -->
         <div class="dash-card">
@@ -202,6 +268,15 @@ async function postJSON(url, body){
   if(!r.ok){ let d={}; try{d=await r.json()}catch(e){}; throw new Error(d.detail||('HTTP '+r.status)); }
   return r.json();
 }
+
+// Måneds-faner (per-måned performance)
+document.querySelectorAll('.mtab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.mpanel;
+    document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b === btn));
+    document.querySelectorAll('.mpanel').forEach(p => p.classList.toggle('on', p.id === id));
+  });
+});
 
 // Brand-kommentarer (gemmes ved blur)
 document.querySelectorAll('textarea.bc').forEach(ta => {

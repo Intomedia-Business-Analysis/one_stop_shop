@@ -30,9 +30,11 @@ class PipeDriveAdminSource(ABC):
     """Adapter-interface: hent administrative deals for en periode."""
 
     @abstractmethod
-    def fetch_admin_deals(self, period: Optional[str] = None) -> list[AdminDeal]:
-        """period = 'YYYY-MM' afgrænser til service_activation_date i den måned.
-        None = alle administrative deals.
+    def fetch_admin_deals(self, date_from: Optional[str] = None,
+                          date_to: Optional[str] = None) -> list[AdminDeal]:
+        """date_from/date_to = ISO YYYY-MM-DD afgrænser service_activation_date til
+        intervallet (inkl.). Tom/None i en ende = ubegrænset; begge None = alle
+        administrative deals.
         """
         raise NotImplementedError
 
@@ -40,20 +42,20 @@ class PipeDriveAdminSource(ABC):
 class SyncedDbAdminSource(PipeDriveAdminSource):
     """Default: læs administrative deals fra den synkede PipedriveDeals-tabel."""
 
-    def fetch_admin_deals(self, period: Optional[str] = None) -> list[AdminDeal]:
+    def fetch_admin_deals(self, date_from: Optional[str] = None,
+                          date_to: Optional[str] = None) -> list[AdminDeal]:
         where = [
             "LOWER(LTRIM(RTRIM(COALESCE([administrativ],'')))) = %s",
             "[service_activation_date] IS NOT NULL",
             "[org_id] IS NOT NULL",
         ]
         params: list = [ADMIN_FLAG_VALUE]
-        if period:
-            try:
-                y, m = period.split("-")
-                where.append("YEAR([service_activation_date]) = %s AND MONTH([service_activation_date]) = %s")
-                params.extend([int(y), int(m)])
-            except (ValueError, AttributeError):
-                logger.warning("Ugyldig periode %r — ignorerer periodefilter", period)
+        if date_from:
+            where.append("[service_activation_date] >= %s")
+            params.append(date_from)
+        if date_to:
+            where.append("CAST([service_activation_date] AS DATE) <= %s")
+            params.append(date_to)
 
         sql = f"""
             SELECT
