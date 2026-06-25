@@ -7,14 +7,20 @@ kan downloades.
 Adgang: visning/oprettelse kræver sales_operations+; godkendelse og rapport
 kræver management+ (direktør-niveau) — admin bypasser begge via rang.
 """
+import calendar
+import datetime as _dt
 import logging
 import os
+import threading
+import time
+import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import get_current_user, has_access
+from constants import MONTH_NAMES_DA
 from log_setup import audit_log
 from nav_utils import register_nav_globals
 from moduler.modul_admin_nysalg import extract_loader, report, repo
@@ -60,6 +66,61 @@ def _get_run_or_404(run_id: int) -> dict:
     return run
 
 
+def _parse_range(date_from: str, date_to: str) -> tuple[str | None, str | None, str | None]:
+    """Validér Fra/Til (ISO YYYY-MM-DD, begge valgfrie) → (from, to, label).
+
+    Zuora-bevægelser er stemplet på månedens sidste dag (EOMONTH), så perioden
+    snappes til HELE måneder: Fra → den 1. i måneden, Til → den sidste dag i
+    måneden. Ellers ville en dag-i-måneden-slutdato (fx 15. maj) udelukke hele
+    den måneds bevægelser (month_end = 31. maj). label er en månedsbaseret tekst
+    til run.period (None = hele udtrækket).
+    """
+    df = (date_from or "").strip() or None
+    dt = (date_to or "").strip() or None
+    parsed: dict[str, _dt.date] = {}
+    for key, v in (("df", df), ("dt", dt)):
+        if v:
+            try:
+                parsed[key] = _dt.date.fromisoformat(v)
+            except ValueError:
+                raise ExtractError(f"Ugyldig dato: {v!r} — brug formatet ÅÅÅÅ-MM-DD.")
+    if "df" in parsed and "dt" in parsed and parsed["df"] > parsed["dt"]:
+        raise ExtractError("Fra-dato skal være før eller lig med Til-dato.")
+    if "df" in parsed:
+        df = parsed["df"].replace(day=1).isoformat()
+    if "dt" in parsed:
+        d = parsed["dt"]
+        df_last = calendar.monthrange(d.year, d.month)[1]
+        dt = d.replace(day=df_last).isoformat()
+    # Månedsbaseret label (YYYY-MM), så det afspejler at perioden dækker hele måneder.
+    if df and dt:
+        fm, tm = df[:7], dt[:7]
+        label = fm if fm == tm else f"{fm} – {tm}"
+    elif df:
+        label = f"fra {df[:7]}"
+    elif dt:
+        label = f"til {dt[:7]}"
+    else:
+        label = None
+    return df, dt, label
+
+
+def _month_label(ym: str) -> str:
+    """'YYYY-MM' → 'Måned ÅÅÅÅ' (dansk), fallback til ym selv."""
+    try:
+        y, m = ym.split("-")
+        return f"{MONTH_NAMES_DA[int(m) - 1]} {y}"
+    except (ValueError, IndexError):
+        return ym
+
+
+def _months_breakdown(matches: list, date_from, date_to, comments: dict) -> list[dict]:
+    """[{ym, label, rows}] pr. måned i intervallet (til review + rapport)."""
+    by_month = repo.brand_rows_by_month(matches, date_from, date_to, comments)
+    return [{"ym": ym, "label": _month_label(ym), "rows": rows}
+            for ym, rows in by_month.items()]
+
+
 # ── Forside + nyt run ────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -93,64 +154,141 @@ async def new_run(request: Request, user=Depends(get_current_user)):
     })
 
 
+# ---------------------------------------------------------------------------
+# Matchning som baggrundsjob (med progress-bar)
+# ---------------------------------------------------------------------------
+# Matchning + indsættelse kan tage tid for store udtræk (én INSERT pr. bevægelses-
+# række). Vi kører det derfor i en daemon-tråd og lader frontend polle /run-status
+# for en progress-bar, i stedet for at blokere request-håndteringen. In-memory
+# store — status mistes ved server-genstart (acceptabelt; et evt. oprettet run
+# findes stadig i databasen).
+
+_RUN_JOBS: dict[str, dict] = {}
+_RUN_JOBS_LOCK = threading.Lock()
+_RUN_JOB_TTL_SEC = 1800   # behold færdige jobs i 30 min
+
+
+def _gc_old_run_jobs() -> None:
+    now = time.time()
+    with _RUN_JOBS_LOCK:
+        stale = [k for k, v in _RUN_JOBS.items()
+                 if v.get("status") in ("done", "error")
+                 and (now - (v.get("finished_at") or 0)) > _RUN_JOB_TTL_SEC]
+        for k in stale:
+            del _RUN_JOBS[k]
+
+
+def _set_job(job_id: str, **fields) -> None:
+    with _RUN_JOBS_LOCK:
+        job = _RUN_JOBS.get(job_id)
+        if job is not None:
+            job.update(fields)
+
+
+def _run_worker(job_id, user, file_bytes, filename, src_path, src_name,
+                date_from, date_to, period_label) -> None:
+    """Kører matchningen i baggrunden og opdaterer job-state løbende."""
+    try:
+        _set_job(job_id, phase="Indlæser udtræk…", percent=8)
+        if file_bytes is not None:
+            rows_all = extract_loader.load_extract(file_bytes=file_bytes, filename=filename)
+        else:
+            rows_all = extract_loader.load_extract(path=src_path)
+
+        rows = extract_loader.filter_range(rows_all, date_from, date_to)
+        if not rows:
+            _set_job(job_id, status="error", finished_at=time.time(),
+                     error=f"Ingen rækker i udtrækket for perioden {period_label or 'alle'}.")
+            return
+
+        _set_job(job_id, phase="Henter PipeDrive-deals…", percent=22)
+        source = get_default_source()
+        deals = source.fetch_admin_deals(date_from, date_to)
+
+        _set_job(job_id, phase="Matcher mod deals…", percent=38)
+        site_map = repo.load_site_map()
+        idx, dups = build_index(deals, site_map)
+        match_rows(rows, idx, dups, site_map)
+        # Brand-gruppér hver række (Watch/Finans/Monitor/Norge/SE/DE/Marketwire).
+        for r in rows:
+            r.brand = classify(r.site)
+
+        _set_job(job_id, phase="Gemmer resultat…", percent=45)
+        run_id = repo.create_run(user.get("name"), src_path, src_name, period_label,
+                                 date_from, date_to)
+
+        def _prog(i, n):
+            _set_job(job_id, percent=(45 + int(50 * i / n)) if n else 95)
+        repo.insert_matches(run_id, rows, progress_cb=_prog)
+        repo.update_status(run_id, "in_review")
+
+        audit_log("admin_nysalg_run", user=user, run_id=run_id,
+                  periode=period_label or "alle", raekker=len(rows), deals=len(deals))
+        _set_job(job_id, status="done", phase="Færdig", percent=100,
+                 run_id=run_id, finished_at=time.time())
+    except ExtractError as e:
+        _set_job(job_id, status="error", finished_at=time.time(), error=str(e))
+    except Exception:
+        logger.exception("admin-nysalg matchning fejlede (job=%s)", job_id)
+        _set_job(job_id, status="error", finished_at=time.time(),
+                 error="Matchningen fejlede — prøv igen eller kontakt support.")
+
+
 @router.post("/run")
 async def run_match(
     request: Request,
     file: UploadFile = File(None),
     source_path: str = Form(""),
-    period: str = Form(""),
+    period_from: str = Form(""),
+    period_to: str = Form(""),
     user=Depends(get_current_user),
 ):
+    """Start matchningen som baggrundsjob. Returnerer {job_id}; frontend poller
+    /run-status for progress og redirecter til review når jobbet er færdigt."""
     _require_view(user)
-    period = (period or "").strip() or None
-    src_path = None
-    src_name = None
+
+    # Validér interval + kildevalg synkront, så brugeren får øjeblikkelig fejl.
     try:
+        date_from, date_to, period_label = _parse_range(period_from, period_to)
+        file_bytes = filename = src_path = src_name = None
         if file is not None and file.filename:
-            data = await file.read()
-            rows_all = extract_loader.load_extract(file_bytes=data, filename=file.filename)
-            src_name = file.filename
+            file_bytes = await file.read()
+            filename = src_name = file.filename
         else:
             path = (source_path or "").strip() or _default_extract_path()
             if not path:
                 raise ExtractError("Vælg en fil at uploade, eller angiv en sti til udtrækket.")
-            rows_all = extract_loader.load_extract(path=path)
             src_path = path
             src_name = os.path.basename(path)
     except ExtractError as e:
-        return templates.TemplateResponse(request, "admin_nysalg_new.html", {
-            "user": user, "default_path": _default_extract_path(), "error": str(e),
-        }, status_code=400)
+        return JSONResponse({"error": str(e)}, status_code=400)
 
-    rows = extract_loader.filter_period(rows_all, period)
-    if not rows:
-        return templates.TemplateResponse(request, "admin_nysalg_new.html", {
-            "user": user, "default_path": _default_extract_path(),
-            "error": f"Ingen rækker i udtrækket for perioden {period}.",
-        }, status_code=400)
+    _gc_old_run_jobs()
+    job_id = uuid.uuid4().hex
+    with _RUN_JOBS_LOCK:
+        _RUN_JOBS[job_id] = {
+            "status": "running", "phase": "Starter…", "percent": 2,
+            "run_id": None, "error": None,
+            "started_at": time.time(), "finished_at": None,
+        }
+    threading.Thread(
+        target=_run_worker,
+        args=(job_id, user, file_bytes, filename, src_path, src_name,
+              date_from, date_to, period_label),
+        daemon=True,
+    ).start()
+    return JSONResponse({"job_id": job_id})
 
-    # Hent administrative deals og match KUN nysalgssiden (pos-fortegn).
-    try:
-        source = get_default_source()
-        deals = source.fetch_admin_deals(period)
-    except Exception:
-        logger.exception("Kunne ikke hente administrative deals")
-        raise HTTPException(500, "Kunne ikke hente administrative deals fra PipeDrive-kilden")
 
-    site_map = repo.load_site_map()
-    idx, dups = build_index(deals, site_map)
-    match_rows(rows, idx, dups, site_map)
-
-    # Brand-gruppér hver række (Watch/Finans/Monitor/Norge/SE/DE/Marketwire).
-    for r in rows:
-        r.brand = classify(r.site)
-
-    run_id = repo.create_run(user.get("name"), src_path, src_name, period)
-    repo.insert_matches(run_id, rows)
-    repo.update_status(run_id, "in_review")
-    audit_log("admin_nysalg_run", user=user, run_id=run_id, periode=period or "alle",
-              raekker=len(rows), deals=len(deals))
-    return RedirectResponse(f"/tools/admin-nysalg/{run_id}/review", status_code=302)
+@router.get("/run-status")
+async def run_status(job_id: str, user=Depends(get_current_user)):
+    """Status for et igangværende eller netop færdigt matchnings-job."""
+    _require_view(user)
+    with _RUN_JOBS_LOCK:
+        job = _RUN_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(404, "Ukendt job (eller udløbet)")
+        return JSONResponse(dict(job))
 
 
 # ── Review ───────────────────────────────────────────────────────────────────
@@ -161,16 +299,19 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     run = _get_run_or_404(run_id)
     matches = repo.get_matches(run_id)
     summary = repo.summarize(matches)
-    budgets = repo.brand_budgets(run.get("period"))
+    date_from, date_to = repo.run_date_range(run)
+    budgets = repo.brand_budgets(date_from, date_to)
     brand_comments = repo.get_brand_comments(run_id)
-    pd_rows = repo.pipedrive_brand_rows(run.get("period"), brand_comments, budgets)
+    pd_rows = repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets)
     brand_rows = repo.summarize_by_brand(matches, budgets, brand_comments, extra_rows=pd_rows)
+    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
     admin_rows = [m for m in matches if repo.effective_is_admin(m)]
     return templates.TemplateResponse(request, "admin_nysalg_review.html", {
         "user": user,
         "run": run,
         "summary": summary,
         "brand_rows": brand_rows,
+        "months_breakdown": months_breakdown,
         "admin_rows": admin_rows,
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
         "locked": run.get("status") in ("approved", "reported"),
@@ -245,17 +386,21 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
     matches = repo.get_matches(run_id)
     summary = repo.summarize(matches)
     brand_comments = repo.get_brand_comments(run_id)
-    budgets = repo.brand_budgets(run.get("period"))
+    date_from, date_to = repo.run_date_range(run)
+    budgets = repo.brand_budgets(date_from, date_to)
     brand_rows = repo.summarize_by_brand(
         matches, budgets, brand_comments,
-        extra_rows=repo.pipedrive_brand_rows(run.get("period"), brand_comments, budgets))
-    pd_deals = repo.period_pipedrive_deals(run.get("period"))
+        extra_rows=repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets))
+    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
+    pd_deals = repo.period_pipedrive_deals(date_from, date_to)
     org_names = repo.pipedrive_org_names()
     try:
         xlsx_path = report.generate_excel(run, matches, summary, brand_rows,
-                                          pd_deals=pd_deals, org_names=org_names)
+                                          pd_deals=pd_deals, org_names=org_names,
+                                          months_breakdown=months_breakdown)
         try:
-            report.generate_pdf(run, matches, summary, brand_rows)
+            report.generate_pdf(run, matches, summary, brand_rows,
+                                 months_breakdown=months_breakdown)
         except Exception:
             logger.exception("PDF-generering fejlede (run %s) — Excel blev gemt", run_id)
     except Exception:

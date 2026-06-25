@@ -41,7 +41,12 @@ def report_dir() -> str:
 
 
 def _base_filename(run: dict) -> str:
-    period = (run.get("period") or "alle").replace("/", "-")
+    pf = (run.get("period_from") or "").strip()
+    pt = (run.get("period_to") or "").strip()
+    if pf or pt:
+        period = f"{pf or 'start'}_{pt or 'slut'}"
+    else:
+        period = (run.get("period") or "alle").replace("/", "-")
     return f"monthly-performance-report-{run['run_id']}-{period}"
 
 
@@ -64,7 +69,8 @@ def _autosize(ws, widths):
 def generate_excel(run: dict, matches: list[dict], summary: dict,
                    brand_rows: list[dict] | None = None, out_dir: str | None = None,
                    pd_deals: list[dict] | None = None,
-                   org_names: dict | None = None) -> str:
+                   org_names: dict | None = None,
+                   months_breakdown: list[dict] | None = None) -> str:
     out_dir = out_dir or report_dir()
     org_names = org_names or {}
     wb = Workbook()
@@ -190,6 +196,7 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
             for c in cells:
                 c.number_format = "#,##0"
     _autosize(ws4, [16, 26, 26, 9, 14, 11, 12, 8, 14, 14, 14, 11, 12])
+    ws4.auto_filter.ref = ws4.dimensions   # filtrerbar Zuora-tabel
 
     # ── Ark 4: PipeDrive-deals (måned) ────────────────────────────────────────
     # Alle won-deals med service_activation_date i perioden — PipeDrive-kilden,
@@ -210,6 +217,28 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
         for c in cells:
             c.number_format = "#,##0"
     _autosize(ws5, [16, 26, 26, 9, 18, 22, 16, 8, 12, 16, 8, 14])
+    ws5.auto_filter.ref = ws5.dimensions   # filtrerbar PipeDrive-tabel
+
+    # ── Ark: Performance pr. måned ────────────────────────────────────────────
+    # Én række pr. (måned, brand) — så perioden kan brydes ned på de enkelte
+    # måneder. Summen pr. brand over alle måneder matcher "Summary"-arket.
+    if months_breakdown:
+        ws6 = wb.create_sheet("Pr. måned")
+        mcols2 = ["Måned", "Brand", "Bruttonysalg", "− adm. nysalg", "Opsigelser",
+                  "− adm. opsigelser", "Netto tilvækst", "Budget"]
+        ws6.append(mcols2)
+        _style_header(ws6, 1, len(mcols2))
+        for blk in months_breakdown:
+            for b in blk.get("rows", []):
+                cf = _num_fmt(b.get("currency"))   # salgstal i lokal valuta (NO/SE)
+                ws6.append([blk["label"], b["brand"], b["brutto"], b["adm_nysalg"],
+                            b["opsigelser"], b["adm_opsigelser"], b["netto"], b["budget"]])
+                row = ws6.max_row
+                for col in (3, 4, 5, 6, 7):
+                    ws6.cell(row=row, column=col).number_format = cf
+                ws6.cell(row=row, column=8).number_format = _DKK   # budget altid DKK
+        ws6.auto_filter.ref = ws6.dimensions
+        _autosize(ws6, [16, 20, 16, 16, 16, 18, 16, 16])
 
     path = os.path.join(out_dir, _base_filename(run) + ".xlsx")
     wb.save(path)
@@ -219,7 +248,8 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
 # ── PDF ──────────────────────────────────────────────────────────────────────
 
 def generate_pdf(run: dict, matches: list[dict], summary: dict,
-                 brand_rows: list[dict] | None = None, out_dir: str | None = None) -> str:
+                 brand_rows: list[dict] | None = None, out_dir: str | None = None,
+                 months_breakdown: list[dict] | None = None) -> str:
     out_dir = out_dir or report_dir()
     try:
         from reportlab.lib import colors
@@ -378,6 +408,40 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         el.append(t)
         el.append(Spacer(1, 8 * mm))
 
+    # ── Netto tilvækst pr. måned ───────────────────────────────────────────────
+    # Bryder perioden ned på de enkelte måneder. Beløbene summeres på tværs af
+    # brands (samme forenkling som topkortene); NO/SE-detaljer ses i Excel.
+    if months_breakdown and len(months_breakdown) > 1:
+        el.append(Paragraph("Netto tilvækst pr. måned", s_h))
+        mhead = ["Måned", "Bruttonysalg", "Opsigelser", "Netto tilvækst"]
+        mdata = [[Paragraph(h, s_hd) for h in mhead]]
+        msigns = []
+        for blk in months_breakdown:
+            rows = blk.get("rows", [])
+            brutto = sum((b["brutto"] - b["adm_nysalg"]) for b in rows)
+            ops = sum((b["opsigelser"] - b["adm_opsigelser"]) for b in rows)
+            netto = sum(b["netto"] for b in rows)
+            msigns.append(netto >= 0)
+            mdata.append([Paragraph(blk["label"], s_cellb), kr(brutto), kr(ops), kr(netto)])
+        mt = Table(mdata, colWidths=[44 * mm, 45 * mm, 45 * mm, 44 * mm], repeatRows=1)
+        mstyle = [
+            ("BACKGROUND", (0, 0), (-1, 0), DARK),
+            ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+            ("FONTNAME", (1, 1), (-1, -1), "Helvetica"), ("FONTSIZE", (1, 1), (-1, -1), 8),
+            ("TEXTCOLOR", (1, 1), (-1, -1), INK), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.4, BORDER),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 1), (-1, -1), 6), ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+        ]
+        for i, pos in enumerate(msigns, start=1):
+            mstyle.append(("TEXTCOLOR", (3, i), (3, i), WIN if pos else RED))
+            mstyle.append(("FONTNAME", (3, i), (3, i), "Helvetica-Bold"))
+        mt.setStyle(TableStyle(mstyle))
+        el.append(mt)
+        el.append(Spacer(1, 8 * mm))
+
     # ── Kommentarer pr. brand ──────────────────────────────────────────────────
     brand_comments = [b for b in (brand_rows or []) if (b.get("comment") or "").strip()]
     if brand_comments:
@@ -407,8 +471,11 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
 def generate_report(run: dict, matches: list[dict], summary: dict,
                     brand_rows: list[dict] | None = None, fmt: str = "xlsx",
                     out_dir: str | None = None, pd_deals: list[dict] | None = None,
-                    org_names: dict | None = None) -> str:
+                    org_names: dict | None = None,
+                    months_breakdown: list[dict] | None = None) -> str:
     """fmt: 'xlsx' | 'pdf'. Returnerer stien til den genererede fil."""
     if fmt == "pdf":
-        return generate_pdf(run, matches, summary, brand_rows, out_dir)
-    return generate_excel(run, matches, summary, brand_rows, out_dir, pd_deals, org_names)
+        return generate_pdf(run, matches, summary, brand_rows, out_dir,
+                            months_breakdown=months_breakdown)
+    return generate_excel(run, matches, summary, brand_rows, out_dir, pd_deals, org_names,
+                          months_breakdown=months_breakdown)

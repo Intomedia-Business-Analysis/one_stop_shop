@@ -153,3 +153,17 @@ def filter_period(rows: list[ExtractRow], period: Optional[str]) -> list[Extract
     if not period:
         return list(rows)
     return [r for r in rows if r.month_end[:7] == period]
+
+
+def filter_range(rows: list[ExtractRow], date_from: Optional[str],
+                 date_to: Optional[str]) -> list[ExtractRow]:
+    """Afgræns til et datointerval ['date_from'; 'date_to'] (ISO YYYY-MM-DD, inkl.).
+
+    En bevægelsesrække medtages hvis dens month_end falder i intervallet. Tom/None
+    i hver ende = ubegrænset i den retning; begge tomme => alle rækker.
+    """
+    if not date_from and not date_to:
+        return list(rows)
+    lo = date_from or ""
+    hi = date_to or "9999-12-31"
+    return [r for r in rows if r.month_end and lo <= r.month_end <= hi]
