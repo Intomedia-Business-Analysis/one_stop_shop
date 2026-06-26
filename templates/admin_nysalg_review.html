@@ -81,7 +81,7 @@
         <!-- Topkort -->
         <div class="kpi-row">
           <div class="kpi-card">
-            <div class="kpi-label">Bruttonysalg (total)</div>
+            <div class="kpi-label">Bruttosalg (total)</div>
             <div class="kpi-value">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
             <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }} kr.</div>
           </div>
@@ -105,38 +105,54 @@
             <thead>
               <tr>
                 <th>Brand</th>
-                <th class="num">Bruttonysalg</th>
-                <th class="num">− heraf adm. nysalg</th>
+                <th class="num">Bruttosalg</th>
+                <th class="num">− heraf adm. salg</th>
+                <th class="num">Bruttosalg ekskl. adm</th>
                 <th class="num">Opsigelser</th>
                 <th class="num">− heraf adm. opsigelser</th>
+                <th class="num">Bruttoopsigelser ekskl. adm</th>
                 <th class="num">Netto tilvækst</th>
                 <th class="num">Budget</th>
                 <th>Kommentar</th>
+                <th>I rapport</th>
               </tr>
             </thead>
             <tbody>
               {% for b in brand_rows %}
                 {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
-                <tr>
+                {% set is_hidden = b.brand in hidden_brands %}
+                <tr class="{% if is_hidden %}excluded{% endif %}">
                   <td style="font-weight:700">{{ b.brand }}</td>
                   <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num">{{ "{:,.0f}".format(b.brutto - b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
                   <td><textarea class="bc" data-brand="{{ b.brand }}" {% if locked %}disabled{% endif %} placeholder="Kommentar til {{ b.brand }}…">{{ b.comment or "" }}</textarea></td>
+                  <td>
+                    <button class="brand-toggle toggle {% if is_hidden %}on{% endif %}"
+                            data-brand="{{ b.brand }}" data-hidden="{{ '1' if is_hidden else '0' }}"
+                            {% if locked %}disabled{% endif %}>
+                      {{ "Skjult" if is_hidden else "Med" }}
+                    </button>
+                  </td>
                 </tr>
                 {% for s in b.subrows or [] %}
                   {% set scur = 'kr.' if (s.currency or 'DKK') == 'DKK' else s.currency %}
-                  <tr class="subrow">
+                  <tr class="subrow {% if is_hidden %}excluded{% endif %}">
                     <td><span class="sub-caret">↳</span>{{ s.brand }}</td>
                     <td class="num">{{ "{:,.0f}".format(s.brutto)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num muted">{{ "{:,.0f}".format(s.adm_nysalg)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(s.brutto - s.adm_nysalg)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num">{{ "{:,.0f}".format(s.opsigelser)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num muted">{{ "{:,.0f}".format(s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(s.opsigelser - s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num" style="color:{{ 'var(--win)' if s.netto >= 0 else 'var(--danger)' }}">{{ "{:,.0f}".format(s.netto)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num muted">—</td>
+                    <td></td>
                     <td></td>
                   </tr>
                 {% endfor %}
@@ -162,10 +178,12 @@
               <thead>
                 <tr>
                   <th>Brand</th>
-                  <th class="num">Bruttonysalg</th>
-                  <th class="num">− heraf adm. nysalg</th>
+                  <th class="num">Bruttosalg</th>
+                  <th class="num">− heraf adm. salg</th>
+                  <th class="num">Bruttosalg ekskl. adm</th>
                   <th class="num">Opsigelser</th>
                   <th class="num">− heraf adm. opsigelser</th>
+                  <th class="num">Bruttoopsigelser ekskl. adm</th>
                   <th class="num">Netto tilvækst</th>
                   <th class="num">Budget</th>
                 </tr>
@@ -177,8 +195,10 @@
                     <td style="font-weight:700">{{ b.brand }}</td>
                     <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
                     <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(b.brutto - b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
                     <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
                     <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                    <td class="num">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
                     <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
                     <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
                   </tr>
@@ -294,6 +314,18 @@ document.querySelectorAll('button.toggle').forEach(btn => {
       await postJSON(`/tools/admin-nysalg/${RUN}/override`, {match_id:Number(btn.dataset.match), override: next==='exclude'?'exclude':null});
       // Brand-totaler og netto tilvækst genberegnes server-side → genindlæs.
       toast('Opdateret'); setTimeout(()=>location.reload(), 350);
+    } catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Klik brand til/fra rapporten (skjuler i tabel, måneds-opdeling og top-tal)
+document.querySelectorAll('button.brand-toggle').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const next = btn.dataset.hidden !== '1';   // skjul hvis pt. vist
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/brand-visibility`, {brand: btn.dataset.brand, hidden: next});
+      // Top-tal og måneds-opdeling genberegnes server-side → genindlæs.
+      toast(next ? 'Brand skjult' : 'Brand vist'); setTimeout(()=>location.reload(), 350);
     } catch(e){ toast('Fejl: '+e.message); }
   });
 });

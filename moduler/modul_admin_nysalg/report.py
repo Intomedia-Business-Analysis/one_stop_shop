@@ -96,8 +96,8 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
         r += 1
 
     totals = [
-        ("Bruttonysalg (total)", summary["brutto"], False),
-        ("  − heraf administrativt nysalg", -summary["adm_nysalg"], False),
+        ("Bruttosalg (total)", summary["brutto"], False),
+        ("  − heraf administrativt salg", -summary["adm_nysalg"], False),
         ("Opsigelser (total)", -summary["opsigelser"], False),
         ("  + heraf administrative opsigelser", summary["adm_opsigelser"], False),
         ("Netto tilvækst", summary["netto_tilvaekst"], True),
@@ -111,27 +111,41 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
             c1.font = Font(bold=True)
             c2.font = Font(bold=True)
 
-    # Pr. brand: totaler, administrative fradrag, netto tilvækst, budget, kommentar
+    # Pr. brand: totaler, administrative fradrag, salg/opsig. ekskl. adm.,
+    # netto tilvækst, budget, kommentar. Norge advertising vises med underrækker
+    # (M24/KOM24) som på review-siden — delmængde af totalen.
     r += 2
     head_row = r
-    bcols = ["Brand", "Bruttonysalg", "− heraf adm. nysalg", "Opsigelser",
-             "− heraf adm. opsigelser", "Netto tilvækst", "Budget", "Kommentar"]
+    bcols = ["Brand", "Bruttosalg", "− heraf adm. salg", "Bruttosalg ekskl. adm",
+             "Opsigelser", "− heraf adm. opsigelser", "Bruttoopsigelser ekskl. adm",
+             "Netto tilvækst", "Budget", "Kommentar"]
     for i, h in enumerate(bcols, start=1):
         ws.cell(row=head_row, column=i, value=h)
     _style_header(ws, head_row, len(bcols))
     r += 1
-    for b in (brand_rows or []):
+
+    def _brand_row(b, indent=False):
+        nonlocal r
         cf = _num_fmt(b.get("currency"))   # salgstal i lokal valuta (NO/SE)
-        ws.cell(row=r, column=1, value=b["brand"])
+        name = ("    ↳ " + b["brand"]) if indent else b["brand"]
+        ws.cell(row=r, column=1, value=name)
         ws.cell(row=r, column=2, value=b["brutto"]).number_format = cf
         ws.cell(row=r, column=3, value=b["adm_nysalg"]).number_format = cf
-        ws.cell(row=r, column=4, value=b["opsigelser"]).number_format = cf
-        ws.cell(row=r, column=5, value=b["adm_opsigelser"]).number_format = cf
-        ws.cell(row=r, column=6, value=b["netto"]).number_format = cf
-        ws.cell(row=r, column=7, value=b["budget"]).number_format = _DKK   # budget altid DKK
-        ws.cell(row=r, column=8, value=b.get("comment") or "")
+        ws.cell(row=r, column=4, value=round(b["brutto"] - b["adm_nysalg"], 2)).number_format = cf
+        ws.cell(row=r, column=5, value=b["opsigelser"]).number_format = cf
+        ws.cell(row=r, column=6, value=b["adm_opsigelser"]).number_format = cf
+        ws.cell(row=r, column=7, value=round(b["opsigelser"] - b["adm_opsigelser"], 2)).number_format = cf
+        ws.cell(row=r, column=8, value=b["netto"]).number_format = cf
+        if b.get("budget") is not None:
+            ws.cell(row=r, column=9, value=b["budget"]).number_format = _DKK   # budget altid DKK
+        ws.cell(row=r, column=10, value=b.get("comment") or "")
         r += 1
-    _autosize(ws, [20, 16, 18, 16, 20, 16, 16, 45])
+
+    for b in (brand_rows or []):
+        _brand_row(b)
+        for s in b.get("subrows") or []:
+            _brand_row(s, indent=True)
+    _autosize(ws, [22, 15, 18, 20, 15, 20, 24, 16, 14, 40])
 
     # Samlede kommentar
     r += 1
@@ -224,21 +238,25 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
     # måneder. Summen pr. brand over alle måneder matcher "Summary"-arket.
     if months_breakdown:
         ws6 = wb.create_sheet("Pr. måned")
-        mcols2 = ["Måned", "Brand", "Bruttonysalg", "− adm. nysalg", "Opsigelser",
-                  "− adm. opsigelser", "Netto tilvækst", "Budget"]
+        mcols2 = ["Måned", "Brand", "Bruttosalg", "− adm. salg", "Bruttosalg ekskl. adm",
+                  "Opsigelser", "− adm. opsigelser", "Bruttoopsigelser ekskl. adm",
+                  "Netto tilvækst", "Budget"]
         ws6.append(mcols2)
         _style_header(ws6, 1, len(mcols2))
         for blk in months_breakdown:
             for b in blk.get("rows", []):
                 cf = _num_fmt(b.get("currency"))   # salgstal i lokal valuta (NO/SE)
                 ws6.append([blk["label"], b["brand"], b["brutto"], b["adm_nysalg"],
-                            b["opsigelser"], b["adm_opsigelser"], b["netto"], b["budget"]])
+                            round(b["brutto"] - b["adm_nysalg"], 2),
+                            b["opsigelser"], b["adm_opsigelser"],
+                            round(b["opsigelser"] - b["adm_opsigelser"], 2),
+                            b["netto"], b["budget"]])
                 row = ws6.max_row
-                for col in (3, 4, 5, 6, 7):
+                for col in (3, 4, 5, 6, 7, 8, 9):
                     ws6.cell(row=row, column=col).number_format = cf
-                ws6.cell(row=row, column=8).number_format = _DKK   # budget altid DKK
+                ws6.cell(row=row, column=10).number_format = _DKK   # budget altid DKK
         ws6.auto_filter.ref = ws6.dimensions
-        _autosize(ws6, [16, 20, 16, 16, 16, 18, 16, 16])
+        _autosize(ws6, [16, 20, 15, 16, 20, 15, 18, 24, 16, 16])
 
     path = os.path.join(out_dir, _base_filename(run) + ".xlsx")
     wb.save(path)
@@ -349,7 +367,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                 Paragraph(value, ParagraphStyle("kvx", parent=s_kpi_val, textColor=color)),
                 Paragraph(sub, s_kpi_sub)]
     kpis = Table([[
-        kpi_cell("BRUTTONYSALG (TOTAL)", kr(summary["brutto"]),
+        kpi_cell("BRUTTOSALG (TOTAL)", kr(summary["brutto"]),
                  f"heraf adm.: {kr(summary['adm_nysalg'])}", INK),
         kpi_cell("OPSIGELSER (TOTAL)", kr(summary["opsigelser"]),
                  f"heraf adm.: {kr(summary['adm_opsigelser'])}", RED),
@@ -370,8 +388,8 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
 
     # ── Performance pr. brand ──────────────────────────────────────────────────
     el.append(Paragraph("Performance pr. brand", s_h))
-    head = ["Brand", "Bruttonysalg", "− adm. nysalg", "Opsigelser",
-            "− adm. opsig.", "Netto tilvækst", "Budget"]
+    head = ["Brand", "Bruttosalg", "− adm. salg", "Bruttosalg ekskl. adm", "Opsigelser",
+            "− adm. opsig.", "Bruttoopsig. ekskl. adm", "Netto tilvækst", "Budget"]
     brand_data = [[Paragraph(h, s_hd) for h in head]]
     netto_signs = []
     for b in (brand_rows or []):
@@ -379,31 +397,33 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         c = b.get("currency") or "DKK"   # salgstal i lokal valuta (NO/SE), budget i DKK
         brand_data.append([
             Paragraph(b["brand"], s_cellb), money(b["brutto"], c),
-            money(b["adm_nysalg"], c), money(b["opsigelser"], c), money(b["adm_opsigelser"], c),
+            money(b["adm_nysalg"], c), money(b["brutto"] - b["adm_nysalg"], c),
+            money(b["opsigelser"], c), money(b["adm_opsigelser"], c),
+            money(b["opsigelser"] - b["adm_opsigelser"], c),
             money(b["netto"], c), kr(b["budget"]),
         ])
     if len(brand_data) > 1:
-        t = Table(brand_data, colWidths=[30 * mm, 26 * mm, 23 * mm, 23 * mm,
-                                         23 * mm, 26 * mm, 27 * mm], repeatRows=1)
+        t = Table(brand_data, colWidths=[24 * mm, 19 * mm, 18 * mm, 19 * mm, 18 * mm,
+                                         18 * mm, 19 * mm, 22 * mm, 21 * mm], repeatRows=1)
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), DARK),
             ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
             ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (1, 1), (-1, -1), 8),
+            ("FONTSIZE", (1, 1), (-1, -1), 7),
             ("TEXTCOLOR", (1, 1), (-1, -1), INK),
             ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
             ("LINEBELOW", (0, 1), (-1, -1), 0.4, BORDER),
-            ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
             ("TOPPADDING", (0, 1), (-1, -1), 6), ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
             # muted adm.-kolonner
-            ("TEXTCOLOR", (2, 1), (2, -1), MUTED), ("TEXTCOLOR", (4, 1), (4, -1), MUTED),
+            ("TEXTCOLOR", (2, 1), (2, -1), MUTED), ("TEXTCOLOR", (5, 1), (5, -1), MUTED),
         ]
         for i, pos in enumerate(netto_signs, start=1):
-            style.append(("TEXTCOLOR", (5, i), (5, i), WIN if pos else RED))
-            style.append(("FONTNAME", (5, i), (5, i), "Helvetica-Bold"))
-            style.append(("TEXTCOLOR", (6, i), (6, i), MUTED))
+            style.append(("TEXTCOLOR", (7, i), (7, i), WIN if pos else RED))
+            style.append(("FONTNAME", (7, i), (7, i), "Helvetica-Bold"))
+            style.append(("TEXTCOLOR", (8, i), (8, i), MUTED))
         t.setStyle(TableStyle(style))
         el.append(t)
         el.append(Spacer(1, 8 * mm))
@@ -413,7 +433,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     # brands (samme forenkling som topkortene); NO/SE-detaljer ses i Excel.
     if months_breakdown and len(months_breakdown) > 1:
         el.append(Paragraph("Netto tilvækst pr. måned", s_h))
-        mhead = ["Måned", "Bruttonysalg", "Opsigelser", "Netto tilvækst"]
+        mhead = ["Måned", "Bruttosalg", "Opsigelser", "Netto tilvækst"]
         mdata = [[Paragraph(h, s_hd) for h in mhead]]
         msigns = []
         for blk in months_breakdown:

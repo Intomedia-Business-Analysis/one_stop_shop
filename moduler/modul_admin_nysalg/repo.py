@@ -118,6 +118,15 @@ INIT_STMTS = [
            updated_at  DATETIME       DEFAULT GETDATE(),
            CONSTRAINT UQ_admin_nysalg_brand_comment UNIQUE (run_id, brand)
        )""",
+    # Skjulte brands pr. run — direktøren kan klikke et brand helt ud af rapporten
+    # (fjernes fra brand-tabel, måneds-opdeling OG top-tallene).
+    """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_hidden' AND xtype='U')
+       CREATE TABLE admin_nysalg_brand_hidden (
+           id          INT IDENTITY(1,1) PRIMARY KEY,
+           run_id      INT            NOT NULL,
+           brand       NVARCHAR(50)   NOT NULL,
+           CONSTRAINT UQ_admin_nysalg_brand_hidden UNIQUE (run_id, brand)
+       )""",
     # Site-mapping for de få afvigelser mellem Zuora og PipeDrive (kan udvides
     # uden kodeændring). Tom tabel => 1:1-matchning.
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_site_map' AND xtype='U')
@@ -256,6 +265,7 @@ def delete_run(run_id: int) -> bool:
     cur = conn.cursor()
     cur.execute("DELETE FROM admin_nysalg_match WHERE run_id = %s", (run_id,))
     cur.execute("DELETE FROM admin_nysalg_brand_comment WHERE run_id = %s", (run_id,))
+    cur.execute("DELETE FROM admin_nysalg_brand_hidden WHERE run_id = %s", (run_id,))
     cur.execute("DELETE FROM admin_nysalg_run WHERE run_id = %s", (run_id,))
     conn.commit()
     conn.close()
@@ -379,6 +389,38 @@ def set_brand_comment(run_id: int, brand: str, comment: str) -> None:
         "INSERT INTO admin_nysalg_brand_comment (run_id, brand, comment) VALUES (%s, %s, %s)",
         (run_id, brand, comment),
     )
+    conn.commit()
+    conn.close()
+
+
+# ── Skjulte brands pr. run ───────────────────────────────────────────────────
+
+def get_hidden_brands(run_id: int) -> set:
+    """{brand} der er klikket helt ud af rapporten for et run."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("SELECT brand FROM admin_nysalg_brand_hidden WHERE run_id = %s", (run_id,))
+        rows = cur.fetchall() or []
+        conn.close()
+        return {r["brand"] for r in rows}
+    except Exception:
+        return set()
+
+
+def set_brand_hidden(run_id: int, brand: str, hidden: bool) -> None:
+    """Skjul/vis ét brand på et run (upsert ved skjul, slet ved vis)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM admin_nysalg_brand_hidden WHERE run_id = %s AND brand = %s",
+        (run_id, brand),
+    )
+    if hidden:
+        cur.execute(
+            "INSERT INTO admin_nysalg_brand_hidden (run_id, brand) VALUES (%s, %s)",
+            (run_id, brand),
+        )
     conn.commit()
     conn.close()
 
