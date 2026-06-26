@@ -121,6 +121,30 @@ def _months_breakdown(matches: list, date_from, date_to, comments: dict) -> list
             for ym, rows in by_month.items()]
 
 
+def _match_brand(m: dict) -> str:
+    """Brand-label for en Zuora-match-række (samme logik som summarize_by_brand)."""
+    from moduler.modul_admin_nysalg.brands import classify
+    return m.get("brand") or classify(m.get("site"))
+
+
+def _apply_hidden(matches: list, brand_rows: list, months_breakdown: list,
+                  hidden: set) -> tuple[dict, list, list]:
+    """Fjern skjulte brands fra rapporten: brand-tabel, måneds-opdeling OG top-tal.
+
+    Returnerer (summary, brand_rows, months_breakdown) hvor skjulte brands er
+    pillet ud overalt. Topkort-tallene genberegnes fra de tilbageværende Zuora-
+    matches (PipeDrive-only-brands indgår alligevel ikke i topkortene).
+    """
+    if hidden:
+        matches = [m for m in matches if _match_brand(m) not in hidden]
+        brand_rows = [b for b in brand_rows if b["brand"] not in hidden]
+        months_breakdown = [
+            {**blk, "rows": [b for b in blk.get("rows", []) if b["brand"] not in hidden]}
+            for blk in months_breakdown
+        ]
+    return repo.summarize(matches), brand_rows, months_breakdown
+
+
 # ── Forside + nyt run ────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -298,7 +322,6 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     _require_view(user)
     run = _get_run_or_404(run_id)
     matches = repo.get_matches(run_id)
-    summary = repo.summarize(matches)
     date_from, date_to = repo.run_date_range(run)
     budgets = repo.brand_budgets(date_from, date_to)
     brand_comments = repo.get_brand_comments(run_id)
@@ -306,11 +329,16 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     brand_rows = repo.summarize_by_brand(matches, budgets, brand_comments, extra_rows=pd_rows)
     months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
     admin_rows = [m for m in matches if repo.effective_is_admin(m)]
+    # Brand-tabellen viser ALLE brands (også skjulte, så de kan klikkes tilbage),
+    # men topkort + måneds-opdeling afspejler skjulningen.
+    hidden = repo.get_hidden_brands(run_id)
+    summary, _, months_breakdown = _apply_hidden(matches, brand_rows, months_breakdown, hidden)
     return templates.TemplateResponse(request, "admin_nysalg_review.html", {
         "user": user,
         "run": run,
         "summary": summary,
         "brand_rows": brand_rows,
+        "hidden_brands": sorted(hidden),
         "months_breakdown": months_breakdown,
         "admin_rows": admin_rows,
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
@@ -359,6 +387,22 @@ async def set_override(run_id: int, request: Request, user=Depends(get_current_u
     return JSONResponse({"ok": True, "summary": summary})
 
 
+@router.post("/{run_id}/brand-visibility")
+async def brand_visibility(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Klik et brand til/fra rapporten. Skjulte brands fjernes fra brand-tabel,
+    måneds-opdeling og top-tallene (både i review og den genererede rapport)."""
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    if run.get("status") in ("approved", "reported"):
+        raise HTTPException(409, "Run er låst — brands kan ikke skjules")
+    body = await request.json()
+    brand = (body.get("brand") or "").strip()
+    if not brand:
+        raise HTTPException(400, "brand påkrævet")
+    repo.set_brand_hidden(run_id, brand, bool(body.get("hidden")))
+    return JSONResponse({"ok": True})
+
+
 @router.post("/{run_id}/approve")
 async def approve(run_id: int, request: Request, user=Depends(get_current_user)):
     _require_approve(user)
@@ -384,7 +428,6 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
     if run.get("status") not in ("approved", "reported"):
         raise HTTPException(409, "Run skal godkendes før rapporten kan genereres")
     matches = repo.get_matches(run_id)
-    summary = repo.summarize(matches)
     brand_comments = repo.get_brand_comments(run_id)
     date_from, date_to = repo.run_date_range(run)
     budgets = repo.brand_budgets(date_from, date_to)
@@ -392,6 +435,10 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
         matches, budgets, brand_comments,
         extra_rows=repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets))
     months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
+    # Skjulte brands pilles helt ud af rapporten (tabel, måneds-opdeling, top-tal).
+    hidden = repo.get_hidden_brands(run_id)
+    summary, brand_rows, months_breakdown = _apply_hidden(
+        matches, brand_rows, months_breakdown, hidden)
     pd_deals = repo.period_pipedrive_deals(date_from, date_to)
     org_names = repo.pipedrive_org_names()
     try:

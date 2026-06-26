@@ -56,7 +56,7 @@
 
         {% if error %}<div class="err">⚠ {{ error }}</div>{% endif %}
 
-        <form class="dash-card" method="post" action="/tools/admin-nysalg/run" enctype="multipart/form-data">
+        <form id="run-form" class="dash-card" method="post" action="/tools/admin-nysalg/run" enctype="multipart/form-data">
           <div class="fld">
             <label>Periode (valgfri)</label>
             <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -131,7 +131,7 @@
 
 // ── Matchning som baggrundsjob med progress-bar ───────────────────────────────
 (function(){
-  const form     = document.querySelector('form');
+  const form     = document.getElementById('run-form');
   const btn      = document.getElementById('run-btn');
   const area     = document.getElementById('progress-area');
   const fill     = document.getElementById('progress-fill');

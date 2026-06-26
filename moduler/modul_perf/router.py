@@ -288,14 +288,42 @@ async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_us
 #                                        DET NYE DASHBOARD FOR SÆLGER
 #----------------------------------------------------------------------------------------------------------------------
 
+def _saelger_pickable_owners(user: dict) -> list | None:
+    """Sælgere brugeren må vælge på sælger-dashboardet.
+
+    - admin: None (ubegrænset — hele den aktive HubUsers-liste).
+    - sales_manager: aktive medlemmer af de teams manageren er LEDER for
+      (TeamMemberships.role='leader'), evt. snævret af HubUserTeamAccess.
+      Manageren selv er altid med, så eget dashboard kan ses.
+    - øvrige roller: kun dem selv.
+    """
+    if has_access(user, "admin"):
+        return None
+    if has_access(user, "sales_manager"):
+        from moduler.modul_saelger_portfolio.queries import (
+            get_led_teams, get_team_member_owners)
+        led_teams = get_led_teams(user["id"]) or user.get("_teams") or []
+        allowed = allowed_data_teams(user)
+        if allowed is not None:
+            led_teams = [t for t in led_teams if t in allowed]
+        owners = get_team_member_owners(led_teams)
+        if user.get("name") and user["name"] not in owners:
+            owners = sorted(owners + [user["name"]])
+        return owners
+    return [user["name"]]
+
+
 def _resolve_saelger_owner(user: dict, requested_owner: str | None) -> str:
     """Bestem hvilken sælger der vises på saelger-dashboardet.
 
-    Admin må vælge en anden sælger via ?owner=... Alle andre roller låses til
-    deres egen brugerprofil. Senere kan sales_manager udvides til at vælge
-    blandt egne teammedlemmer.
+    Uden ?owner=... vises brugerens egen profil. Admin må vælge en hvilken som
+    helst sælger; en sales_manager må vælge blandt medlemmerne af de teams,
+    han/hun er leder for. Et ikke-tilladt valg falder tilbage til egen profil.
     """
-    if requested_owner and has_access(user, "admin"):
+    if not requested_owner:
+        return user["name"]
+    pickable = _saelger_pickable_owners(user)
+    if pickable is None or requested_owner in pickable:
         return requested_owner
     return user["name"]
 
@@ -312,13 +340,14 @@ async def perf_saelger_meta(
     user=Depends(get_current_user),
 ):
     try:
-        target_owner    = _resolve_saelger_owner(user, owner)
-        can_pick_seller = has_access(user, "admin")
+        target_owner = _resolve_saelger_owner(user, owner)
+        pickable     = _saelger_pickable_owners(user)
+        # Admin → hele listen; sales_manager → egne teammedlemmer; ellers kun en selv.
+        owners = db_saelger_available_owners() if pickable is None else pickable
         meta = db_saelger_meta(target_owner)
-        meta["owner_name"]      = target_owner
-        meta["can_pick_seller"] = can_pick_seller
-        if can_pick_seller:
-            meta["available_owners"] = db_saelger_available_owners()
+        meta["owner_name"]       = target_owner
+        meta["can_pick_seller"]  = len(owners) > 1
+        meta["available_owners"] = owners if len(owners) > 1 else []
         return JSONResponse(meta)
     except Exception:
         logger.exception("saelger-meta fejlede (owner=%s)", owner)
