@@ -265,39 +265,48 @@
           {% if not brand_movements %}
             <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
           {% endif %}
+          <style>
+            /* Fast bredde, så hele tabellen (inkl. gross in/out) er i ét view uden vandret scroll. */
+            .mv-table{width:100%;table-layout:fixed;font-size:12px}
+            .mv-table th,.mv-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 6px}
+            .mv-table td.num,.mv-table th.num{overflow:visible}
+            .mv-table input.mv-val{width:100%;box-sizing:border-box;text-align:right}
+          </style>
           {% for grp in brand_movements %}
           <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
             <summary style="cursor:pointer;font-weight:700;padding:6px 0">
               {{ grp.brand }} <span class="muted" style="font-weight:400">({{ grp.rows|length }} bevægelser)</span>
             </summary>
-            <div style="overflow-x:auto;margin-top:8px">
-            <table class="v-table">
+            <div style="margin-top:8px">
+            <table class="v-table mv-table">
+              <colgroup>
+                <col style="width:13%"><col style="width:22%"><col style="width:13%">
+                <col style="width:9%"><col style="width:11%">
+                <col style="width:11%"><col style="width:11%"><col style="width:10%">
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Site</th><th>Kunde</th><th>Konto</th><th>Org</th><th>Måned</th><th>Movement</th>
+                  <th>Site</th><th>Kunde</th><th>Konto</th><th>Måned</th><th>Movement</th>
                   <th class="num">Gross in</th><th class="num">Gross out</th><th>Medtag</th>
                 </tr>
               </thead>
               <tbody>
                 {% for r in grp.rows %}
                 <tr data-match="{{ r.match_id }}" {% if r.excluded or r.administrativ %}style="opacity:.55"{% endif %}>
-                  <td>{{ r.site }}</td>
-                  <td>{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
-                  <td class="muted">{{ r.account_number }}</td>
-                  <td class="muted">{{ r.pipedrive_id }}</td>
+                  <td title="{{ r.site }}">{{ r.site }}</td>
+                  <td title="{{ r.customer }}">{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
+                  <td class="muted" title="{{ r.account_number }}">{{ r.account_number }}</td>
                   <td>{{ r.month_end }}</td>
-                  <td class="muted">{{ r.movement }}</td>
+                  <td class="muted" title="{{ r.movement }}">{{ r.movement }}</td>
                   <td class="num">
                     <input class="mv-val" type="number" step="1" inputmode="numeric"
                            data-field="gross_in" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_in_input }}" {% if locked or r.administrativ %}disabled{% endif %}
-                           style="width:96px;text-align:right">
+                           value="{{ r.gross_in_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
                   </td>
                   <td class="num">
                     <input class="mv-val" type="number" step="1" inputmode="numeric"
                            data-field="gross_out" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}
-                           style="width:96px;text-align:right">
+                           value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
                   </td>
                   <td>
                     {% if r.administrativ %}
