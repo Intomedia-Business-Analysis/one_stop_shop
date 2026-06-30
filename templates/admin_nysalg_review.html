@@ -82,17 +82,17 @@
         <div class="kpi-row">
           <div class="kpi-card">
             <div class="kpi-label">Bruttosalg (total)</div>
-            <div class="kpi-value">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
-            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value" id="kpi-brutto">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: <span id="kpi-adm-nysalg">{{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }}</span> kr.</div>
           </div>
           <div class="kpi-card minus">
             <div class="kpi-label">Opsigelser (total)</div>
-            <div class="kpi-value red">{{ "{:,.0f}".format(summary.opsigelser)|replace(",", ".") }} kr.</div>
-            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_opsigelser)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value red" id="kpi-opsigelser">{{ "{:,.0f}".format(summary.opsigelser)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: <span id="kpi-adm-opsigelser">{{ "{:,.0f}".format(summary.adm_opsigelser)|replace(",", ".") }}</span> kr.</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Netto tilvækst</div>
-            <div class="kpi-value green">{{ "{:,.0f}".format(summary.netto_tilvaekst)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value green" id="kpi-netto">{{ "{:,.0f}".format(summary.netto_tilvaekst)|replace(",", ".") }} kr.</div>
             <div class="kpi-sub">(brutto − adm.) − (opsigelser − adm.)</div>
           </div>
         </div>
@@ -121,16 +121,16 @@
               {% for b in brand_rows %}
                 {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
                 {% set is_hidden = b.brand in hidden_brands %}
-                <tr class="{% if is_hidden %}excluded{% endif %}">
+                <tr class="{% if is_hidden %}excluded{% endif %}" data-brand="{{ b.brand }}" data-cur="{{ cur }}">
                   <td style="font-weight:700">{{ b.brand }}</td>
-                  <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num">{{ "{:,.0f}".format(b.brutto - b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
-                  <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
+                  <td class="num" data-col="brutto">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted" data-col="adm_nysalg">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num" data-col="brutto_excl">{{ "{:,.0f}".format(b.brutto - b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num" data-col="opsigelser">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted" data-col="adm_opsigelser">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num" data-col="opsigelser_excl">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num" data-col="netto" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
+                  <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} {{ cur }}</td>
                   <td><textarea class="bc" data-brand="{{ b.brand }}" {% if locked %}disabled{% endif %} placeholder="Kommentar til {{ b.brand }}…">{{ b.comment or "" }}</textarea></td>
                   <td>
                     <button class="brand-toggle toggle {% if is_hidden %}on{% endif %}"
@@ -151,7 +151,7 @@
                     <td class="num muted">{{ "{:,.0f}".format(s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num">{{ "{:,.0f}".format(s.opsigelser - s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num" style="color:{{ 'var(--win)' if s.netto >= 0 else 'var(--danger)' }}">{{ "{:,.0f}".format(s.netto)|replace(",", ".") }} {{ scur }}</td>
-                    <td class="num muted">—</td>
+                    <td class="num muted">{% if s.budget is not none %}{{ "{:,.0f}".format(s.budget)|replace(",", ".") }} {{ scur }}{% else %}—{% endif %}</td>
                     <td></td>
                     <td></td>
                   </tr>
@@ -253,6 +253,82 @@
         </div>
 
 
+        <!-- Bevægelser pr. brand: medtag/udeluk + ret gross in/out -->
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Bevægelser pr. brand — vælg hvad der tæller med</span></div>
+          <p class="page-sub" style="margin:0 0 14px">
+            Medtag/udeluk enkelte bevægelser fra udtrækket og ret gross in/out pr. række
+            (fx falsk gross-in ved skift af kontonummer → sæt til 0). Totalerne genberegnes ved ændring.
+            Rækker mærket <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">ADM</span>
+            er administrative og trækkes allerede fra Actual Sale/Churn (styres i "Administrative nysalg" ovenfor) — de tæller ikke med i totalen.
+          </p>
+          {% if not brand_movements %}
+            <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
+          {% endif %}
+          <style>
+            /* Fast bredde, så hele tabellen (inkl. gross in/out) er i ét view uden vandret scroll. */
+            .mv-table{width:100%;table-layout:fixed;font-size:12px}
+            .mv-table th,.mv-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 6px}
+            .mv-table td.num,.mv-table th.num{overflow:visible}
+            .mv-table input.mv-val{width:100%;box-sizing:border-box;text-align:right}
+          </style>
+          {% for grp in brand_movements %}
+          <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
+            <summary style="cursor:pointer;font-weight:700;padding:6px 0">
+              {{ grp.brand }} <span class="muted" style="font-weight:400">({{ grp.rows|length }} bevægelser)</span>
+            </summary>
+            <div style="margin-top:8px">
+            <table class="v-table mv-table">
+              <colgroup>
+                <col style="width:13%"><col style="width:22%"><col style="width:13%">
+                <col style="width:9%"><col style="width:11%">
+                <col style="width:11%"><col style="width:11%"><col style="width:10%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Site</th><th>Kunde</th><th>Konto</th><th>Måned</th><th>Movement</th>
+                  <th class="num">Gross in</th><th class="num">Gross out</th><th>Medtag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in grp.rows %}
+                <tr data-match="{{ r.match_id }}" {% if r.excluded or r.administrativ %}style="opacity:.55"{% endif %}>
+                  <td title="{{ r.site }}">{{ r.site }}</td>
+                  <td title="{{ r.customer }}">{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
+                  <td class="muted" title="{{ r.account_number }}">{{ r.account_number }}</td>
+                  <td>{{ r.month_end }}</td>
+                  <td class="muted" title="{{ r.movement }}">{{ r.movement }}</td>
+                  <td class="num">
+                    <input class="mv-val" type="number" step="1" inputmode="numeric"
+                           data-field="gross_in" data-match="{{ r.match_id }}"
+                           value="{{ r.gross_in_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
+                  </td>
+                  <td class="num">
+                    <input class="mv-val" type="number" step="1" inputmode="numeric"
+                           data-field="gross_out" data-match="{{ r.match_id }}"
+                           value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
+                  </td>
+                  <td>
+                    {% if r.administrativ %}
+                      <span class="muted" title="Inkludering styres i Administrative nysalg ovenfor">Administrativ</span>
+                    {% else %}
+                    <button class="toggle {% if r.excluded %}on{% endif %}" data-mv-include
+                            data-match="{{ r.match_id }}"
+                            data-excluded="{{ '1' if r.excluded else '0' }}"
+                            {% if locked %}disabled{% endif %}>
+                      {{ "Udeladt" if r.excluded else "Medtaget" }}
+                    </button>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+
         <!-- Direktørens kommentar + godkend -->
         <div class="dash-card">
           <div class="dash-card-title"><span>Samlede kommentar</span></div>
@@ -281,7 +357,47 @@
 <script>
 const RUN = {{ run.run_id | tojson }};
 const fmt = n => Math.round(n||0).toLocaleString('da-DK') + ' kr.';
+const nfmt = n => Math.round(n||0).toLocaleString('da-DK');
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+
+// Opdater topkortene (Bruttosalg/Opsigelser/Netto) fra serverens genberegnede
+// summary — så beregningen sker "bagved" uden reload (scroll + åbne grupper bevares).
+function applySummary(s){
+  if(!s) return;
+  const set=(id,txt)=>{const e=document.getElementById(id); if(e) e.textContent=txt;};
+  set('kpi-brutto', fmt(s.brutto));
+  set('kpi-adm-nysalg', nfmt(s.adm_nysalg));
+  set('kpi-opsigelser', fmt(s.opsigelser));
+  set('kpi-adm-opsigelser', nfmt(s.adm_opsigelser));
+  set('kpi-netto', fmt(s.netto_tilvaekst));
+}
+
+// Opdater per-brand rækkerne i "Performance pr. brand" når en bevægelse rettes/
+// medtages — så netto tilvækst (og brutto/opsigelser) genberegnes live uden reload.
+// `brands` = {brand: {brutto, adm_nysalg, opsigelser, adm_opsigelser, netto}} fra
+// serverens genberegning. Kun Zuora-abonnements-brands (annonce-rækker påvirkes ikke
+// af gross in/out).
+function applyBrands(brands){
+  if(!brands) return;
+  for(const [brand, b] of Object.entries(brands)){
+    const tr = document.querySelector(`tr[data-brand="${(window.CSS&&CSS.escape)?CSS.escape(brand):brand}"]`);
+    if(!tr) continue;
+    const cur = tr.dataset.cur || 'kr.';
+    const money = v => nfmt(v) + ' ' + cur;
+    const put = (col, txt) => { const c = tr.querySelector(`[data-col="${col}"]`); if(c) c.textContent = txt; };
+    put('brutto',          money(b.brutto));
+    put('adm_nysalg',      money(b.adm_nysalg));
+    put('brutto_excl',     money(b.brutto - b.adm_nysalg));
+    put('opsigelser',      money(b.opsigelser));
+    put('adm_opsigelser',  money(b.adm_opsigelser));
+    put('opsigelser_excl', money(b.opsigelser - b.adm_opsigelser));
+    const nettoCell = tr.querySelector('[data-col="netto"]');
+    if(nettoCell){
+      nettoCell.textContent = money(b.netto);
+      nettoCell.style.color = b.netto >= 0 ? 'var(--win)' : 'var(--danger)';
+    }
+  }
+}
 
 async function postJSON(url, body){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
@@ -306,14 +422,60 @@ document.querySelectorAll('textarea.bc').forEach(ta => {
   });
 });
 
-// Medtag/udeluk
-document.querySelectorAll('button.toggle').forEach(btn => {
+// Medtag/udeluk (administrative nysalg — scoped via data-state)
+document.querySelectorAll('button.toggle[data-state]').forEach(btn => {
   btn.addEventListener('click', async () => {
     const next = btn.dataset.state === 'exclude' ? 'include' : 'exclude';
+    btn.disabled = true;
     try {
-      await postJSON(`/tools/admin-nysalg/${RUN}/override`, {match_id:Number(btn.dataset.match), override: next==='exclude'?'exclude':null});
-      // Brand-totaler og netto tilvækst genberegnes server-side → genindlæs.
-      toast('Opdateret'); setTimeout(()=>location.reload(), 350);
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/override`, {match_id:Number(btn.dataset.match), override: next==='exclude'?'exclude':null});
+      // Opdater knap + totaler i baggrunden (bevarer scroll), i stedet for reload.
+      btn.dataset.state = next;
+      btn.classList.toggle('on', next === 'exclude');
+      btn.textContent = next === 'exclude' ? 'Udeladt' : 'Medtaget';
+      applySummary(resp.summary);
+      applyBrands(resp.brands);
+      toast('Opdateret');
+    } catch(e){ toast('Fejl: '+e.message); }
+    finally { btn.disabled = false; }
+  });
+});
+
+// Bevægelser pr. brand: medtag/udeluk en række fra totalerne — opdaterer i baggrunden
+document.querySelectorAll('button[data-mv-include]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const excluded = btn.dataset.excluded !== '1';   // toggle
+    btn.disabled = true;
+    try {
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
+      // Opdater knap + række i stedet for reload (bevarer scroll + åben gruppe).
+      btn.dataset.excluded = excluded ? '1' : '0';
+      btn.classList.toggle('on', excluded);
+      btn.textContent = excluded ? 'Udeladt' : 'Medtaget';
+      const tr = btn.closest('tr'); if(tr) tr.style.opacity = excluded ? '.55' : '';
+      applySummary(resp.summary);
+      applyBrands(resp.brands);   // genberegnet netto tilvækst pr. brand uden reload
+      toast(excluded ? 'Udeladt' : 'Medtaget');
+    } catch(e){ toast('Fejl: '+e.message); }
+    finally { btn.disabled = false; }
+  });
+});
+
+// Bevægelser pr. brand: ret gross in/out (gemmes når feltet forlades/ændres) — i baggrunden
+document.querySelectorAll('input.mv-val').forEach(inp => {
+  inp.addEventListener('change', async () => {
+    const tr = inp.closest('tr');
+    const gi = tr.querySelector('input[data-field="gross_in"]');
+    const go = tr.querySelector('input[data-field="gross_out"]');
+    try {
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-value`, {
+        match_id: Number(inp.dataset.match),
+        gross_in:  gi && gi.value !== '' ? Number(gi.value) : null,
+        gross_out: go && go.value !== '' ? Number(go.value) : null,
+      });
+      applySummary(resp.summary);   // genberegnede topkort uden reload
+      applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
+      toast('Værdi gemt');
     } catch(e){ toast('Fejl: '+e.message); }
   });
 });

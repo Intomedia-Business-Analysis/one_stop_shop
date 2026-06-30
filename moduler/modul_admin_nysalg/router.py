@@ -127,6 +127,85 @@ def _match_brand(m: dict) -> str:
     return m.get("brand") or classify(m.get("site"))
 
 
+def _visible_matches(run_id: int) -> list[dict]:
+    """Match-rækker for et run minus de helt udeladte brands (fx Monitor).
+
+    Monitor pilles ud så tidligt som muligt, så det forsvinder fra ALT i rapporten:
+    top-tal, brand-tabel, måneds-opdeling OG Excel-detaljefanerne."""
+    from moduler.modul_admin_nysalg.brands import EXCLUDED_BRANDS
+    return [m for m in repo.get_matches(run_id)
+            if _match_brand(m) not in EXCLUDED_BRANDS]
+
+
+def _brand_summary_map(matches: list[dict]) -> dict:
+    """{brand: {brutto, adm_nysalg, opsigelser, adm_opsigelser, netto}} for de Zuora-
+    afledte abonnements-brands. Lader frontend opdatere netto tilvækst pr. brand live
+    (uden reload), når gross in/out eller medtag/udeluk ændres.
+
+    Kun Subscription-brands medtages: annonce-rækkerne (Job/Banner/Norge/Marketwire)
+    kommer fra PipeDrive og påvirkes ikke af gross in/out — og Marketwire ville ellers
+    optræde som en tom (0-)bucket fra summarize_by_brand og overskrive den rigtige
+    PipeDrive-række i tabellen."""
+    from moduler.modul_admin_nysalg.brands import brand_geo
+    return {b["brand"]: {k: b[k] for k in
+                         ("brutto", "adm_nysalg", "opsigelser", "adm_opsigelser", "netto")}
+            for b in repo.summarize_by_brand(matches)
+            if brand_geo(b["brand"])[1] == "Subscription"}
+
+
+def _brand_movements(matches: list[dict]) -> list[dict]:
+    """Bevægelser (gross in/out) grupperet pr. brand til review-siden.
+
+    Direktøren ser her de Zuora-bevægelser fra udtrækket der indgår i omsætning OG
+    opsigelser, og kan medtage/udelukke + rette gross in/out pr. række. Kun rækker
+    der rå bidrager (gross in eller out ≠ 0) listes — også udeladte (så de kan slås
+    til igen). Kundenavn slås op pr. brands KONTO (org-id er ikke unikke), samme
+    opslag som Excel-"Movements"-arket. Returneres i DISPLAY_ORDER.
+    """
+    from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER, brand_account
+    org_names = repo.pipedrive_org_names()
+    groups: dict[str, list[dict]] = {}
+    for m in matches:
+        gi_raw = m.get("gross_in") or 0
+        go_raw = repo._row_opsigelse(m)
+        if not gi_raw and not go_raw:
+            continue
+        label = _match_brand(m)
+        acct = brand_account(label)
+        pid = str(m.get("pipedrive_id") or "").strip()
+        customer = (m.get("matched_org_name")
+                    or (org_names.get(acct, {}).get(pid, "") if acct else ""))
+        gi_ov, go_ov = m.get("gross_in_override"), m.get("gross_out_override")
+        groups.setdefault(label, []).append({
+            "match_id": m.get("match_id"),
+            "site": m.get("site") or "",
+            "customer": customer or "—",
+            "account_number": m.get("account_number") or "",
+            "pipedrive_id": pid,
+            "month_end": m.get("month_end") or "",
+            "movement": m.get("movement") or "",
+            "currency": m.get("currency") or "DKK",
+            # Inputfelterne viser override hvis sat, ellers den rå værdi (heltal).
+            "gross_in_input": int(round(gi_ov if gi_ov is not None else gi_raw)),
+            "gross_out_input": int(round(go_ov if go_ov is not None else go_raw)),
+            "edited": gi_ov is not None or go_ov is not None,
+            "excluded": bool(m.get("total_excluded")),
+            # Administrativ = trækkes allerede fra Actual Sale/Churn (admin-matchet).
+            # Markeres i UI, så det ikke ligner at den tæller med i totalen.
+            "administrativ": repo.effective_is_admin(m) or repo.is_admin_opsigelse(m),
+        })
+
+    def _order(label):
+        return DISPLAY_ORDER.index(label) if label in DISPLAY_ORDER else len(DISPLAY_ORDER)
+
+    out = []
+    for label in sorted(groups, key=lambda l: (_order(l), l)):
+        rows = sorted(groups[label],
+                      key=lambda r: max(r["gross_in_input"], r["gross_out_input"]), reverse=True)
+        out.append({"brand": label, "rows": rows})
+    return out
+
+
 def _apply_hidden(matches: list, brand_rows: list, months_breakdown: list,
                   hidden: set) -> tuple[dict, list, list]:
     """Fjern skjulte brands fra rapporten: brand-tabel, måneds-opdeling OG top-tal.
@@ -321,7 +400,7 @@ async def run_status(job_id: str, user=Depends(get_current_user)):
 async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     _require_view(user)
     run = _get_run_or_404(run_id)
-    matches = repo.get_matches(run_id)
+    matches = _visible_matches(run_id)
     date_from, date_to = repo.run_date_range(run)
     budgets = repo.brand_budgets(date_from, date_to)
     brand_comments = repo.get_brand_comments(run_id)
@@ -333,6 +412,7 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     # men topkort + måneds-opdeling afspejler skjulningen.
     hidden = repo.get_hidden_brands(run_id)
     summary, _, months_breakdown = _apply_hidden(matches, brand_rows, months_breakdown, hidden)
+    brand_movements = _brand_movements(matches)
     return templates.TemplateResponse(request, "admin_nysalg_review.html", {
         "user": user,
         "run": run,
@@ -341,6 +421,7 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
         "hidden_brands": sorted(hidden),
         "months_breakdown": months_breakdown,
         "admin_rows": admin_rows,
+        "brand_movements": brand_movements,
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
         "locked": run.get("status") in ("approved", "reported"),
     })
@@ -382,9 +463,60 @@ async def set_override(run_id: int, request: Request, user=Depends(get_current_u
     if override in ("", "default", None):
         override = None
     repo.set_override(run_id, int(match_id), override)
-    # Returnér opdaterede topkort-tal, så frontend kan opdatere uden reload.
+    # Returnér opdaterede topkort-tal + per-brand netto, så frontend kan opdatere uden reload.
+    matches = _visible_matches(run_id)
     summary = repo.summarize(repo.get_matches(run_id))
-    return JSONResponse({"ok": True, "summary": summary})
+    return JSONResponse({"ok": True, "summary": summary,
+                         "brands": _brand_summary_map(matches)})
+
+
+def _require_unlocked(run: dict) -> None:
+    if run.get("status") in ("approved", "reported"):
+        raise HTTPException(409, "Run er låst — bevægelser kan ikke ændres")
+
+
+@router.post("/{run_id}/row-include")
+async def row_include(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Medtag/udeluk en enkelt bevægelse fra rapportens totaler."""
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    _require_unlocked(run)
+    body = await request.json()
+    match_id = body.get("match_id")
+    if not match_id:
+        raise HTTPException(400, "match_id påkrævet")
+    repo.set_row_total_excluded(run_id, int(match_id), bool(body.get("excluded")))
+    matches = _visible_matches(run_id)
+    summary = repo.summarize(matches)
+    return JSONResponse({"ok": True, "summary": summary,
+                         "brands": _brand_summary_map(matches)})
+
+
+@router.post("/{run_id}/row-value")
+async def row_value(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Ret gross in/gross out for en bevægelse (None pr. felt = ryd → brug rå værdi)."""
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    _require_unlocked(run)
+    body = await request.json()
+    match_id = body.get("match_id")
+    if not match_id:
+        raise HTTPException(400, "match_id påkrævet")
+
+    def _num(v):
+        if v in (None, "", "default"):
+            return None
+        try:
+            return round(float(v), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Ugyldig værdi: {v!r}")
+
+    repo.set_row_value_override(run_id, int(match_id),
+                                _num(body.get("gross_in")), _num(body.get("gross_out")))
+    matches = _visible_matches(run_id)
+    summary = repo.summarize(matches)
+    return JSONResponse({"ok": True, "summary": summary,
+                         "brands": _brand_summary_map(matches)})
 
 
 @router.post("/{run_id}/brand-visibility")
@@ -427,7 +559,8 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
     run = _get_run_or_404(run_id)
     if run.get("status") not in ("approved", "reported"):
         raise HTTPException(409, "Run skal godkendes før rapporten kan genereres")
-    matches = repo.get_matches(run_id)
+    from moduler.modul_admin_nysalg.brands import EXCLUDED_BRANDS
+    matches = _visible_matches(run_id)
     brand_comments = repo.get_brand_comments(run_id)
     date_from, date_to = repo.run_date_range(run)
     budgets = repo.brand_budgets(date_from, date_to)
@@ -439,12 +572,18 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
     hidden = repo.get_hidden_brands(run_id)
     summary, brand_rows, months_breakdown = _apply_hidden(
         matches, brand_rows, months_breakdown, hidden)
-    pd_deals = repo.period_pipedrive_deals(date_from, date_to)
+    # Afstemningsfanen (PipeDrive deals) skal også være fri for Monitor.
+    pd_deals = [d for d in repo.period_pipedrive_deals(date_from, date_to)
+                if d.get("brand") not in EXCLUDED_BRANDS]
     org_names = repo.pipedrive_org_names()
+    # Niche-opdeling (WM DK + WM NO) til Excel-fanen — kun ikke-skjulte brands.
+    site_brands = tuple(b for b in ("Watch DK", "Watch NO") if b not in hidden)
+    site_rows = repo.summarize_by_site(matches, site_brands) if site_brands else []
     try:
         xlsx_path = report.generate_excel(run, matches, summary, brand_rows,
                                           pd_deals=pd_deals, org_names=org_names,
-                                          months_breakdown=months_breakdown)
+                                          months_breakdown=months_breakdown,
+                                          site_rows=site_rows)
         try:
             report.generate_pdf(run, matches, summary, brand_rows,
                                  months_breakdown=months_breakdown)
