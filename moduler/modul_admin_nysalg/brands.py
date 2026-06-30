@@ -80,17 +80,34 @@ def brand_geo(label: str) -> tuple[str, str]:
 # dashboardet og henter programmatisk salg fra ProgrammaticSales. Se
 # repo.dk_advertising_brand_rows. Her ligger kun Norge-annonce + MarketWire.
 PIPEDRIVE_ROWS = [
-    # Norge-annonce opdelt i job og banner (ledelsesønske). Hver række beholder
-    # site-drill-down (M24/KOM24) som delmængde af totalen.
+    # Norge-annonce opdelt i job og banner (ledelsesønske). Hovedrækken dækker HELE
+    # watch_no_advertising-kontoen; underrækkerne bryder den ned på Medier24 (M24),
+    # Kom24 (KOM24), alle Watch-sites (LIKE '%watch%' — fx EnergiWatch/FinansWatch NO)
+    # og Shifter. Hver underrække har sit eget site-budget (BudgetsIntoMedia,
+    # Brand='Watch NO'), så Σ underrække-budget = hovedrækkens budget og hver
+    # forretning kan holdes op mod sit budget. 'site_like' = LIKE-match, 'site' =
+    # eksakt match.
     {"label": "Norge Job",       "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["job"],
      "subrows": [
-         {"label": "M24",   "site": "Medier24 NO"},
-         {"label": "KOM24", "site": "Kom24 NO"},
+         {"label": "M24",     "site": "Medier24 NO",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Job' AND [Site]='Medier24 NO'"},
+         {"label": "KOM24",   "site": "Kom24 NO",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Job' AND [Site]='Kom24 NO'"},
+         {"label": "Watch",   "site_like": "%watch%",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Job' AND [Site] LIKE '%Watch%'"},
+         {"label": "Shifter", "site": "Shifter",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Job' AND [Site]='Shifter'"},
      ]},
     {"label": "Norge Banner",    "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["banner"],
      "subrows": [
-         {"label": "M24",   "site": "Medier24 NO"},
-         {"label": "KOM24", "site": "Kom24 NO"},
+         {"label": "M24",     "site": "Medier24 NO",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Banner' AND [Site]='Medier24 NO'"},
+         {"label": "KOM24",   "site": "Kom24 NO",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Banner' AND [Site]='Kom24 NO'"},
+         {"label": "Watch",   "site_like": "%watch%",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Banner' AND [Site] LIKE '%Watch%'"},
+         {"label": "Shifter", "site": "Shifter",
+          "budget_where": "[Brand]='Watch NO' AND [DealType]='Banner' AND [Site]='Shifter'"},
      ]},
     {"label": "Marketwire",      "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
 ]

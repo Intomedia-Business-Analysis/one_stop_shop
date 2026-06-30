@@ -195,9 +195,12 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                 ws.cell(row=r, column=7, value=b.get("comment") or "")
                 r += 1
                 for s in b.get("subrows") or []:
-                    s_sale, s_churn, s_net, _, _ = _row_metrics(s)
+                    s_sale, s_churn, s_net, s_budget, s_dev = _row_metrics(s)
+                    has_sb = s.get("budget") is not None
                     ws.cell(row=r, column=1, value="      ↳ " + s["brand"])
-                    _vals(r, [s_sale, s_churn, s_net, None, None], cf)
+                    _vals(r, [s_sale, s_churn, s_net,
+                              s_budget if has_sb else None,
+                              s_dev if has_sb else None], cf)
                     r += 1
             ssale, schurn, snet, sbudget, sdev = _sum_metrics(tb["rows"])
             ws.cell(row=r, column=1,
@@ -501,13 +504,13 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     head = ["", "Cur.", "Actual Sale", "Actual Churn", "Actual Net Growth",
             "Budget Net Growth", "Deviation"]
     data = [[Paragraph(h, s_hd) for h in head]]
-    country_idx, type_idx, sub_idx, total_idx = [], [], [], []
+    country_idx, type_idx, sub_idx, total_idx, gap_idx = [], [], [], [], []
     color_cells = []   # (col, rowidx, positive)
 
     def _row(label_para, vals, cur):
         return [label_para, cur] + [num(v) for v in vals]
 
-    for grp in groups:
+    for g_pos, grp in enumerate(groups):
         cur = grp["currency"]
         ci = len(data)
         country_idx.append(ci)
@@ -529,12 +532,17 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                 if has_b:
                     color_cells.append((DEV, ri, dev >= 0))
                 for s in b.get("subrows") or []:
-                    s_sale, s_churn, s_net, _, _ = _row_metrics(s)
+                    s_sale, s_churn, s_net, s_budget, s_dev = _row_metrics(s)
+                    has_sb = s.get("budget") is not None
                     sri = len(data)
                     data.append(_row(Paragraph("↳ " + s["brand"],
                                                ParagraphStyle("sr", parent=s_cell, textColor=MUTED)),
-                                     [s_sale, s_churn, s_net, None, None], cur))
+                                     [s_sale, s_churn, s_net,
+                                      s_budget if has_sb else None,
+                                      s_dev if has_sb else None], cur))
                     color_cells.append((NET, sri, s_net >= 0))
+                    if has_sb:
+                        color_cells.append((DEV, sri, s_dev >= 0))
             ssale, schurn, snet, sbudget, sdev = _sum_metrics(tb["rows"])
             sub_idx.append(len(data))
             data.append(_row(Paragraph(f"Subtotal {tb['type']}", s_cellb),
@@ -548,6 +556,11 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                          [tsale, tchurn, tnet, tbudget, tdev], cur))
         color_cells.append((NET, total_idx[-1], tnet >= 0))
         color_cells.append((DEV, total_idx[-1], tdev >= 0))
+        # Tom afstandsrække mellem landeblokke (ikke efter sidste land), så landene
+        # ikke støder op mod hinanden.
+        if g_pos < len(groups) - 1:
+            gap_idx.append(len(data))
+            data.append([""] * 7)
 
     if len(data) > 1:
         t = Table(data, colWidths=[34 * mm, 13 * mm, 26 * mm, 26 * mm, 26 * mm,
@@ -583,6 +596,13 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
             style += [("BACKGROUND", (0, to), (-1, to), colors.HexColor("#EDEAE3")),
                       ("FONTNAME", (0, to), (-1, to), "Helvetica-Bold"),
                       ("LINEABOVE", (0, to), (-1, to), 0.8, DARK)]
+        for gp in gap_idx:
+            # Ren hvid luft mellem landeblokke — ingen streger, ekstra polstring.
+            style += [("SPAN", (0, gp), (-1, gp)),
+                      ("BACKGROUND", (0, gp), (-1, gp), WHITE),
+                      ("LINEBELOW", (0, gp), (-1, gp), 0, WHITE),
+                      ("TOPPADDING", (0, gp), (-1, gp), 6),
+                      ("BOTTOMPADDING", (0, gp), (-1, gp), 6)]
         for col, ri, pos in color_cells:
             style.append(("TEXTCOLOR", (col, ri), (col, ri), WIN if pos else RED))
             style.append(("FONTNAME", (col, ri), (col, ri), "Helvetica-Bold"))

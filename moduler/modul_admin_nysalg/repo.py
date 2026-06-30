@@ -532,12 +532,11 @@ def brand_budgets(date_from: str | None, date_to: str | None,
 
 # ── Reklame-rækker (PipeDrive-deals, ikke abonnement) ────────────────────────
 
-def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> float:
-    """Budget for en reklame-række fra BudgetsIntoMedia (0 ved manglende mapping)."""
-    from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
-    frag = AD_BUDGET_WHERE.get(label)
-    if not frag:
-        return 0.0
+def _budget_for_where(cur, frag: str, date_from: str | None, date_to: str | None) -> float:
+    """Σ BudgetAmount fra BudgetsIntoMedia for et WHERE-fragment + periodeafgrænsning.
+
+    `frag` er kode-kontrolleret (fra brands.py), så LIKE-mønstre må stå som literaler.
+    """
     where = [frag]
     params: list = []
     dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
@@ -548,6 +547,15 @@ def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> f
         "WHERE " + " AND ".join(where), tuple(params))
     row = cur.fetchone()
     return float((row["budget"] if row else 0) or 0)
+
+
+def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> float:
+    """Budget for en reklame-række fra BudgetsIntoMedia (0 ved manglende mapping)."""
+    from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
+    frag = AD_BUDGET_WHERE.get(label)
+    if not frag:
+        return 0.0
+    return _budget_for_where(cur, frag, date_from, date_to)
 
 
 def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
@@ -614,12 +622,22 @@ def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
             else:
                 budget = round(float(budgets.get(label, 0.0) or 0.0), 2)
 
-            # Underrækker (drill-down): samme scope + ét site pr. underrække.
-            # Delmængde af brutto/opsigelser — totalen i hovedrækken er uændret.
+            # Underrækker (drill-down): samme scope + ét site (eller site-mønster)
+            # pr. underrække, hver med sit eget site-budget. Delmængde af brutto/
+            # opsigelser — totalen i hovedrækken er uændret, og Σ underrække-budget
+            # = hovedrækkens budget. 'site_like' matcher med LIKE (fx alle Watch-
+            # sites), 'site' eksakt.
             subrows: list[dict] = []
             for sr in spec.get("subrows", []):
-                sr_where = where + ["LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"]
-                sr_params = where_params + [sr["site"].lower()]
+                if sr.get("site_like"):
+                    # Mønsteret er kode-kontrolleret (brands.py) → literal LIKE.
+                    site_cond = f"LOWER(COALESCE([sites],'')) LIKE '{sr['site_like']}'"
+                    site_params: list = []
+                else:
+                    site_cond = "LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"
+                    site_params = [sr["site"].lower()]
+                sr_where = where + [site_cond]
+                sr_params = where_params + site_params
                 cur.execute(f"""
                     SELECT
                       ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
@@ -632,10 +650,12 @@ def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
                 srow = cur.fetchone() or {}
                 s_brutto = round(float(srow.get("won") or 0), 2)
                 s_ops = round(float(srow.get("ops") or 0), 2)
+                s_budget = (round(_budget_for_where(cur, sr["budget_where"], date_from, date_to), 2)
+                            if sr.get("budget_where") else None)
                 subrows.append({
                     "brand": sr["label"], "brutto": s_brutto, "adm_nysalg": 0.0,
                     "opsigelser": s_ops, "adm_opsigelser": 0.0,
-                    "netto": round(s_brutto - s_ops, 2), "budget": None,
+                    "netto": round(s_brutto - s_ops, 2), "budget": s_budget,
                     "comment": "", "n_ambiguous": 0, "currency": brand_currency(label),
                 })
 
@@ -672,8 +692,9 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
     administrative-eksklusion, så tallene matcher dashboardet.
 
     Beløb i DKK; annoncesalg har ingen cancellation-pipelines → churn=0, net=sale.
-    Budget (på hovedrækken) fra AD_BUDGET_WHERE (ekskl. Monitor). Underrækker har
-    intet eget budget (omsætningen splittes — budgettet bliver på hovedrækken).
+    Budget (på hovedrækken) fra AD_BUDGET_WHERE (ekskl. Monitor). Hver underrække
+    har sit eget kilde-brand-budget (Watch DK / FINANS DK direkte / FINANS DK
+    programmatisk), så Σ underrække-budget = hovedrækkens budget.
     """
     from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
     # Genbrug dashboardets site-lister + administrative-eksklusion (én kilde til
@@ -706,20 +727,33 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
             f"WHERE {' AND '.join(where)}", tuple(dpar))
         return round(float((cur.fetchone() or {}).get("rev", 0) or 0), 2)
 
-    def _sub(name: str, sale: float) -> dict:
+    def _sub(name: str, sale: float, budget: float | None = None) -> dict:
         return {"brand": name, "brutto": sale, "adm_nysalg": 0.0,
                 "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": sale,
-                "budget": None, "currency": "DKK"}
+                "budget": budget, "currency": "DKK"}
 
     out: list[dict] = []
     for pipeline, label in (("job", "Job"), ("banner", "Banner")):
+        # Budget pr. kilde-brand: Watch DK og FINANS DK (direkte = Salestype ≠
+        # 'Programmatic'). Σ kilde-budget = hovedrækkens AD_BUDGET_WHERE-budget, så
+        # subtotalerne stemmer. Programmatisk har sit eget Salestype='Programmatic'-
+        # budget (kun Banner).
         watch = _site_revenue(pipeline, watch_sites)
         finans = _site_revenue(pipeline, FINANS_SITES)
-        subrows = [_sub("Watch DK", watch), _sub("FINANS DK", finans)]
+        watch_bud = round(_budget_for_where(
+            cur, f"[Brand]='Watch DK' AND [DealType]='{label}'", date_from, date_to), 2)
+        finans_bud = round(_budget_for_where(
+            cur, f"[Brand]='FINANS DK' AND [DealType]='{label}' "
+                 "AND COALESCE([Salestype],'') <> 'Programmatic'", date_from, date_to), 2)
+        subrows = [_sub("Watch DK", watch, watch_bud),
+                   _sub("FINANS DK", finans, finans_bud)]
         total = watch + finans
         if pipeline == "banner":
             prog = _programmatic_revenue()
-            subrows.append(_sub("Finans programmatisk", prog))
+            prog_bud = round(_budget_for_where(
+                cur, "[Brand]='FINANS DK' AND [DealType]='Banner' "
+                     "AND [Salestype]='Programmatic'", date_from, date_to), 2)
+            subrows.append(_sub("Finans programmatisk", prog, prog_bud))
             total += prog
         budget = round(_ad_budget(cur, label, date_from, date_to), 2)
         out.append({
