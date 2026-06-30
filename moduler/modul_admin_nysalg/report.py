@@ -491,27 +491,33 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     # Alle tal ekskl. administrative bevægelser, i lokal valuta. NET = Actual Net
     # Growth, farvet grøn/rød; DEV = afvigelse til budget (net − budget).
     el.append(Paragraph("Performance by country &amp; type", s_h))
-    NET, DEV = 3, 5   # kolonneindeks for Net Growth og Deviation
-    head = ["", "Actual Sale", "Actual Churn", "Actual Net Growth",
+    # Egen Currency-kolonne pr. række (DKK/NOK/SEK/EUR); tallene står uden valuta-
+    # endelse, så tabellen er ren. NET/DEV-indeks er efter Brand + Currency.
+    NET, DEV = 4, 6
+
+    def num(v):
+        return "" if v is None else f"{round(v or 0):,.0f}".replace(",", ".")
+
+    head = ["", "Cur.", "Actual Sale", "Actual Churn", "Actual Net Growth",
             "Budget Net Growth", "Deviation"]
     data = [[Paragraph(h, s_hd) for h in head]]
     country_idx, type_idx, sub_idx, total_idx = [], [], [], []
     color_cells = []   # (col, rowidx, positive)
 
     def _row(label_para, vals, cur):
-        return [label_para] + [money(v, cur) if v is not None else "" for v in vals]
+        return [label_para, cur] + [num(v) for v in vals]
 
     for grp in groups:
         cur = grp["currency"]
         ci = len(data)
         country_idx.append(ci)
         data.append([Paragraph(f"{grp['country']} ({cur})",
-                               ParagraphStyle("ch", parent=s_hd, fontSize=8))] + [""] * 5)
+                               ParagraphStyle("ch", parent=s_hd, fontSize=8))] + [""] * 6)
         for tb in grp["types"]:
             type_idx.append(len(data))
             data.append([Paragraph(tb["type"],
                                    ParagraphStyle("ty", parent=s_cellb, textColor=MUTED))]
-                        + [""] * 5)
+                        + [""] * 6)
             for b in tb["rows"]:
                 sale, churn, net, budget, dev = _row_metrics(b)
                 has_b = b.get("budget") is not None
@@ -544,15 +550,17 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         color_cells.append((DEV, total_idx[-1], tdev >= 0))
 
     if len(data) > 1:
-        t = Table(data, colWidths=[38 * mm, 28 * mm, 28 * mm, 28 * mm, 28 * mm, 28 * mm],
-                  repeatRows=1)
+        t = Table(data, colWidths=[34 * mm, 13 * mm, 26 * mm, 26 * mm, 26 * mm,
+                                   26 * mm, 27 * mm], repeatRows=1)
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), DARK),
             ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
             ("FONTNAME", (1, 1), (-1, -1), "Helvetica"),
             ("FONTSIZE", (1, 1), (-1, -1), 7),
             ("TEXTCOLOR", (1, 1), (-1, -1), INK),
-            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("TEXTCOLOR", (1, 1), (1, -1), MUTED),   # Currency-kolonne nedtonet
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"),    # tal højrestillet
+            ("ALIGN", (1, 0), (1, -1), "CENTER"),    # Currency centreret
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LINEBELOW", (0, 1), (-1, -1), 0.4, BORDER),
             ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
