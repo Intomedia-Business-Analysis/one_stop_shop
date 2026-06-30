@@ -174,6 +174,9 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
             "gross_out_input": int(round(go_ov if go_ov is not None else go_raw)),
             "edited": gi_ov is not None or go_ov is not None,
             "excluded": bool(m.get("total_excluded")),
+            # Administrativ = trækkes allerede fra Actual Sale/Churn (admin-matchet).
+            # Markeres i UI, så det ikke ligner at den tæller med i totalen.
+            "administrativ": repo.effective_is_admin(m) or repo.is_admin_opsigelse(m),
         })
 
     def _order(label):

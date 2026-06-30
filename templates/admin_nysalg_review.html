@@ -259,6 +259,8 @@
           <p class="page-sub" style="margin:0 0 14px">
             Medtag/udeluk enkelte bevægelser fra udtrækket og ret gross in/out pr. række
             (fx falsk gross-in ved skift af kontonummer → sæt til 0). Totalerne genberegnes ved ændring.
+            Rækker mærket <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">ADM</span>
+            er administrative og trækkes allerede fra Actual Sale/Churn (styres i "Administrative nysalg" ovenfor) — de tæller ikke med i totalen.
           </p>
           {% if not brand_movements %}
             <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
@@ -278,9 +280,9 @@
               </thead>
               <tbody>
                 {% for r in grp.rows %}
-                <tr data-match="{{ r.match_id }}" {% if r.excluded %}style="opacity:.5"{% endif %}>
+                <tr data-match="{{ r.match_id }}" {% if r.excluded or r.administrativ %}style="opacity:.55"{% endif %}>
                   <td>{{ r.site }}</td>
-                  <td>{{ r.customer }}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
+                  <td>{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
                   <td class="muted">{{ r.account_number }}</td>
                   <td class="muted">{{ r.pipedrive_id }}</td>
                   <td>{{ r.month_end }}</td>
@@ -288,22 +290,26 @@
                   <td class="num">
                     <input class="mv-val" type="number" step="1" inputmode="numeric"
                            data-field="gross_in" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_in_input }}" {% if locked %}disabled{% endif %}
+                           value="{{ r.gross_in_input }}" {% if locked or r.administrativ %}disabled{% endif %}
                            style="width:96px;text-align:right">
                   </td>
                   <td class="num">
                     <input class="mv-val" type="number" step="1" inputmode="numeric"
                            data-field="gross_out" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_out_input }}" {% if locked %}disabled{% endif %}
+                           value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}
                            style="width:96px;text-align:right">
                   </td>
                   <td>
+                    {% if r.administrativ %}
+                      <span class="muted" title="Inkludering styres i Administrative nysalg ovenfor">Administrativ</span>
+                    {% else %}
                     <button class="toggle {% if r.excluded %}on{% endif %}" data-mv-include
                             data-match="{{ r.match_id }}"
                             data-excluded="{{ '1' if r.excluded else '0' }}"
                             {% if locked %}disabled{% endif %}>
                       {{ "Udeladt" if r.excluded else "Medtaget" }}
                     </button>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
