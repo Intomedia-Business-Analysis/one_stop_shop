@@ -1780,24 +1780,20 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         for t in all_teams
     ]
 
-    # Team Job/Banner: erstat den enkelte teamrække med to linjer (Watch +
-    # Monitor), så sælgeren ser sit eget watch-budget og sit bidrag til det
-    # fælles monitor-budget hver for sig. Den samlede omsætning (won_amount)
-    # er uberørt — kun budget-nedbrydningen splittes.
-    if any(t in ADVERTISING_SPLIT_TEAMS for t in all_teams):
-        split_rows = []
-        for row in budget_by_team:
-            pipeline = ADVERTISING_SPLIT_TEAMS.get(row["team"])
-            if pipeline:
-                split_rows.extend(_advertising_budget_split(
-                    cur, owner_name, row["team"], pipeline,
-                    (_p_dcol_clause, _p_dcol_params),
-                    (_p_budget_clause, _p_budget_params),
-                    budget_by_team_raw.get(row["team"], 0.0),
-                ))
-            else:
-                split_rows.append(row)
-        budget_by_team = split_rows
+    # Team Job/Banner: byg en Watch/Monitor-budgetopdeling (to linjer pr.
+    # annonce-team) til et dedikeret kort på sælger-dashboardet. Watch måles mod
+    # sælgerens eget budget, Monitor mod det fælles monitor-budget. Tom for alle
+    # andre sælgere — så vises kortet ikke. Den samlede omsætning er uberørt.
+    ad_split = []
+    for t in all_teams:
+        pipeline = ADVERTISING_SPLIT_TEAMS.get(t)
+        if pipeline:
+            ad_split.extend(_advertising_budget_split(
+                cur, owner_name, t, pipeline,
+                (_p_dcol_clause, _p_dcol_params),
+                (_p_budget_clause, _p_budget_params),
+                budget_by_team_raw.get(t, 0.0),
+            ))
 
     conn.close()
 
@@ -1836,6 +1832,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "leaderboard":     leaderboard,
         "seneste_deals":   seneste_deals,
         "budget_by_team":  budget_by_team,
+        "ad_split":        ad_split,
         "owner_name":      owner_name,
         "month_label":     month_label,
         "ref_months":      months_list,
