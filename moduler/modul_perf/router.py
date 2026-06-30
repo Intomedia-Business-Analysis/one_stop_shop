@@ -291,13 +291,15 @@ async def perf_afdelingsleder_page(request: Request, user=Depends(get_current_us
 def _saelger_pickable_owners(user: dict) -> list | None:
     """Sælgere brugeren må vælge på sælger-dashboardet.
 
-    - admin: None (ubegrænset — hele den aktive HubUsers-liste).
+    - management og derover (inkl. admin): None (ubegrænset — hele den aktive
+      HubUsers-liste). Management er ikke leder af noget team og skal alligevel
+      kunne vælge en hvilken som helst sælger.
     - sales_manager: aktive medlemmer af de teams manageren er LEDER for
       (TeamMemberships.role='leader'), evt. snævret af HubUserTeamAccess.
       Manageren selv er altid med, så eget dashboard kan ses.
     - øvrige roller: kun dem selv.
     """
-    if has_access(user, "admin"):
+    if has_access(user, "management"):
         return None
     if has_access(user, "sales_manager"):
         from moduler.modul_saelger_portfolio.queries import (

@@ -32,22 +32,23 @@ def _resolve_available_owners(user: dict) -> list:
       lederen må fx ikke se Monitor-sælgere. Fallback til egne medlemskaber
       hvis lederrollen ikke er registreret. HubUserTeamAccess snævrer
       yderligere ind, hvis sat.
-    - sales_operations og derover: alle aktive brugere (evt. begrænset af
-      HubUserTeamAccess som hidtil).
+    - sales_operations, management og derover: alle aktive brugere (evt.
+      begrænset af HubUserTeamAccess som hidtil).
     - admin: desuden de "skjulte" bøger — kunder uden ejer i Pipedrive og
       System Admin-kontoens kunder.
     """
     teams = allowed_data_teams(user)  # None = ubegrænset
 
-    if not has_access(user, "sales_manager"):
-        available_owners = []
-    elif not has_access(user, "sales_operations"):
+    if has_access(user, "management") or has_access(user, "sales_operations"):
+        # Management/Sales Operations og derover må vælge alle aktive sælgere.
+        available_owners = get_available_owners(teams)
+    elif has_access(user, "sales_manager"):
         led_teams = get_led_teams(user["id"]) or user.get("_teams") or []
         if teams is not None:
             led_teams = [t for t in led_teams if t in teams]
         available_owners = get_team_member_owners(led_teams)
     else:
-        available_owners = get_available_owners(teams)
+        available_owners = []
 
     if user.get("role") == "admin":
         available_owners = available_owners + ["System Admin", UNASSIGNED_OWNER]
