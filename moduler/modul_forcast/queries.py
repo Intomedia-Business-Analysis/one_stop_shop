@@ -107,6 +107,16 @@ def ensure_schema():
                WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'pipeline_close_amount'
            )
            ALTER TABLE HubForecasts ADD pipeline_close_amount DECIMAL(18,2) NULL""",
+        # Sælgeren kan vælge at lægge den realiserede tilvækst, der allerede er
+        # bogført i forecast-måneden, oveni sit forecast. Flaget husker valget;
+        # selve beløbet bages ind i forecast_amount ved gem (autoritativt
+        # server-side, beregnet fra PipedriveDeals).
+        """IF NOT EXISTS (
+               SELECT * FROM sys.columns
+               WHERE object_id = OBJECT_ID('HubForecasts') AND name = 'include_activation'
+           )
+           ALTER TABLE HubForecasts ADD include_activation BIT NOT NULL
+           CONSTRAINT DF_HubForecasts_include_activation DEFAULT 0""",
         # Sælgerens deal-niveau valg i pipeline-modalen. Den justerede værdi er
         # KUN lokal til forecastet — den skrives aldrig tilbage til Pipedrive.
         """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='HubForecastPipelineDeals' AND xtype='U')
@@ -649,7 +659,8 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         # (team='') vises som fallback indtil sælgeren gemmer sit eget.
         cur.execute("""
             SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
-                   pipeline_close_amount, forecast_amount, created_by, updated_at, created_at
+                   pipeline_close_amount, include_activation, forecast_amount,
+                   created_by, updated_at, created_at
             FROM [dbo].[HubForecasts]
             WHERE forecast_year = %s AND forecast_month = %s AND level = %s
               AND team IN (%s, '')
@@ -662,7 +673,8 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     else:
         cur.execute("""
             SELECT dimension_key, team, pipeline_pct, adjustment_pct, manual_amount,
-                   pipeline_close_amount, forecast_amount, created_by, updated_at, created_at
+                   pipeline_close_amount, include_activation, forecast_amount,
+                   created_by, updated_at, created_at
             FROM [dbo].[HubForecasts]
             WHERE forecast_year = %s AND forecast_month = %s AND level = %s
         """, (year, month, level))
@@ -696,6 +708,11 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
         # "deals" mangler, hvis sælgeren ikke har åbnet pipeline-modalen for
         # denne række — så bevares det tidligere gemte pipeline-valg.
         deals         = row.get("deals")
+        # Medregn realiseret tilvækst? activation_amount er beregnet
+        # autoritativt server-side (router), så klienten ikke selv kan sende
+        # tilvæksten — flaget afgør blot, om den lægges oveni.
+        include_activation = bool(row.get("include_activation"))
+        activation_amount  = round(float(row.get("activation_amount") or 0.0), 2) if include_activation else 0.0
 
         if not team:
             continue
@@ -714,7 +731,7 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
             chosen = [d for d in deals if d.get("included")]
             pipeline_close = round(sum(float(d.get("amount") or 0) for d in chosen), 2)
 
-        forecast_amt = round(pipeline_close + manual_amount, 2)
+        forecast_amt = round(pipeline_close + manual_amount + activation_amount, 2)
 
         # Ryd altid et evt. tidligere forecast for teamet først — så et team,
         # sælgeren tømmer (ingen pipeline-valg, ingen ekstra), også fjernes i
@@ -736,7 +753,7 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
 
         # Gem ingen tom 0-række for et team, sælgeren ikke har indtastet noget
         # for — ellers ville det fejlagtigt tælle som "udfyldt" i overblikket.
-        if pipeline_close == 0 and manual_amount == 0:
+        if pipeline_close == 0 and manual_amount == 0 and activation_amount == 0:
             if had_existing:
                 updated_teams.append(team)
             continue
@@ -748,10 +765,11 @@ def db_saelger_forecast_save(year: int, month: int, owner: str, rows: list):
             INSERT INTO [dbo].[HubForecasts]
                 (forecast_year, forecast_month, level, dimension_key, team,
                  pipeline_pct, adjustment_pct, manual_amount,
-                 pipeline_close_amount, forecast_amount, created_by)
-            VALUES (%s, %s, 'saelger', %s, %s, 0, 0, %s, %s, %s, %s)
+                 pipeline_close_amount, include_activation, forecast_amount, created_by)
+            VALUES (%s, %s, 'saelger', %s, %s, 0, 0, %s, %s, %s, %s, %s)
         """, (year, month, owner, team,
-              manual_amount, pipeline_close, forecast_amt, owner))
+              manual_amount, pipeline_close, 1 if include_activation else 0,
+              forecast_amt, owner))
         saved_count += 1
 
         if deals is not None:

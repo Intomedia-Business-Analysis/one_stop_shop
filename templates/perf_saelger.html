@@ -222,8 +222,15 @@
 
         <div id="dash-content" style="display:none">
 
-          <!-- Række 1: Radial progress + Pipeline + YoY -->
+          <!-- Række 1: Radial progress (eller Watch/Monitor-budget for Team Job) + Pipeline + YoY -->
           <div class="dash-grid-3">
+
+            <!-- Kort 1a: Watch/Monitor-budget — erstatter Månedsmål for Team Job-sælgere -->
+            <div class="dash-card" id="card-ad-split" style="display:none">
+              <div class="dash-card-title">Budget — Watch vs. Monitor</div>
+              <div class="dash-sub" style="margin:-8px 0 6px">Watch mod dit eget budget · Monitor mod det fælles monitor-budget (dit bidrag)</div>
+              <div id="ad-split-wrap" style="margin-top:8px"></div>
+            </div>
 
             <!-- Kort 1: Personlig salgs-tracker -->
             <div class="dash-card" id="card-progress">
@@ -630,6 +637,7 @@ async function loadData() {
       `${d.owner_name} — ${d.month_label}`;
 
     renderRadial(d);
+    renderAdSplit(d);
     renderPipeline(d);
     renderYoy(d);
     renderTilvaekstFordeling(d);
@@ -665,13 +673,21 @@ function renderRadial(d) {
   card.className = 'dash-card' + (!hasBudget ? '' : pct >= 100 ? '' : pct >= 70 ? ' amber' : ' neg');
 }
 
-function renderTeamBudget(d) {
-  const wrap = document.getElementById('team-budget-wrap');
-  if (!d.budget_by_team || d.budget_by_team.length === 0) {
+function renderAdSplit(d) {
+  // Watch/Monitor-budgetopdeling — kun for Team Job-sælgere, hvor den erstatter
+  // Månedsmål-kortet i øverste række. For alle andre vises Månedsmål som vanligt.
+  const card     = document.getElementById('card-ad-split');
+  const progress = document.getElementById('card-progress');
+  const wrap     = document.getElementById('ad-split-wrap');
+  if (!d.ad_split || d.ad_split.length === 0) {
+    card.style.display = 'none';
+    if (progress) progress.style.display = '';
     wrap.innerHTML = '';
     return;
   }
-  const rows = d.budget_by_team.map(t => {
+  card.style.display = '';
+  if (progress) progress.style.display = 'none';
+  const rows = d.ad_split.map(t => {
     const pct       = t.pct !== null ? Math.min(t.pct, 150) : 0;
     const barPct    = Math.min(pct, 100);
     const cls       = t.pct === null ? '' : t.pct >= 100 ? '' : t.pct >= 70 ? 'amber' : 'neg';
@@ -688,9 +704,9 @@ function renderTeamBudget(d) {
       </td>
     </tr>`;
   }).join('');
-  wrap.innerHTML = `<table class="team-budget-table" style="margin-top:14px">
+  wrap.innerHTML = `<table class="team-budget-table" style="margin-top:6px">
     <thead><tr>
-      <th>Team</th>
+      <th>Brand</th>
       <th class="num">Salg</th>
       <th class="num">Budget</th>
       <th class="num">%</th>

@@ -10,7 +10,7 @@ from moduler.modul_barsel.queries import (
     user_can_access_case, user_can_approve_case, set_approval_status,
     list_hub_users,
 )
-from moduler.modul_barsel.mail import send_approval_notification
+from moduler.modul_barsel.mail import send_approval_notification, send_test_mail
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,17 @@ async def api_save_settings(request: Request, user=Depends(get_current_user)):
     except Exception:
         logger.exception("api_save_settings fejlede")
         raise HTTPException(status_code=500, detail="Data kunne ikke hentes")
+
+
+@router.post("/api/settings/test-mail")
+async def api_test_mail(user=Depends(get_current_user)):
+    """Send en testmail til notifikations-maillisten, så admin kan verificere
+    SMTP-opsætningen. Returnerer den faktiske fejl hvis afsendelsen mislykkes."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Kun admin kan sende testmail")
+    settings = get_settings()
+    sent, detail = send_test_mail(settings.get("notifyEmails") or "")
+    return JSONResponse({"sent": sent, "detail": detail})
 
 # ---------------------------------------------------------------------------
 # Cases

@@ -59,6 +59,16 @@ DEAL_TYPE_CANONICAL = {
 
 # MONTH_NAMES_DA importeres fra constants.py (øverst i filen).
 
+# Team Job splittes på sælger-dashboardet i Watch- vs Monitor-omsætning. Watch
+# måles mod sælgerens eget budget (SalespersonBudget), Monitor mod det fælles
+# monitor-budget (BudgetsIntoMedia, Brand=monitor). Samme udtømmende split
+# (monitor vs. ikke-monitor) som modul_rotation's job-dashboard, så Watch+Monitor
+# = teamets fulde omsætning. (Team Banner håndteres separat senere.)
+MONITOR_SITES = BRAND_GROUPS["monitor"]
+ADVERTISING_SPLIT_TEAMS = {
+    "Team Job": "job",
+}
+
 
 # Fælles pooled DB-forbindelse — se db.py.
 from db import get_conn  # noqa: E402,F401
@@ -1310,6 +1320,71 @@ def db_yoy_data(today: date, team: str | None = None,
 #                                          DET NYE DASHBOARD FOR SÆLGER
 #-----------------------------------------------------------------------------------------------------------------------
 
+def _advertising_budget_split(cur, owner_name: str, team: str, pipeline: str,
+                              period_dcol: tuple, period_budget: tuple,
+                              own_watch_budget: float) -> list:
+    """To budgetlinjer (Watch + Monitor) for ét annonce-team for én sælger.
+
+    - Watch:   sælgerens job/banner-omsætning på alt der IKKE er et monitor-site,
+               målt mod sælgerens eget budget (SalespersonBudget — allerede
+               beregnet og givet med som own_watch_budget).
+    - Monitor: sælgerens omsætning på monitor-sites (= bidraget), målt mod det
+               fælles monitor-budget i BudgetsIntoMedia (DealType=pipeline,
+               Brand=monitor) — hele teamets budget, ikke sælger-specifikt.
+
+    Splittet er udtømmende, så Watch+Monitor = sælgerens fulde team-omsætning.
+    Datokolonne/periode arves fra dashboardet (period_dcol), så splittet følger
+    samme dato-/periode-valg som resten af visningen.
+    """
+    monitor_ph = "(" + ",".join(["%s"] * len(MONITOR_SITES)) + ")"
+    val_expr = ("ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
+                "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0)")
+    p_dcol_clause, p_dcol_params = period_dcol
+    p_bud_clause,  p_bud_params  = period_budget
+
+    cur.execute(f"""
+        SELECT {val_expr} AS revenue
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]=%s AND [team]=%s
+          AND [owner_name]=%s
+          AND {p_dcol_clause}
+          AND COALESCE([sites],'') NOT IN {monitor_ph}
+          {_ADM_EXCLUDE}
+    """, (pipeline, team, owner_name) + p_dcol_params + tuple(MONITOR_SITES))
+    watch_rev = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+
+    cur.execute(f"""
+        SELECT {val_expr} AS revenue
+        FROM [dbo].[PipedriveDeals]
+        WHERE [status]='won' AND [pipeline_name]=%s AND [team]=%s
+          AND [owner_name]=%s
+          AND {p_dcol_clause}
+          AND [sites] IN {monitor_ph}
+          {_ADM_EXCLUDE}
+    """, (pipeline, team, owner_name) + p_dcol_params + tuple(MONITOR_SITES))
+    monitor_rev = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+
+    cur.execute(f"""
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+        WHERE LOWER([DealType])=%s AND LOWER([Brand])='monitor'
+          AND {p_bud_clause}
+    """, (pipeline,) + p_bud_params)
+    monitor_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+    def _row(label: str, won: float, budget: float) -> dict:
+        return {
+            "team":   label,
+            "won":    round(won, 2),
+            "budget": round(budget, 2),
+            "pct":    round(won / budget * 100, 1) if budget > 0 else None,
+        }
+
+    return [
+        _row(f"{team} · Watch",   watch_rev,   own_watch_budget),
+        _row(f"{team} · Monitor", monitor_rev, monitor_budget),
+    ]
+
+
 def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                      selected_year: int | None = None, selected_month: str | None = None,
                      date_col: str = "won_time", pipeline_filter: str | None = None):
@@ -1704,6 +1779,21 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         for t in all_teams
     ]
 
+    # Team Job/Banner: byg en Watch/Monitor-budgetopdeling (to linjer pr.
+    # annonce-team) til et dedikeret kort på sælger-dashboardet. Watch måles mod
+    # sælgerens eget budget, Monitor mod det fælles monitor-budget. Tom for alle
+    # andre sælgere — så vises kortet ikke. Den samlede omsætning er uberørt.
+    ad_split = []
+    for t in all_teams:
+        pipeline = ADVERTISING_SPLIT_TEAMS.get(t)
+        if pipeline:
+            ad_split.extend(_advertising_budget_split(
+                cur, owner_name, t, pipeline,
+                (_p_dcol_clause, _p_dcol_params),
+                (_p_budget_clause, _p_budget_params),
+                budget_by_team_raw.get(t, 0.0),
+            ))
+
     conn.close()
 
     vs_budget_pct = round(won_amount / budget * 100, 1) if budget > 0 else None
@@ -1741,6 +1831,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "leaderboard":     leaderboard,
         "seneste_deals":   seneste_deals,
         "budget_by_team":  budget_by_team,
+        "ad_split":        ad_split,
         "owner_name":      owner_name,
         "month_label":     month_label,
         "ref_months":      months_list,

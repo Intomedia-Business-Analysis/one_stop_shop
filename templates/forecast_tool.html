@@ -161,16 +161,15 @@
           <span>Forecast</span>
         </div>
 
-        {% if is_manager %}
-        <!-- ════════════════════════════ MANAGER ════════════════════════════ -->
-        <h1 class="page-title" style="margin-bottom:4px">Forecast — Team-overblik</h1>
-        <p class="page-sub">Sælgernes egne forecasts pr. team — og din vurdering af, hvor realistisk det samlede forecast er</p>
+        <h1 class="page-title" style="margin-bottom:4px">Forecast</h1>
+        <p class="page-sub">{% if is_manager %}Lav dit eget forecast — og se og vurdér dit teams samlede forecast{% else %}Lav dit eget forecast for den kommende måned — ét forecast pr. team, du er en del af{% endif %}</p>
 
+        <!-- Fælles periode-valg — styrer både "Mit forecast" og team-overblikket -->
         <div class="form-card">
           <div class="ctrl-grid">
             <div class="fld">
               <label>År</label>
-              <select id="fc-year" onchange="loadOverview()">
+              <select id="fc-year" onchange="onPeriodChange()">
                 {% for y in years %}
                 <option value="{{ y }}" {% if y == default_year %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
@@ -178,7 +177,7 @@
             </div>
             <div class="fld">
               <label>Måned</label>
-              <select id="fc-month" onchange="loadOverview()">
+              <select id="fc-month" onchange="onPeriodChange()">
                 {% for num, name in months %}
                 <option value="{{ num }}" {% if num == default_month %}selected{% endif %}>{{ name }}</option>
                 {% endfor %}
@@ -187,21 +186,8 @@
           </div>
         </div>
 
-        <div class="summary-bar">
-          <div class="sb-cell"><div class="sb-n" id="ov-total-saelger">—</div><div class="sb-l">Sælger-forecast i alt</div></div>
-          <div class="sb-cell"><div class="sb-n" id="ov-total-manager">—</div><div class="sb-l">Dine bud i alt</div></div>
-          <div class="sb-cell"><div class="sb-n" id="ov-total-budget">—</div><div class="sb-l">Budget</div></div>
-          <div class="sb-cell"><div class="sb-n" id="ov-total-filled">—</div><div class="sb-l">Sælgere udfyldt</div></div>
-        </div>
-
-        <div id="ov-teams">
-          <div class="form-card" style="text-align:center;color:var(--ink-4);font-style:italic">Indlæser team-overblik…</div>
-        </div>
-
-        {% else %}
-        <!-- ════════════════════════════ SÆLGER ════════════════════════════ -->
-        <h1 class="page-title" style="margin-bottom:4px">Mit forecast</h1>
-        <p class="page-sub">Lav dit eget forecast for den kommende måned — ét forecast pr. team, du er en del af</p>
+        <!-- ════════════════════════════ MIT FORECAST ════════════════════════════ -->
+        <h2 class="page-title" style="font-size:18px;margin:8px 0 4px">Mit forecast</h2>
 
         <div class="reminder-banner" id="reminder-banner"></div>
 
@@ -210,31 +196,11 @@
           <ol>
             <li>Vælg måned — <strong>næste måned er valgt på forhånd</strong>, og dit forecast skal være gemt, inden måneden starter.</li>
             <li>Klik på <strong>åben pipeline</strong> for at undersøge dine deals. Vælg dem, du forventer at lukke, og <strong>justér beløbet</strong> hvis kundens tilbud er blevet større. Summen lægges i <strong>"Fra pipeline"</strong>. (Justeringen er kun til dit forecast — den sendes ikke tilbage til Pipedrive.)</li>
-            <li>Skriv evt. <strong>"Ekstra (kr.)"</strong> oveni — fx forventet nysalg, der endnu ikke ligger i pipeline. <strong>Forecast total</strong> = Fra pipeline + Ekstra.</li>
+            <li>Skriv evt. <strong>"Ekstra (kr.)"</strong> oveni — fx forventet nysalg, der endnu ikke ligger i pipeline.</li>
+            <li>Sæt flueben i <strong>"Medregn tilvækst"</strong>, hvis den tilvækst, du allerede har realiseret i måneden, skal lægges oveni dit forecast. <strong>Forecast total</strong> = Fra pipeline + Ekstra (+ Tilvækst, hvis valgt).</li>
             <li>Klik <strong>"Gem mit forecast"</strong>. Din sales manager kan herefter se det i team-overblikket.</li>
           </ol>
           Du kan opdatere dit forecast lige så ofte, du vil — men når du gemmer igen, <strong>erstattes dine tidligere tal for måneden</strong>. Er du med i flere teams, gemmes der ét selvstændigt forecast pr. team.
-        </div>
-
-        <div class="form-card">
-          <div class="ctrl-grid">
-            <div class="fld">
-              <label>År</label>
-              <select id="fc-year" onchange="loadMyForecast()">
-                {% for y in years %}
-                <option value="{{ y }}" {% if y == default_year %}selected{% endif %}>{{ y }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="fld">
-              <label>Måned</label>
-              <select id="fc-month" onchange="loadMyForecast()">
-                {% for num, name in months %}
-                <option value="{{ num }}" {% if num == default_month %}selected{% endif %}>{{ name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
         </div>
 
         <div class="summary-bar">
@@ -252,6 +218,7 @@
                 <th class="num hist" id="th-year-m2">—</th>
                 <th class="num hist" id="th-year-m1">—</th>
                 <th class="num" style="background:#5c3d7a;color:#fff">Realiseret tilvækst</th>
+                <th style="text-align:center;background:#5c3d7a;color:#fff">Medregn tilvækst</th>
                 <th class="num">Åben pipeline</th>
                 <th class="num">Fra pipeline</th>
                 <th class="num">Ekstra (kr.)</th>
@@ -261,7 +228,7 @@
               </tr>
             </thead>
             <tbody id="my-tbody">
-              <tr><td colspan="10" class="empty">Indlæser dit forecast…</td></tr>
+              <tr><td colspan="11" class="empty">Indlæser dit forecast…</td></tr>
             </tbody>
           </table>
         </div>
@@ -272,6 +239,22 @@
             <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
             Gem mit forecast
           </button>
+        </div>
+
+        {% if is_manager %}
+        <!-- ════════════════════════════ TEAM-OVERBLIK (manager) ════════════════════════════ -->
+        <h2 class="page-title" style="font-size:18px;margin:34px 0 4px">Team-overblik</h2>
+        <p class="page-sub" style="margin-bottom:14px">Sælgernes egne forecasts pr. team — og din vurdering af, hvor realistisk det samlede forecast er</p>
+
+        <div class="summary-bar">
+          <div class="sb-cell"><div class="sb-n" id="ov-total-saelger">—</div><div class="sb-l">Sælger-forecast i alt</div></div>
+          <div class="sb-cell"><div class="sb-n" id="ov-total-manager">—</div><div class="sb-l">Dine bud i alt</div></div>
+          <div class="sb-cell"><div class="sb-n" id="ov-total-budget">—</div><div class="sb-l">Budget</div></div>
+          <div class="sb-cell"><div class="sb-n" id="ov-total-filled">—</div><div class="sb-l">Sælgere udfyldt</div></div>
+        </div>
+
+        <div id="ov-teams">
+          <div class="form-card" style="text-align:center;color:var(--ink-4);font-style:italic">Indlæser team-overblik…</div>
         </div>
         {% endif %}
 
@@ -383,10 +366,17 @@ const histCell = (v) => {
   return `<td class="${v > 0 ? 'hist-pos' : 'hist-neg'}">${fmtFull(v)}</td>`;
 };
 
-if (!IS_MANAGER) {
+// Fælles periode-skift: genindlæser både eget forecast og (for managere)
+// team-overblikket, så de to sektioner altid viser samme måned.
+function onPeriodChange() {
+  if (window.loadMyForecast) window.loadMyForecast();
+  if (IS_MANAGER && window.loadOverview) window.loadOverview();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// SÆLGER
+// MIT FORECAST — vises for alle med forecast-adgang, også sales managers
 // ═══════════════════════════════════════════════════════════════════════════
+{
 let _myRows = [];
 
 async function loadMyForecast() {
@@ -414,7 +404,7 @@ function renderMyTable() {
   const saveBtn = document.getElementById('my-save-btn');
 
   if (!_myRows.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty">Du er ikke registreret som aktivt medlem af et team — kontakt din sales manager eller admin</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">Du er ikke registreret som aktivt medlem af et team — kontakt din sales manager eller admin</td></tr>';
     saveBtn.style.display = 'none';
     updateMyTotals();
     return;
@@ -431,11 +421,17 @@ function renderMyTable() {
       : `<span style="color:var(--ink-4)">—</span>`;
     const fromPipe = `<button type="button" class="frompipe-cell" onclick="openPipelineModal(${i})" id="frompipe-${i}" title="Klik for at vælge deals fra din pipeline">${row.pipeline_close ? fmtFull(row.pipeline_close) : 'Vælg…'}</button>`;
 
+    const inclAct = row.activation
+      ? `<input type="checkbox" id="incl-act-${i}" ${row.include_activation ? 'checked' : ''} onchange="recalcMyRow(${i})"
+                title="Læg den realiserede tilvækst (${fmtFull(row.activation)}) oveni dit forecast">`
+      : `<span style="color:var(--ink-4)" title="Ingen realiseret tilvækst i måneden endnu">—</span>`;
+
     return `<tr>
       <td><strong>${escHtml(row.team)}</strong></td>
       ${histCell(row.hist_year_m2)}
       ${histCell(row.hist_year_m1)}
       <td class="activation-cell">${fmtFull(row.activation)}</td>
+      <td style="text-align:center">${inclAct}</td>
       <td class="num">${pipeBtn}</td>
       <td class="num">${fromPipe}</td>
       <td>
@@ -461,8 +457,12 @@ function renderMyTable() {
 function recalcMyRow(i) {
   const row = _myRows[i];
   const man = parseFloat(document.getElementById(`adj-${i}`).value) || 0;
-  row.manual_amount  = man;
-  row.forecast_total = (row.pipeline_close || 0) + man;
+  const inclEl = document.getElementById(`incl-act-${i}`);
+  const incl = inclEl ? inclEl.checked : false;
+  row.manual_amount      = man;
+  row.include_activation = incl;
+  const act = incl ? (row.activation || 0) : 0;
+  row.forecast_total = (row.pipeline_close || 0) + man + act;
 
   const totEl = document.getElementById(`ftotal-${i}`);
   totEl.textContent = fmtFull(row.forecast_total);
@@ -520,9 +520,10 @@ async function saveMyForecast() {
 
   const rows = _myRows.map(r => {
     const out = {
-      team:           r.team,
-      manual_amount:  r.manual_amount,
-      forecast_total: Math.round(r.forecast_total * 100) / 100,
+      team:               r.team,
+      manual_amount:      r.manual_amount,
+      include_activation: !!r.include_activation,
+      forecast_total:     Math.round(r.forecast_total * 100) / 100,
     };
     // Send kun deal-valgene, hvis sælgeren faktisk har åbnet pipeline-modalen
     // for denne række — ellers bevarer serveren det tidligere gemte valg.
@@ -716,9 +717,11 @@ window.openPipelineModal = openPipelineModal;
 loadMyForecast();
 loadReminder();
 
-} else {
+}
+
+if (IS_MANAGER) {
 // ═══════════════════════════════════════════════════════════════════════════
-// MANAGER
+// MANAGER — team-overblik + vurdering (ud over eget forecast ovenfor)
 // ═══════════════════════════════════════════════════════════════════════════
 let _ovData = null;
 

@@ -237,6 +237,15 @@ def test_forecast_tool_viser_manager_overblik(client, make_user, auth_override):
     r = client.get("/tools/forecast/")
     assert r.status_code == 200
     assert "Team-overblik" in r.text
+    # Manageren skal også kunne lave sit eget forecast (ud over overblikket)
+    assert "Mit forecast" in r.text
+
+
+def test_forecast_tool_har_medregn_tilvaekst(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/")
+    assert r.status_code == 200
+    assert "Medregn tilvækst" in r.text
 
 
 def test_forecast_overview_kraever_manager(client, make_user, auth_override):
@@ -315,6 +324,33 @@ def test_forecast_reminder_vises_ikke_for_manager(client, make_user, auth_overri
     r = client.get("/tools/forecast/reminder")
     assert r.status_code == 200
     assert r.json()["show"] is False
+
+
+def test_advertising_budget_split_watch_monitor():
+    # Team Job/Banner-split: watch-omsætning mod eget budget, monitor-omsætning
+    # (bidrag) mod det fælles monitor-budget. Tre queries i rækkefølge:
+    # watch-rev, monitor-rev, monitor-budget.
+    from moduler.modul_perf.queries import _advertising_budget_split
+
+    class FakeCur:
+        def __init__(self, results):
+            self._results = list(results)
+            self._last = None
+        def execute(self, sql, params=None):
+            self._last = self._results.pop(0)
+        def fetchone(self):
+            return self._last
+
+    cur = FakeCur([{"revenue": 30000}, {"revenue": 20000}, {"budget": 80000}])
+    rows = _advertising_budget_split(
+        cur, "Sælger A", "Team Job", "job",
+        ("[won_time] >= %s AND [won_time] < %s", ("2026-01-01", "2027-01-01")),
+        ("[BudgetDate] >= %s AND [BudgetDate] < %s", ("2026-01-01", "2027-01-01")),
+        50000.0,  # sælgerens eget watch-budget (SalespersonBudget)
+    )
+    assert [r["team"] for r in rows] == ["Team Job · Watch", "Team Job · Monitor"]
+    assert rows[0]["won"] == 30000 and rows[0]["budget"] == 50000 and rows[0]["pct"] == 60.0
+    assert rows[1]["won"] == 20000 and rows[1]["budget"] == 80000 and rows[1]["pct"] == 25.0
 
 
 def test_forecast_nav_saelger_ser_forecast_men_ikke_budget(make_user):
