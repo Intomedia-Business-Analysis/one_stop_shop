@@ -82,17 +82,17 @@
         <div class="kpi-row">
           <div class="kpi-card">
             <div class="kpi-label">Bruttosalg (total)</div>
-            <div class="kpi-value">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
-            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value" id="kpi-brutto">{{ "{:,.0f}".format(summary.brutto)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: <span id="kpi-adm-nysalg">{{ "{:,.0f}".format(summary.adm_nysalg)|replace(",", ".") }}</span> kr.</div>
           </div>
           <div class="kpi-card minus">
             <div class="kpi-label">Opsigelser (total)</div>
-            <div class="kpi-value red">{{ "{:,.0f}".format(summary.opsigelser)|replace(",", ".") }} kr.</div>
-            <div class="kpi-sub">heraf adm.: {{ "{:,.0f}".format(summary.adm_opsigelser)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value red" id="kpi-opsigelser">{{ "{:,.0f}".format(summary.opsigelser)|replace(",", ".") }} kr.</div>
+            <div class="kpi-sub">heraf adm.: <span id="kpi-adm-opsigelser">{{ "{:,.0f}".format(summary.adm_opsigelser)|replace(",", ".") }}</span> kr.</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-label">Netto tilvækst</div>
-            <div class="kpi-value green">{{ "{:,.0f}".format(summary.netto_tilvaekst)|replace(",", ".") }} kr.</div>
+            <div class="kpi-value green" id="kpi-netto">{{ "{:,.0f}".format(summary.netto_tilvaekst)|replace(",", ".") }} kr.</div>
             <div class="kpi-sub">(brutto − adm.) − (opsigelser − adm.)</div>
           </div>
         </div>
@@ -357,7 +357,20 @@
 <script>
 const RUN = {{ run.run_id | tojson }};
 const fmt = n => Math.round(n||0).toLocaleString('da-DK') + ' kr.';
+const nfmt = n => Math.round(n||0).toLocaleString('da-DK');
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+
+// Opdater topkortene (Bruttosalg/Opsigelser/Netto) fra serverens genberegnede
+// summary — så beregningen sker "bagved" uden reload (scroll + åbne grupper bevares).
+function applySummary(s){
+  if(!s) return;
+  const set=(id,txt)=>{const e=document.getElementById(id); if(e) e.textContent=txt;};
+  set('kpi-brutto', fmt(s.brutto));
+  set('kpi-adm-nysalg', nfmt(s.adm_nysalg));
+  set('kpi-opsigelser', fmt(s.opsigelser));
+  set('kpi-adm-opsigelser', nfmt(s.adm_opsigelser));
+  set('kpi-netto', fmt(s.netto_tilvaekst));
+}
 
 async function postJSON(url, body){
   const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
@@ -394,30 +407,39 @@ document.querySelectorAll('button.toggle[data-state]').forEach(btn => {
   });
 });
 
-// Bevægelser pr. brand: medtag/udeluk en række fra totalerne
+// Bevægelser pr. brand: medtag/udeluk en række fra totalerne — opdaterer i baggrunden
 document.querySelectorAll('button[data-mv-include]').forEach(btn => {
   btn.addEventListener('click', async () => {
     const excluded = btn.dataset.excluded !== '1';   // toggle
+    btn.disabled = true;
     try {
-      await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
-      toast(excluded ? 'Udeladt' : 'Medtaget'); setTimeout(()=>location.reload(), 350);
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
+      // Opdater knap + række i stedet for reload (bevarer scroll + åben gruppe).
+      btn.dataset.excluded = excluded ? '1' : '0';
+      btn.classList.toggle('on', excluded);
+      btn.textContent = excluded ? 'Udeladt' : 'Medtaget';
+      const tr = btn.closest('tr'); if(tr) tr.style.opacity = excluded ? '.55' : '';
+      applySummary(resp.summary);
+      toast(excluded ? 'Udeladt' : 'Medtaget');
     } catch(e){ toast('Fejl: '+e.message); }
+    finally { btn.disabled = false; }
   });
 });
 
-// Bevægelser pr. brand: ret gross in/out (gemmes når feltet forlades/ændres)
+// Bevægelser pr. brand: ret gross in/out (gemmes når feltet forlades/ændres) — i baggrunden
 document.querySelectorAll('input.mv-val').forEach(inp => {
   inp.addEventListener('change', async () => {
     const tr = inp.closest('tr');
     const gi = tr.querySelector('input[data-field="gross_in"]');
     const go = tr.querySelector('input[data-field="gross_out"]');
     try {
-      await postJSON(`/tools/admin-nysalg/${RUN}/row-value`, {
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-value`, {
         match_id: Number(inp.dataset.match),
         gross_in:  gi && gi.value !== '' ? Number(gi.value) : null,
         gross_out: go && go.value !== '' ? Number(go.value) : null,
       });
-      toast('Værdi gemt'); setTimeout(()=>location.reload(), 350);
+      applySummary(resp.summary);   // genberegnede topkort uden reload
+      toast('Værdi gemt');
     } catch(e){ toast('Fejl: '+e.message); }
   });
 });
