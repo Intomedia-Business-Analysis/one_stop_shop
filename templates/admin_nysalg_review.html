@@ -253,6 +253,67 @@
         </div>
 
 
+        <!-- Bevægelser pr. brand: medtag/udeluk + ret gross in/out -->
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Bevægelser pr. brand — vælg hvad der tæller med</span></div>
+          <p class="page-sub" style="margin:0 0 14px">
+            Medtag/udeluk enkelte bevægelser fra udtrækket og ret gross in/out pr. række
+            (fx falsk gross-in ved skift af kontonummer → sæt til 0). Totalerne genberegnes ved ændring.
+          </p>
+          {% if not brand_movements %}
+            <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
+          {% endif %}
+          {% for grp in brand_movements %}
+          <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
+            <summary style="cursor:pointer;font-weight:700;padding:6px 0">
+              {{ grp.brand }} <span class="muted" style="font-weight:400">({{ grp.rows|length }} bevægelser)</span>
+            </summary>
+            <div style="overflow-x:auto;margin-top:8px">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Site</th><th>Kunde</th><th>Konto</th><th>Org</th><th>Måned</th><th>Movement</th>
+                  <th class="num">Gross in</th><th class="num">Gross out</th><th>Medtag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in grp.rows %}
+                <tr data-match="{{ r.match_id }}" {% if r.excluded %}style="opacity:.5"{% endif %}>
+                  <td>{{ r.site }}</td>
+                  <td>{{ r.customer }}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
+                  <td class="muted">{{ r.account_number }}</td>
+                  <td class="muted">{{ r.pipedrive_id }}</td>
+                  <td>{{ r.month_end }}</td>
+                  <td class="muted">{{ r.movement }}</td>
+                  <td class="num">
+                    <input class="mv-val" type="number" step="1" inputmode="numeric"
+                           data-field="gross_in" data-match="{{ r.match_id }}"
+                           value="{{ r.gross_in_input }}" {% if locked %}disabled{% endif %}
+                           style="width:96px;text-align:right">
+                  </td>
+                  <td class="num">
+                    <input class="mv-val" type="number" step="1" inputmode="numeric"
+                           data-field="gross_out" data-match="{{ r.match_id }}"
+                           value="{{ r.gross_out_input }}" {% if locked %}disabled{% endif %}
+                           style="width:96px;text-align:right">
+                  </td>
+                  <td>
+                    <button class="toggle {% if r.excluded %}on{% endif %}" data-mv-include
+                            data-match="{{ r.match_id }}"
+                            data-excluded="{{ '1' if r.excluded else '0' }}"
+                            {% if locked %}disabled{% endif %}>
+                      {{ "Udeladt" if r.excluded else "Medtaget" }}
+                    </button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+
         <!-- Direktørens kommentar + godkend -->
         <div class="dash-card">
           <div class="dash-card-title"><span>Samlede kommentar</span></div>
@@ -306,14 +367,42 @@ document.querySelectorAll('textarea.bc').forEach(ta => {
   });
 });
 
-// Medtag/udeluk
-document.querySelectorAll('button.toggle').forEach(btn => {
+// Medtag/udeluk (administrative nysalg — scoped via data-state)
+document.querySelectorAll('button.toggle[data-state]').forEach(btn => {
   btn.addEventListener('click', async () => {
     const next = btn.dataset.state === 'exclude' ? 'include' : 'exclude';
     try {
       await postJSON(`/tools/admin-nysalg/${RUN}/override`, {match_id:Number(btn.dataset.match), override: next==='exclude'?'exclude':null});
       // Brand-totaler og netto tilvækst genberegnes server-side → genindlæs.
       toast('Opdateret'); setTimeout(()=>location.reload(), 350);
+    } catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Bevægelser pr. brand: medtag/udeluk en række fra totalerne
+document.querySelectorAll('button[data-mv-include]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const excluded = btn.dataset.excluded !== '1';   // toggle
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
+      toast(excluded ? 'Udeladt' : 'Medtaget'); setTimeout(()=>location.reload(), 350);
+    } catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Bevægelser pr. brand: ret gross in/out (gemmes når feltet forlades/ændres)
+document.querySelectorAll('input.mv-val').forEach(inp => {
+  inp.addEventListener('change', async () => {
+    const tr = inp.closest('tr');
+    const gi = tr.querySelector('input[data-field="gross_in"]');
+    const go = tr.querySelector('input[data-field="gross_out"]');
+    try {
+      await postJSON(`/tools/admin-nysalg/${RUN}/row-value`, {
+        match_id: Number(inp.dataset.match),
+        gross_in:  gi && gi.value !== '' ? Number(gi.value) : null,
+        gross_out: go && go.value !== '' ? Number(go.value) : null,
+      });
+      toast('Værdi gemt'); setTimeout(()=>location.reload(), 350);
     } catch(e){ toast('Fejl: '+e.message); }
   });
 });

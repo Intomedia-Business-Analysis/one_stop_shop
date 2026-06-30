@@ -32,10 +32,41 @@ GROUP_LABELS = {
 
 # Fast visningsrækkefølge. Marketwire vises altid (selv uden bevægelser).
 # PipeDrive-rækkerne ligger efter abonnements-brandene.
-DISPLAY_ORDER = ["Watch DK", "Finans", "Monitor", "Watch NO", "FinansWatch SE",
+DISPLAY_ORDER = ["Watch DK", "Finans", "Watch NO", "FinansWatch SE",
                  "FinanzBusiness", "Marketwire", "Job", "Banner",
-                 "Norge advertising", "Øvrige"]
+                 "Norge Job", "Norge Banner", "Øvrige"]
 ALWAYS_SHOWN = ["Marketwire"]
+
+# Brands der helt udelades af denne rapport (ledelsesønske). Monitor vises i et
+# selvstændigt BI-spor; alt Monitor pilles ud af månedsrapporten — både
+# abonnements-brandet (Zuora-matches, filtreret i routeren) OG Monitor-andelen af
+# banner/job-annoncesalget (DK-annoncerækkerne summeres kun på Watch DK + FINANS
+# DK-sites, så Monitor-sites aldrig tælles med).
+EXCLUDED_BRANDS = {"Monitor"}
+
+# Geografi + type pr. brand-label → bruges til at gruppere rapporten land for land
+# (Subscription før Advertising) med subtotaler. Lande lægges IKKE sammen til én
+# grand total (forskellige valutaer) — kun subtotal pr. (land, type) og total pr. land.
+BRAND_GEO = {
+    "Watch DK":       ("Denmark", "Subscription"),
+    "Finans":         ("Denmark", "Subscription"),
+    "Job":            ("Denmark", "Advertising"),
+    "Banner":         ("Denmark", "Advertising"),
+    "Marketwire":     ("Denmark", "Advertising"),
+    "Watch NO":       ("Norway",  "Subscription"),
+    "Norge Job":      ("Norway",  "Advertising"),
+    "Norge Banner":   ("Norway",  "Advertising"),
+    "FinansWatch SE": ("Sweden",  "Subscription"),
+    "FinanzBusiness": ("Germany", "Subscription"),
+}
+COUNTRY_ORDER = ["Denmark", "Norway", "Sweden", "Germany"]
+COUNTRY_CURRENCY = {"Denmark": "DKK", "Norway": "NOK", "Sweden": "SEK", "Germany": "EUR"}
+TYPE_ORDER = ["Subscription", "Advertising"]
+
+
+def brand_geo(label: str) -> tuple[str, str]:
+    """(land, type) for et brand-label; ('Other','Subscription') som fallback."""
+    return BRAND_GEO.get(label, ("Other", "Subscription"))
 
 # PipeDrive-hentede brand-rækker (findes ikke i Zuora-udtrækket). Hver række
 # vælges via en [account]- eller [team]-scope i PipedriveDeals, filtreret på
@@ -44,16 +75,24 @@ ALWAYS_SHOWN = ["Marketwire"]
 # for cancellation-pipelines; opsigelser = cancellation-pipelines (Σ ABS), så
 # netto = brutto − opsigelser. Job/Banner/Norge advertising har ingen
 # cancellation-pipelines → opsigelser=0. MarketWire har rigtige opsigelser.
+# DK-annoncerækkerne (Job/Banner) bygges IKKE her — de har en kilde-brand-opdeling
+# (Watch DK / FINANS DK / Finans programmatisk) der spejler banner-/job-performance-
+# dashboardet og henter programmatisk salg fra ProgrammaticSales. Se
+# repo.dk_advertising_brand_rows. Her ligger kun Norge-annonce + MarketWire.
 PIPEDRIVE_ROWS = [
-    {"label": "Job",               "scope_col": "account", "scope_val": "jppol_advertising",    "pipelines": ["job"]},
-    {"label": "Banner",            "scope_col": "account", "scope_val": "jppol_advertising",    "pipelines": ["banner"]},
-    {"label": "Norge advertising", "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["job", "banner"],
-     # Drill-down (kun review-siden): underrækker pr. site, delmængde af totalen.
+    # Norge-annonce opdelt i job og banner (ledelsesønske). Hver række beholder
+    # site-drill-down (M24/KOM24) som delmængde af totalen.
+    {"label": "Norge Job",       "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["job"],
      "subrows": [
          {"label": "M24",   "site": "Medier24 NO"},
          {"label": "KOM24", "site": "Kom24 NO"},
      ]},
-    {"label": "Marketwire",        "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
+    {"label": "Norge Banner",    "scope_col": "account", "scope_val": "watch_no_advertising", "pipelines": ["banner"],
+     "subrows": [
+         {"label": "M24",   "site": "Medier24 NO"},
+         {"label": "KOM24", "site": "Kom24 NO"},
+     ]},
+    {"label": "Marketwire",      "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
 ]
 
 # Budget for reklame-rækkerne (BudgetsIntoMedia). WHERE-fragment uden periode —
@@ -61,10 +100,14 @@ PIPEDRIVE_ROWS = [
 # = DK) tager DK-budgettet, mens Norge advertising (watch_no_advertising) tager
 # Watch NO-budgettet — Watch NO ekskluderes fra Job/Banner, så det ikke tælles to
 # gange. DealType-værdierne ('Job'/'Banner'/Brand='Watch NO') er bekræftet i data.
+# DK Banner/Job-budget ekskluderer både Watch NO (egne Norge-rækker) OG Monitor
+# (Monitor er pillet ud af rapporten), så budget/deviation matcher de Monitor-frie
+# omsætningstal.
 AD_BUDGET_WHERE = {
-    "Banner":            "[DealType] = 'Banner' AND [Brand] <> 'Watch NO'",
-    "Job":               "[DealType] = 'Job' AND [Brand] <> 'Watch NO'",
-    "Norge advertising": "[Brand] = 'Watch NO' AND [DealType] IN ('Banner', 'Job')",
+    "Banner":       "[DealType] = 'Banner' AND [Brand] NOT IN ('Watch NO','Monitor')",
+    "Job":          "[DealType] = 'Job' AND [Brand] NOT IN ('Watch NO','Monitor')",
+    "Norge Job":    "[Brand] = 'Watch NO' AND [DealType] = 'Job'",
+    "Norge Banner": "[Brand] = 'Watch NO' AND [DealType] = 'Banner'",
 }
 
 # BudgetsIntoMedia.[Brand]-værdier pr. gruppe (matches case-insensitivt).
@@ -72,20 +115,23 @@ AD_BUDGET_WHERE = {
 BUDGET_BRANDS = {
     "Watch DK":       ["Watch DK", "Watch Int"],
     "Finans":         ["FINANS DK"],
-    "Monitor":        ["Monitor"],
     "Watch NO":       ["Watch NO"],
     "FinansWatch SE": ["Watch SE", "FinansWatch SE"],
     "FinanzBusiness": ["Watch DE", "FinanzBusiness"],
     "Marketwire":     ["MarketWire", "marketwire"],
 }
 
-# Brands der vises i lokal valuta (resten i DKK). Norge → NOK, Sverige → SEK.
-# Salgstallene (brutto/opsigelser/netto) vises i denne valuta; budgettet kommer
-# fra BudgetsIntoMedia og vises altid i DKK.
+# Brands der vises i lokal valuta (resten i DKK). Norge → NOK, Sverige → SEK,
+# Tyskland (FinanzBusiness) → EUR. Salgstallene (brutto/opsigelser/netto) vises i
+# denne valuta. Budgettet vises i SAMME valuta som salgstallene — så Deviation
+# (netto − budget) er meningsfuld — derfor skal DE-budget indlæses i EUR i
+# BudgetsIntoMedia. DK/NO/SE-budget er allerede i lokal valuta.
 BRAND_CURRENCY = {
-    "Watch NO":          "NOK",
-    "FinansWatch SE":    "SEK",
-    "Norge advertising": "NOK",
+    "Watch NO":       "NOK",
+    "FinansWatch SE": "SEK",
+    "FinanzBusiness": "EUR",
+    "Norge Job":      "NOK",
+    "Norge Banner":   "NOK",
 }
 
 
