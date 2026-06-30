@@ -182,7 +182,7 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
     out = []
     for label in sorted(groups, key=lambda l: (_order(l), l)):
         rows = sorted(groups[label],
-                      key=lambda r: max(r["gross_in_raw"], r["gross_out_raw"]), reverse=True)
+                      key=lambda r: max(r["gross_in_input"], r["gross_out_input"]), reverse=True)
         out.append({"brand": label, "rows": rows})
     return out
 
