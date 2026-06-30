@@ -414,7 +414,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         canvas.setFont("Helvetica", 7)
         canvas.setFillColor(MUTED)
         canvas.drawString(16 * mm, 10 * mm,
-                          f"Intomedia · Monthly performance report · generated {datetime.now():%Y-%m-%d %H:%M}")
+                          f"Sales & Marketing JP Politiken Business Media · Monthly performance report · generated {datetime.now():%Y-%m-%d %H:%M}")
         canvas.drawRightString(194 * mm, 10 * mm, f"Page {doc_.page}")
         canvas.setStrokeColor(BORDER)
         canvas.setLineWidth(0.5)
