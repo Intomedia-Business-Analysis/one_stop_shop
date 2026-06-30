@@ -83,6 +83,7 @@ def _empty_row(name: str, team: str) -> dict:
         "open_pipeline":  0.0,
         "pipeline_close": 0.0,
         "manual_amount":  0.0,
+        "include_activation": False,
         "forecast_total": 0.0,
         "budget":         0.0,
         "is_saved":       False,
@@ -128,7 +129,11 @@ def _build_rows(year: int, month: int, team: str, team_brand: str | None) -> lis
             pipeline_close = round(p * float(sv.get("pipeline_pct") or 30.0) / 100, 2)
         else:
             pipeline_close = 0.0
-        forecast_total = round(pipeline_close + manual_amount, 2)
+        # Sælgeren kan have valgt at lægge den realiserede tilvækst oveni. Den
+        # genberegnes live her, så totalen følger med, efterhånden som flere
+        # deals bogføres i måneden.
+        include_activation = bool(sv.get("include_activation")) if sv else False
+        forecast_total = round(pipeline_close + manual_amount + (a if include_activation else 0.0), 2)
 
         is_saved = key in saved
         rows.append({
@@ -142,6 +147,7 @@ def _build_rows(year: int, month: int, team: str, team_brand: str | None) -> lis
             "open_pipeline":  round(p, 2),
             "pipeline_close": round(pipeline_close, 2),
             "manual_amount":  manual_amount,
+            "include_activation": include_activation,
             "forecast_total": forecast_total,
             "budget":         round(b, 2),
             "is_saved":       is_saved,
@@ -242,6 +248,25 @@ async def my_forecast_save(request: Request, user=Depends(get_current_user)):
     rows = [r for r in rows if str(r.get("team", "")).strip() in my_teams]
     if not rows:
         raise HTTPException(400, "Ingen gyldige rækker — du er ikke medlem af et team")
+
+    # Beregn den realiserede tilvækst autoritativt server-side for de rækker,
+    # hvor sælgeren har valgt at medregne den. Bygges fra de samme tal som
+    # vises i tabellen, så klienten ikke selv kan diktere tilvæksten.
+    brand_map = _team_brand_map()
+    activation_cache: dict[str, float] = {}
+    for r in rows:
+        if not r.get("include_activation"):
+            r["activation_amount"] = 0.0
+            continue
+        team = str(r.get("team", "")).strip()
+        if team not in activation_cache:
+            mine = next(
+                (tr for tr in _build_rows(year, month, team, brand_map.get(team))
+                 if tr["dimension_key"] == user["name"]),
+                None,
+            )
+            activation_cache[team] = float(mine["activation"]) if mine else 0.0
+        r["activation_amount"] = activation_cache[team]
 
     try:
         saved_count, updated_teams = db_saelger_forecast_save(year, month, user["name"], rows)
@@ -350,8 +375,8 @@ async def review_save(request: Request, user=Depends(get_current_user)):
 
 @router.get("/reminder")
 async def forecast_reminder(user=Depends(get_current_user)):
-    """In-app notifikation til sælgere. Managere og højere roller laver ikke
-    eget forecast og får derfor ingen påmindelse."""
+    """In-app notifikation til sælgere. Managere og højere roller får ikke
+    selvstændige påmindelser — de arbejder aktivt i tool'et i forvejen."""
     if not has_access(user, "salesperson") or _is_manager(user):
         return JSONResponse({"show": False})
 

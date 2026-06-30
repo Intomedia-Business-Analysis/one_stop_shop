@@ -237,6 +237,15 @@ def test_forecast_tool_viser_manager_overblik(client, make_user, auth_override):
     r = client.get("/tools/forecast/")
     assert r.status_code == 200
     assert "Team-overblik" in r.text
+    # Manageren skal også kunne lave sit eget forecast (ud over overblikket)
+    assert "Mit forecast" in r.text
+
+
+def test_forecast_tool_har_medregn_tilvaekst(client, make_user, auth_override):
+    auth_override(make_user(role="salesperson", teams=["Team Watch DK"]))
+    r = client.get("/tools/forecast/")
+    assert r.status_code == 200
+    assert "Medregn tilvækst" in r.text
 
 
 def test_forecast_overview_kraever_manager(client, make_user, auth_override):
