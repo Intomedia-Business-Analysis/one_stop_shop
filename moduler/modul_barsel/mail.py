@@ -61,9 +61,10 @@ def parse_recipients(raw: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
-               html_body: str | None = None) -> bool:
-    """Send mail via SMTP. Returnerer True hvis afsendt, False hvis sprunget
-    over eller fejlet. Fejler aldrig hårdt — kalderen kan ignorere resultatet."""
+               html_body: str | None = None) -> tuple[bool, str]:
+    """Send mail via SMTP. Returnerer (ok, detalje) — ok=True hvis afsendt,
+    ellers False med en kort, menneskelæsbar forklaring i detalje. Fejler
+    aldrig hårdt; kalderen kan ignorere resultatet."""
 
     host = os.getenv("SMTP_HOST", "smtp.office365.com")
     port = int(os.getenv("SMTP_PORT", "587"))
@@ -75,12 +76,15 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
     ca_bundle = os.getenv("SMTP_CA_BUNDLE", "").strip()
     ssl_verify = os.getenv("SMTP_SSL_VERIFY", "1") != "0"
 
-    if not host or not user or not password or not sender:
-        logger.warning(f"SMTP ikke konfigureret — springer afsendelse over (modtagere: {to_addrs})")
-        return False
+    missing = [n for n, v in (("SMTP_HOST", host), ("SMTP_USER", user),
+                              ("SMTP_PASSWORD", password), ("SMTP_FROM", sender)) if not v]
+    if missing:
+        detail = "SMTP er ikke konfigureret — mangler: " + ", ".join(missing)
+        logger.warning(f"{detail} (modtagere: {to_addrs})")
+        return False, detail
     if not to_addrs:
         logger.info("Ingen modtagere — springer afsendelse over")
-        return False
+        return False, "Ingen modtagere angivet (tjek notifikations-maillisten)"
 
     msg = EmailMessage()
     msg["From"] = formataddr((sender_name, sender))
@@ -125,11 +129,11 @@ def _send_smtp(to_addrs: list[str], subject: str, text_body: str,
                 s.login(user, password)
                 s.send_message(msg)
         logger.info(f"Mail sendt til {len(to_addrs)} modtager(e): {to_addrs}")
-        return True
-    except Exception:
+        return True, f"Mail sendt til {len(to_addrs)} modtager(e)"
+    except Exception as e:
         # Returværdi-kontrakt: False — mail-fejl må aldrig vælte godkendelses-flowet
         logger.exception("Mailafsendelse fejlede")
-        return False
+        return False, f"{type(e).__name__}: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +154,14 @@ def send_approval_notification(case: dict, notify_emails_raw: str) -> bool:
     if not recipients:
         logger.info("notify_emails er tom — springer afsendelse over")
         return False
+
+    ok, _detail = _deliver_approval(case, recipients)
+    return ok
+
+
+def _deliver_approval(case: dict, recipients: list[str]) -> tuple[bool, str]:
+    """Byg og send selve godkendelses-mailen. Adskilt fra
+    send_approval_notification så indholdet kan genbruges af testmail-flowet."""
 
     medarbejder = case.get("hubUserName") or case.get("morNavn") or case.get("farNavn") or "Medarbejder"
     termin      = case.get("termin")      or "—"
@@ -208,4 +220,30 @@ def send_approval_notification(case: dict, notify_emails_raw: str) -> bool:
 </body></html>
 """
 
+    return _send_smtp(recipients, subject, text_body, html_body)
+
+
+# ---------------------------------------------------------------------------
+# Testmail — så admin kan verificere SMTP-opsætningen uden at godkende en sag
+# ---------------------------------------------------------------------------
+
+def send_test_mail(notify_emails_raw: str) -> tuple[bool, str]:
+    """Send en testmail til notifikations-maillisten. Returnerer (ok, detalje)
+    så frontend kan vise præcist hvorfor afsendelsen evt. fejler."""
+    recipients = parse_recipients(notify_emails_raw)
+    if not recipients:
+        return False, "Notifikations-maillisten er tom — tilføj mindst én adresse."
+
+    subject = "Testmail fra Barselsplanlæggeren"
+    text_body = (
+        "Dette er en testmail fra Intomedia Hub's barselsplanlægger.\n\n"
+        "Modtager du denne mail, er SMTP-opsætningen korrekt, og notifikationer "
+        "ved godkendelse vil blive sendt til denne liste.\n"
+    )
+    html_body = (
+        '<!DOCTYPE html><html><body style="font-family:Segoe UI,Arial,sans-serif;color:#1c1c1e">'
+        '<h2 style="color:#1A3650">✅ Testmail modtaget</h2>'
+        '<p>SMTP-opsætningen for barselsplanlæggeren virker. Notifikationer ved '
+        'godkendelse sendes til denne liste.</p></body></html>'
+    )
     return _send_smtp(recipients, subject, text_body, html_body)
