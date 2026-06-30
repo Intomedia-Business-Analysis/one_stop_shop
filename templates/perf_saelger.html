@@ -222,8 +222,15 @@
 
         <div id="dash-content" style="display:none">
 
-          <!-- Række 1: Radial progress + Pipeline + YoY -->
+          <!-- Række 1: Radial progress (eller Watch/Monitor-budget for Team Job) + Pipeline + YoY -->
           <div class="dash-grid-3">
+
+            <!-- Kort 1a: Watch/Monitor-budget — erstatter Månedsmål for Team Job-sælgere -->
+            <div class="dash-card" id="card-ad-split" style="display:none">
+              <div class="dash-card-title">Budget — Watch vs. Monitor</div>
+              <div class="dash-sub" style="margin:-8px 0 6px">Watch mod dit eget budget · Monitor mod det fælles monitor-budget (dit bidrag)</div>
+              <div id="ad-split-wrap" style="margin-top:8px"></div>
+            </div>
 
             <!-- Kort 1: Personlig salgs-tracker -->
             <div class="dash-card" id="card-progress">
@@ -367,15 +374,6 @@
                   <span class="kpi-pill-value" id="yoy-ly">—</span>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Række 1b: Watch/Monitor-budget — kun for Team Job/Banner-sælgere -->
-          <div class="dash-grid" id="card-ad-split" style="display:none">
-            <div class="dash-card">
-              <div class="dash-card-title">Budget — Watch vs. Monitor</div>
-              <div class="dash-sub" style="margin:-8px 0 4px">Watch måles mod dit eget budget · Monitor mod det fælles monitor-budget (dit bidrag)</div>
-              <div id="ad-split-wrap" style="margin-top:8px"></div>
             </div>
           </div>
 
@@ -676,15 +674,19 @@ function renderRadial(d) {
 }
 
 function renderAdSplit(d) {
-  // Watch/Monitor-budgetopdeling — kun udfyldt for Team Job/Banner-sælgere.
-  const card = document.getElementById('card-ad-split');
-  const wrap = document.getElementById('ad-split-wrap');
+  // Watch/Monitor-budgetopdeling — kun for Team Job-sælgere, hvor den erstatter
+  // Månedsmål-kortet i øverste række. For alle andre vises Månedsmål som vanligt.
+  const card     = document.getElementById('card-ad-split');
+  const progress = document.getElementById('card-progress');
+  const wrap     = document.getElementById('ad-split-wrap');
   if (!d.ad_split || d.ad_split.length === 0) {
     card.style.display = 'none';
+    if (progress) progress.style.display = '';
     wrap.innerHTML = '';
     return;
   }
   card.style.display = '';
+  if (progress) progress.style.display = 'none';
   const rows = d.ad_split.map(t => {
     const pct       = t.pct !== null ? Math.min(t.pct, 150) : 0;
     const barPct    = Math.min(pct, 100);

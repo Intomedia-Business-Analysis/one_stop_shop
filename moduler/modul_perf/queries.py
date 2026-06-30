@@ -59,15 +59,14 @@ DEAL_TYPE_CANONICAL = {
 
 # MONTH_NAMES_DA importeres fra constants.py (øverst i filen).
 
-# Annonce-teams (Team Job/Banner) splittes på sælger-dashboardet i Watch- vs
-# Monitor-omsætning. Watch måles mod sælgerens eget budget (SalespersonBudget),
-# Monitor mod det fælles monitor-budget (BudgetsIntoMedia, Brand=monitor). Samme
-# udtømmende split (monitor vs. ikke-monitor) som modul_rotation's job/banner-
-# dashboards, så Watch+Monitor = teamets fulde omsætning.
+# Team Job splittes på sælger-dashboardet i Watch- vs Monitor-omsætning. Watch
+# måles mod sælgerens eget budget (SalespersonBudget), Monitor mod det fælles
+# monitor-budget (BudgetsIntoMedia, Brand=monitor). Samme udtømmende split
+# (monitor vs. ikke-monitor) som modul_rotation's job-dashboard, så Watch+Monitor
+# = teamets fulde omsætning. (Team Banner håndteres separat senere.)
 MONITOR_SITES = BRAND_GROUPS["monitor"]
 ADVERTISING_SPLIT_TEAMS = {
-    "Team Job":    "job",
-    "Team Banner": "banner",
+    "Team Job": "job",
 }
 
 
