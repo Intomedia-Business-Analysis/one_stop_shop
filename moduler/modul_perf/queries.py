@@ -1877,12 +1877,11 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         """, (owner_name, ref_year))
     forecast_amount = float((cur.fetchone() or {}).get("fc", 0) or 0)
 
-    # For Team Job-sælgere hører forecastet til Watch (sælgerens eget budget) —
-    # sæt det på Watch-rækken. Team Banner-rækkerne er bidrag mod holdets budget,
-    # så der knyttes intet sælger-forecast (forecast=None).
+    # Sælgerens eget forecast knyttes til Watch-rækken (både Team Job og Team
+    # Banner har en Watch-linje som første række), så det vises ud for budgettet
+    # i annonce-kortet — ligesom for job-sælgere. Øvrige rækker: intet forecast.
     for r in ad_split:
-        team_lbl = str(r.get("team", ""))
-        r["forecast"] = forecast_amount if (team_lbl.startswith("Team Job") and team_lbl.endswith("Watch")) else None
+        r["forecast"] = forecast_amount if str(r.get("team", "")).endswith("Watch") else None
 
     conn.close()
 
