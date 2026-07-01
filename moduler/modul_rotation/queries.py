@@ -635,24 +635,58 @@ def db_department_performance(today: date):
         # Banner inkluderer FINANS' programmatiske salg (fra ProgrammaticSales).
         banner_rows = _dept_adv_panel(cur, m_start, m_end, "banner", adv_brands, include_programmatic=True)
 
-        # Job: omsætning for Team Job-deals vs. budget summeret på Team Job-sælgere
-        # (SalespersonBudget i stedet for BudgetsIntoMedia).
+        # Job: omsætning for Team Job-deals, opdelt på Watch og Monitor — samme
+        # udtømmende split som Job Performance-dashboardet (db_job_performance) og
+        # sælger-dashboardet, så hele teamet også måles mod monitor-budgettet:
+        #  - Watch:   job-salg på alt der IKKE er et monitor-site → målt mod
+        #             sælger-budgetterne (SalespersonBudget, Team Job).
+        #  - Monitor: job-salg på monitor-sites → målt mod det fælles monitor-
+        #             budget i BudgetsIntoMedia (DealType=Job, Brand=monitor).
+        # Splittet er udtømmende (monitor vs. ikke-monitor), så Watch+Monitor
+        # summer til den samlede Team Job-omsætning.
+        monitor_ph = "(" + ",".join(["%s"] * len(MONITOR_SITES)) + ")"
+        job_val = ("ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') "
+                   "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0)")
+
         cur.execute(f"""
-            SELECT ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
+            SELECT {job_val} AS revenue
             FROM [dbo].[PipedriveDeals]
             WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
               AND [service_activation_date] >= %s AND [service_activation_date] < %s
+              AND COALESCE([sites],'') NOT IN {monitor_ph}
               {_ADM_EXCLUDE}
-        """, (m_start.isoformat(), m_end.isoformat()))
-        job_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+        """, (m_start.isoformat(), m_end.isoformat()) + tuple(MONITOR_SITES))
+        job_watch_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
+        cur.execute(f"""
+            SELECT {job_val} AS revenue
+            FROM [dbo].[PipedriveDeals]
+            WHERE [status]='won' AND [pipeline_name]='job' AND [team]='Team Job'
+              AND [service_activation_date] >= %s AND [service_activation_date] < %s
+              AND [sites] IN {monitor_ph}
+              {_ADM_EXCLUDE}
+        """, (m_start.isoformat(), m_end.isoformat()) + tuple(MONITOR_SITES))
+        job_monitor_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
+
+        # Watch-budget = sælger-budgetterne (SalespersonBudget, Team Job).
         cur.execute("""
             SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[SalespersonBudget]
             WHERE [Team]='Team Job' AND [BudgetDate] >= %s AND [BudgetDate] < %s
         """, (m_start.isoformat(), m_end.isoformat()))
-        job_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+        job_watch_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
 
-        job_rows = [{"brand": "Job", "revenue": round(job_revenue, 2), "budget": round(job_budget, 2)}]
+        # Monitor-budget = fælles budget i BudgetsIntoMedia (DealType=Job, Brand=monitor).
+        cur.execute("""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]
+            WHERE LOWER([DealType])='job' AND LOWER([Brand])='monitor'
+              AND [BudgetDate] >= %s AND [BudgetDate] < %s
+        """, (m_start.isoformat(), m_end.isoformat()))
+        job_monitor_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+        job_rows = [
+            {"brand": "Watch",   "revenue": round(job_watch_revenue, 2),   "budget": round(job_watch_budget, 2)},
+            {"brand": "Monitor", "revenue": round(job_monitor_revenue, 2), "budget": round(job_monitor_budget, 2)},
+        ]
 
         # MarketWire identificeres på team (sites er NULL for disse deals).
         # Subscription-produkt → service_activation_date som de øvrige abonnementspaneler.
