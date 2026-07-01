@@ -255,6 +255,10 @@
                   <span class="kpi-pill-value" id="pill-budget">—</span>
                 </div>
                 <div class="kpi-pill">
+                  <span class="kpi-pill-label">Forecast</span>
+                  <span class="kpi-pill-value" id="pill-forecast">—</span>
+                </div>
+                <div class="kpi-pill">
                   <span class="kpi-pill-label">Deals</span>
                   <span class="kpi-pill-value" id="pill-count">—</span>
                 </div>
@@ -667,6 +671,7 @@ function renderRadial(d) {
 
   document.getElementById('pill-won').textContent    = fmtKr(d.won_amount);
   document.getElementById('pill-budget').textContent = hasBudget ? fmtKr(d.budget) : '—';
+  document.getElementById('pill-forecast').textContent = (d.forecast > 0) ? fmtKr(d.forecast) : '—';
   document.getElementById('pill-count').textContent  = d.won_count;
 
   const card = document.getElementById('card-progress');
@@ -694,10 +699,13 @@ function renderAdSplit(d) {
     const clrStyle  = cls === 'neg' ? '#B32E45' : cls === 'amber' ? 'var(--amber)' : 'var(--green)';
     const pctTxt    = t.pct !== null ? Math.round(t.pct) + '%' : '—';
     const hasBudget = t.budget > 0;
+    const fcTxt = (t.forecast != null && t.forecast > 0) ? fmtKr(t.forecast)
+                : (t.forecast != null) ? '—' : '';
     return `<tr>
       <td>${escHtml(t.team)}</td>
       <td class="num">${fmtKr(t.won)}</td>
       <td class="num">${hasBudget ? fmtKr(t.budget) : '—'}</td>
+      <td class="num">${fcTxt}</td>
       <td class="num" style="min-width:64px">
         <span style="font-size:10px;font-weight:700;color:${clrStyle}">${pctTxt}</span>
         ${hasBudget ? `<div class="team-budget-bar"><div class="team-budget-bar-fill ${cls}" style="width:${barPct}%"></div></div>` : ''}
@@ -709,6 +717,7 @@ function renderAdSplit(d) {
       <th>Brand</th>
       <th class="num">Salg</th>
       <th class="num">Budget</th>
+      <th class="num">Forecast</th>
       <th class="num">%</th>
     </tr></thead>
     <tbody>${rows}</tbody>

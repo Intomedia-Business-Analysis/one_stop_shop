@@ -1794,6 +1794,29 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
                 budget_by_team_raw.get(t, 0.0),
             ))
 
+    # Sælgerens eget forecast (HubForecasts, level='saelger', dimension_key=owner_name)
+    # for den valgte periode — vises ved siden af budgettet i månedsmål-kortet.
+    if months_list:
+        _fc_ph = "(" + ",".join(["%s"] * len(months_list)) + ")"
+        cur.execute(f"""
+            SELECT ISNULL(SUM(forecast_amount),0) AS fc
+            FROM [dbo].[HubForecasts]
+            WHERE level='saelger' AND dimension_key=%s
+              AND forecast_year=%s AND forecast_month IN {_fc_ph}
+        """, (owner_name, ref_year, *months_list))
+    else:
+        cur.execute("""
+            SELECT ISNULL(SUM(forecast_amount),0) AS fc
+            FROM [dbo].[HubForecasts]
+            WHERE level='saelger' AND dimension_key=%s AND forecast_year=%s
+        """, (owner_name, ref_year))
+    forecast_amount = float((cur.fetchone() or {}).get("fc", 0) or 0)
+
+    # For Team Job-sælgere hører forecastet til Watch (sælgerens eget budget) —
+    # sæt det på Watch-rækken, så det vises ud for Watch-budgettet.
+    for r in ad_split:
+        r["forecast"] = forecast_amount if str(r.get("team", "")).endswith("Watch") else None
+
     conn.close()
 
     vs_budget_pct = round(won_amount / budget * 100, 1) if budget > 0 else None
@@ -1813,6 +1836,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
         "won_count":       won_count,
         "cancel_amount":   round(cancel_amount, 2),
         "budget":          round(budget, 2),
+        "forecast":        round(forecast_amount, 2),
         "vs_budget_pct":   vs_budget_pct,
         "salg_dag":        round(salg_dag, 2),
         "sparkline":       sparkline,
