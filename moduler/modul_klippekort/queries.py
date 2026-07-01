@@ -555,6 +555,33 @@ def needed_org_ids() -> list[int]:
         return []
 
 
+def missing_org_ids() -> list[int]:
+    """Needed org_id'er der endnu IKKE findes i KlippekortOrgOwner-cachen.
+
+    Bruges til at fange nyligt tilkomne kunder (fx en deal hvis annoncerings-
+    periode netop er startet), så deres ejer hentes uden at vente på at hele
+    cachen bliver 24 timer gammel.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+            SELECT DISTINCT d.org_id
+            FROM [dbo].[PipedriveDeals] d
+            LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = d.org_id
+            WHERE d.pipeline_name='job' AND d.account='jppol_advertising' AND d.status='won'
+              AND TRY_CAST(d.clip_card_size AS INT) > 0 AND d.org_id IS NOT NULL
+              AND oo.org_id IS NULL
+        """)
+        ids = [int(r["org_id"]) for r in cur.fetchall()]
+        conn.close()
+        return ids
+    except Exception:
+        # Fallback: tom liste — targeted refresh springes blot over denne gang.
+        logger.exception("missing_org_ids fejlede")
+        return []
+
+
 def db_org_owner_meta() -> dict:
     """Antal cachede ejere + alder på ældste række (til staleness-tjek)."""
     try:
@@ -609,6 +636,23 @@ def refresh_org_owners() -> int:
     if not ids:
         return 0
     owners = pda.fetch_org_owners(ids)
+    if not owners:
+        return 0
+    return db_upsert_org_owners([(oid, nm, em) for oid, (nm, em) in owners.items()])
+
+
+def refresh_missing_org_owners() -> int:
+    """Hent kun de org-ejere der mangler i cachen (nyligt tilkomne kunder).
+
+    Målrettet og billigt (GET pr. org) — undgår at side gennem alle
+    organisationer når blot en enkelt ny kunde er dukket op. Returnerer antal
+    opdaterede.
+    """
+    from moduler.modul_klippekort import pipedrive_api as pda
+    ids = missing_org_ids()
+    if not ids:
+        return 0
+    owners = pda.fetch_org_owners_by_ids(ids)
     if not owners:
         return 0
     return db_upsert_org_owners([(oid, nm, em) for oid, (nm, em) in owners.items()])
