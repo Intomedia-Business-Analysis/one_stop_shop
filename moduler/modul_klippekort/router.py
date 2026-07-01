@@ -19,6 +19,8 @@ from moduler.modul_klippekort.queries import (
     db_udloebende_jobs,
     get_site_groups,
     init_klippekort_db,
+    missing_org_ids,
+    refresh_missing_org_owners,
     refresh_org_owners,
 )
 from moduler.modul_klippekort.pipedrive_api import add_used_clip_cards
@@ -39,8 +41,14 @@ _ORG_STALE_HOURS = 24
 
 
 def _maybe_refresh_pd_cache():
+    # Fuld opdatering når cachen er tom eller forældet (>24t). Ellers tjek om
+    # der er dukket NYE kunder op (needed org'er som endnu ikke er cachet) —
+    # fx en deal hvis annonceringsperiode netop er startet — og hent kun dem.
+    # Uden det sidste ville en ny kunde stå uden ejer indtil hele cachen udløb.
     meta = db_org_owner_meta()
-    if meta["count"] > 0 and meta["alder_timer"] < _ORG_STALE_HOURS:
+    stale = meta["count"] == 0 or meta["alder_timer"] >= _ORG_STALE_HOURS
+    missing = [] if stale else missing_org_ids()
+    if not stale and not missing:
         return
     with _ORG_REFRESH_LOCK:
         if _ORG_REFRESHING["running"]:
@@ -49,7 +57,10 @@ def _maybe_refresh_pd_cache():
 
     def _worker():
         try:
-            refresh_org_owners()
+            if stale:
+                refresh_org_owners()          # fuld opdatering (alle org'er)
+            else:
+                refresh_missing_org_owners()  # kun nyligt tilkomne kunder
         except Exception:
             logger.exception("Baggrunds-refresh af org-ejere fejlede")
         finally:

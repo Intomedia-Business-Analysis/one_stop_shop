@@ -91,6 +91,43 @@ def fetch_org_owners(needed_ids) -> dict:
     return out
 
 
+def fetch_org_owners_by_ids(ids) -> dict:
+    """Hent ejer for specifikke org_id'er via GET /organizations/{id}.
+
+    Målrettet og billigt når kun få (nyligt tilkomne) org'er mangler i cachen —
+    modsat fetch_org_owners() der sider gennem ALLE organisationer. Returnerer
+    {org_id: (navn, email)}. Kaster ikke — springer blot en org over ved fejl.
+    """
+    token = _get_token()
+    if not token:
+        return {}
+    out: dict = {}
+    for raw_id in (ids or []):
+        try:
+            oid = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        url = f"{BASE_URL}/organizations/{oid}"
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = requests.get(url, params={"api_token": token}, timeout=30)
+                if resp.status_code == 429:
+                    time.sleep(int(resp.headers.get("Retry-After", 5)))
+                    continue
+                if resp.status_code >= 400:
+                    break
+                body = resp.json()
+                if not body.get("success"):
+                    break
+                o = body.get("data") or {}
+                owner = o.get("owner_id") or {}
+                out[oid] = (owner.get("name"), owner.get("email"))
+                break
+            except (requests.RequestException, ValueError):
+                time.sleep(1)
+    return out
+
+
 def fetch_used_clip_cards(pd_deal_id: int) -> int | None:
     """Hent den nuværende 'klip brugt' (used_clip_cards) LIVE fra Pipedrive.
 
