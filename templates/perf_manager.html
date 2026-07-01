@@ -27,6 +27,11 @@
 
 /* Måneds bar chart */
 .month-bars{height:140px;margin-top:12px;overflow:visible}
+.month-tooltip{position:absolute;pointer-events:none;z-index:20;display:none;background:var(--ink,#1A1A17);color:#fff;padding:8px 11px;border-radius:8px;font-size:11px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.22);white-space:nowrap}
+.month-tooltip .mt-title{font-weight:700;font-size:11px;margin-bottom:4px;letter-spacing:.3px}
+.month-tooltip .mt-row{display:flex;justify-content:space-between;gap:14px}
+.month-tooltip .mt-row span:first-child{color:rgba(255,255,255,.6)}
+.month-tooltip .mt-row b{font-weight:700}
 
 /* Gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 0}
@@ -336,9 +341,10 @@
                 </div>
               </div>
               <!-- Månedsoversigt -->
-              <div style="margin-top:16px">
+              <div style="margin-top:16px;position:relative">
                 <div style="font-size:9px;color:var(--ink-4);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px" id="maaned-year-label"></div>
                 <div class="month-bars" id="month-bars"></div>
+                <div id="month-tooltip" class="month-tooltip"></div>
               </div>
             </div>
 
@@ -821,6 +827,7 @@ function renderTeamTotal(d) {
 
   // Tjekker om programmatic indgaar i nogen maaned i datasaettet (saa stacker vi)
   const hasProgrammatic = d.maaned_chart.some(m => (m.programmatic || 0) > 0);
+  const lActual = isNetto ? 'Tilvækst' : 'Won';
 
   const bars = d.maaned_chart.map((m, i) => {
     const month    = i + 1;
@@ -876,7 +883,12 @@ function renderTeamTotal(d) {
       <text x="${cx}" y="${yLbl}" font-size="13" fill="${labelCol}" font-weight="${fw}" text-anchor="middle"${isFuture ? ' opacity="0.4"' : ''}>${m.maaned}</text>
       <text x="${cx}" y="${yAmt}" font-size="12" fill="${labelCol}" font-weight="${fw}" text-anchor="middle"${isFuture ? ' opacity="0.4"' : ''}>${amtTxt}</text>`;
 
-    return actualBar + budgetBar + forecastBar + labels;
+    // Usynlig hit-flade over hele månedens celle → hover-tooltip med de præcise tal.
+    const cellX = padX + i * groupW;
+    const hit = `<rect class="mb-hit" x="${cellX.toFixed(1)}" y="${padY}" width="${groupW.toFixed(1)}" height="${(chartH + 32).toFixed(1)}" fill="transparent" style="cursor:pointer"`
+              + ` data-m="${m.maaned}" data-al="${lActual}" data-a="${actualVal}" data-b="${budgetVal}" data-f="${forecastVal}" data-fut="${isFuture ? 1 : 0}"/>`;
+
+    return actualBar + budgetBar + forecastBar + labels + hit;
   }).join('');
 
   // 0-linje
@@ -888,7 +900,6 @@ function renderTeamTotal(d) {
   const legendItem = (x, color, label) =>
     `<rect x="${x}" y="${legendY - 8}" width="10" height="10" fill="${color}" opacity="0.85" rx="1"/>
      <text x="${x + 14}" y="${legendY}" font-size="11" fill="var(--ink-3)">${label}</text>`;
-  const lActual = isNetto ? 'Tilvækst' : 'Won';
   let legend = legendItem(padX, COL_ACTUAL_POS, lActual)
              + legendItem(padX + 90, COL_BUDGET, 'Budget')
              + legendItem(padX + 170, COL_FORECAST, 'Forecast');
@@ -903,6 +914,35 @@ function renderTeamTotal(d) {
        ${bars}
        ${legend}
      </svg>`;
+
+  // Hover-tooltip: viser de præcise tal (Tilvækst/Won, Budget, Forecast) pr. måned,
+  // så man kan aflæse budget- og forecast-søjlerne der ellers står uden etiket.
+  const host = document.getElementById('month-bars');
+  const tip  = document.getElementById('month-tooltip');
+  const move = (e) => {
+    const box = host.getBoundingClientRect();
+    let x = e.clientX - box.left + 14, y = e.clientY - box.top + 14;
+    if (x + tip.offsetWidth > box.width) x = e.clientX - box.left - tip.offsetWidth - 14;
+    tip.style.left = Math.max(0, x) + 'px';
+    tip.style.top  = y + 'px';
+  };
+  host.querySelectorAll('.mb-hit').forEach(rect => {
+    rect.addEventListener('mouseenter', () => {
+      const future = rect.dataset.fut === '1';
+      const a = +rect.dataset.a, b = +rect.dataset.b, f = +rect.dataset.f;
+      const row = (lbl, val, cond) => cond
+        ? `<div class="mt-row"><span>${lbl}</span><b>${fmtKr(val)}</b></div>` : '';
+      tip.innerHTML =
+        `<div class="mt-title">${rect.dataset.m} ${refYear}</div>`
+        + row(rect.dataset.al, a, !future && a !== 0)
+        + (future ? `<div class="mt-row"><span>${rect.dataset.al}</span><b>—</b></div>` : '')
+        + row('Budget', b, b > 0)
+        + row('Forecast', f, f > 0);
+      tip.style.display = 'block';
+    });
+    rect.addEventListener('mousemove', move);
+    rect.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  });
 }
 
 function renderGauge(d) {
