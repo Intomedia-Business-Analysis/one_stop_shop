@@ -35,6 +35,11 @@ def _build_label_map() -> dict:
     try:
         from nav_utils import CATEGORIES
         for cat in CATEGORIES:
+            # Kategori-oversigtssiderne (/category/<id>) — så de vises med pænt
+            # navn i stedet for den rå sti i brugsstatistikken.
+            cat_id = cat.get("id")
+            if cat_id:
+                labels.setdefault(f"/category/{cat_id}", cat.get("title") or f"/category/{cat_id}")
             for item in cat.get("items", []):
                 url = item.get("url")
                 if url:
@@ -193,8 +198,11 @@ def get_usage_dashboard(days: int = 30) -> dict:
         "COUNT(DISTINCT user_id) AS users FROM HubUsageLog "
         "WHERE created_at >= %s GROUP BY resource_label ORDER BY views DESC",
         (month_dt,))
+    # Re-map labels ved query-tid: ældre rækker gemte den rå sti (fx
+    # /category/...) før label-mappet kendte dem, så vi slår op igen her.
     top_resources = [{
-        "label": r["resource_label"], "views": int(r["views"]), "users": int(r["users"]),
+        "label": resource_label(r["resource_label"]) if r["resource_label"] else "—",
+        "views": int(r["views"]), "users": int(r["users"]),
     } for r in cur.fetchall()]
 
     # Pr. bruger
@@ -213,6 +221,24 @@ def get_usage_dashboard(days: int = 30) -> dict:
         "views":     int(r["views"]),
         "last_seen": r["last_seen"].strftime("%d/%m %H:%M") if r["last_seen"] else "—",
     } for r in cur.fetchall()]
+
+    # Top-5 mest brugte sider PR. bruger (samme 30-dages vindue som per_user).
+    # ROW_NUMBER pr. bruger giver hver bruger sine 5 hyppigste ressourcer, så
+    # admin kan folde en bruger ud og se hvad netop dén bruger bruger mest.
+    top_by_user: dict = {}
+    cur.execute(
+        "SELECT user_id, resource_label, views FROM ("
+        "  SELECT user_id, resource_label, COUNT(*) AS views, "
+        "         ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY COUNT(*) DESC, resource_label) AS rn "
+        "  FROM HubUsageLog WHERE created_at >= %s GROUP BY user_id, resource_label"
+        ") t WHERE rn <= 5 ORDER BY user_id, views DESC",
+        (month_dt,))
+    for r in cur.fetchall():
+        top_by_user.setdefault(r["user_id"], []).append(
+            {"label": resource_label(r["resource_label"]) if r["resource_label"] else "—",
+             "views": int(r["views"])})
+    for u in per_user:
+        u["top"] = top_by_user.get(u["user_id"], [])
 
     conn.close()
 
