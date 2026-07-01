@@ -422,6 +422,9 @@ let lastTeamData = null;
 const selectedMonths    = new Set();
 const selectedTeams     = new Set();
 const selectedPipelines = new Set();
+// Managerens egne teams (server-injiceret) — default-valg i team-filteret.
+// Tom for management/admin, som ser alle teams.
+const MY_TEAMS = {{ (my_teams | default([])) | tojson }};
 
 // Navne til labels
 const MONTH_NAMES   = ['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
@@ -538,6 +541,7 @@ function buildTeamDropdown(teams) {
     div.dataset.val = t;  // brug data-val til opslag
     const cb  = document.createElement('input');
     cb.type   = 'checkbox';
+    cb.checked = selectedTeams.has(t);   // afspejl default/valgte teams
     const lbl = document.createElement('label');
     lbl.textContent = t;
     div.appendChild(cb);
@@ -545,6 +549,7 @@ function buildTeamDropdown(teams) {
     div.addEventListener('click', () => msToggleItem('team', t, t));
     panel.appendChild(div);
   });
+  msUpdateLabel('team');
 }
 
 // ── Sæt aktuel måned som default ─────────────────────────────────────────
@@ -667,6 +672,9 @@ async function loadMeta() {
   }
   // Sæt aktuel måned som default
   msSetDefaultMonth(today.getMonth() + 1);
+  // Default team-valg = managerens egne teams (tom for management → alle teams)
+  MY_TEAMS.forEach(t => selectedTeams.add(t));
+  if (selectedTeams.size) msUpdateLabel('team');
 }
 
 async function loadData() {

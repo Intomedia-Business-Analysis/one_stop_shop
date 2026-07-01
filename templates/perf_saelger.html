@@ -578,9 +578,16 @@ async function loadMeta(opts = {}) {
       return `<option value="${y}"${selected ? ' selected' : ''}>${y}</option>`;
     }).join('');
 
-    // Måned: multi-select bevares på tværs af owner-skift; default = Hele Året
-    // (ingen valgte måneder), så vi nulstiller kun ved ikke-preserve.
-    if (!preserve) { selectedMonths.clear(); msUpdateLabel(); }
+    // Måned: multi-select bevares på tværs af owner-skift. Ved første indlæsning
+    // (ikke-preserve) er default = indeværende måned (default-året er også i år).
+    if (!preserve) {
+      selectedMonths.clear();
+      const curM = String(today.getMonth() + 1);
+      selectedMonths.add(curM);
+      const cb = document.getElementById('ms-m-' + curM);
+      if (cb) cb.checked = true;
+      msUpdateLabel();
+    }
 
     const teamSel = document.getElementById('filter-team');
     if (m.teams && m.teams.length > 1) {
