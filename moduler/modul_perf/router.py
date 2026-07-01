@@ -78,11 +78,21 @@ async def perf_manager_page(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Kun Sales Managers og derover har adgang")
     today = date.today()
+    # Default team-valg = de teams manageren leder (er en del af). Management/admin
+    # ser hele firmaet, så for dem er default = alle teams (tom liste → "Alle teams").
+    my_teams: list = []
+    if not has_access(user, "management"):
+        from moduler.modul_saelger_portfolio.queries import get_led_teams
+        my_teams = get_led_teams(user["id"]) or user.get("_teams") or []
+        allowed = allowed_data_teams(user)
+        if allowed is not None:
+            my_teams = [t for t in my_teams if t in allowed]
     return templates.TemplateResponse(request, "perf_manager.html", {
         "user":          user,
         "current_year":  today.year,
         "current_month": today.month,
         "current_day":   today.day,
+        "my_teams":      my_teams,
     })
 
 @router.get("/manager-data")
