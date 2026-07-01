@@ -1,3 +1,4 @@
+import json
 import logging
 
 from auth import get_conn
@@ -79,6 +80,12 @@ INIT_STMTS = [
        ALTER TABLE BarselCases ADD approved_by INT NULL""",
     """IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('BarselCases') AND name='approved_at')
        ALTER TABLE BarselCases ADD approved_at DATETIME NULL""",
+    # Multi-periode orlovsplan (mor/far → liste af perioder). Gemmes som JSON,
+    # så en sag kan have et vilkårligt antal orlovs- og ferieperioder (fx delt
+    # forældreorlov). De gamle scalar-kolonner (mor_uger/faed_uger/forl_uger,
+    # ferie-felter) bevares for bagudkompatibilitet, men detaljerne lever her.
+    """IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('BarselCases') AND name='plan_json')
+       ALTER TABLE BarselCases ADD plan_json NVARCHAR(MAX) NULL""",
     # Migration: backfill ferie-split fra gammelt mor_ferie/far_ferie hvis felterne stadig findes
     # (bruger sp_executesql så batch-parseren ikke fejler ved fravær af kolonnen)
     """IF EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('BarselCases') AND name='mor_ferie')
@@ -111,6 +118,38 @@ def init_barsel_db():
 # Hjælpefunktioner til felt-mapping (DB <-> frontend)
 # ---------------------------------------------------------------------------
 
+_EMPTY_PLAN = {"mor": [], "far": []}
+
+
+def _parse_plan(raw) -> dict:
+    """Læs plan_json → {mor:[...], far:[...]}. Tåler NULL/ugyldig JSON."""
+    if not raw:
+        return {"mor": [], "far": []}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {"mor": [], "far": []}
+    if not isinstance(data, dict):
+        return {"mor": [], "far": []}
+    return {
+        "mor": data.get("mor") if isinstance(data.get("mor"), list) else [],
+        "far": data.get("far") if isinstance(data.get("far"), list) else [],
+    }
+
+
+def _serialize_plan(plan) -> str | None:
+    """Frontend-plan → JSON-string til DB. None hvis tom/ugyldig."""
+    if not isinstance(plan, dict):
+        return None
+    out = {
+        "mor": plan.get("mor") if isinstance(plan.get("mor"), list) else [],
+        "far": plan.get("far") if isinstance(plan.get("far"), list) else [],
+    }
+    if not out["mor"] and not out["far"]:
+        return None
+    return json.dumps(out, ensure_ascii=False)
+
+
 def _row_to_front(r: dict) -> dict:
     """Konverterer DB-rækkens snake_case-nøgler til camelCase til frontend."""
     return {
@@ -133,6 +172,7 @@ def _row_to_front(r: dict) -> dict:
         "farFerieSelvbetalt": r.get("far_ferie_selvbetalt") or 0,
         "faedStart":          r["faed_start"] or "",
         "forlStart":          r["forl_start"] or "",
+        "plan":               _parse_plan(r.get("plan_json")),
         "approvalStatus":     r.get("approval_status") or "draft",
         "approvedBy":         r.get("approved_by"),
         "approvedByName":     r.get("approved_by_name") or "",
@@ -170,6 +210,7 @@ def _front_to_db(data: dict) -> dict:
         "far_ferie_selvbetalt": max(0, int(data.get("farFerieSelvbetalt") or 0)),
         "faed_start":           (data.get("faedStart") or "")[:10],
         "forl_start":           (data.get("forlStart") or "")[:10],
+        "plan_json":            _serialize_plan(data.get("plan")),
     }
 
 
@@ -184,11 +225,14 @@ def _settings_to_front(s: dict) -> dict:
 
 
 def _front_to_settings(data: dict) -> dict:
+    # Uge-felterne bevares i skemaet, men er ikke længere forudfyldte
+    # standardværdier i UI'et (fjernet: mor 26 / far 17). Orlovsstrukturen
+    # styres nu pr. sag i den enkelte plan (plan_json).
     return {
-        "grav_uger":     max(0, int(data.get("gravUger", 4))),
-        "mor_uger":      max(0, int(data.get("morUger",  26))),
-        "faed_uger":     max(0, int(data.get("faedUger", 2))),
-        "forl_uger":     max(0, int(data.get("forlUger", 17))),
+        "grav_uger":     max(0, int(data.get("gravUger", 0))),
+        "mor_uger":      max(0, int(data.get("morUger",  0))),
+        "faed_uger":     max(0, int(data.get("faedUger", 0))),
+        "forl_uger":     max(0, int(data.get("forlUger", 0))),
         "notify_emails": (data.get("notifyEmails") or "").strip()[:1000],
     }
 
@@ -198,8 +242,8 @@ def _front_to_settings(data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 _DEFAULT_SETTINGS = {
-    "grav_uger": 4, "mor_uger": 26, "faed_uger": 2,
-    "forl_uger": 17, "notify_emails": "",
+    "grav_uger": 0, "mor_uger": 0, "faed_uger": 0,
+    "forl_uger": 0, "notify_emails": "",
 }
 
 
@@ -346,15 +390,15 @@ def create_case(data: dict, user_id: int) -> int:
             mor_uger, faed_uger, forl_uger,
             mor_ferie_optjent, mor_ferie_selvbetalt,
             far_ferie_optjent, far_ferie_selvbetalt,
-            faed_start, forl_start, created_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            faed_start, forl_start, plan_json, created_by)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (d["hub_user_id"], d["mor_navn"], d["far_navn"],
          d["mor_ansat"], d["far_ansat"],
          d["termin"], d["foedsel_dato"],
          d["mor_uger"], d["faed_uger"], d["forl_uger"],
          d["mor_ferie_optjent"], d["mor_ferie_selvbetalt"],
          d["far_ferie_optjent"], d["far_ferie_selvbetalt"],
-         d["faed_start"], d["forl_start"], user_id),
+         d["faed_start"], d["forl_start"], d["plan_json"], user_id),
     )
     cur.execute("SELECT SCOPE_IDENTITY()")
     new_id = int(cur.fetchone()[0])
@@ -376,7 +420,7 @@ def update_case(case_id: int, data: dict, user: dict):
            mor_uger=%s, faed_uger=%s, forl_uger=%s,
            mor_ferie_optjent=%s, mor_ferie_selvbetalt=%s,
            far_ferie_optjent=%s, far_ferie_selvbetalt=%s,
-           faed_start=%s, forl_start=%s, updated_at=GETDATE()
+           faed_start=%s, forl_start=%s, plan_json=%s, updated_at=GETDATE()
            WHERE id=%s""",
         (d["hub_user_id"], d["mor_navn"], d["far_navn"],
          d["mor_ansat"], d["far_ansat"],
@@ -384,7 +428,7 @@ def update_case(case_id: int, data: dict, user: dict):
          d["mor_uger"], d["faed_uger"], d["forl_uger"],
          d["mor_ferie_optjent"], d["mor_ferie_selvbetalt"],
          d["far_ferie_optjent"], d["far_ferie_selvbetalt"],
-         d["faed_start"], d["forl_start"], case_id),
+         d["faed_start"], d["forl_start"], d["plan_json"], case_id),
     )
     conn.commit()
     conn.close()

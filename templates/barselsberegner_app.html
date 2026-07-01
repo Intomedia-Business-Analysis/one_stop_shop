@@ -9,12 +9,13 @@
 <style>
 :root {
   --bg:#F7F5F2; --surface:#FFFFFF; --border:#E9E5DE; --border-strong:#D4CEC4;
-  --navy:#1C1C1A;            /* chrome near-black (was navy) */
+  --navy:#1C1C1A;
   --taupe:#ACA199; --taupe-dark:#6F6353; --taupe-light:#EDE8E1;
-  --blue:#45596B; --blue-l:#E7ECEF; --blue-xl:#F3F6F7;     /* MOR-spor: dæmpet skifer */
-  --red:#8A5648; --red-m:#A8654E; --red-l:#F2E6E0; --red-xl:#FBF4F0; /* FORÆLDREORLOV: dæmpet ler */
-  --green:#3F6B4E; --green-l:#E2ECE4;                        /* milepæl/optjent/godkendt */
-  --amber:#8A6E45; --amber-l:#F1EADB; --amber-xl:#FBF8F0;   /* FÆDREORLOV: dæmpet okker */
+  --blue:#45596B; --blue-l:#E7ECEF; --blue-xl:#F3F6F7;      /* MOR-spor */
+  --red:#8A5648; --red-m:#A8654E; --red-l:#F2E6E0; --red-xl:#FBF4F0; /* FORÆLDREORLOV */
+  --green:#3F6B4E; --green-l:#E2ECE4;                        /* milepæl/tilbagekomst */
+  --amber:#8A6E45; --amber-l:#F1EADB; --amber-xl:#FBF8F0;   /* FAR-spor */
+  --purple:#5B4B6B; --purple-l:#ECE6F0;                     /* overført orlov */
   --gray:#938C80; --text:#1A1A17; --text-s:#6B6458;
   --radius:10px; --shadow:0 3px 14px rgba(28,28,26,.08);
   --font:'Montserrat',sans-serif;
@@ -34,9 +35,9 @@ header p{color:#A39B90;font-size:12px;margin-top:4px;font-weight:400}
 .btn-primary{background:#fff;color:var(--navy)}.btn-primary:hover{background:var(--taupe-light)}
 .btn-secondary{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.22)}.btn-secondary:hover{background:rgba(255,255,255,.18)}
 .btn-danger{background:var(--red);color:#fff;padding:5px 10px;font-size:11px}.btn-danger:hover{background:#6f4136}
-.btn-outline{background:var(--navy);color:#fff;border:1px solid var(--navy);padding:9px 16px;font-size:12px}.btn-outline:hover{background:var(--green-mid,#38352f)}
+.btn-outline{background:var(--navy);color:#fff;border:1px solid var(--navy);padding:9px 16px;font-size:12px}.btn-outline:hover{background:#38352f}
 
-main{max-width:1800px;margin:0 auto;padding:32px 40px 0}
+main{max-width:1600px;margin:0 auto;padding:32px 40px 0}
 
 /* ── SETTINGS ── */
 .settings-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:28px}
@@ -45,129 +46,134 @@ main{max-width:1800px;margin:0 auto;padding:32px 40px 0}
 .settings-header .chevron{color:var(--taupe);font-size:18px;transition:transform .25s}
 .settings-header.collapsed .chevron{transform:rotate(-90deg)}
 .settings-body{padding:24px}.settings-body.hidden{display:none}
-.settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:22px}
-.setting-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.setting-card label{font-size:12px;color:var(--text-s);line-height:1.4}
-.setting-card label strong{display:block;color:var(--text);font-weight:700;margin-bottom:2px;font-size:12.5px}
-.setting-num{width:64px;height:42px;border:2px solid var(--border-strong);border-radius:8px;text-align:center;font-family:var(--font);font-size:20px;font-weight:700;color:var(--navy);background:#fff;flex-shrink:0}
-.setting-num:focus{outline:none;border-color:var(--taupe-dark)}
-.total-pills{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
-.total-pill{display:flex;align-items:center;gap:10px;padding:10px 18px;border-radius:30px;font-size:13px;font-weight:500}
-.total-pill.blue{background:var(--blue-l);color:var(--blue)}
-.total-pill.red{background:var(--red-l);color:var(--red)}
-.total-pill strong{font-size:17px;font-weight:800}
-.total-pill.over{background:#F2DAD2;color:#8A3B28;box-shadow:0 0 0 1.5px #C77A63 inset}
-.total-pill.over::after{content:'⚠ over maks';font-size:11px;font-weight:700}
 
 .ref-section h3{font-size:10px;font-weight:700;color:var(--taupe-dark);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px}
+.ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:22px}
 .ref-table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
-.ref-table{width:100%;border-collapse:collapse;font-size:12px;min-width:700px}
-.ref-table th{background:var(--navy);color:#fff;padding:8px 14px;font-weight:600;text-align:center;white-space:nowrap}
-.ref-table th:first-child{text-align:left}
-.ref-table td{padding:7px 14px;border-bottom:1px solid var(--border);text-align:center;color:var(--text-s);white-space:nowrap}
-.ref-table td:first-child{text-align:left;color:var(--text);font-weight:600}
+.ref-table{width:100%;border-collapse:collapse;font-size:12px}
+.ref-table caption{caption-side:top;text-align:left;padding:8px 12px;font-weight:700;font-size:11px;letter-spacing:.5px;color:#fff}
+.ref-table.mor caption{background:var(--blue)}
+.ref-table.far caption{background:var(--amber)}
+.ref-table td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+.ref-table td:last-child{text-align:right;font-weight:700;white-space:nowrap;color:var(--text-s)}
 .ref-table tr:last-child td{border-bottom:none}
 .ref-table tr:nth-child(even) td{background:var(--bg)}
+.ref-note{font-size:11px;color:var(--gray);margin-top:-14px;margin-bottom:20px}
+.admin-only-note{margin-top:14px;font-size:11.5px;color:var(--text-s);background:var(--taupe-light);border-left:3px solid var(--taupe);padding:8px 12px;border-radius:5px}
 
 /* ── TOOLBAR ── */
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .toolbar-left{display:flex;align-items:center;gap:12px}
 .toolbar h2{font-size:15px;font-weight:700;letter-spacing:-.2px;color:var(--navy)}
 .count-badge{background:var(--taupe-light);color:var(--taupe-dark);font-size:11px;font-weight:700;padding:3px 11px;border-radius:20px}
-
-/* Hjælpelinje over tabellen — forklarer hvad man selv udfylder */
 .fill-hint{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text-s);margin-bottom:12px}
 .fill-hint-box{display:inline-block;width:15px;height:15px;border-radius:4px;border:1.5px solid var(--border-strong);background:#fff;vertical-align:middle}
 .fill-hint-box.req{border-color:var(--red-m);background:var(--red-xl)}
 .fill-hint-sep{color:var(--border-strong)}
 
-/* ── TABLE ── */
+/* ── OVERVIEW TABLE ── */
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1600px}
-.th-section{padding:9px 12px;font-size:9.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#fff;text-align:center;border-right:2px solid rgba(255,255,255,.22)}
-.th-section.sec-base{background:#4D4942}
-.th-section.sec-mor{background:var(--blue)}
-.th-section.sec-mor-hl{background:var(--green)}
-.th-section.sec-faed{background:var(--amber)}
-.th-section.sec-forl{background:var(--red)}
-.th-section.sec-far{background:#5E3A2E;border-right:none}
-thead .col-head th{padding:9px 11px;font-weight:600;font-size:11px;line-height:1.35;text-align:center;border-bottom:2px solid var(--border);white-space:nowrap}
-thead .col-head th.th-base{background:#EFEBE4;color:var(--navy);border-right:1px solid var(--border)}
-thead .col-head th.th-mor{background:var(--blue-l);color:var(--blue);border-right:1px solid #cdd7de}
-thead .col-head th.th-mor-hl{background:var(--green-l);color:var(--green);border-right:2px solid #bcd2c2}
-thead .col-head th.th-faed{background:var(--amber-l);color:#6E5736;border-right:1px solid #e3d6b8}
-thead .col-head th.th-forl{background:var(--red-l);color:var(--red);border-right:1px solid #e6cdc4}
-thead .col-head th.th-far{background:#EFE3DC;color:#5E3A2E;border-right:none}
-
-tbody tr{border-bottom:1px solid var(--border)}
-tbody tr:last-child{border-bottom:none}
-tbody tr:hover td{filter:brightness(.985)}
-tbody td{padding:9px 11px;vertical-align:middle;border-right:1px solid var(--border)}
-tbody td:last-child{border-right:none}
-
-.td-base{background:#FAF8F4}
-.td-mor{background:var(--blue-xl)}
-.td-mor-hl{background:var(--green-l)}
-.td-faed{background:var(--amber-xl)}
-.td-forl{background:var(--red-xl)}
-.td-far-hl{background:var(--red-l)}
-
-/* Inputfelter har en synlig hvid ramme, så det er tydeligt HVOR man kan skrive —
-   beregnede celler (.computed) står derimod som ren tekst på den farvede tint. */
-.cell-input{width:100%;min-width:90px;border:1.5px solid var(--border-strong);background:#fff;font-family:var(--font);font-size:12.5px;color:var(--text);padding:5px 8px;border-radius:6px;transition:all .15s;box-shadow:inset 0 1px 2px rgba(28,28,26,.04)}
-.cell-input:hover{border-color:var(--taupe-dark)}
-.cell-input:focus{outline:none;border-color:var(--taupe-dark);background:#fff;box-shadow:0 0 0 3px rgba(111,99,83,.14)}
-.cell-input.date-input{min-width:110px}
-/* Tomt påkrævet felt (terminsdato) fremhæves, så man ved at det SKAL udfyldes. */
-.cell-input.req:placeholder-shown{border-color:var(--red-m);background:var(--red-xl);box-shadow:0 0 0 2px rgba(138,86,72,.12)}
-.cell-input.req:placeholder-shown::placeholder{color:var(--red-m);opacity:.8}
-.cell-input.amber{border-color:var(--amber);background:var(--amber-xl);color:#6E5736;font-weight:600}
-.cell-input.amber:focus{border-color:var(--amber)}
-select.cell-input{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B6458' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:26px}
-
-/* Toggle switch */
-.ansat-toggle{display:flex;align-items:center;gap:6px;font-size:11.5px;white-space:nowrap}
-.ansat-toggle input[type=checkbox]{width:32px;height:18px;appearance:none;background:#ccc;border-radius:9px;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
-.ansat-toggle input[type=checkbox]:checked{background:var(--green)}
-.ansat-toggle input[type=checkbox]::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;top:2px;left:2px;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
-.ansat-toggle input[type=checkbox]:checked::after{transform:translateX(14px)}
-.ansat-label{color:var(--text-s);line-height:1.2}
-.ansat-label strong{display:block;color:var(--text);font-size:12px;font-weight:600}
-
-.computed{font-weight:500;font-size:12.5px;color:var(--text-s);text-align:center;padding:5px 6px}
-.computed.date{color:var(--text)}
-.computed.highlight-mor{color:var(--green);font-weight:700;font-size:14px}
-.computed.highlight-far{color:#5E3A2E;font-weight:700;font-size:14px}
-.computed.weeks{color:var(--blue);font-weight:600}
-.computed.weeks-far{color:var(--red-m);font-weight:600}
-.badge-tvil{display:inline-block;background:var(--taupe-light);color:var(--taupe-dark);font-size:10px;font-weight:600;padding:2px 7px;border-radius:12px;margin-top:3px}
+table.overview{width:100%;border-collapse:collapse;font-size:12.5px;min-width:1080px}
+table.overview thead th{background:var(--navy);color:#fff;padding:10px 12px;font-weight:600;font-size:11px;text-align:left;white-space:nowrap;border-right:1px solid rgba(255,255,255,.12)}
+table.overview thead th.c{text-align:center}
+table.overview thead th.mor{background:var(--blue)}
+table.overview thead th.far{background:var(--amber)}
+table.overview tbody td{padding:12px;vertical-align:top;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+table.overview tbody td:last-child{border-right:none}
+/* Beregnede tal/datoer sidder på højde med input-teksten i samme række (input er 34px høj) */
+table.overview tbody td.c .ov-total,
+table.overview tbody td.c .ov-date{display:inline-block;padding-top:7px}
+table.overview tbody td.c .ov-total small{padding-top:0}
+.ov-row:hover td{filter:brightness(.985)}
+.ov-row.expanded td{background:var(--taupe-light)}
+td.c{text-align:center}
+.expand-btn{width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:#fff;color:var(--text-s);cursor:pointer;font-size:13px;line-height:1;transition:all .15s}
+.expand-btn:hover{border-color:var(--navy);color:var(--navy)}
+.expand-btn.open{background:var(--navy);color:#fff;border-color:var(--navy)}
+.ov-total{font-weight:700}
+.ov-total.mor{color:var(--blue)}
+.ov-total.far{color:var(--amber)}
+.ov-date{color:var(--green);font-weight:700}
+.ov-name-input{width:100%;min-width:120px;height:34px;border:1.5px solid var(--border-strong);background:#fff;font-family:var(--font);font-size:12.5px;color:var(--text);padding:0 10px;border-radius:6px;text-overflow:ellipsis}
+.ov-name-input:focus{outline:none;border-color:var(--taupe-dark);box-shadow:0 0 0 3px rgba(111,99,83,.14)}
+/* Dropdown: skjul den native pil og tegn vores egen med plads til, så teksten ikke løber ind i pilen */
+select.ov-name-input{cursor:pointer;appearance:none;padding-right:28px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B6458' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.date-input.req:placeholder-shown{border-color:var(--red-m);background:var(--red-xl)}
+.date-input.req:placeholder-shown::placeholder{color:var(--red-m);opacity:.8}
 
 .empty-row td{text-align:center;padding:60px 20px;color:var(--gray);font-size:14px;background:var(--bg)}
 .empty-row td span{display:block;font-size:30px;margin-bottom:12px;font-weight:800;color:var(--taupe);letter-spacing:-1px}
 
-.ansat-mini{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--text-s);cursor:pointer;user-select:none}
-.ansat-mini input{accent-color:var(--green);width:13px;height:13px;cursor:pointer;margin:0}
+/* ── DETAIL (expanded) ── */
+.detail-row td{padding:0;background:#FBFAF8;border-bottom:2px solid var(--border-strong)}
+.detail-wrap{display:grid;grid-template-columns:1fr 1fr;gap:0}
+@media(max-width:1100px){.detail-wrap{grid-template-columns:1fr}}
+.parent-panel{padding:18px 22px}
+.parent-panel.mor{background:var(--blue-xl);border-right:1px solid var(--border)}
+.parent-panel.far{background:var(--amber-xl)}
+.pp-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.pp-head h4{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase}
+.parent-panel.mor h4{color:var(--blue)}
+.parent-panel.far h4{color:var(--amber)}
+.pp-name{font-weight:600;color:var(--text-s);text-transform:none;letter-spacing:0;margin-left:6px}
+.pp-chips{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pp-transfer-in{font-size:11px;font-weight:600;color:var(--purple);background:var(--purple-l);padding:4px 10px;border-radius:20px}
+.pp-rest{font-size:11px;font-weight:700;color:var(--green);background:var(--green-l);padding:4px 12px;border-radius:20px;white-space:nowrap}
+.pp-rest span{font-weight:500;opacity:.8;margin-left:2px}
+.pp-rest.over{color:#8A3B28;background:#F2DAD2}
+.ov-rem{color:var(--gray);font-weight:600}
+.ov-rem.neg{color:#8A3B28}
+.pp-summary strong.pos{color:var(--green)}
+.pp-summary strong.neg{color:#8A3B28}
 
-.actions-cell{text-align:center;vertical-align:top;padding:8px 6px!important;min-width:130px}
+.pp-table{width:100%;border-collapse:collapse;font-size:12px;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.pp-table th{background:#EFEBE4;color:var(--text-s);font-weight:700;font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;padding:7px 9px;text-align:left;border-bottom:1px solid var(--border)}
+.pp-table th.c{text-align:center}
+.pp-table td{padding:7px 9px;border-bottom:1px solid var(--border);vertical-align:middle}
+.pp-table tr:last-child td{border-bottom:none}
+.pt-type strong{display:block;font-size:12px;color:var(--text);font-weight:700}
+.pt-type small{display:block;font-size:10px;color:var(--gray);margin-top:1px}
+.pt-tag{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;margin-top:3px}
+.pt-tag.ear{background:var(--green-l);color:var(--green)}
+.pt-tag.tr{background:var(--purple-l);color:var(--purple)}
+
+.p-in{width:100%;border:1.5px solid var(--border-strong);background:#fff;font-family:var(--font);font-size:12px;color:var(--text);padding:5px 7px;border-radius:6px}
+.p-in:focus{outline:none;border-color:var(--taupe-dark);box-shadow:0 0 0 3px rgba(111,99,83,.14)}
+.p-in.num{width:64px;text-align:center;font-weight:600}
+.p-in.date{min-width:112px}
+.p-in.auto{border-style:dashed;color:var(--text-s)}
+.p-computed{color:var(--text);font-weight:600}
+.p-none{color:var(--gray)}
+.p-del{width:24px;height:24px;border-radius:6px;border:1px solid var(--border-strong);background:#fff;color:var(--red);cursor:pointer;font-size:12px;line-height:1}
+.p-del:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.pp-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.btn-add{padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;border:1px dashed var(--border-strong);background:#fff;color:var(--text-s);cursor:pointer;font-family:var(--font)}
+.btn-add:hover{border-color:var(--navy);color:var(--navy)}
+.pp-summary{margin-top:12px;font-size:11.5px;color:var(--text-s);display:flex;gap:16px;flex-wrap:wrap}
+.pp-summary strong{color:var(--text)}
+.pp-summary .ret{color:var(--green);font-weight:700}
+.pp-warn{margin-top:8px;font-size:11px;color:#8A3B28;background:#F2DAD2;padding:5px 10px;border-radius:6px;display:none}
+.pp-warn.show{display:block}
+
+/* Status + actions */
 .status-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.3px;margin-bottom:4px}
 .approved-by{font-size:9.5px;color:var(--green);margin-bottom:4px;font-style:italic}
 .row-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;margin-bottom:4px}
 .btn-mini{padding:3px 8px;font-size:10.5px;font-weight:600;border-radius:5px;border:1px solid var(--border-strong);background:#fff;color:var(--text-s);cursor:pointer;font-family:var(--font)}
 .btn-mini:hover{border-color:var(--navy);color:var(--navy)}
 .btn-mini.ok{background:var(--green);color:#fff;border-color:var(--green)}
-.btn-mini.ok:hover{background:#2f5239;color:#fff}
+.btn-mini.ok:hover{background:#2f5239}
 .btn-mini.bad{background:var(--red);color:#fff;border-color:var(--red)}
-.btn-mini.bad:hover{background:#6f4136;color:#fff}
+.btn-mini.bad:hover{background:#6f4136}
+.actions-cell{min-width:150px}
+.ansat-mini{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--text-s);cursor:pointer;user-select:none}
+.ansat-mini input{accent-color:var(--green);width:13px;height:13px;cursor:pointer;margin:0}
 
-.settings-locked .setting-num,
 .settings-locked #s_notifyEmails{background:#f3f1ed;color:var(--text-s);border-color:var(--border);cursor:not-allowed}
-.admin-only-note{margin-top:14px;font-size:11.5px;color:var(--text-s);background:var(--taupe-light);border-left:3px solid var(--taupe);padding:8px 12px;border-radius:5px}
 
 @media print{
-  header .header-actions,.toolbar .btn,.btn-danger,.settings-wrap,.toolbar{display:none!important}
+  header .header-actions,.toolbar .btn,.btn-danger,.settings-wrap,.expand-btn,.pp-actions,.p-del{display:none!important}
   body{background:#fff}.table-wrap{box-shadow:none;border:1px solid #ccc}
-  table{min-width:unset;font-size:10px}
-  tbody td{padding:5px 7px}
 }
 
 #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:11px 22px;border-radius:30px;font-size:13px;font-weight:500;opacity:0;transition:all .3s;pointer-events:none;z-index:100}
@@ -192,43 +198,42 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
 
 <main>
 
-<!-- SETTINGS -->
+<!-- SETTINGS / REFERENCE -->
 <div class="settings-wrap">
-  <div class="settings-header" id="settingsToggle" onclick="toggleSettings()">
-    <h2>Virksomhedens barselsindstillinger</h2>
+  <div class="settings-header collapsed" id="settingsToggle" onclick="toggleSettings()">
+    <h2>Orlovsregler &amp; indstillinger</h2>
     <span class="chevron">▾</span>
   </div>
-  <div class="settings-body" id="settingsBody">
+  <div class="settings-body hidden" id="settingsBody">
 
-    <div class="settings-grid">
-      <div class="setting-card">
-        <label><strong>Graviditetsorlov – mor</strong>Uger FØR terminsdato</label>
-        <input type="number" class="setting-num" id="s_gravUger" value="4" min="1" max="12" oninput="recalcAll();saveSettings()">
+    <div class="ref-section">
+      <h3>Standard orlovsstruktur</h3>
+      <div class="ref-grid">
+        <div class="ref-table-wrap">
+          <table class="ref-table mor">
+            <caption>MOR / 1. FORÆLDER</caption>
+            <tr><td>Graviditetsorlov <small>(4 uger før termin)</small></td><td>4 uger</td></tr>
+            <tr><td>Barselsorlov <small>(øremærket)</small></td><td>11 uger</td></tr>
+            <tr><td>Forældreorlov <small>(kan overføres)</small></td><td>13 uger</td></tr>
+          </table>
+        </div>
+        <div class="ref-table-wrap">
+          <table class="ref-table far">
+            <caption>FAR / MEDMOR</caption>
+            <tr><td>Fædreorlov <small>(2 uger ved fødsel · øremærket)</small></td><td>2 uger</td></tr>
+            <tr><td>Forældreorlov <small>(øremærket)</small></td><td>9 uger</td></tr>
+            <tr><td>Forældreorlov <small>(kan overføres)</small></td><td>13 uger</td></tr>
+          </table>
+        </div>
       </div>
-      <div class="setting-card">
-        <label><strong>Barsel – mor</strong>Uger EFTER fødsel (standardværdi per sag)</label>
-        <input type="number" class="setting-num" id="s_morUger" value="26" min="1" max="39" oninput="recalcAll();saveSettings()">
-      </div>
-      <div class="setting-card">
-        <label><strong>Fædreorlov – far</strong>Uger VED fødsel (standardværdi per sag)</label>
-        <input type="number" class="setting-num" id="s_faedUger" value="2" min="0" max="10" oninput="recalcAll();saveSettings()">
-      </div>
-      <div class="setting-card">
-        <label><strong>Forældreorlov – far</strong>Uger, kan afholdes frit (standardværdi per sag)</label>
-        <input type="number" class="setting-num" id="s_forlUger" value="17" min="0" max="24" oninput="recalcAll();saveSettings()">
-      </div>
+      <div class="ref-note">Referenceværdier. Den faktiske plan udfyldes pr. sag — forældreorlovens start og længde skrives manuelt, og perioder kan deles op.</div>
     </div>
 
-    <div class="total-pills">
-      <div class="total-pill blue">Mor: <strong id="pill_mor">—</strong> / 39 uger barsel</div>
-      <div class="total-pill red">Far: <strong id="pill_far">—</strong> / 24 uger barsel</div>
-    </div>
-
-    <div style="margin-top:18px">
+    <div style="margin-top:4px">
       <label for="s_notifyEmails" style="display:block;font-size:12px;font-weight:600;color:var(--text-s);margin-bottom:6px">Notifikations-mailliste</label>
       <input type="text" id="s_notifyEmails" placeholder="hr@intomedia.dk; payroll@intomedia.dk"
              oninput="saveSettings()"
-             style="width:100%;max-width:600px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:'Outfit',sans-serif;font-size:13px;color:var(--text);background:#fff">
+             style="width:100%;max-width:600px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:var(--font);font-size:13px;color:var(--text);background:#fff">
       <div style="font-size:11px;color:var(--gray);margin-top:4px">Komma- eller semikolon-separeret. Modtagerne får en mail når en barselsplan godkendes.</div>
       {% if is_admin %}
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -253,57 +258,35 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
   <button class="btn btn-outline" onclick="addRow()">+ Tilføj medarbejder</button>
 </div>
 
-<!-- Hjælpelinje: gør det tydeligt hvad man selv udfylder vs. hvad der beregnes -->
 <div class="fill-hint">
   <span class="fill-hint-box"></span> Hvide felter udfylder du selv
   <span class="fill-hint-sep">·</span>
   <span class="fill-hint-box req"></span> Rød = påkrævet (terminsdato)
   <span class="fill-hint-sep">·</span>
-  Datoer uden ramme beregnes automatisk
+  Klik ▸ for at åbne orlovsplanen · stiplede felter beregnes men kan overskrives
 </div>
 
-<!-- TABLE -->
+<!-- OVERVIEW TABLE -->
 <div class="table-wrap">
-  <table id="mainTable">
+  <table class="overview" id="mainTable">
     <thead>
-      <tr id="sectionRow">
-        <th colspan="5" class="th-section sec-base">GRUNDOPLYSNINGER</th>
-        <th colspan="3" class="th-section sec-mor">MOR / 1. FORÆLDER</th>
-        <th colspan="2" class="th-section sec-mor">Ferie i forlængelse af barsel</th>
-        <th colspan="1" class="th-section sec-mor-hl">MOR TILBAGEKOMST</th>
-        <th colspan="3" class="th-section sec-faed">FÆDREORLOV — ved fødsel</th>
-        <th colspan="3" class="th-section sec-forl">FORÆLDREORLOV</th>
-        <th colspan="2" class="th-section sec-forl">Ferie i forlængelse af orlov</th>
-        <th colspan="1" class="th-section sec-far">FAR TILBAGEKOMST</th>
-        <th colspan="1" class="th-section sec-base" style="border-right:none">STATUS</th>
-      </tr>
-      <tr class="col-head">
-        <th class="th-base">Medarbejder</th>
-        <th class="th-base">Mor<br>navn</th>
-        <th class="th-base">Far / medmor<br>navn</th>
-        <th class="th-base">Terminsdato</th>
-        <th class="th-base" style="background:var(--amber-l);color:#6E5736">Faktisk<br>fødselsdato<br><small style="font-weight:400;color:#aaa">valgfri</small></th>
-        <th class="th-mor">Barselsstart</th>
-        <th class="th-mor">Uger<br><small style="font-weight:400">(redigerbar)</small></th>
-        <th class="th-mor">Barsel<br>slutter</th>
-        <th class="th-mor">Optjent<br>ferie</th>
-        <th class="th-mor">Selvbetalt<br>ferie</th>
-        <th class="th-mor-hl">Tilbagekomst</th>
-        <th class="th-faed">Start<br><small style="font-weight:400">(justerbar)</small></th>
-        <th class="th-faed">Uger<br><small style="font-weight:400">(redigerbar)</small></th>
-        <th class="th-faed">Slutter</th>
-        <th class="th-forl">Start<br><small style="font-weight:400">← fra mor</small></th>
-        <th class="th-forl">Uger<br><small style="font-weight:400">(redigerbar)</small></th>
-        <th class="th-forl">Slutter</th>
-        <th class="th-forl">Optjent<br>ferie</th>
-        <th class="th-forl">Selvbetalt<br>ferie</th>
-        <th class="th-far">Tilbagekomst</th>
-        <th class="th-base" style="width:140px"></th>
+      <tr>
+        <th style="width:36px"></th>
+        <th>Medarbejder</th>
+        <th>Mor navn</th>
+        <th>Far / medmor</th>
+        <th class="c">Terminsdato</th>
+        <th class="c">Faktisk fødsel</th>
+        <th class="c mor">Mor · orlov</th>
+        <th class="c mor">Mor · tilbagekomst</th>
+        <th class="c far">Far · orlov</th>
+        <th class="c far">Far · tilbagekomst</th>
+        <th class="c">Status</th>
       </tr>
     </thead>
     <tbody id="tbody">
       <tr class="empty-row" id="emptyRow">
-        <td colspan="21"><span>—</span>Ingen sager endnu — klik “+ Tilføj medarbejder” for at starte</td>
+        <td colspan="11"><span>—</span>Ingen sager endnu — klik “+ Tilføj medarbejder” for at starte</td>
       </tr>
     </tbody>
   </table>
@@ -312,53 +295,79 @@ select.cell-input{cursor:pointer;appearance:none;background-image:url("data:imag
 </main>
 <div id="toast"></div>
 
-<!-- SheetJS (xlsx-js-style fork) — bruges til Excel-eksport med farver/kolonnebredder -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script>
 // ── STATE ────────────────────────────────────────────
-// SEE_ALL: admin/management ser alle sager. IS_ADMIN: kan ændre virksomheds-
-// indstillinger og notifikations-mailliste.
 const SEE_ALL  = {{ (see_all  | default(false)) | tojson }};
 const IS_ADMIN = {{ (is_admin | default(false)) | tojson }};
 let rows = [];
-let hubUsers = [];   // kun fyldt for admin/management
+let hubUsers = [];
 let me = { id: null, role: null };
+const expanded = new Set();   // case-id'er hvis detaljeplan er foldet ud
 
+// ── ORLOVSREGLER (referenceværdier — jf. change request) ─────────────
+// Bruges som forudfyldte varigheder for de faste orlovstyper. Forældreorlov
+// forudfyldes IKKE (hverken start eller uger) — den skrives manuelt.
+const TYPE_META = {
+  graviditet: {label:'Graviditetsorlov', sub:'4 uger før termin',  parent:'mor', unit:'weeks', refWeeks:4,  autoStart:'termin',  fixed:true},
+  barsel:     {label:'Barselsorlov',     sub:'fra fødsel',         parent:'mor', unit:'weeks', refWeeks:11, autoStart:'foedsel', fixed:true, tag:'ear'},
+  faedre:     {label:'Fædreorlov',       sub:'2 uger ved fødsel',  parent:'far', unit:'weeks', refWeeks:2,  autoStart:'foedsel', fixed:true, tag:'ear'},
+  faedreEar:  {label:'Forældreorlov',    sub:'kan ikke overføres', parent:'far', unit:'weeks', refWeeks:9,  autoStart:null,      fixed:true, tag:'ear'},
+  foraeldre:  {label:'Forældreorlov',    sub:'op til 13 uger',     parent:null,  unit:'weeks', refWeeks:null, autoStart:null,   transferable:true, splittable:true, tag:'tr'},
+  ferie:      {label:'Ferie',            sub:'i dage',             parent:null,  unit:'days',  refWeeks:null, autoStart:null,   splittable:true},
+};
+const PARENT_LABEL = {mor:'mor', far:'far'};
+const OTHER = {mor:'far', far:'mor'};
+const FORAELDRE_MAX = 13;   // overførbare uger pr. forælder (referencemaks)
 
-// Lovmæssige maks-grænser: mor må højst holde 39 ugers barsel
-// (graviditetsorlov + barsel), far højst 24 uger (fædreorlov + forældreorlov).
-const MOR_MAX_UGER = 39;
-const FAR_MAX_UGER = 24;
+// Samlet orlovsret i uger pr. forælder (referenceværdier):
+//   Mor: 4 graviditet + 11 øremærket + 13 overførbar          = 28 uger
+//   Far: 2 fædre (øremærket) + 9 øremærket + 13 overførbar     = 24 uger
+// Overført orlov flytter uger fra den ene forælder til den anden.
+const ENTITLEMENT = {mor:28, far:24};
 
-function S(k){ return +document.getElementById('s_'+k).value || 0; }
-
-// Brug row-specifik ugeværdi hvis sat, ellers company-standarden.
-function rowWeeks(row, field){
-  return (row[field]!=null && row[field]!=='') ? +row[field] : S(field);
+function uid(){
+  return (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'p'+Math.random().toString(36).slice(2)+Date.now().toString(36);
 }
 
-// Begræns en netop redigeret ugeværdi så mor ≤ 39 og far ≤ 24 i alt.
-// Returnerer (evt. nedjusteret) værdi som string, og giver besked hvis klippet.
-function capWeeks(row, field, value){
-  let v = +value || 0;
-  if(field==='morUger'){
-    const maxMor = Math.max(0, MOR_MAX_UGER - S('gravUger'));
-    if(v > maxMor){ showToast(`Mor: maks ${MOR_MAX_UGER} ugers barsel (inkl. ${S('gravUger')} ugers graviditetsorlov)`); v = maxMor; }
-  } else if(field==='faedUger' || field==='forlUger'){
-    const other = field==='faedUger' ? rowWeeks(row,'forlUger') : rowWeeks(row,'faedUger');
-    const maxThis = Math.max(0, FAR_MAX_UGER - other);
-    if(v > maxThis){ showToast(`Far: maks ${FAR_MAX_UGER} ugers orlov i alt (fædre- + forældreorlov)`); v = maxThis; }
-  } else {
-    return value;
-  }
-  return String(v);
+// Standardplan for en ny sag: faste orlovstyper forudfyldes med referenceuger;
+// forældreorlov starter som én tom periode (uger + start udfyldes manuelt).
+function defaultPlan(){
+  return {
+    mor: [
+      {id:uid(), type:'graviditet', start:'', weeks:4},
+      {id:uid(), type:'barsel',     start:'', weeks:11},
+      {id:uid(), type:'foraeldre',  start:'', weeks:null, transferred:0},
+    ],
+    far: [
+      {id:uid(), type:'faedre',    start:'', weeks:2},
+      {id:uid(), type:'faedreEar', start:'', weeks:9},
+      {id:uid(), type:'foraeldre', start:'', weeks:null, transferred:0},
+    ],
+  };
 }
 
+// Sørg for at en sag har en brugbar plan-struktur (ældre sager uden plan får
+// standardstrukturen, så de kan udfyldes i den nye model).
+function ensurePlan(row){
+  if(!row.plan || typeof row.plan!=='object'){ row.plan = defaultPlan(); return row.plan; }
+  if(!Array.isArray(row.plan.mor)) row.plan.mor = [];
+  if(!Array.isArray(row.plan.far)) row.plan.far = [];
+  if(!row.plan.mor.length && !row.plan.far.length) row.plan = defaultPlan();
+  // Sikr id på hver periode (til DOM-nøgler)
+  ['mor','far'].forEach(p => row.plan[p].forEach(pd => { if(!pd.id) pd.id = uid(); }));
+  return row.plan;
+}
+
+// ── DATO-HJÆLPERE ────────────────────────────────────
+function num(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 function parseDate(str){
   if(!str) return null;
-  let m=str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  let m=String(str).match(/^(\d{2})-(\d{2})-(\d{4})$/);
   if(m) return new Date(+m[3],+m[2]-1,+m[1]);
-  m=str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  m=String(str).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if(m) return new Date(+m[1],+m[2]-1,+m[3]);
   return null;
 }
@@ -367,99 +376,109 @@ function fmt(d){
   return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear();
 }
 function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
-function nextWorkday(d){
-  const r=new Date(d); r.setDate(r.getDate()+1);
+function toWorkday(d){                     // flyt til nærmeste hverdag (frem)
+  if(!d) return null;
+  const r=new Date(d);
   while(r.getDay()===0||r.getDay()===6) r.setDate(r.getDate()+1);
   return r;
 }
+function addWorkdays(d,n){                  // n arbejdsdage frem → returdag efter ferien
+  const r=new Date(d); let c=0;
+  while(c<n){ r.setDate(r.getDate()+1); if(r.getDay()!==0&&r.getDay()!==6) c++; }
+  return r;
+}
 
-function calcRow(row){
-  const termin=parseDate(row.termin);
-  if(!termin) return {};
-
-  // Faktisk fødselsdato overskriver terminsdato for beregninger efter fødsel.
-  // Barselsstart (graviditetsorlov) er altid baseret på terminsdatoen.
+// ── BEREGNING ────────────────────────────────────────
+// Returnerer beregnede perioder + totaler pr. forælder + overført orlov.
+function calcPlan(row){
+  const termin  = parseDate(row.termin);
   const foedsel = parseDate(row.foedselDato) || termin;
+  const plan    = ensurePlan(row);
+  const out = {
+    mor:[], far:[],
+    morUger:0, farUger:0, morDage:0, farDage:0,
+    trOut:{mor:0, far:0},        // uger overført FRA denne forælder
+    morTilb:null, farTilb:null,
+  };
 
-  // Brug row-specifikke uger hvis sat, ellers company-indstillinger
-  const gravUger  = S('gravUger');
-  const morUger   = (row.morUger!=null && row.morUger!=='') ? +row.morUger  : S('morUger');
-  const faedUger  = (row.faedUger!=null && row.faedUger!=='') ? +row.faedUger : S('faedUger');
-  const forlUger  = (row.forlUger!=null && row.forlUger!=='') ? +row.forlUger : S('forlUger');
-  const morFerie  = (+(row.morFerieOptjent||0)) + (+(row.morFerieSelvbetalt||0));
-  const farFerie  = (+(row.farFerieOptjent||0)) + (+(row.farFerieSelvbetalt||0));
+  ['mor','far'].forEach(parent => {
+    plan[parent].forEach(pd => {
+      const meta = TYPE_META[pd.type] || {};
+      // Startdato: manuel værdi vinder; ellers auto for de faste typer.
+      let start = parseDate(pd.start);
+      let autoStart = null;
+      if(meta.autoStart==='termin' && termin) autoStart = addDays(termin, -(num(pd.weeks)||meta.refWeeks||0)*7);
+      else if(meta.autoStart==='foedsel' && foedsel) autoStart = foedsel;
+      if(!start) start = autoStart;
 
-  // MOR datoer
-  const morStart     = addDays(termin, -gravUger*7);
-  const morSlut      = addDays(foedsel, morUger*7);
-  // Ferie i forlængelse af barsel
-  const morFerieSlut = morFerie>0 ? addDays(morSlut, morFerie*7) : null;
-  const morTilb      = nextWorkday(morFerieSlut || morSlut);
+      let end = null;
+      if(meta.unit==='days'){
+        const dd = num(pd.days);
+        if(start && dd>0) end = addWorkdays(start, dd);
+        out[parent==='mor'?'morDage':'farDage'] += dd;
+      } else {
+        const w = num(pd.weeks);
+        if(start && w>0) end = addDays(start, w*7);
+        out[parent==='mor'?'morUger':'farUger'] += w;
+      }
+      if(meta.transferable) out.trOut[parent] += num(pd.transferred);
 
-  // FÆDREORLOV (standard: faktisk fødselsdato; kan justeres manuelt)
-  const faedStart = row.faedStart ? parseDate(row.faedStart) : foedsel;
-  const faedSlut  = addDays(faedStart, faedUger*7);
+      out[parent].push({...pd, meta, calcStart:start, autoStart, calcEnd:end});
+    });
+  });
 
-  // FORALDREORLOV (standard: morens tilbagekomst; kan justeres manuelt)
-  const forlStart = row.forlStart ? parseDate(row.forlStart) : morTilb;
-  const forlSlut  = forlUger>0 ? addDays(forlStart, forlUger*7) : null;
-  // Ferie i forlængelse af foraldreorlov
-  const farFerieSlut = farFerie>0 ? addDays(forlSlut||faedSlut, farFerie*7) : null;
-  const farTilb      = nextWorkday(farFerieSlut || forlSlut || faedSlut);
+  out.morTilb = toWorkday(latestEnd(out.mor));
+  out.farTilb = toWorkday(latestEnd(out.far));
 
-  return {morStart,morUger,morSlut,morFerie,morFerieSlut,morTilb,
-          faedStart,faedUger,faedSlut,
-          forlStart,forlUger,forlSlut,farFerie,farFerieSlut,farTilb};
+  // Resterende orlovsret: grundret ± overført orlov − allerede planlagte uger.
+  out.ent = {
+    mor: ENTITLEMENT.mor + out.trOut.far - out.trOut.mor,
+    far: ENTITLEMENT.far + out.trOut.mor - out.trOut.far,
+  };
+  out.rem = { mor: out.ent.mor - out.morUger, far: out.ent.far - out.farUger };
+  return out;
+}
+function latestEnd(periods){
+  let max=null;
+  periods.forEach(p => { if(p.calcEnd && (!max || p.calcEnd>max)) max=p.calcEnd; });
+  return max;
 }
 
-function updatePills(){
-  const morTot = S('gravUger')+S('morUger');
-  const farTot = S('faedUger')+S('forlUger');
-  const pm = document.getElementById('pill_mor');
-  const pf = document.getElementById('pill_far');
-  pm.textContent = morTot;
-  pf.textContent = S('faedUger')+'+'+S('forlUger')+'='+farTot;
-  pm.closest('.total-pill').classList.toggle('over', morTot > MOR_MAX_UGER);
-  pf.closest('.total-pill').classList.toggle('over', farTot > FAR_MAX_UGER);
+// ── RENDER: OVERSIGT ─────────────────────────────────
+function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// Kort resttekst til oversigten: fx "13 uger tilbage" / "⚠ 3 uger for meget" (+ evt. feriedage)
+function ovRemText(rem, dage){
+  const base = rem < 0 ? `⚠ ${-rem} uger for meget` : `${rem} uger tilbage`;
+  return dage ? `${base} · +${dage} feriedage` : base;
 }
-
-function recalcAll(){ updatePills(); renderTable(); }
-
-// ── RENDER ───────────────────────────────────────────
-function esc(v){ return (v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
 function medarbejderCell(row){
-  // Admin/management får dropdown; andre ser navn read-only (eller "—").
   if(SEE_ALL){
     const opts = [`<option value="">— Vælg —</option>`]
       .concat(hubUsers.map(u =>
         `<option value="${u.id}"${row.hubUserId==u.id?' selected':''}>${esc(u.name)}</option>`
       )).join('');
-    return `<select class="cell-input" style="min-width:150px" onchange="updateRow(${row.id},'hubUserId',this.value||null)">${opts}</select>`;
+    return `<select class="ov-name-input" onchange="updateRow(${row.id},'hubUserId',this.value||null)">${opts}</select>`;
   }
-  return `<div style="font-size:12px;color:var(--text-s);padding:5px 4px">${row.hubUserName?esc(row.hubUserName):'<span style="color:#aaa">— ikke valgt —</span>'}</div>`;
+  return `<div style="font-size:12px;color:var(--text-s)">${row.hubUserName?esc(row.hubUserName):'<span style="color:#aaa">— ikke valgt —</span>'}</div>`;
 }
 
-function ansatToggle(id,field,val,label){
+function ansatMini(id,field,val,label){
   return `<label class="ansat-mini" title="Markér hvis ansat i Intomedia">
     <input type="checkbox" ${val?'checked':''} onchange="updateRow(${id},'${field}',this.checked)">
-    <span>${label}</span>
-  </label>`;
+    <span>${label}</span></label>`;
 }
 
 function statusCell(row){
   const status = row.approvalStatus || 'draft';
   const badge = {
-    draft:    {t:'Kladde',     bg:'#EEEAE3', fg:'#6B6458'},
-    pending:  {t:'Afventer',   bg:'#F1EADB', fg:'#6E5736'},
-    approved: {t:'Godkendt',   bg:'#E2ECE4', fg:'#3F6B4E'},
-    rejected: {t:'Afvist',     bg:'#F2E6E0', fg:'#8A5648'},
+    draft:    {t:'Kladde',   bg:'#EEEAE3', fg:'#6B6458'},
+    pending:  {t:'Afventer', bg:'#F1EADB', fg:'#6E5736'},
+    approved: {t:'Godkendt', bg:'#E2ECE4', fg:'#3F6B4E'},
+    rejected: {t:'Afvist',   bg:'#F2E6E0', fg:'#8A5648'},
   }[status] || {t:status,bg:'#EEE',fg:'#666'};
-
-  // Hvem kan godkende? Server udregner canApprove pr. sag (admin/management
-  // eller leder for sagens medarbejder).
   const canApprove = !!row.canApprove;
-
   let actions = '';
   if(status === 'draft'){
     actions += `<button class="btn-mini" onclick="submitCase(${row.id})" title="Send til godkendelse">Indsend</button>`;
@@ -469,7 +488,7 @@ function statusCell(row){
       actions += `<button class="btn-mini bad" onclick="rejectCase(${row.id})">Afvis</button>`;
     }
     actions += `<button class="btn-mini" onclick="reopenCase(${row.id})" title="Træk tilbage til kladde">Annuller</button>`;
-  } else if(status === 'approved' || status === 'rejected'){
+  } else {
     actions += `<button class="btn-mini" onclick="reopenCase(${row.id})" title="Genåbn til redigering">Genåbn</button>`;
   }
   const approvedBy = (status === 'approved' && row.approvedByName)
@@ -484,113 +503,217 @@ function statusCell(row){
       <button class="btn-mini" onclick="exportRow(${row.id})" title="Eksportér denne sag">⬇ Excel</button>
       <button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button>
     </div>
-    ${owner}
-  `;
+    ${owner}`;
 }
 
 function renderTable(){
-  updatePills();
+  // Bevar scroll-position: tabellen genopbygges helt, hvilket ellers hopper
+  // til toppen når man fx tilføjer en orlovs-/ferieperiode.
+  const scEl = document.scrollingElement || document.documentElement;
+  const savedScroll = scEl.scrollTop;
   const tbody=document.getElementById('tbody');
   const empty=document.getElementById('emptyRow');
-  [...tbody.querySelectorAll('tr[data-id]')].forEach(r=>r.remove());
+  [...tbody.querySelectorAll('tr[data-id],tr.detail-row')].forEach(r=>r.remove());
   if(!rows.length){ empty.style.display=''; document.getElementById('rowCount').textContent='0 sager'; return; }
   empty.style.display='none';
   document.getElementById('rowCount').textContent=rows.length+(rows.length===1?' sag':' sager');
 
   rows.forEach(row=>{
-    const cv=calcRow(row);
+    const cv=calcPlan(row);
+    const isOpen = expanded.has(row.id);
+
     const tr=document.createElement('tr');
+    tr.className = 'ov-row'+(isOpen?' expanded':'');
     tr.setAttribute('data-id',row.id);
-
-    const rowMorUger  = (row.morUger!=null&&row.morUger!=='') ? row.morUger  : S('morUger');
-    const rowFaedUger = (row.faedUger!=null&&row.faedUger!=='') ? row.faedUger : S('faedUger');
-    const rowForlUger = (row.forlUger!=null&&row.forlUger!=='') ? row.forlUger : S('forlUger');
-
     tr.innerHTML=`
-      <!-- Medarbejder -->
-      <td class="td-base">${medarbejderCell(row)}</td>
-
-      <!-- Mor navn + ansat-toggle -->
-      <td class="td-base">
-        <input class="cell-input" placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)" style="min-width:130px">
-        ${ansatToggle(row.id,'morAnsat',row.morAnsat,'Ansat')}
+      <td class="c"><button class="expand-btn${isOpen?' open':''}" onclick="toggleExpand(${row.id})" title="Vis/skjul orlovsplan">${isOpen?'▾':'▸'}</button></td>
+      <td>${medarbejderCell(row)}</td>
+      <td>
+        <input class="ov-name-input" placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)">
+        ${ansatMini(row.id,'morAnsat',row.morAnsat,'Ansat')}
       </td>
-
-      <!-- Far navn + ansat-toggle -->
-      <td class="td-base">
-        <input class="cell-input" placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)" style="min-width:130px">
-        ${ansatToggle(row.id,'farAnsat',row.farAnsat,'Ansat')}
+      <td>
+        <input class="ov-name-input" placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)">
+        ${ansatMini(row.id,'farAnsat',row.farAnsat,'Ansat')}
       </td>
-
-      <!-- Terminsdato (påkrævet — alle datoer beregnes ud fra denne) -->
-      <td class="td-base"><input class="cell-input date-input req" placeholder="Udfyld DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)" title="Påkrævet — barselsplanen beregnes ud fra terminsdatoen"></td>
-
-      <!-- Faktisk fødselsdato -->
-      <td class="td-base" style="background:var(--amber-xl)">
-        <input class="cell-input date-input" style="border-color:${row.foedselDato?'var(--amber)':'var(--border-strong)'};background:${row.foedselDato?'var(--amber-xl)':'#fff'}" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på en anden dato end terminsdatoen.">
-        ${row.foedselDato ? '<div style="font-size:10px;color:var(--amber);margin-top:2px">Overskriver termin</div>' : '<div style="font-size:10px;color:#bbb;margin-top:2px">Blank = brug termin</div>'}
-      </td>
-
-      <!-- MOR: barselsstart, uger (editable), slutter, ferie split -->
-      <td class="td-mor"><div class="computed date">${fmt(cv.morStart)}</div></td>
-      <td class="td-mor"><input class="cell-input" type="number" min="0" max="39" style="width:60px;text-align:center;font-weight:600;color:var(--blue)" value="${rowMorUger}" onchange="updateRow(${row.id},'morUger',this.value)" title="Antal barselsuger for mor (maks 39 uger inkl. graviditetsorlov)"></td>
-      <td class="td-mor"><div class="computed date">${fmt(cv.morSlut)}</div></td>
-      <td class="td-mor"><input class="cell-input" type="number" min="0" max="52" style="width:55px;text-align:center;font-weight:600;color:var(--green)" value="${row.morFerieOptjent||0}" onchange="updateRow(${row.id},'morFerieOptjent',this.value)" title="Optjent ferie i forlængelse af barslen (uger)"></td>
-      <td class="td-mor"><input class="cell-input" type="number" min="0" max="52" style="width:55px;text-align:center;font-weight:600;color:var(--amber)" value="${row.morFerieSelvbetalt||0}" onchange="updateRow(${row.id},'morFerieSelvbetalt',this.value)" title="Selvbetalt ferie i forlængelse af barslen (uger)"></td>
-
-      <!-- MOR tilbagekomst -->
-      <td class="td-mor-hl"><div class="computed highlight-mor">${fmt(cv.morTilb)}</div></td>
-
-      <!-- FÆDREORLOV: start (justerbar), uger (editable), slutter -->
-      <td class="td-faed"><input class="cell-input date-input amber" placeholder="${fmt(cv.faedStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.faedStart)}" onchange="updateRow(${row.id},'faedStart',this.value)" title="Blank = starter ved fødsel"></td>
-      <td class="td-faed"><input class="cell-input" type="number" min="0" max="52" style="width:60px;text-align:center;font-weight:600;color:var(--amber)" value="${rowFaedUger}" onchange="updateRow(${row.id},'faedUger',this.value)" title="Antal fædreorlovsuger"></td>
-      <td class="td-faed"><div class="computed date">${fmt(cv.faedSlut)}</div></td>
-
-      <!-- FORALDREORLOV: start (justerbar), uger (editable), slutter, ferie split -->
-      <td class="td-forl"><input class="cell-input date-input amber" placeholder="${fmt(cv.forlStart)||'DD-MM-ÅÅÅÅ'}" value="${esc(row.forlStart)}" onchange="updateRow(${row.id},'forlStart',this.value)" title="Blank = starter morens tilbagekomstdag"></td>
-      <td class="td-forl"><input class="cell-input" type="number" min="0" max="24" style="width:60px;text-align:center;font-weight:600;color:var(--red)" value="${rowForlUger}" onchange="updateRow(${row.id},'forlUger',this.value)" title="Antal forældreorlovsuger for far (far maks 24 uger inkl. fædreorlov)"></td>
-      <td class="td-forl"><div class="computed date">${fmt(cv.forlSlut)}</div></td>
-      <td class="td-forl"><input class="cell-input" type="number" min="0" max="52" style="width:55px;text-align:center;font-weight:600;color:var(--red-m)" value="${row.farFerieOptjent||0}" onchange="updateRow(${row.id},'farFerieOptjent',this.value)" title="Optjent ferie i forlængelse af forældreorlov (uger)"></td>
-      <td class="td-forl"><input class="cell-input" type="number" min="0" max="52" style="width:55px;text-align:center;font-weight:600;color:var(--amber)" value="${row.farFerieSelvbetalt||0}" onchange="updateRow(${row.id},'farFerieSelvbetalt',this.value)" title="Selvbetalt ferie i forlængelse af forældreorlov (uger)"></td>
-
-      <!-- FAR tilbagekomst -->
-      <td class="td-far-hl"><div class="computed highlight-far">${fmt(cv.farTilb)}</div></td>
-
-      <!-- STATUS + ACTIONS -->
-      <td class="td-base actions-cell">${statusCell(row)}</td>
-    `;
+      <td class="c"><input class="ov-name-input date-input req" style="min-width:110px;text-align:center" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)" title="Påkrævet — planen beregnes ud fra terminsdatoen"></td>
+      <td class="c"><input class="ov-name-input date-input" style="min-width:110px;text-align:center" placeholder="valgfri" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på anden dato end termin"></td>
+      <td class="c"><span class="ov-total mor">${cv.morUger||0}</span> uger<br><small class="ov-rem${cv.rem.mor<0?' neg':''}">${ovRemText(cv.rem.mor,cv.morDage)}</small></td>
+      <td class="c"><span class="ov-date">${fmt(cv.morTilb)||'—'}</span></td>
+      <td class="c"><span class="ov-total far">${cv.farUger||0}</span> uger<br><small class="ov-rem${cv.rem.far<0?' neg':''}">${ovRemText(cv.rem.far,cv.farDage)}</small></td>
+      <td class="c"><span class="ov-date">${fmt(cv.farTilb)||'—'}</span></td>
+      <td class="c actions-cell">${statusCell(row)}</td>`;
     tbody.appendChild(tr);
+
+    if(isOpen){
+      const dr=document.createElement('tr');
+      dr.className='detail-row';
+      dr.setAttribute('data-detail-for',row.id);
+      const td=document.createElement('td');
+      td.colSpan=11;
+      td.innerHTML=`<div class="detail-wrap">
+        ${parentPanel(row,cv,'mor')}
+        ${parentPanel(row,cv,'far')}
+      </div>`;
+      dr.appendChild(td);
+      tbody.appendChild(dr);
+    }
   });
+  scEl.scrollTop = savedScroll;
 }
 
-// ── ROW MANAGEMENT (API-baseret) ─────────────────────
+// ── RENDER: DETALJEPANEL PR. FORÆLDER ────────────────
+function parentPanel(row,cv,parent){
+  const name   = parent==='mor' ? row.morNavn : row.farNavn;
+  const periods= cv[parent];
+  const trIn   = cv.trOut[OTHER[parent]];   // uger overført TIL denne forælder
+  const trInChip = trIn>0
+    ? `<div class="pp-transfer-in">+${trIn} ugers overført orlov fra ${PARENT_LABEL[OTHER[parent]]}</div>` : '';
+
+  const rowsHtml = periods.map(p => periodRow(row.id,parent,p)).join('');
+  const totUger = parent==='mor'?cv.morUger:cv.farUger;
+  const totDage = parent==='mor'?cv.morDage:cv.farDage;
+  const tilb    = parent==='mor'?cv.morTilb:cv.farTilb;
+  const ent     = cv.ent[parent];
+  const rem     = cv.rem[parent];
+  const over    = rem < 0;
+
+  // Prominent rest-tæller — viser hvor meget orlov forælderen har tilbage at planlægge.
+  const restChip = `<div class="pp-rest${over?' over':''}">
+      ${over ? `⚠ ${-rem} uger for meget` : `${rem} uger tilbage`}
+      <span>af ${ent} uger</span></div>`;
+
+  const warns = [];
+  if(cv.trOut[parent] > FORAELDRE_MAX)
+    warns.push(`Overført orlov (${cv.trOut[parent]} uger) overstiger de ${FORAELDRE_MAX} overførbare uger.`);
+  if(over)
+    warns.push(`Planlagt orlov overstiger ${parent==='mor'?'morens':'farens'} ret med ${-rem} uger.`);
+  const warnHtml = `<div class="pp-warn${warns.length?' show':''}">${warns.join('<br>')}</div>`;
+
+  return `<div class="parent-panel ${parent}">
+    <div class="pp-head">
+      <h4>${parent==='mor'?'Mor':'Far / medmor'}${name?`<span class="pp-name">${esc(name)}</span>`:''}</h4>
+      <div class="pp-chips">${trInChip}${restChip}</div>
+    </div>
+    <table class="pp-table">
+      <thead><tr>
+        <th style="min-width:150px">Orlovstype</th>
+        <th class="c">Start</th>
+        <th class="c">Varighed</th>
+        <th class="c" style="min-width:90px">Overført →</th>
+        <th class="c">Slutter</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="pp-actions">
+      <button class="btn-add" onclick="addPeriod(${row.id},'${parent}','foraeldre')">+ Forældreorlovsperiode</button>
+      <button class="btn-add" onclick="addPeriod(${row.id},'${parent}','ferie')">+ Ferie (dage)</button>
+    </div>
+    ${warnHtml}
+    <div class="pp-summary">
+      <span>Planlagt: <strong>${totUger||0} af ${ent} uger</strong></span>
+      <span>Tilbage: <strong class="${over?'neg':'pos'}">${over?(-rem)+' uger for meget':rem+' uger'}</strong></span>
+      ${totDage?`<span>Ferie: <strong>${totDage} dage</strong></span>`:''}
+      ${cv.trOut[parent]?`<span>Overført til ${PARENT_LABEL[OTHER[parent]]}: <strong>${cv.trOut[parent]} uger</strong></span>`:''}
+      <span>Tilbagekomst: <span class="ret">${fmt(tilb)||'—'}</span></span>
+    </div>
+  </div>`;
+}
+
+function periodRow(caseId,parent,p){
+  const meta = p.meta || TYPE_META[p.type] || {};
+  const tag = meta.tag==='ear' ? `<span class="pt-tag ear">øremærket</span>`
+            : meta.tag==='tr'  ? `<span class="pt-tag tr">kan overføres</span>` : '';
+  // Startfelt: placeholder viser auto-beregnet dato for de faste typer.
+  const startPh = meta.autoStart ? (fmt(p.autoStart)||'auto') : 'DD-MM-ÅÅÅÅ';
+  const startCls = 'p-in date'+(meta.autoStart && !p.start ? ' auto' : '');
+  const startCell = `<input class="${startCls}" placeholder="${startPh}" value="${esc(p.start)}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','start',this.value)" title="${meta.autoStart?'Beregnes automatisk — kan overskrives':'Udfyld startdato'}">`;
+
+  // Varighed: dage for ferie, ellers uger.
+  let durCell;
+  if(meta.unit==='days'){
+    durCell = `<input class="p-in num" type="number" min="0" step="1" placeholder="dage" value="${p.days==null?'':p.days}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','days',this.value)" title="Antal feriedage"> <small style="color:var(--gray)">dage</small>`;
+  } else {
+    const ph = meta.type==='foraeldre' || p.type==='foraeldre' ? '0–'+FORAELDRE_MAX : '';
+    durCell = `<input class="p-in num" type="number" min="0" step="0.5" placeholder="${ph}" value="${p.weeks==null?'':p.weeks}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','weeks',this.value)" title="Antal uger"> <small style="color:var(--gray)">uger</small>`;
+  }
+
+  // Overført: kun forældreorlov kan overføres til den anden forælder.
+  const trCell = meta.transferable
+    ? `<input class="p-in num" type="number" min="0" step="0.5" placeholder="0" value="${p.transferred==null?'':p.transferred}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','transferred',this.value)" title="Uger overført til ${PARENT_LABEL[OTHER[parent]]}">`
+    : `<span class="p-none">—</span>`;
+
+  const delCell = meta.splittable
+    ? `<button class="p-del" onclick="deletePeriod(${caseId},'${parent}','${p.id}')" title="Fjern periode">✕</button>` : '';
+
+  return `<tr>
+    <td class="pt-type"><strong>${meta.label||p.type}</strong><small>${meta.sub||''}</small>${tag}</td>
+    <td class="c">${startCell}</td>
+    <td class="c">${durCell}</td>
+    <td class="c">${trCell}</td>
+    <td class="c"><span class="p-computed">${fmt(toWorkday(p.calcEnd))||'—'}</span></td>
+    <td class="c">${delCell}</td>
+  </tr>`;
+}
+
+// ── PERIODE-HANDLINGER ───────────────────────────────
+function addPeriod(caseId,parent,type){
+  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const plan=ensurePlan(row);
+  const p={id:uid(), type, start:''};
+  if(type==='ferie') p.days=null;
+  else { p.weeks=null; if(TYPE_META[type].transferable) p.transferred=0; }
+  plan[parent].push(p);
+  renderTable();
+  saveRow(caseId);
+}
+function deletePeriod(caseId,parent,pid){
+  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const plan=ensurePlan(row);
+  plan[parent]=plan[parent].filter(p=>p.id!==pid);
+  renderTable();
+  saveRow(caseId);
+}
+function updatePeriod(caseId,parent,pid,field,value){
+  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const plan=ensurePlan(row);
+  const p=plan[parent].find(x=>x.id===pid); if(!p) return;
+  if(field==='start') p.start=value;
+  else p[field]=(value===''?null:num(value));
+  renderTable();
+  saveRow(caseId);
+}
+function toggleExpand(id){
+  if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+  renderTable();
+}
+
+// ── ROW MANAGEMENT (API) ─────────────────────────────
 async function addRow(){
   const newRow={
     hubUserId:null,hubUserName:'',
     morNavn:'',farNavn:'',
     morAnsat:false,farAnsat:false,
     termin:'',foedselDato:'',
-    morUger:null,faedUger:null,forlUger:null,
-    morFerieOptjent:0,morFerieSelvbetalt:0,
-    farFerieOptjent:0,farFerieSelvbetalt:0,
-    faedStart:'',forlStart:'',
+    plan:defaultPlan(),
     approvalStatus:'draft',approvedByName:'',
   };
   try{
     const res=await fetch('/tools/barsel/api/cases',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+      method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(newRow),
     });
     if(!res.ok) throw new Error(await res.text());
     const data=await res.json();
     newRow.id=data.id;
     newRow.createdByName='';
-    rows.push(newRow);
+    rows.unshift(newRow);
+    expanded.add(data.id);
     renderTable();
     setTimeout(()=>{
       const r=document.querySelector(`tr[data-id="${data.id}"]`);
-      if(r) r.querySelector('input')?.focus();
+      if(r) r.querySelector('input,select')?.focus();
     },50);
   }catch(e){ console.error('Fejl ved oprettelse af sag:',e); showToast('Fejl — sag ikke oprettet'); }
 }
@@ -600,6 +723,7 @@ async function deleteRow(id){
     const res=await fetch(`/tools/barsel/api/cases/${id}`,{method:'DELETE'});
     if(!res.ok) throw new Error(await res.text());
     rows=rows.filter(r=>r.id!==id);
+    expanded.delete(id);
     renderTable();
     showToast('Sag slettet');
   }catch(e){ console.error('Fejl ved sletning:',e); showToast('Fejl — sag ikke slettet'); }
@@ -608,9 +732,6 @@ async function deleteRow(id){
 function updateRow(id,field,value){
   const row=rows.find(r=>r.id===id);
   if(!row) return;
-  if(field==='morUger' || field==='faedUger' || field==='forlUger'){
-    value = capWeeks(row, field, value);
-  }
   row[field]=value;
   if(field==='hubUserId'){
     const u = hubUsers.find(u => String(u.id)===String(value));
@@ -627,10 +748,7 @@ async function _postCaseAction(id, action, successMsg){
     if(!res.ok) throw new Error(await res.text());
     await reloadCases();
     showToast(successMsg);
-  }catch(e){
-    console.error(`Fejl ved ${action}:`,e);
-    showToast('Handling kunne ikke gennemføres');
-  }
+  }catch(e){ console.error(`Fejl ved ${action}:`,e); showToast('Handling kunne ikke gennemføres'); }
 }
 function submitCase (id){ _postCaseAction(id,'submit', 'Sendt til godkendelse'); }
 async function approveCase(id){
@@ -640,10 +758,7 @@ async function approveCase(id){
     const data = await res.json().catch(()=>({}));
     await reloadCases();
     showToast(data.mailSent ? 'Godkendt — mail sendt ✉' : 'Godkendt (mail blev ikke afsendt)');
-  }catch(e){
-    console.error('Fejl ved godkendelse:',e);
-    showToast('Godkendelse fejlede');
-  }
+  }catch(e){ console.error('Fejl ved godkendelse:',e); showToast('Godkendelse fejlede'); }
 }
 function rejectCase (id){ _postCaseAction(id,'reject', 'Sag afvist'); }
 function reopenCase (id){ _postCaseAction(id,'reopen', 'Sag genåbnet'); }
@@ -653,29 +768,22 @@ async function saveRow(id){
   if(!row) return;
   try{
     await fetch(`/tools/barsel/api/cases/${id}`,{
-      method:'PUT',
-      headers:{'Content-Type':'application/json'},
+      method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(row),
     });
   }catch(e){ console.error('Fejl ved gemning af sag:',e); }
 }
 
-// ── SETTINGS (API-baseret, debounced) ────────────────
+// ── SETTINGS ─────────────────────────────────────────
 let _settingsTimer=null;
 function saveSettings(){
-  if(!IS_ADMIN) return;   // server afviser også; UI'et bør ikke kalde.
+  if(!IS_ADMIN) return;
   clearTimeout(_settingsTimer);
   _settingsTimer=setTimeout(async()=>{
-    const s={
-      notifyEmails: (document.getElementById('s_notifyEmails')?.value || '').trim(),
-    };
-    ['gravUger','morUger','faedUger','forlUger'].forEach(k=>{
-      s[k]=+document.getElementById('s_'+k).value||0;
-    });
+    const s={ notifyEmails: (document.getElementById('s_notifyEmails')?.value || '').trim() };
     try{
       const res=await fetch('/tools/barsel/api/settings',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
+        method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify(s),
       });
       if(!res.ok) showToast('Indstillinger ikke gemt');
@@ -683,8 +791,6 @@ function saveSettings(){
   },800);
 }
 
-// Send testmail til notifikations-maillisten, så admin kan verificere SMTP.
-// Gemmer først den aktuelle liste, og viser den faktiske fejl hvis det fejler.
 async function sendTestMail(btn){
   const out = document.getElementById('testMailResult');
   if(!out) return;
@@ -694,10 +800,7 @@ async function sendTestMail(btn){
   try{
     await fetch('/tools/barsel/api/settings',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        notifyEmails:(document.getElementById('s_notifyEmails')?.value||'').trim(),
-        gravUger:S('gravUger'), morUger:S('morUger'), faedUger:S('faedUger'), forlUger:S('forlUger'),
-      }),
+      body:JSON.stringify({ notifyEmails:(document.getElementById('s_notifyEmails')?.value||'').trim() }),
     });
     const res = await fetch('/tools/barsel/api/settings/test-mail',{method:'POST'});
     const data = await res.json().catch(()=>({}));
@@ -711,9 +814,7 @@ async function sendTestMail(btn){
   }catch(e){
     out.style.color = 'var(--red)';
     out.textContent = '✕ Netværksfejl ved testmail';
-  }finally{
-    if(btn) btn.disabled = false;
-  }
+  }finally{ if(btn) btn.disabled = false; }
 }
 
 // ── INDLÆSNING FRA SERVER ────────────────────────────
@@ -738,10 +839,6 @@ async function loadFromServer(){
 
     if(settRes.ok){
       const s=await settRes.json();
-      ['gravUger','morUger','faedUger','forlUger'].forEach(k=>{
-        const el=document.getElementById('s_'+k);
-        if(el && s[k]!=null) el.value=s[k];
-      });
       const ne = document.getElementById('s_notifyEmails');
       if(ne) ne.value = s.notifyEmails || '';
     }
@@ -757,7 +854,6 @@ async function loadFromServer(){
   }catch(e){ console.error('Fejl ved indlæsning fra server:',e); }
   applySettingsLock();
   renderTable();
-  updatePills();
 }
 
 function applySettingsLock(){
@@ -772,138 +868,73 @@ function toggleSettings(){
   document.getElementById('settingsToggle').classList.toggle('collapsed');
 }
 
-// ── EXPORT (Excel — spejler medarbejdertabellen 1:1) ──
-// Kolonner i nøjagtig samme rækkefølge og gruppering som tabellen på skærmen.
-// [label, sektionsnøgle, kolonnebredde, justering]
+// ── EXPORT (Excel) — én række pr. orlovsperiode ──────
 const XLS_COLS = [
-  ['Medarbejder',          'base',  22, 'left'  ],
-  ['Mor navn',             'base',  18, 'left'  ],
-  ['Far / medmor navn',    'base',  18, 'left'  ],
-  ['Terminsdato',          'base',  13, 'center'],
-  ['Faktisk fødselsdato',  'base',  14, 'center'],
-  ['Barselsstart',         'mor',   13, 'center'],
-  ['Uger',                 'mor',    7, 'center'],
-  ['Barsel slutter',       'mor',   13, 'center'],
-  ['Optjent ferie',        'mor',    9, 'center'],
-  ['Selvbetalt ferie',     'mor',   10, 'center'],
-  ['Tilbagekomst',         'morhl', 13, 'center'],
-  ['Start',                'faed',  13, 'center'],
-  ['Uger',                 'faed',   7, 'center'],
-  ['Slutter',              'faed',  13, 'center'],
-  ['Start',                'forl',  13, 'center'],
-  ['Uger',                 'forl',   7, 'center'],
-  ['Slutter',              'forl',  13, 'center'],
-  ['Optjent ferie',        'forl',   9, 'center'],
-  ['Selvbetalt ferie',     'forl',  10, 'center'],
-  ['Tilbagekomst',         'far',   13, 'center'],
-  ['Status',               'base',  11, 'center'],
+  ['Medarbejder',   22,'left'  ],
+  ['Mor navn',      18,'left'  ],
+  ['Far / medmor',  18,'left'  ],
+  ['Terminsdato',   13,'center'],
+  ['Faktisk fødsel',14,'center'],
+  ['Forælder',      12,'left'  ],
+  ['Orlovstype',    20,'left'  ],
+  ['Note',          16,'left'  ],
+  ['Start',         13,'center'],
+  ['Uger',           8,'center'],
+  ['Dage',           8,'center'],
+  ['Overført (uger)',14,'center'],
+  ['Slutter',       13,'center'],
+  ['Status',        11,'center'],
 ];
-
-// Sektions-overskrifter (øverste række) — [label, startkolonne, antal kolonner, nøgle]
-const XLS_SECTIONS = [
-  ['GRUNDOPLYSNINGER',              0, 5, 'base' ],
-  ['MOR / 1. FORÆLDER',             5, 3, 'mor'  ],
-  ['Ferie i forlængelse af barsel', 8, 2, 'mor'  ],
-  ['MOR TILBAGEKOMST',             10, 1, 'morhl'],
-  ['FÆDREORLOV — ved fødsel',      11, 3, 'faed' ],
-  ['FORÆLDREORLOV',                14, 3, 'forl' ],
-  ['Ferie i forlængelse af orlov', 17, 2, 'forl' ],
-  ['FAR TILBAGEKOMST',             19, 1, 'far'  ],
-  ['STATUS',                       20, 1, 'base' ],
-];
-
-// Farver pr. sektion — matcher tabellens CSS (sektionsbjælke, kolonnehoved, datatint)
-const XLS_SEC_STYLE = {
-  base:  {hdr:'4D4942', colBg:'EFEBE4', colFg:'4D4942', dataBg:'FFFFFF'},
-  mor:   {hdr:'45596B', colBg:'E7ECEF', colFg:'45596B', dataBg:'F3F6F7'},
-  morhl: {hdr:'3F6B4E', colBg:'E2ECE4', colFg:'3F6B4E', dataBg:'E2ECE4'},
-  faed:  {hdr:'8A6E45', colBg:'F1EADB', colFg:'6E5736', dataBg:'FBF8F0'},
-  forl:  {hdr:'8A5648', colBg:'F2E6E0', colFg:'8A5648', dataBg:'FBF4F0'},
-  far:   {hdr:'5E3A2E', colBg:'EFE3DC', colFg:'5E3A2E', dataBg:'F2E6E0'},
+const STATUS_LABELS = {draft:'Kladde', pending:'Afventer', approved:'Godkendt', rejected:'Afvist'};
+const HDR_STYLE = {
+  fill:{patternType:'solid', fgColor:{rgb:'1C1C1A'}},
+  font:{bold:true, color:{rgb:'FFFFFF'}, sz:10},
+  alignment:{horizontal:'center', vertical:'center', wrapText:true},
 };
 
-const XLS_BORDER = {style:'thin', color:{rgb:'D9D4CC'}};
-const XLS_ALL_BORDERS = {top:XLS_BORDER, bottom:XLS_BORDER, left:XLS_BORDER, right:XLS_BORDER};
-
-const STATUS_LABELS = {draft:'Kladde', pending:'Afventer', approved:'Godkendt', rejected:'Afvist'};
-
-// Én sag → de 21 kolonneværdier i tabellens rækkefølge
-function rowToTableFields(row){
-  const cv = calcRow(row);
-  return [
-    row.hubUserName||'',
-    row.morNavn||'',
-    row.farNavn||'',
+function caseToExportRows(row){
+  const cv = calcPlan(row);
+  const base = [
+    row.hubUserName||'', row.morNavn||'', row.farNavn||'',
     row.termin||'', row.foedselDato||'',
-    fmt(cv.morStart), cv.morUger??'', fmt(cv.morSlut),
-    row.morFerieOptjent||0, row.morFerieSelvbetalt||0, fmt(cv.morTilb),
-    fmt(cv.faedStart), cv.faedUger??'', fmt(cv.faedSlut),
-    fmt(cv.forlStart), cv.forlUger??'', fmt(cv.forlSlut),
-    row.farFerieOptjent||0, row.farFerieSelvbetalt||0, fmt(cv.farTilb),
-    STATUS_LABELS[row.approvalStatus] || 'Kladde',
   ];
+  const status = STATUS_LABELS[row.approvalStatus] || 'Kladde';
+  const out = [];
+  ['mor','far'].forEach(parent => {
+    cv[parent].forEach(p => {
+      const meta = p.meta || {};
+      out.push([
+        ...base,
+        parent==='mor'?'Mor':'Far/medmor',
+        meta.label||p.type,
+        meta.sub||'',
+        fmt(p.calcStart),
+        meta.unit==='days' ? '' : (p.weeks==null?'':p.weeks),
+        meta.unit==='days' ? (p.days==null?'':p.days) : '',
+        (meta.transferable && p.transferred) ? p.transferred : '',
+        fmt(toWorkday(p.calcEnd)),
+        status,
+      ]);
+    });
+  });
+  if(!out.length) out.push([...base,'','','','','','','', '', status]);
+  return out;
 }
 
 function buildBarselWorkbook(rowsArr){
-  const aoa = [];
-  // Række 0: sektions-overskrifter
-  const secRow = new Array(XLS_COLS.length).fill('');
-  XLS_SECTIONS.forEach(s => { secRow[s[1]] = s[0]; });
-  aoa.push(secRow);
-  // Række 1: kolonneoverskrifter
-  aoa.push(XLS_COLS.map(c => c[0]));
-  // Datarækker
-  rowsArr.forEach(r => aoa.push(rowToTableFields(r)));
-
+  const aoa = [ XLS_COLS.map(c=>c[0]) ];
+  rowsArr.forEach(r => caseToExportRows(r).forEach(line => aoa.push(line)));
   const ws  = XLSX.utils.aoa_to_sheet(aoa);
   const enc = XLSX.utils.encode_cell;
-
-  // Sammenlæg sektions-celler så de spænder over deres kolonner
-  ws['!merges'] = XLS_SECTIONS.filter(s => s[2] > 1)
-    .map(s => ({s:{r:0, c:s[1]}, e:{r:0, c:s[1]+s[2]-1}}));
-
-  // Kolonnebredder (alt foldet ud) + højere header-rækker
-  ws['!cols'] = XLS_COLS.map(c => ({wch: c[2]}));
-  ws['!rows'] = [{hpt:22}, {hpt:30}];
-
-  // Sektions-overskrifter (række 0)
-  XLS_SECTIONS.forEach(s => {
-    const st = XLS_SEC_STYLE[s[3]];
-    const cell = ws[enc({r:0, c:s[1]})];
-    if(cell) cell.s = {
-      fill:{patternType:'solid', fgColor:{rgb: st.hdr}},
-      font:{bold:true, color:{rgb:'FFFFFF'}, sz:11},
-      alignment:{horizontal:'center', vertical:'center', wrapText:true},
-      border: XLS_ALL_BORDERS,
-    };
-  });
-
-  // Kolonneoverskrifter (række 1)
-  XLS_COLS.forEach((c, i) => {
-    const st = XLS_SEC_STYLE[c[1]];
-    const cell = ws[enc({r:1, c:i})];
-    if(cell) cell.s = {
-      fill:{patternType:'solid', fgColor:{rgb: st.colBg}},
-      font:{bold:true, color:{rgb: st.colFg}, sz:10},
-      alignment:{horizontal:'center', vertical:'center', wrapText:true},
-      border: XLS_ALL_BORDERS,
-    };
-  });
-
-  // Dataceller — let sektionstint som i tabellen
-  for(let ri=0; ri<rowsArr.length; ri++){
-    XLS_COLS.forEach((c, i) => {
-      const st = XLS_SEC_STYLE[c[1]];
-      const cell = ws[enc({r:2+ri, c:i})];
-      if(cell) cell.s = {
-        fill:{patternType:'solid', fgColor:{rgb: st.dataBg}},
-        font:{sz:10, color:{rgb:'2B2B2B'}},
-        alignment:{horizontal: c[3], vertical:'center'},
-        border: XLS_ALL_BORDERS,
-      };
+  ws['!cols'] = XLS_COLS.map(c => ({wch:c[1]}));
+  ws['!rows'] = [{hpt:26}];
+  XLS_COLS.forEach((c,i)=>{ const cell=ws[enc({r:0,c:i})]; if(cell) cell.s=HDR_STYLE; });
+  for(let ri=1; ri<aoa.length; ri++){
+    XLS_COLS.forEach((c,i)=>{
+      const cell=ws[enc({r:ri,c:i})];
+      if(cell) cell.s={ font:{sz:10,color:{rgb:'2B2B2B'}}, alignment:{horizontal:c[2],vertical:'center'} };
     });
   }
-
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Barselsplan');
   return wb;
@@ -912,19 +943,16 @@ function buildBarselWorkbook(rowsArr){
 function exportCSV(){
   if(typeof XLSX === 'undefined'){ showToast('Excel-bibliotek kunne ikke indlæses'); return; }
   if(!rows.length){ showToast('Ingen sager at eksportere'); return; }
-  const wb = buildBarselWorkbook(rows);
-  XLSX.writeFile(wb, 'barselsplan.xlsx');
+  XLSX.writeFile(buildBarselWorkbook(rows), 'barselsplan.xlsx');
   showToast('Excel eksporteret ✓');
 }
-
 function exportRow(id){
   if(typeof XLSX === 'undefined'){ showToast('Excel-bibliotek kunne ikke indlæses'); return; }
   const row = rows.find(r => r.id===id);
   if(!row){ showToast('Sag ikke fundet'); return; }
-  const wb = buildBarselWorkbook([row]);
   const slug = (row.hubUserName || row.morNavn || row.farNavn || ('sag-'+id))
     .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || ('sag-'+id);
-  XLSX.writeFile(wb, 'barselsplan-'+slug+'.xlsx');
+  XLSX.writeFile(buildBarselWorkbook([row]), 'barselsplan-'+slug+'.xlsx');
   showToast('Sag eksporteret ✓');
 }
 

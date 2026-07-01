@@ -35,6 +35,11 @@ from email.utils import formataddr
 
 logger = logging.getLogger(__name__)
 
+# Base-URL til Hub'en, brugt i links i notifikationsmails. Kan overstyres via
+# .env (APP_BASE_URL); default peger på den nuværende server.
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://212.98.74.218:8000").rstrip("/")
+TOOL_URL = f"{APP_BASE_URL}/tool/barselsberegner"
+
 
 # ---------------------------------------------------------------------------
 # Hjælpere
@@ -181,7 +186,7 @@ def _deliver_approval(case: dict, recipients: list[str]) -> tuple[bool, str]:
         f"Faktisk fødselsdato:{_safe(foedsel)}\n"
         f"Godkendt af:        {approver}\n\n"
         f"Log ind på Intomedia Hub for at se den fulde plan:\n"
-        f"https://hub.intomedia.dk/tool/barselsberegner\n"
+        f"{TOOL_URL}\n"
     )
 
     html_body = f"""\
@@ -206,7 +211,7 @@ def _deliver_approval(case: dict, recipients: list[str]) -> tuple[bool, str]:
   </table>
 
   <p style="margin-top:18px">
-    <a href="https://hub.intomedia.dk/tool/barselsberegner"
+    <a href="{TOOL_URL}"
        style="display:inline-block;padding:9px 18px;background:#2563A8;color:#fff;
               text-decoration:none;border-radius:8px;font-weight:600">
       Åbn Barselsplanlæggeren
