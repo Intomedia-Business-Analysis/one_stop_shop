@@ -16,7 +16,10 @@ from moduler.modul_perf.queries import (
     db_owner_in_teams,
 )
 
-from moduler.modul_perf.queries_afdelingsleder import db_brand_overblik, db_afdelingsleder_hero, db_afdelingsleder_churn, db_afdelingsleder_vaekst
+from moduler.modul_perf.queries_afdelingsleder import (
+    db_brand_overblik, db_afdelingsleder_overblik, db_maaned_deepdive,
+    db_afdelingsleder_churn, db_afdelingsleder_vaekst,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,16 +140,32 @@ async def brand_overblik_data(
 
 
 #----------------------------------------------------------------------------------------------------------------------
-#                                        AFDELINGSLEDER HERO-DATA (blok 1: budget vs faktisk)
+#                                        AFDELINGSLEDER OVERBLIK (total + pr. brand, budget vs netto)
 #----------------------------------------------------------------------------------------------------------------------
-@router.get("/afdelingsleder-hero-data")
-async def afdelingsleder_hero_data(user=Depends(get_current_user)):
+@router.get("/afdelingsleder-overblik-data")
+async def afdelingsleder_overblik_data(user=Depends(get_current_user)):
     if not has_access(user, "sales_manager"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse(db_afdelingsleder_hero(date.today()))
+        return JSONResponse(db_afdelingsleder_overblik(date.today()))
     except Exception:
-        logger.exception("afdelingsleder-hero-data fejlede")
+        logger.exception("afdelingsleder-overblik-data fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+
+#----------------------------------------------------------------------------------------------------------------------
+#                                        AFDELINGSLEDER MÅNEDS-DEEPDIVE (sælgere pr. brand)
+#----------------------------------------------------------------------------------------------------------------------
+@router.get("/afdelingsleder-maaned-data")
+async def afdelingsleder_maaned_data(year: int, month: int, user=Depends(get_current_user)):
+    if not has_access(user, "sales_manager"):
+        raise HTTPException(403, "Ingen adgang")
+    if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+        raise HTTPException(400, "Ugyldig måned/år")
+    try:
+        return JSONResponse(db_maaned_deepdive(year, month))
+    except Exception:
+        logger.exception("afdelingsleder-maaned-data fejlede (year=%s, month=%s)", year, month)
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
