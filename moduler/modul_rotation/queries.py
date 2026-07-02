@@ -1207,11 +1207,17 @@ def db_no_advertising_performance(today: date):
 #  DASHBOARD 5 — Media Performance
 # ════════════════════════════════════════════════════════════════════════════
 
+# Visningsrækkefølge for brand-chips i Media Performance (classify-labels).
+_MEDIA_BRAND_ORDER = ["Watch DK", "Finans", "Monitor", "Watch NO", "FinansWatch SE",
+                      "FinanzBusiness", "Marketwire", "Øvrige"]
+
+
 def db_media_performance(selected_accounts: list | None = None,
                          selected_years: list | None = None,
                          mode: str = "abonnement",
-                         selected_months: list | None = None):
-    """Media Performance pr. site, afgrænset på account.
+                         selected_months: list | None = None,
+                         selected_brands: list | None = None):
+    """Media Performance pr. site, afgrænset på account og evt. brand.
 
     mode:
       "abonnement" — abonnementsomsætning (deal_type abonnement/subscription)
@@ -1228,6 +1234,10 @@ def db_media_performance(selected_accounts: list | None = None,
     selected_accounts: liste af accounts (watch_medier/monitor/watch_no/...).
     Site-universet udledes dynamisk af de valgte accounts. Budget matches på
     [Site] (BudgetsIntoMedia har ingen account-kolonne).
+
+    selected_brands: liste af brand-labels ('Watch DK'/'Finans'/'Monitor'/...) —
+    sites klassificeres med samme classify som månedsrapporten, så fx JP/Pol-
+    annonce-universet kan afgrænses til kun Monitor-sites.
     """
     mode = (mode or "abonnement").lower()
     if mode not in ("abonnement", "banner", "job"):
@@ -1236,7 +1246,8 @@ def db_media_performance(selected_accounts: list | None = None,
     mode_accounts = MEDIA_ACCOUNTS_SUB if mode == "abonnement" else MEDIA_ACCOUNTS_ADS
     empty = {"mode": mode, "rows": [], "total": {}, "available_years": [],
              "available_accounts": list(mode_accounts),
-             "account_labels": dict(MEDIA_ACCOUNT_LABELS)}
+             "account_labels": dict(MEDIA_ACCOUNT_LABELS),
+             "available_brands": []}
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
@@ -1297,16 +1308,37 @@ def db_media_performance(selected_accounts: list | None = None,
         if not sites:
             conn.close()
             return empty
+
+        # Brand-filter: hvert site klassificeres til sin brand-gruppe (Watch DK/
+        # Finans/Monitor/...) med samme classify som månedsrapporten. Filteret
+        # afgrænser site-universet, så både omsætning OG budget følger med.
+        from moduler.modul_admin_nysalg.brands import classify
+        site_brand = {s: classify(s) for s in sites}
+        available_brands = sorted(
+            set(site_brand.values()),
+            key=lambda b: (_MEDIA_BRAND_ORDER.index(b)
+                           if b in _MEDIA_BRAND_ORDER else len(_MEDIA_BRAND_ORDER), b))
+        if selected_brands:
+            wanted = {b.strip() for b in selected_brands if b and b.strip()}
+            sites = [s for s in sites if site_brand[s] in wanted]
+            if not sites:
+                conn.close()
+                return {**empty, "available_brands": available_brands}
         sites_ph = "(" + ",".join(["%s"] * len(sites)) + ")"
 
         cancel_map: dict = {}
         ws_map: dict = {}
 
+        # Belob i lokal valuta for NO/SE/DE (EUR fordi Watch DE-budgettet er i EUR),
+        # ellers DKK — samme konvention som afdelingsleder-dashboardet.
+        _mp_val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK','EUR') "
+                   "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+
         if mode == "abonnement":
             # Gross = abonnement/subscription INKL. Web Sale (uanset deal_type).
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS gross
+                       ISNULL(SUM({_mp_val}),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won'
                   AND [account] IN {acc_ph}
@@ -1321,7 +1353,7 @@ def db_media_performance(selected_accounts: list | None = None,
             # Heraf web salg (pipeline Web Sale).
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS ws
+                       ISNULL(SUM({_mp_val}),0) AS ws
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name]='Web Sale'
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
@@ -1333,7 +1365,7 @@ def db_media_performance(selected_accounts: list | None = None,
             # ellers overdrives churn og net bliver kunstigt lavt.
             cur.execute(f"""
                 SELECT [sites],
-                       ABS(ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0)) AS cancel
+                       ABS(ISNULL(SUM({_mp_val}),0)) AS cancel
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {_CANCEL_PH}
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
@@ -1356,7 +1388,7 @@ def db_media_performance(selected_accounts: list | None = None,
 
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS gross
+                       ISNULL(SUM({_mp_val}),0) AS gross
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status]='won' AND [pipeline_name] IN {pipes_ph}
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE}
@@ -1443,6 +1475,7 @@ def db_media_performance(selected_accounts: list | None = None,
             "available_years":   available_years,
             "available_accounts": list(mode_accounts),
             "account_labels":     dict(MEDIA_ACCOUNT_LABELS),
+            "available_brands":   available_brands,
         }
     except Exception:
         logger.exception("db_media_performance fejlede")
