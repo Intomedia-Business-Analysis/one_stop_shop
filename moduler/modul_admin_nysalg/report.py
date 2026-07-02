@@ -15,7 +15,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from moduler.modul_admin_nysalg.repo import (effective_gross_in, effective_gross_out,
+from moduler.modul_admin_nysalg.repo import (effective_adm_in, effective_adm_out,
+                                             effective_gross_in, effective_gross_out,
                                              effective_is_admin, is_admin_opsigelse)
 
 logger = logging.getLogger(__name__)
@@ -201,6 +202,8 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                     _vals(r, [s_sale, s_churn, s_net,
                               s_budget if has_sb else None,
                               s_dev if has_sb else None], cf)
+                    if s.get("note"):
+                        ws.cell(row=r, column=7, value=s["note"]).font = Font(italic=True)
                     r += 1
             ssale, schurn, snet, sbudget, sdev = _sum_metrics(tb["rows"])
             ws.cell(row=r, column=1,
@@ -251,17 +254,21 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
         _autosize(wsn, [30, 16, 16, 18])
 
     # ── Ark 2: Administrative nysalg (det der trækkes fra) ─────────────────────
+    # "Adm. gross in" = den administrative ANDEL der faktisk trækkes fra Actual
+    # Sale — hele beløbet for helt administrative rækker, ellers den delvise andel
+    # direktøren har sat. Delvist administrative rækker medtages også.
     ws2 = wb.create_sheet("Administrative new sales")
     cols = ["Row", "Month", "Site", "Customer", "Org ID", "Account", "Movement",
-            "Gross in", "Matched deal", "Deal value", "Pipeline", "Override", "Comment"]
+            "Adm. gross in", "Matched deal", "Deal value", "Pipeline", "Override", "Comment"]
     ws2.append(cols)
     _style_header(ws2, 1, len(cols))
     for m in matches:
-        if not effective_is_admin(m):
+        adm_in = effective_adm_in(m)
+        if not (effective_is_admin(m) or adm_in > 0):
             continue
         ws2.append([
             m.get("row_index"), m.get("month_end"), m.get("site"), m.get("matched_org_name"),
-            m.get("pipedrive_id"), m.get("account_number"), m.get("movement"), m.get("gross_in"),
+            m.get("pipedrive_id"), m.get("account_number"), m.get("movement"), adm_in,
             m.get("matched_deal_id"), m.get("matched_value"), m.get("matched_pipeline"),
             m.get("override") or "", m.get("row_comment") or "",
         ])
@@ -298,8 +305,14 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
         kunde = (m.get("matched_org_name")
                  or (org_names.get(acct, {}).get(pid, "") if acct else ""))
         # Administrativ = matchede en administrativ deal (nysalg ELLER opsigelse)
-        # eller bærer Zuoras administrativ-flag.
-        adm = "Yes" if (effective_is_admin(m) or is_admin_opsigelse(m)) else ""
+        # eller bærer Zuoras administrativ-flag. "Partial" = kun en del af beløbet
+        # er administrativt (adm_in/adm_out-andel sat af direktøren).
+        if effective_is_admin(m) or is_admin_opsigelse(m):
+            adm = "Yes"
+        elif effective_adm_in(m) > 0 or effective_adm_out(m) > 0:
+            adm = "Partial"
+        else:
+            adm = ""
         excluded = "Yes" if m.get("total_excluded") else ""
         override = ("Yes" if (m.get("gross_in_override") is not None
                               or m.get("gross_out_override") is not None) else "")
@@ -458,22 +471,35 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     el.append(banner)
     el.append(Spacer(1, 9 * mm))
 
-    # ── KPI-kort: net growth pr. land (lokal valuta, ingen grand total) ─────────
+    # ── KPI-kort pr. land (lokal valuta, ingen grand total) ─────────────────────
+    # Subscriptions og Advertising vises som separate nøgletal — de har forskellig
+    # omsætningseffekt, og advertising har ingen churn (metrikken er derfor Sales,
+    # ikke Net Growth). Ingen kombineret net growth på tværs af typerne.
     groups = _country_groups(brand_rows)
-    def kpi_cell(label, value, sub, color):
+    s_kpi_cty = ParagraphStyle("kc", parent=s_kpi_lbl, textColor=INK, fontSize=8,
+                               spaceAfter=5)
+    def kpi_metric(label, value, sub, color):
         return [Paragraph(label, s_kpi_lbl),
                 Paragraph(value, ParagraphStyle("kvx", parent=s_kpi_val, textColor=color)),
                 Paragraph(sub, s_kpi_sub)]
     if groups:
         cards = []
         for grp in groups:
-            all_rows = [b for tb in grp["types"] for b in tb["rows"]]
-            _, _, net, budget, dev = _sum_metrics(all_rows)
-            cards.append(kpi_cell(
-                f"{grp['country'].upper()} · NET GROWTH",
-                money(net, grp["currency"]),
-                f"budget {money(budget, grp['currency'])} · dev {money(dev, grp['currency'])}",
-                WIN if net >= 0 else RED))
+            cur = grp["currency"]
+            cell = [Paragraph(f"{grp['country'].upper()} ({cur})", s_kpi_cty)]
+            for pos, tb in enumerate(grp["types"]):
+                sale, _, net, budget, dev = _sum_metrics(tb["rows"])
+                if tb["type"] == "Advertising":
+                    label, value = "ADVERTISING · SALES", sale
+                else:
+                    label, value = "SUBSCRIPTIONS · NET GROWTH", net
+                if pos:
+                    cell.append(Spacer(1, 7))
+                cell += kpi_metric(
+                    label, money(value, cur),
+                    f"budget {money(budget, cur)} · dev {money(dev, cur)}",
+                    WIN if value >= 0 else RED)
+            cards.append(cell)
         n = len(cards)
         kpis = Table([cards], colWidths=[CW / n] * n)
         kstyle = [
@@ -506,6 +532,7 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     data = [[Paragraph(h, s_hd) for h in head]]
     country_idx, type_idx, sub_idx, total_idx, gap_idx = [], [], [], [], []
     color_cells = []   # (col, rowidx, positive)
+    footnotes = []     # rækkenoter (fx Finans' interne job-allokering) → under tabellen
 
     def _row(label_para, vals, cur):
         return [label_para, cur] + [num(v) for v in vals]
@@ -535,7 +562,11 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                     s_sale, s_churn, s_net, s_budget, s_dev = _row_metrics(s)
                     has_sb = s.get("budget") is not None
                     sri = len(data)
-                    data.append(_row(Paragraph("↳ " + s["brand"],
+                    s_label = "↳ " + s["brand"]
+                    if (s.get("note") or "").strip():
+                        footnotes.append(s["note"].strip())
+                        s_label += " " + "*" * len(footnotes)
+                    data.append(_row(Paragraph(s_label,
                                                ParagraphStyle("sr", parent=s_cell, textColor=MUTED)),
                                      [s_sale, s_churn, s_net,
                                       s_budget if has_sb else None,
@@ -608,6 +639,12 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
             style.append(("FONTNAME", (col, ri), (col, ri), "Helvetica-Bold"))
         t.setStyle(TableStyle(style))
         el.append(t)
+        if footnotes:
+            s_note = ParagraphStyle("nt", fontName="Helvetica", fontSize=7,
+                                    textColor=MUTED, leading=9, spaceBefore=2)
+            el.append(Spacer(1, 2 * mm))
+            for i, note in enumerate(footnotes, start=1):
+                el.append(Paragraph(f"{'*' * i} {note}", s_note))
         el.append(Spacer(1, 12 * mm))
 
     # ── Net growth pr. måned (kun Denmark/DKK) ─────────────────────────────────

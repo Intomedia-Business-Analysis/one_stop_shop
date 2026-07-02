@@ -176,6 +176,7 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
         customer = (m.get("matched_org_name")
                     or (org_names.get(acct, {}).get(pid, "") if acct else ""))
         gi_ov, go_ov = m.get("gross_in_override"), m.get("gross_out_override")
+        ai_ov, ao_ov = m.get("adm_in_override"), m.get("adm_out_override")
         groups.setdefault(label, []).append({
             "match_id": m.get("match_id"),
             "site": m.get("site") or "",
@@ -188,6 +189,11 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
             # Inputfelterne viser override hvis sat, ellers den rå værdi (heltal).
             "gross_in_input": int(round(gi_ov if gi_ov is not None else gi_raw)),
             "gross_out_input": int(round(go_ov if go_ov is not None else go_raw)),
+            # Delvist administrativ: den administrative andel af gross in/out.
+            # Blank = alt-eller-intet efter admin-match/flag.
+            "adm_in_input": "" if ai_ov is None else int(round(ai_ov)),
+            "adm_out_input": "" if ao_ov is None else int(round(ao_ov)),
+            "adm_split": ai_ov is not None or ao_ov is not None,
             "edited": gi_ov is not None or go_ov is not None,
             "excluded": bool(m.get("total_excluded")),
             # Administrativ = trækkes allerede fra Actual Sale/Churn (admin-matchet).
@@ -513,6 +519,38 @@ async def row_value(run_id: int, request: Request, user=Depends(get_current_user
 
     repo.set_row_value_override(run_id, int(match_id),
                                 _num(body.get("gross_in")), _num(body.get("gross_out")))
+    matches = _visible_matches(run_id)
+    summary = repo.summarize(matches)
+    return JSONResponse({"ok": True, "summary": summary,
+                         "brands": _brand_summary_map(matches)})
+
+
+@router.post("/{run_id}/row-adm")
+async def row_adm(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Sæt den administrative andel af gross in/out for en bevægelse (delvist
+    administrativ deal — fx hvor kun en del af beløbet er administrativt).
+    None/blank pr. felt = ryd → alt-eller-intet efter admin-match/flag."""
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    _require_unlocked(run)
+    body = await request.json()
+    match_id = body.get("match_id")
+    if not match_id:
+        raise HTTPException(400, "match_id påkrævet")
+
+    def _num(v):
+        if v in (None, "", "default"):
+            return None
+        try:
+            f = round(float(v), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Ugyldig værdi: {v!r}")
+        if f < 0:
+            raise HTTPException(400, "Administrativ andel kan ikke være negativ")
+        return f
+
+    repo.set_row_adm_split(run_id, int(match_id),
+                           _num(body.get("adm_in")), _num(body.get("adm_out")))
     matches = _visible_matches(run_id)
     summary = repo.summarize(matches)
     return JSONResponse({"ok": True, "summary": summary,
