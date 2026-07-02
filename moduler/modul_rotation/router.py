@@ -196,13 +196,15 @@ async def media_performance_data(
     years: Optional[str] = None,
     mode: Optional[str] = None,
     months: Optional[str] = None,
+    brands: Optional[str] = None,
 ):
     _require(user, "salesperson")
     selected_accounts = [a.strip() for a in accounts.split(",")] if accounts else None
     selected_years    = [y.strip() for y in years.split(",")]    if years    else None
     selected_months   = [m.strip() for m in months.split(",")]   if months   else None
+    selected_brands   = [b.strip() for b in brands.split(",")]   if brands   else None
     data = db_media_performance(selected_accounts, selected_years,
-                                mode or "abonnement", selected_months)
+                                mode or "abonnement", selected_months, selected_brands)
     return JSONResponse(content=data)
 
 

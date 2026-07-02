@@ -157,6 +157,12 @@ body.embed .filter-bar { display:none; }
       </div>
     </div>
     <div class="filter-group">
+      <div class="filter-label">Brand</div>
+      <div class="filter-chips" id="brandChips">
+        <span class="chip active" data-val="">Alle</span>
+      </div>
+    </div>
+    <div class="filter-group">
       <div class="filter-label">Periode</div>
       <div class="filter-chips" id="yearChips">
         <span class="chip active" data-val="">Alle</span>
@@ -186,6 +192,7 @@ body.embed .filter-bar { display:none; }
 <script>
 let selectedMode     = 'abonnement';
 let selectedAccounts = new Set();
+let selectedBrands   = new Set();
 let selectedYears    = new Set();
 let selectedMonths   = new Set();
 let sortCol = 'net', sortDir = -1;
@@ -246,6 +253,20 @@ function buildAccountChips(accounts, labels) {
     wrap.appendChild(s);
   });
   syncChipActive('accountChips', selectedAccounts);
+}
+
+// Brand-chips: sites klassificeret til brand-grupper (Watch DK/Finans/Monitor/…)
+function buildBrandChips(brands) {
+  const wrap = document.getElementById('brandChips');
+  wrap.innerHTML = '<span class="chip active" data-val="">Alle</span>';
+  wrap.querySelector('.chip').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
+  brands.forEach(b => {
+    const s = document.createElement('span');
+    s.className = 'chip'; s.dataset.val = b; s.textContent = b;
+    s.addEventListener('click', () => toggleChip(s, selectedBrands, 'brandChips', loadData));
+    wrap.appendChild(s);
+  });
+  syncChipActive('brandChips', selectedBrands);
 }
 
 function buildYearChips(years) {
@@ -316,11 +337,13 @@ document.querySelectorAll('#modeChips .chip').forEach(c => {
     document.querySelectorAll('#modeChips .chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     if (sortCol === 'websale' || sortCol === 'gross' || sortCol === 'cancel') sortCol = 'net';
-    // Account- og periode-valg nulstilles ved mode-skift, da de tilgængelige
-    // accounts/år varierer pr. mode (abonnement vs. annonce-accounts).
+    // Account-, brand- og periode-valg nulstilles ved mode-skift, da de tilgængelige
+    // accounts/brands/år varierer pr. mode (abonnement vs. annonce-accounts).
     selectedAccounts.clear();
+    selectedBrands.clear();
     selectedYears.clear();
     resetChipGroup('accountChips', selectedAccounts);
+    resetChipGroup('brandChips', selectedBrands);
     resetChipGroup('yearChips', selectedYears);
     loadData();
   });
@@ -386,6 +409,7 @@ async function loadData() {
   const params = new URLSearchParams();
   params.set('mode', selectedMode);
   if (selectedAccounts.size) params.set('accounts', [...selectedAccounts].join(','));
+  if (selectedBrands.size)   params.set('brands',   [...selectedBrands].join(','));
   if (selectedYears.size)    params.set('years',    [...selectedYears].join(','));
   if (selectedMonths.size)   params.set('months',   [...selectedMonths].join(','));
 
@@ -398,6 +422,9 @@ async function loadData() {
   if (document.getElementById('accountChips').children.length === 1 && d.available_accounts?.length) {
     buildAccountChips(d.available_accounts, d.account_labels);
   }
+  if (document.getElementById('brandChips').children.length === 1 && d.available_brands?.length) {
+    buildBrandChips(d.available_brands);
+  }
   if (document.getElementById('yearChips').children.length === 1 && d.available_years?.length) {
     buildYearChips(d.available_years);
   }
@@ -407,6 +434,7 @@ async function loadData() {
 
 // "Alle"-chip click-handlere (initialt i markup)
 document.querySelector('#accountChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedAccounts, 'accountChips', loadData));
+document.querySelector('#brandChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedBrands, 'brandChips', loadData));
 document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click', e => toggleChip(e.target, selectedYears, 'yearChips', loadData));
 
 // ── Forudfyld filtre fra URL (bruges af rotation/signage pr. skærm) ────
@@ -423,6 +451,7 @@ document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click'
   const fill = (key, set) => (q.get(key) || '').split(',')
     .map(s => s.trim()).filter(Boolean).forEach(v => set.add(v));
   fill('accounts', selectedAccounts);
+  fill('brands',   selectedBrands);
   fill('years',    selectedYears);
   fill('months',   selectedMonths);
 
