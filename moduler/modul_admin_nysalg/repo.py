@@ -106,6 +106,17 @@ INIT_STMTS = [
        AND NOT EXISTS (SELECT * FROM sys.columns
            WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'gross_out_override')
        ALTER TABLE admin_nysalg_match ADD gross_out_override DECIMAL(18,2) NULL""",
+    # Migration: delvist administrative bevægelser — den administrative ANDEL af
+    # gross in/out kan sættes pr. række (fx en deal hvor kun en del af beløbet er
+    # administrativt). NULL = alt-eller-intet efter admin-match/flag.
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'adm_in_override')
+       ALTER TABLE admin_nysalg_match ADD adm_in_override DECIMAL(18,2) NULL""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'adm_out_override')
+       ALTER TABLE admin_nysalg_match ADD adm_out_override DECIMAL(18,2) NULL""",
     # Migration: datointerval (period_from/period_to) — afløser enkelt-måneds-perioden.
     # [period] beholdes som læsbar label (fx '2026-01 – 2026-05'); from/to bærer
     # det faktiske filter.
@@ -297,7 +308,8 @@ def get_matches(run_id: int) -> list[dict]:
     conn.close()
     for r in rows:
         for k in ("net_diff", "gross_in", "gross_out", "matched_value",
-                  "gross_in_override", "gross_out_override"):
+                  "gross_in_override", "gross_out_override",
+                  "adm_in_override", "adm_out_override"):
             r[k] = float(r[k]) if r.get(k) is not None else None
         r["is_admin"] = bool(r["is_admin"])
         r["ambiguous"] = bool(r["ambiguous"])
@@ -374,6 +386,26 @@ def set_row_value_override(run_id: int, match_id: int,
            SET gross_in_override = %s, gross_out_override = %s
            WHERE match_id = %s AND run_id = %s""",
         (gross_in, gross_out, match_id, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_row_adm_split(run_id: int, match_id: int,
+                      adm_in: Optional[float], adm_out: Optional[float]) -> None:
+    """Sæt den administrative ANDEL af gross in/out for en bevægelse.
+
+    Bruges når kun en del af beløbet er administrativt: andelen trækkes fra
+    Actual Sale/Churn, resten tæller som almindeligt salg/churn. None pr. felt =
+    ryd (tilbage til alt-eller-intet efter admin-match/flag).
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """UPDATE admin_nysalg_match
+           SET adm_in_override = %s, adm_out_override = %s
+           WHERE match_id = %s AND run_id = %s""",
+        (adm_in, adm_out, match_id, run_id),
     )
     conn.commit()
     conn.close()
@@ -745,8 +777,15 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
         finans_bud = round(_budget_for_where(
             cur, f"[Brand]='FINANS DK' AND [DealType]='{label}' "
                  "AND COALESCE([Salestype],'') <> 'Programmatic'", date_from, date_to), 2)
-        subrows = [_sub("Watch DK", watch, watch_bud),
-                   _sub("FINANS DK", finans, finans_bud)]
+        finans_sub = _sub("FINANS DK", finans, finans_bud)
+        if pipeline == "job":
+            # Finans har intet direkte jobsalg — Finans' andel dækkes af en intern
+            # allokering (6,25 % af WM DK's jobsalg), så rækken står som 0 her.
+            # Noten vises i rapporten (Excel-kommentar + PDF-fodnote).
+            finans_sub["note"] = (
+                "Job sales for Finans are shown as 0 because 6.25% of the job "
+                "sales are internally allocated from WM DK to Finans.")
+        subrows = [_sub("Watch DK", watch, watch_bud), finans_sub]
         total = watch + finans
         if pipeline == "banner":
             prog = _programmatic_revenue()
@@ -883,6 +922,32 @@ def effective_gross_out(m: dict) -> float:
     return float(ov) if ov is not None else _row_opsigelse(m)
 
 
+def effective_adm_in(m: dict) -> float:
+    """Administrativ andel af gross in — det der trækkes fra Actual Sale.
+
+    Udeladt række tæller 0. adm_in_override (delvist administrativ bevægelse:
+    direktøren har skrevet præcis hvor meget der er administrativt) bruges hvis
+    sat; ellers alt-eller-intet: hele effective_gross_in hvis rækken er
+    administrativ (effective_is_admin), ellers 0.
+    """
+    if m.get("total_excluded"):
+        return 0.0
+    ov = m.get("adm_in_override")
+    if ov is not None:
+        return float(ov)
+    return effective_gross_in(m) if effective_is_admin(m) else 0.0
+
+
+def effective_adm_out(m: dict) -> float:
+    """Administrativ andel af gross out (opsigelse) — jf. effective_adm_in."""
+    if m.get("total_excluded"):
+        return 0.0
+    ov = m.get("adm_out_override")
+    if ov is not None:
+        return float(ov)
+    return effective_gross_out(m) if is_admin_opsigelse(m) else 0.0
+
+
 def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
                        comments: dict | None = None,
                        extra_rows: list[dict] | None = None) -> list[dict]:
@@ -913,14 +978,11 @@ def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
     for m in matches:
         label = m.get("brand") or classify(m.get("site"))
         g = _bucket(label)
-        gi = effective_gross_in(m)
-        go = effective_gross_out(m)
-        g["brutto"] += gi
-        g["opsigelser"] += go
-        if effective_is_admin(m):
-            g["adm_nysalg"] += gi
-        if is_admin_opsigelse(m):
-            g["adm_opsigelser"] += go
+        g["brutto"] += effective_gross_in(m)
+        g["opsigelser"] += effective_gross_out(m)
+        # Administrativ andel — alt-eller-intet, medmindre en delvis andel er sat.
+        g["adm_nysalg"] += effective_adm_in(m)
+        g["adm_opsigelser"] += effective_adm_out(m)
         if m.get("ambiguous"):
             g["n_ambiguous"] += 1
 
@@ -982,14 +1044,8 @@ def summarize_by_site(matches: list[dict],
                 "currency": brand_currency(label),
                 "sale": 0.0, "churn": 0.0, "net": 0.0,
             }
-        gi = effective_gross_in(m)
-        go = effective_gross_out(m)
-        g["sale"] += gi
-        g["churn"] += go
-        if effective_is_admin(m):
-            g["sale"] -= gi
-        if is_admin_opsigelse(m):
-            g["churn"] -= go
+        g["sale"] += effective_gross_in(m) - effective_adm_in(m)
+        g["churn"] += effective_gross_out(m) - effective_adm_out(m)
 
     def _order(label):
         return DISPLAY_ORDER.index(label) if label in DISPLAY_ORDER else len(DISPLAY_ORDER)
@@ -1109,15 +1165,14 @@ def summarize(matches: list[dict]) -> dict:
     brutto = adm_nysalg = opsigelser = adm_opsigelser = 0.0
     n_admin = n_ambiguous = 0
     for m in matches:
-        gi = effective_gross_in(m)
-        go = effective_gross_out(m)
-        brutto += gi
-        opsigelser += go
-        if effective_is_admin(m):
-            adm_nysalg += gi
+        brutto += effective_gross_in(m)
+        opsigelser += effective_gross_out(m)
+        ai = effective_adm_in(m)
+        adm_nysalg += ai
+        # Tæl både helt administrative rækker og rækker med en delvis adm. andel.
+        if effective_is_admin(m) or ai > 0:
             n_admin += 1
-        if is_admin_opsigelse(m):
-            adm_opsigelser += go
+        adm_opsigelser += effective_adm_out(m)
         if m.get("ambiguous"):
             n_ambiguous += 1
     netto = (brutto - adm_nysalg) - (opsigelser - adm_opsigelser)

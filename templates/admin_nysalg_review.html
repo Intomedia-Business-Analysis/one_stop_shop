@@ -261,6 +261,9 @@
             (fx falsk gross-in ved skift af kontonummer → sæt til 0). Totalerne genberegnes ved ændring.
             Rækker mærket <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">ADM</span>
             er administrative og trækkes allerede fra Actual Sale/Churn (styres i "Administrative nysalg" ovenfor) — de tæller ikke med i totalen.
+            Er kun en <b>del</b> af beløbet administrativt, så skriv den administrative andel i
+            "Adm. in"/"Adm. out" — andelen trækkes fra, resten tæller som almindeligt salg/churn.
+            Blank = hele rækken følger admin-markeringen.
           </p>
           {% if not brand_movements %}
             <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
@@ -270,7 +273,8 @@
             .mv-table{width:100%;table-layout:fixed;font-size:12px}
             .mv-table th,.mv-table td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 6px}
             .mv-table td.num,.mv-table th.num{overflow:visible}
-            .mv-table input.mv-val{width:100%;box-sizing:border-box;text-align:right}
+            .mv-table input.mv-val,.mv-table input.mv-adm{width:100%;box-sizing:border-box;text-align:right}
+            .mv-table input.mv-adm::placeholder{color:var(--ink-4)}
           </style>
           {% for grp in brand_movements %}
           <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
@@ -280,21 +284,25 @@
             <div style="margin-top:8px">
             <table class="v-table mv-table">
               <colgroup>
-                <col style="width:13%"><col style="width:22%"><col style="width:13%">
-                <col style="width:9%"><col style="width:11%">
-                <col style="width:11%"><col style="width:11%"><col style="width:10%">
+                <col style="width:11%"><col style="width:17%"><col style="width:10%">
+                <col style="width:8%"><col style="width:8%">
+                <col style="width:10%"><col style="width:10%">
+                <col style="width:9%"><col style="width:9%"><col style="width:8%">
               </colgroup>
               <thead>
                 <tr>
                   <th>Site</th><th>Kunde</th><th>Konto</th><th>Måned</th><th>Movement</th>
-                  <th class="num">Gross in</th><th class="num">Gross out</th><th>Medtag</th>
+                  <th class="num">Gross in</th><th class="num">Gross out</th>
+                  <th class="num" title="Administrativ andel af gross in — kun andelen trækkes fra Actual Sale">Adm. in</th>
+                  <th class="num" title="Administrativ andel af gross out — kun andelen trækkes fra Actual Churn">Adm. out</th>
+                  <th>Medtag</th>
                 </tr>
               </thead>
               <tbody>
                 {% for r in grp.rows %}
                 <tr data-match="{{ r.match_id }}" {% if r.excluded or r.administrativ %}style="opacity:.55"{% endif %}>
                   <td title="{{ r.site }}">{{ r.site }}</td>
-                  <td title="{{ r.customer }}">{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
+                  <td title="{{ r.customer }}">{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% elif r.adm_split %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Delvist administrativ — kun den angivne andel trækkes fra Actual Sale/Churn">DELVIS ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
                   <td class="muted" title="{{ r.account_number }}">{{ r.account_number }}</td>
                   <td>{{ r.month_end }}</td>
                   <td class="muted" title="{{ r.movement }}">{{ r.movement }}</td>
@@ -307,6 +315,20 @@
                     <input class="mv-val" type="number" step="1" inputmode="numeric"
                            data-field="gross_out" data-match="{{ r.match_id }}"
                            value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
+                  </td>
+                  <td class="num">
+                    <input class="mv-adm" type="number" step="1" min="0" inputmode="numeric"
+                           data-field="adm_in" data-match="{{ r.match_id }}"
+                           value="{{ r.adm_in_input }}" placeholder="—"
+                           title="Administrativ andel af gross in"
+                           {% if locked %}disabled{% endif %}>
+                  </td>
+                  <td class="num">
+                    <input class="mv-adm" type="number" step="1" min="0" inputmode="numeric"
+                           data-field="adm_out" data-match="{{ r.match_id }}"
+                           value="{{ r.adm_out_input }}" placeholder="—"
+                           title="Administrativ andel af gross out"
+                           {% if locked %}disabled{% endif %}>
                   </td>
                   <td>
                     {% if r.administrativ %}
@@ -476,6 +498,26 @@ document.querySelectorAll('input.mv-val').forEach(inp => {
       applySummary(resp.summary);   // genberegnede topkort uden reload
       applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
       toast('Værdi gemt');
+    } catch(e){ toast('Fejl: '+e.message); }
+  });
+});
+
+// Bevægelser pr. brand: delvist administrativ — skriv den administrative andel af
+// gross in/out (blank = alt-eller-intet efter admin-markeringen) — i baggrunden
+document.querySelectorAll('input.mv-adm').forEach(inp => {
+  inp.addEventListener('change', async () => {
+    const tr = inp.closest('tr');
+    const ai = tr.querySelector('input[data-field="adm_in"]');
+    const ao = tr.querySelector('input[data-field="adm_out"]');
+    try {
+      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-adm`, {
+        match_id: Number(inp.dataset.match),
+        adm_in:  ai && ai.value !== '' ? Number(ai.value) : null,
+        adm_out: ao && ao.value !== '' ? Number(ao.value) : null,
+      });
+      applySummary(resp.summary);   // genberegnede topkort uden reload
+      applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
+      toast('Administrativ andel gemt');
     } catch(e){ toast('Fejl: '+e.message); }
   });
 });
