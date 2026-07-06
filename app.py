@@ -22,7 +22,7 @@ from auth import (
     resolve_resource_access,
     init_db,
 )
-from log_setup import audit_log, setup_logging
+from log_setup import audit_log, setup_logging, _client_ip
 from nav_utils import CATEGORIES, filter_categories, register_nav_globals
 from moduler.modul_budget.router import router as budget_router
 from moduler.modul_admin.router import router as admin_router
@@ -47,7 +47,16 @@ logger = logging.getLogger(__name__)
 if os.getenv("DEV_MODE") == "1":
     logger.info("[DEV] DEV_MODE=1 — login og SQL-forbindelse er bypassed")
 
-app = FastAPI(title="Intomedia Hub")
+# API-dokumentationen (/docs, /redoc, /openapi.json) er kun slået til i
+# DEV_MODE — offentligt eksponeret giver openapi.json et komplet kort over
+# alle endpoints og datastrukturer til enhver, der finder sitet.
+_docs_enabled = os.getenv("DEV_MODE") == "1"
+app = FastAPI(
+    title="Intomedia Hub",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
 init_admin_nysalg_db()  # Opret admin-nysalg-tabeller ved opstart (idempotent)
@@ -201,6 +210,38 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # Login / Logout
 # ---------------------------------------------------------------------------
 
+# Brute-force-bremse: efter _LOGIN_MAX_FAILS fejlede forsøg fra samme IP inden
+# for vinduet afvises nye forsøg, til vinduet er udløbet. In-memory — tælleren
+# nulstilles ved genstart, hvilket er acceptabelt: formålet er at gøre
+# adgangskode-gætteri upraktisk langsomt, ikke at føre evigt regnskab.
+_LOGIN_MAX_FAILS = 5
+_LOGIN_WINDOW_S  = 15 * 60
+_failed_logins: dict[str, list[float]] = {}
+
+
+def _rate_limit_key(request: Request) -> str:
+    """IP der tælles på. X-Forwarded-For er klient-kontrolleret og kan spoofes
+    til at omgå blokeringen — den bruges derfor kun med TRUST_PROXY=1, dvs. når
+    en reverse proxy foran hubben garanteret sætter headeren.
+    """
+    if os.getenv("TRUST_PROXY") == "1":
+        return _client_ip(request)
+    return request.client.host if request.client else "?"
+
+
+def _login_retry_after(ip: str) -> int:
+    """Sekunder til IP'en må prøve igen — 0 hvis den ikke er blokeret."""
+    now = time.time()
+    attempts = [t for t in _failed_logins.get(ip, []) if now - t < _LOGIN_WINDOW_S]
+    if attempts:
+        _failed_logins[ip] = attempts
+    else:
+        _failed_logins.pop(ip, None)
+    if len(attempts) >= _LOGIN_MAX_FAILS:
+        return int(_LOGIN_WINDOW_S - (now - attempts[0])) + 1
+    return 0
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     next_url = _safe_next_url(request.query_params.get("next"))
@@ -221,14 +262,27 @@ async def login_post(request: Request):
     form = await request.form()
     username = form.get("username", "").strip()
     password = form.get("password", "")
-    user = authenticate_user(username, password)
     next_url = _safe_next_url(form.get("next"))
+
+    ip = _rate_limit_key(request)
+    retry_after = _login_retry_after(ip)
+    if retry_after:
+        audit_log("login_blokeret", request=request, username=username)
+        return templates.TemplateResponse(request, "login.html", {
+            "error": "For mange mislykkede forsøg — prøv igen om "
+                     f"{max(1, retry_after // 60)} min.",
+            "next": next_url,
+        }, status_code=429)
+
+    user = authenticate_user(username, password)
     if not user:
+        _failed_logins.setdefault(ip, []).append(time.time())
         audit_log("login_afvist", request=request, username=username)
         return templates.TemplateResponse(request, "login.html", {
             "error": "Forkert brugernavn eller adgangskode",
             "next": next_url,
         })
+    _failed_logins.pop(ip, None)
     request.session["user_id"] = user["id"]
     audit_log("login_ok", user=user, request=request)
     if next_url:
