@@ -1,4 +1,4 @@
-"""Pipedrive API-klient til Klippekort — opdatér "klip brugt" på en deal.
+"""Pipedrive API-klient (v2) til Klippekort — opdatér "klip brugt" på en deal.
 
 JP/POL Advertising-kontoen har sit eget API-token og sit eget custom-felt-key
 for used_clip_cards. Værdier matcher pipedrive_sync/config.py['jppol_advertising']
@@ -10,6 +10,14 @@ nuværende used_clip_cards live og lægger delta oveni — så toolet aldrig
 overskriver klip det ikke selv har registreret (fx 4 klip sat direkte i
 Pipedrive). Næste sync henter det opdaterede felt ned i PipedriveDeals, som er
 den autoritative kilde til 'Brugt' i dashboardet.
+
+API v2 (v1 lukker 31. juli 2026):
+  - Auth via x-api-token-headeren (api_token som query-param findes ikke i v2).
+  - Custom fields ligger under data.custom_fields og skrives som
+    {"custom_fields": {<felt-key>: <typet værdi>}} med PATCH (før PUT).
+  - Pagination er cursor-baseret (additional_data.next_cursor) i stedet for start.
+  - Organisationers owner_id er nu kun et tal — navn/email slås op via /v1/users,
+    som ikke har noget v2-modstykke og derfor ikke udfases.
 """
 from __future__ import annotations
 
@@ -31,7 +39,9 @@ try:
 except Exception:
     pass
 
-BASE_URL = "https://api.pipedrive.com/v1"
+BASE_URL = "https://api.pipedrive.com/api/v2"
+BASE_URL_V1 = "https://api.pipedrive.com/v1"
+PAGE_LIMIT = 500
 MAX_RETRIES = 3
 
 # Env-variabel med API-token for JP/POL Advertising (samme navn som sync-projektet).
@@ -39,18 +49,54 @@ JPPOL_TOKEN_ENV = "PD_TOKEN_JPPOL"
 
 # Custom-felt-key for "klip brugt" (used_clip_cards) på jppol_advertising-kontoen.
 # Kopieret fra pipedrive_sync/config.py['jppol_advertising'].field_map.
+# Felttypen er 'double' i Pipedrive, så værdien skrives som tal (ikke streng).
 USED_CLIP_FIELD_KEY = "83f34a5fb1a534f807a846950b2ac41c6436d7eb"
 
 def _get_token() -> str | None:
     return os.getenv(JPPOL_TOKEN_ENV)
 
 
+def _headers(token: str) -> dict:
+    return {"x-api-token": token}
+
+
+def _fetch_user_map(token: str) -> dict:
+    """Hent {user_id: (navn, email)} for kontoens brugere via /v1/users.
+
+    v2's organizations-svar indeholder kun owner_id som tal, hvor v1 medsendte
+    ejerens navn og email inline — så de slås op i ét samlet kald her.
+    Kaster ikke — returnerer tom dict ved fejl/manglende adgang.
+    """
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = requests.get(
+                f"{BASE_URL_V1}/users", headers=_headers(token), timeout=60,
+            )
+            if resp.status_code == 429:
+                time.sleep(int(resp.headers.get("Retry-After", 5)))
+                continue
+            if resp.status_code >= 400:
+                return {}
+            body = resp.json()
+            if not body.get("success"):
+                return {}
+            return {
+                u["id"]: (u.get("name"), u.get("email"))
+                for u in (body.get("data") or [])
+                if u.get("id") is not None
+            }
+        except (requests.RequestException, ValueError):
+            time.sleep(1)
+    return {}
+
+
 def fetch_org_owners(needed_ids) -> dict:
     """Hent organisationernes ejere fra Pipedrive for de ønskede org_id'er.
 
-    Paginerer /organizations (500 ad gangen) og stopper når alle ønskede id'er
-    er fundet (eller der ikke er flere sider). Returnerer {org_id: (navn, email)}.
-    Kaster ikke — returnerer det den nåede ved fejl/manglende token.
+    Paginerer /organizations (500 ad gangen, cursor-baseret) og stopper når alle
+    ønskede id'er er fundet (eller der ikke er flere sider). Returnerer
+    {org_id: (navn, email)}. Kaster ikke — returnerer det den nåede ved fejl/
+    manglende token.
     """
     token = _get_token()
     if not token:
@@ -61,13 +107,20 @@ def fetch_org_owners(needed_ids) -> dict:
             needed.add(int(x))
         except (TypeError, ValueError):
             pass
+    if not needed:
+        return {}
+    users = _fetch_user_map(token)
     out: dict = {}
-    start = 0
+    cursor: str | None = None
     while needed:
+        params: dict = {"limit": PAGE_LIMIT}
+        if cursor:
+            params["cursor"] = cursor
         try:
             resp = requests.get(
                 f"{BASE_URL}/organizations",
-                params={"api_token": token, "limit": 500, "start": start},
+                headers=_headers(token),
+                params=params,
                 timeout=60,
             )
             if resp.status_code == 429:
@@ -80,13 +133,10 @@ def fetch_org_owners(needed_ids) -> dict:
         for o in (body.get("data") or []):
             oid = o.get("id")
             if oid in needed:
-                owner = o.get("owner_id") or {}
-                out[oid] = (owner.get("name"), owner.get("email"))
+                out[oid] = users.get(o.get("owner_id"), (None, None))
                 needed.discard(oid)
-        pag = (body.get("additional_data") or {}).get("pagination", {})
-        if pag.get("more_items_in_collection") and needed:
-            start += 500
-        else:
+        cursor = (body.get("additional_data") or {}).get("next_cursor")
+        if not cursor:
             break
     return out
 
@@ -101,16 +151,21 @@ def fetch_org_owners_by_ids(ids) -> dict:
     token = _get_token()
     if not token:
         return {}
-    out: dict = {}
+    wanted = []
     for raw_id in (ids or []):
         try:
-            oid = int(raw_id)
+            wanted.append(int(raw_id))
         except (TypeError, ValueError):
             continue
+    if not wanted:
+        return {}
+    users = _fetch_user_map(token)
+    out: dict = {}
+    for oid in wanted:
         url = f"{BASE_URL}/organizations/{oid}"
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = requests.get(url, params={"api_token": token}, timeout=30)
+                resp = requests.get(url, headers=_headers(token), timeout=30)
                 if resp.status_code == 429:
                     time.sleep(int(resp.headers.get("Retry-After", 5)))
                     continue
@@ -120,8 +175,7 @@ def fetch_org_owners_by_ids(ids) -> dict:
                 if not body.get("success"):
                     break
                 o = body.get("data") or {}
-                owner = o.get("owner_id") or {}
-                out[oid] = (owner.get("name"), owner.get("email"))
+                out[oid] = users.get(o.get("owner_id"), (None, None))
                 break
             except (requests.RequestException, ValueError):
                 time.sleep(1)
@@ -143,7 +197,7 @@ def fetch_used_clip_cards(pd_deal_id: int) -> int | None:
     url = f"{BASE_URL}/deals/{int(pd_deal_id)}"
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(url, params={"api_token": token}, timeout=30)
+            resp = requests.get(url, headers=_headers(token), timeout=30)
             if resp.status_code == 429:
                 time.sleep(int(resp.headers.get("Retry-After", 5)))
                 continue
@@ -152,7 +206,8 @@ def fetch_used_clip_cards(pd_deal_id: int) -> int | None:
             body = resp.json()
             if not body.get("success"):
                 return None
-            raw = (body.get("data") or {}).get(USED_CLIP_FIELD_KEY)
+            custom = (body.get("data") or {}).get("custom_fields") or {}
+            raw = custom.get(USED_CLIP_FIELD_KEY)
             if raw is None or str(raw).strip() == "":
                 return 0
             try:
@@ -200,11 +255,11 @@ def update_used_clip_cards(pd_deal_id: int, new_used: int) -> dict:
         }
 
     url = f"{BASE_URL}/deals/{int(pd_deal_id)}"
-    payload = {USED_CLIP_FIELD_KEY: str(new_used)}
+    payload = {"custom_fields": {USED_CLIP_FIELD_KEY: int(new_used)}}
     last_err = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.put(url, params={"api_token": token}, json=payload, timeout=30)
+            resp = requests.patch(url, headers=_headers(token), json=payload, timeout=30)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 5))
                 time.sleep(wait)
@@ -215,7 +270,7 @@ def update_used_clip_cards(pd_deal_id: int, new_used: int) -> dict:
                     last_err = body.get("error") or body.get("error_info") or body
                 except Exception:
                     last_err = resp.text[:300]
-                return {"ok": False, "reason": f"Pipedrive PUT {resp.status_code}: {last_err}"}
+                return {"ok": False, "reason": f"Pipedrive PATCH {resp.status_code}: {last_err}"}
             body = resp.json()
             if not body.get("success"):
                 return {"ok": False, "reason": f"Pipedrive-fejl: {body.get('error', body)}"}

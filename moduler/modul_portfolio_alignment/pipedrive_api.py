@@ -1,4 +1,4 @@
-"""Pipedrive API-klient til Portfolio Alignment — opret alignment-deals.
+"""Pipedrive API-klient (v2) til Portfolio Alignment — opret alignment-deals.
 
 Hver Pipedrive-konto (scope) har sit eget API-token og sine egne pipelines,
 stages og custom-felt-IDs. Tokens læses fra .env (samme navngivning som
@@ -14,6 +14,14 @@ Title         = "Porteføljeafstemning <måned> <år>" (bygges dynamisk pr. kør
 Administrativ = Yes
 Sites         = option der matcher den normaliserede site fra alignment-tabellen
 Value         = abs(diff) i DKK
+
+API v2 (v1 lukker 31. juli 2026):
+  - Auth via x-api-token-headeren (api_token som query-param findes ikke i v2).
+  - Pagination er cursor-baseret (additional_data.next_cursor) i stedet for start.
+  - Custom fields sendes nested som {"custom_fields": {<key>: <typet værdi>}} —
+    enum-felter som option-id (int), set-felter som liste af option-ids.
+  - dealFields (v2) returnerer field_code/field_name i stedet for key/name og
+    options som liste af {id, label}; normaliseres i _get_meta til den interne form.
 """
 from __future__ import annotations
 
@@ -33,7 +41,8 @@ from moduler.modul_portfolio_alignment.queries import (
 load_dotenv()
 
 
-BASE_URL = "https://api.pipedrive.com/v1"
+BASE_URL = "https://api.pipedrive.com/api/v2"
+BASE_URL_V1 = "https://api.pipedrive.com/v1"
 PAGE_LIMIT = 500
 MAX_RETRIES = 3
 
@@ -72,6 +81,7 @@ SCOPE_TOKEN_ENV: dict[str, str] = {
 # eget hash-baserede field key — navnet er ikke nødvendigvis 'Administrativ'.
 # Værdier kopieret fra pipedrive_sync/config.py så de holdes i sync.
 # Tom streng → opslag via navn-varianter (administrativ/administrative/admin).
+# v2 kalder key'en field_code, men hash-værdierne er uændrede.
 ADMIN_FIELD_KEY: dict[str, str] = {
     "watch_medier": "df6dd5cbd8bff4ab30974bbf18b53e8fb8c98ccf",
     "watch_no":     "5494a067b751fedb4457719bfa0bf1a77ebc32e7",
@@ -93,6 +103,9 @@ PIPELINE_KEYWORDS_FOR_NEG_DIFF = ["customer"]        # Zuora > PD → manglende 
 # ret stabile og bør kun hentes én gang pr. proces.
 _META_CACHE: dict[str, dict] = {}
 
+# Konto-domæne pr. token (til deal-links) — hentes via /v1/users/me og caches.
+_COMPANY_DOMAIN_CACHE: dict[str, Optional[str]] = {}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -111,13 +124,15 @@ def _get_token(scope: str) -> str:
     return token
 
 
+def _headers(token: str) -> dict:
+    return {"x-api-token": token}
+
+
 def _api_get(token: str, path: str, params: Optional[dict] = None) -> list | dict:
     """Hent én side. Håndterer 429-rate-limit med Retry-After."""
-    p = dict(params or {})
-    p["api_token"] = token
     url = f"{BASE_URL}{path}"
     for attempt in range(1, MAX_RETRIES + 1):
-        resp = requests.get(url, params=p, timeout=30)
+        resp = requests.get(url, headers=_headers(token), params=params or {}, timeout=30)
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 5))
             time.sleep(wait)
@@ -131,17 +146,17 @@ def _api_get(token: str, path: str, params: Optional[dict] = None) -> list | dic
 
 
 def _api_get_all(token: str, path: str, params: Optional[dict] = None) -> list:
-    """Henter alle sider (pagination)."""
+    """Henter alle sider (cursor-pagination)."""
     out: list = []
-    start = 0
-    p = dict(params or {})
-    p["limit"] = PAGE_LIMIT
+    cursor: Optional[str] = None
+    url = f"{BASE_URL}{path}"
     while True:
-        p["start"] = start
-        p["api_token"] = token
-        url = f"{BASE_URL}{path}"
+        p = dict(params or {})
+        p["limit"] = PAGE_LIMIT
+        if cursor:
+            p["cursor"] = cursor
         for attempt in range(1, MAX_RETRIES + 1):
-            resp = requests.get(url, params=p, timeout=30)
+            resp = requests.get(url, headers=_headers(token), params=p, timeout=30)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 5))
                 time.sleep(wait)
@@ -152,17 +167,15 @@ def _api_get_all(token: str, path: str, params: Optional[dict] = None) -> list:
         if not body.get("success"):
             raise RuntimeError(f"Pipedrive GET {path} fejl: {body.get('error', body)}")
         out.extend(body.get("data") or [])
-        pagination = (body.get("additional_data") or {}).get("pagination", {})
-        if pagination.get("more_items_in_collection"):
-            start += PAGE_LIMIT
-        else:
+        cursor = (body.get("additional_data") or {}).get("next_cursor")
+        if not cursor:
             break
     return out
 
 
 def _api_post(token: str, path: str, payload: dict) -> dict:
     url = f"{BASE_URL}{path}"
-    resp = requests.post(url, params={"api_token": token}, json=payload, timeout=30)
+    resp = requests.post(url, headers=_headers(token), json=payload, timeout=30)
     if resp.status_code >= 400:
         try:
             body = resp.json()
@@ -176,6 +189,27 @@ def _api_post(token: str, path: str, payload: dict) -> dict:
     return body.get("data") or {}
 
 
+def _get_company_domain(token: str) -> Optional[str]:
+    """Konto-domænet til deal-links (https://<domæne>.pipedrive.com/deal/<id>).
+
+    Hentes via /v1/users/me — endpointet har intet v2-modstykke og udfases ikke.
+    Kaster ikke: None ved fejl betyder blot at deal_url udelades.
+    """
+    if token in _COMPANY_DOMAIN_CACHE:
+        return _COMPANY_DOMAIN_CACHE[token]
+    domain = None
+    try:
+        resp = requests.get(f"{BASE_URL_V1}/users/me", headers=_headers(token), timeout=30)
+        if resp.status_code < 400:
+            body = resp.json()
+            if body.get("success"):
+                domain = (body.get("data") or {}).get("company_domain")
+    except (requests.RequestException, ValueError):
+        pass
+    _COMPANY_DOMAIN_CACHE[token] = domain
+    return domain
+
+
 # ---------------------------------------------------------------------------
 # Metadata-lookup (cached pr. scope-token)
 # ---------------------------------------------------------------------------
@@ -186,7 +220,7 @@ def _get_meta(scope: str) -> dict:
     if token in _META_CACHE:
         return _META_CACHE[token]
 
-    pipelines_raw = _api_get(token, "/pipelines")
+    pipelines_raw = _api_get_all(token, "/pipelines")
     stages_raw    = _api_get_all(token, "/stages")
     fields_raw    = _api_get_all(token, "/dealFields")
 
@@ -208,13 +242,13 @@ def _get_meta(scope: str) -> dict:
     for f in fields_raw:
         opts = {opt["id"]: opt.get("label", "") for opt in (f.get("options") or [])}
         field_data = {
-            "key":        f["key"],
-            "name":       f.get("name", ""),
+            "key":        f["field_code"],
+            "name":       f.get("field_name", ""),
             "field_type": f.get("field_type", ""),
             "options":    opts,
         }
-        fields_by_name[f["name"].strip().lower()] = field_data
-        fields_by_key[f["key"]] = field_data
+        fields_by_name[field_data["name"].strip().lower()] = field_data
+        fields_by_key[field_data["key"]] = field_data
 
     meta = {
         "pipelines":      pipelines,
@@ -261,6 +295,19 @@ def _option_id_by_label_match(field: dict, predicate) -> Optional[int]:
         if predicate(label):
             return opt_id
     return None
+
+
+def _custom_field_value(field: dict, option_id) -> object:
+    """Typet værdi til v2's custom_fields: set = [option-id], enum = option-id.
+
+    v1 accepterede alt som strenge i toppen af payloaden — v2 validerer typen,
+    så et set-felt (fx Sites) skal have en liste af heltal.
+    """
+    if field.get("field_type") == "set":
+        return [int(option_id)]
+    if field.get("field_type") == "enum":
+        return int(option_id)
+    return option_id
 
 
 def _site_stem(s: str) -> str:
@@ -374,9 +421,11 @@ def _build_payload(
         "currency": currency,
         "org_id":   int(org_id),
         "stage_id": stage["id"],
-        sites_field["key"]: str(site_opt_id),
-        admin_field["key"]: str(admin_opt),
-        sad_field["key"]:   SERVICE_ACTIVATION_DATE,
+        "custom_fields": {
+            sites_field["key"]: _custom_field_value(sites_field, site_opt_id),
+            admin_field["key"]: _custom_field_value(admin_field, admin_opt),
+            sad_field["key"]:   SERVICE_ACTIVATION_DATE,
+        },
     }
     return payload, pipeline, stage
 
@@ -446,7 +495,7 @@ def create_alignment_deal(
 
     data = _api_post(token, "/deals", payload)
     deal_id = data.get("id")
-    company_domain = data.get("company_domain") or ""
+    company_domain = _get_company_domain(token)
     deal_url = (
         f"https://{company_domain}.pipedrive.com/deal/{deal_id}"
         if company_domain and deal_id else None
