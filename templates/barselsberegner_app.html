@@ -171,6 +171,11 @@ select.ov-name-input{cursor:pointer;appearance:none;padding-right:28px;backgroun
 
 .settings-locked #s_notifyEmails{background:#f3f1ed;color:var(--text-s);border-color:var(--border);cursor:not-allowed}
 
+/* Låst plan (sendt til godkendelse / godkendt): felter er skrivebeskyttede */
+.ov-name-input:disabled,select.ov-name-input:disabled,.p-in:disabled{background:#f3f1ed;color:var(--text-s);border-color:var(--border);cursor:not-allowed;border-style:solid}
+.ansat-mini input:disabled{cursor:not-allowed}
+.lock-note{font-size:9.5px;color:var(--gray);margin-bottom:4px}
+
 @media print{
   header .header-actions,.toolbar .btn,.btn-danger,.settings-wrap,.expand-btn,.pp-actions,.p-del{display:none!important}
   body{background:#fff}.table-wrap{box-shadow:none;border:1px solid #ccc}
@@ -226,7 +231,7 @@ select.ov-name-input{cursor:pointer;appearance:none;padding-right:28px;backgroun
           </table>
         </div>
       </div>
-      <div class="ref-note">Referenceværdier. Den faktiske plan udfyldes pr. sag — forældreorlovens start og længde skrives manuelt, og perioder kan deles op.</div>
+      <div class="ref-note">Referenceværdier. Den faktiske plan udfyldes pr. sag — forældreorlovens start og længde skrives manuelt, og perioder kan deles op. Øremærket orlov skal være afholdt inden barnets første fødselsdag.</div>
     </div>
 
     <div style="margin-top:4px">
@@ -264,6 +269,8 @@ select.ov-name-input{cursor:pointer;appearance:none;padding-right:28px;backgroun
   <span class="fill-hint-box req"></span> Rød = påkrævet (terminsdato)
   <span class="fill-hint-sep">·</span>
   Klik ▸ for at åbne orlovsplanen · stiplede felter beregnes men kan overskrives
+  <span class="fill-hint-sep">·</span>
+  <strong>Øremærket orlov skal være afholdt inden barnets første fødselsdag</strong>
 </div>
 
 <!-- OVERVIEW TABLE -->
@@ -376,6 +383,7 @@ function fmt(d){
   return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear();
 }
 function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function addYears(d,n){ const r=new Date(d); r.setFullYear(r.getFullYear()+n); return r; }
 function toWorkday(d){                     // flyt til nærmeste hverdag (frem)
   if(!d) return null;
   const r=new Date(d);
@@ -399,6 +407,9 @@ function calcPlan(row){
     morUger:0, farUger:0, morDage:0, farDage:0,
     trOut:{mor:0, far:0},        // uger overført FRA denne forælder
     morTilb:null, farTilb:null,
+    // Øremærket orlov skal være afholdt inden barnets første fødselsdag
+    firstBirthday: foedsel ? addYears(foedsel,1) : null,
+    earLate:{mor:[], far:[]},    // øremærkede perioder der slutter for sent
   };
 
   ['mor','far'].forEach(parent => {
@@ -422,6 +433,8 @@ function calcPlan(row){
         out[parent==='mor'?'morUger':'farUger'] += w;
       }
       if(meta.transferable) out.trOut[parent] += num(pd.transferred);
+      if(meta.tag==='ear' && out.firstBirthday && end && end > out.firstBirthday)
+        out.earLate[parent].push(meta.label||pd.type);
 
       out[parent].push({...pd, meta, calcStart:start, autoStart, calcEnd:end});
     });
@@ -453,20 +466,26 @@ function ovRemText(rem, dage){
   return dage ? `${base} · +${dage} feriedage` : base;
 }
 
-function medarbejderCell(row){
+// Planen låses når den er sendt til godkendelse og efter den er godkendt —
+// den skal genåbnes (tilbage til kladde) før den kan redigeres igen.
+function isLocked(row){
+  return ['pending','approved'].includes(row.approvalStatus||'draft');
+}
+
+function medarbejderCell(row,locked){
   if(SEE_ALL){
     const opts = [`<option value="">— Vælg —</option>`]
       .concat(hubUsers.map(u =>
         `<option value="${u.id}"${row.hubUserId==u.id?' selected':''}>${esc(u.name)}</option>`
       )).join('');
-    return `<select class="ov-name-input" onchange="updateRow(${row.id},'hubUserId',this.value||null)">${opts}</select>`;
+    return `<select class="ov-name-input" ${locked?'disabled':''} onchange="updateRow(${row.id},'hubUserId',this.value||null)">${opts}</select>`;
   }
   return `<div style="font-size:12px;color:var(--text-s)">${row.hubUserName?esc(row.hubUserName):'<span style="color:#aaa">— ikke valgt —</span>'}</div>`;
 }
 
-function ansatMini(id,field,val,label){
+function ansatMini(id,field,val,label,locked){
   return `<label class="ansat-mini" title="Markér hvis ansat i Intomedia">
-    <input type="checkbox" ${val?'checked':''} onchange="updateRow(${id},'${field}',this.checked)">
+    <input type="checkbox" ${val?'checked':''} ${locked?'disabled':''} onchange="updateRow(${id},'${field}',this.checked)">
     <span>${label}</span></label>`;
 }
 
@@ -495,13 +514,18 @@ function statusCell(row){
     ? `<div class="approved-by" title="Godkendt af">af ${esc(row.approvedByName)}</div>` : '';
   const owner = (SEE_ALL && row.createdByName)
     ? `<div style="font-size:10px;color:var(--gray)" title="Oprettet af">af ${esc(row.createdByName)}</div>` : '';
+  const lockNote = isLocked(row)
+    ? `<div class="lock-note" title="Genåbn planen for at redigere eller slette">🔒 Planen er låst</div>` : '';
+  const delBtn = isLocked(row) ? ''
+    : `<button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button>`;
   return `
     <div class="status-badge" style="background:${badge.bg};color:${badge.fg}">${badge.t}</div>
     ${approvedBy}
+    ${lockNote}
     <div class="row-actions">${actions}</div>
     <div class="row-actions">
       <button class="btn-mini" onclick="exportRow(${row.id})" title="Eksportér denne sag">⬇ Excel</button>
-      <button class="btn btn-danger" onclick="deleteRow(${row.id})">✕</button>
+      ${delBtn}
     </div>
     ${owner}`;
 }
@@ -521,23 +545,25 @@ function renderTable(){
   rows.forEach(row=>{
     const cv=calcPlan(row);
     const isOpen = expanded.has(row.id);
+    const locked = isLocked(row);
+    const dis = locked?'disabled':'';
 
     const tr=document.createElement('tr');
     tr.className = 'ov-row'+(isOpen?' expanded':'');
     tr.setAttribute('data-id',row.id);
     tr.innerHTML=`
       <td class="c"><button class="expand-btn${isOpen?' open':''}" onclick="toggleExpand(${row.id})" title="Vis/skjul orlovsplan">${isOpen?'▾':'▸'}</button></td>
-      <td>${medarbejderCell(row)}</td>
+      <td>${medarbejderCell(row,locked)}</td>
       <td>
-        <input class="ov-name-input" placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)">
-        ${ansatMini(row.id,'morAnsat',row.morAnsat,'Ansat')}
+        <input class="ov-name-input" ${dis} placeholder="Morens navn" value="${esc(row.morNavn)}" onchange="updateRow(${row.id},'morNavn',this.value)">
+        ${ansatMini(row.id,'morAnsat',row.morAnsat,'Ansat',locked)}
       </td>
       <td>
-        <input class="ov-name-input" placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)">
-        ${ansatMini(row.id,'farAnsat',row.farAnsat,'Ansat')}
+        <input class="ov-name-input" ${dis} placeholder="Fars navn" value="${esc(row.farNavn)}" onchange="updateRow(${row.id},'farNavn',this.value)">
+        ${ansatMini(row.id,'farAnsat',row.farAnsat,'Ansat',locked)}
       </td>
-      <td class="c"><input class="ov-name-input date-input req" style="min-width:110px;text-align:center" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)" title="Påkrævet — planen beregnes ud fra terminsdatoen"></td>
-      <td class="c"><input class="ov-name-input date-input" style="min-width:110px;text-align:center" placeholder="valgfri" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på anden dato end termin"></td>
+      <td class="c"><input class="ov-name-input date-input req" ${dis} style="min-width:110px;text-align:center" placeholder="DD-MM-ÅÅÅÅ" value="${esc(row.termin)}" onchange="updateRow(${row.id},'termin',this.value)" title="Påkrævet — planen beregnes ud fra terminsdatoen"></td>
+      <td class="c"><input class="ov-name-input date-input" ${dis} style="min-width:110px;text-align:center" placeholder="valgfri" value="${esc(row.foedselDato)}" onchange="updateRow(${row.id},'foedselDato',this.value)" title="Udfyld hvis barnet er født på anden dato end termin"></td>
       <td class="c"><span class="ov-total mor">${cv.morUger||0}</span> uger<br><small class="ov-rem${cv.rem.mor<0?' neg':''}">${ovRemText(cv.rem.mor,cv.morDage)}</small></td>
       <td class="c"><span class="ov-date">${fmt(cv.morTilb)||'—'}</span></td>
       <td class="c"><span class="ov-total far">${cv.farUger||0}</span> uger<br><small class="ov-rem${cv.rem.far<0?' neg':''}">${ovRemText(cv.rem.far,cv.farDage)}</small></td>
@@ -565,12 +591,13 @@ function renderTable(){
 // ── RENDER: DETALJEPANEL PR. FORÆLDER ────────────────
 function parentPanel(row,cv,parent){
   const name   = parent==='mor' ? row.morNavn : row.farNavn;
+  const locked = isLocked(row);
   const periods= cv[parent];
   const trIn   = cv.trOut[OTHER[parent]];   // uger overført TIL denne forælder
   const trInChip = trIn>0
     ? `<div class="pp-transfer-in">+${trIn} ugers overført orlov fra ${PARENT_LABEL[OTHER[parent]]}</div>` : '';
 
-  const rowsHtml = periods.map(p => periodRow(row.id,parent,p)).join('');
+  const rowsHtml = periods.map(p => periodRow(row.id,parent,p,locked)).join('');
   const totUger = parent==='mor'?cv.morUger:cv.farUger;
   const totDage = parent==='mor'?cv.morDage:cv.farDage;
   const tilb    = parent==='mor'?cv.morTilb:cv.farTilb;
@@ -588,6 +615,8 @@ function parentPanel(row,cv,parent){
     warns.push(`Overført orlov (${cv.trOut[parent]} uger) overstiger de ${FORAELDRE_MAX} overførbare uger.`);
   if(over)
     warns.push(`Planlagt orlov overstiger ${parent==='mor'?'morens':'farens'} ret med ${-rem} uger.`);
+  if(cv.earLate[parent].length)
+    warns.push(`Øremærket orlov (${cv.earLate[parent].join(', ')}) slutter efter barnets første fødselsdag (${fmt(cv.firstBirthday)}) — øremærket orlov skal være afholdt inden da.`);
   const warnHtml = `<div class="pp-warn${warns.length?' show':''}">${warns.join('<br>')}</div>`;
 
   return `<div class="parent-panel ${parent}">
@@ -606,10 +635,10 @@ function parentPanel(row,cv,parent){
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
-    <div class="pp-actions">
+    ${locked?'':`<div class="pp-actions">
       <button class="btn-add" onclick="addPeriod(${row.id},'${parent}','foraeldre')">+ Forældreorlovsperiode</button>
       <button class="btn-add" onclick="addPeriod(${row.id},'${parent}','ferie')">+ Ferie (dage)</button>
-    </div>
+    </div>`}
     ${warnHtml}
     <div class="pp-summary">
       <span>Planlagt: <strong>${totUger||0} af ${ent} uger</strong></span>
@@ -621,30 +650,31 @@ function parentPanel(row,cv,parent){
   </div>`;
 }
 
-function periodRow(caseId,parent,p){
+function periodRow(caseId,parent,p,locked){
   const meta = p.meta || TYPE_META[p.type] || {};
-  const tag = meta.tag==='ear' ? `<span class="pt-tag ear">øremærket</span>`
+  const dis = locked?'disabled':'';
+  const tag = meta.tag==='ear' ? `<span class="pt-tag ear" title="Øremærket orlov skal være afholdt inden barnets første fødselsdag">øremærket</span>`
             : meta.tag==='tr'  ? `<span class="pt-tag tr">kan overføres</span>` : '';
   // Startfelt: placeholder viser auto-beregnet dato for de faste typer.
   const startPh = meta.autoStart ? (fmt(p.autoStart)||'auto') : 'DD-MM-ÅÅÅÅ';
   const startCls = 'p-in date'+(meta.autoStart && !p.start ? ' auto' : '');
-  const startCell = `<input class="${startCls}" placeholder="${startPh}" value="${esc(p.start)}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','start',this.value)" title="${meta.autoStart?'Beregnes automatisk — kan overskrives':'Udfyld startdato'}">`;
+  const startCell = `<input class="${startCls}" ${dis} placeholder="${startPh}" value="${esc(p.start)}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','start',this.value)" title="${meta.autoStart?'Beregnes automatisk — kan overskrives':'Udfyld startdato'}">`;
 
   // Varighed: dage for ferie, ellers uger.
   let durCell;
   if(meta.unit==='days'){
-    durCell = `<input class="p-in num" type="number" min="0" step="1" placeholder="dage" value="${p.days==null?'':p.days}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','days',this.value)" title="Antal feriedage"> <small style="color:var(--gray)">dage</small>`;
+    durCell = `<input class="p-in num" type="number" min="0" step="1" ${dis} placeholder="dage" value="${p.days==null?'':p.days}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','days',this.value)" title="Antal feriedage"> <small style="color:var(--gray)">dage</small>`;
   } else {
     const ph = meta.type==='foraeldre' || p.type==='foraeldre' ? '0–'+FORAELDRE_MAX : '';
-    durCell = `<input class="p-in num" type="number" min="0" step="0.5" placeholder="${ph}" value="${p.weeks==null?'':p.weeks}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','weeks',this.value)" title="Antal uger"> <small style="color:var(--gray)">uger</small>`;
+    durCell = `<input class="p-in num" type="number" min="0" step="0.5" ${dis} placeholder="${ph}" value="${p.weeks==null?'':p.weeks}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','weeks',this.value)" title="Antal uger"> <small style="color:var(--gray)">uger</small>`;
   }
 
   // Overført: kun forældreorlov kan overføres til den anden forælder.
   const trCell = meta.transferable
-    ? `<input class="p-in num" type="number" min="0" step="0.5" placeholder="0" value="${p.transferred==null?'':p.transferred}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','transferred',this.value)" title="Uger overført til ${PARENT_LABEL[OTHER[parent]]}">`
+    ? `<input class="p-in num" type="number" min="0" step="0.5" ${dis} placeholder="0" value="${p.transferred==null?'':p.transferred}" onchange="updatePeriod(${caseId},'${parent}','${p.id}','transferred',this.value)" title="Uger overført til ${PARENT_LABEL[OTHER[parent]]}">`
     : `<span class="p-none">—</span>`;
 
-  const delCell = meta.splittable
+  const delCell = (meta.splittable && !locked)
     ? `<button class="p-del" onclick="deletePeriod(${caseId},'${parent}','${p.id}')" title="Fjern periode">✕</button>` : '';
 
   return `<tr>
@@ -658,8 +688,14 @@ function periodRow(caseId,parent,p){
 }
 
 // ── PERIODE-HANDLINGER ───────────────────────────────
+function lockGuard(row){
+  if(!isLocked(row)) return false;
+  showToast('Planen er låst — genåbn den for at redigere');
+  renderTable();
+  return true;
+}
 function addPeriod(caseId,parent,type){
-  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const row=rows.find(r=>r.id===caseId); if(!row || lockGuard(row)) return;
   const plan=ensurePlan(row);
   const p={id:uid(), type, start:''};
   if(type==='ferie') p.days=null;
@@ -669,14 +705,14 @@ function addPeriod(caseId,parent,type){
   saveRow(caseId);
 }
 function deletePeriod(caseId,parent,pid){
-  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const row=rows.find(r=>r.id===caseId); if(!row || lockGuard(row)) return;
   const plan=ensurePlan(row);
   plan[parent]=plan[parent].filter(p=>p.id!==pid);
   renderTable();
   saveRow(caseId);
 }
 function updatePeriod(caseId,parent,pid,field,value){
-  const row=rows.find(r=>r.id===caseId); if(!row) return;
+  const row=rows.find(r=>r.id===caseId); if(!row || lockGuard(row)) return;
   const plan=ensurePlan(row);
   const p=plan[parent].find(x=>x.id===pid); if(!p) return;
   if(field==='start') p.start=value;
@@ -719,6 +755,8 @@ async function addRow(){
 }
 
 async function deleteRow(id){
+  const row=rows.find(r=>r.id===id);
+  if(row && lockGuard(row)) return;
   try{
     const res=await fetch(`/tools/barsel/api/cases/${id}`,{method:'DELETE'});
     if(!res.ok) throw new Error(await res.text());
@@ -731,7 +769,7 @@ async function deleteRow(id){
 
 function updateRow(id,field,value){
   const row=rows.find(r=>r.id===id);
-  if(!row) return;
+  if(!row || lockGuard(row)) return;
   row[field]=value;
   if(field==='hubUserId'){
     const u = hubUsers.find(u => String(u.id)===String(value));
@@ -883,6 +921,7 @@ const XLS_COLS = [
   ['Dage',           8,'center'],
   ['Overført (uger)',14,'center'],
   ['Slutter',       13,'center'],
+  ['Tilbagekomst',  14,'center'],
   ['Status',        11,'center'],
 ];
 const STATUS_LABELS = {draft:'Kladde', pending:'Afventer', approved:'Godkendt', rejected:'Afvist'};
@@ -901,6 +940,7 @@ function caseToExportRows(row){
   const status = STATUS_LABELS[row.approvalStatus] || 'Kladde';
   const out = [];
   ['mor','far'].forEach(parent => {
+    const tilb = fmt(parent==='mor' ? cv.morTilb : cv.farTilb);
     cv[parent].forEach(p => {
       const meta = p.meta || {};
       out.push([
@@ -913,11 +953,12 @@ function caseToExportRows(row){
         meta.unit==='days' ? (p.days==null?'':p.days) : '',
         (meta.transferable && p.transferred) ? p.transferred : '',
         fmt(toWorkday(p.calcEnd)),
+        tilb,
         status,
       ]);
     });
   });
-  if(!out.length) out.push([...base,'','','','','','','', '', status]);
+  if(!out.length) out.push([...base,'','','','','','','', '', '', status]);
   return out;
 }
 
