@@ -27,6 +27,17 @@ def _is_admin(user: dict) -> bool:
     return user["role"] == "admin"
 
 
+def _assert_case_editable(case_id: int):
+    """Planer der er sendt til godkendelse eller godkendt er låst.
+    De skal genåbnes (tilbage til kladde) før de kan ændres eller slettes."""
+    case = get_case(case_id)
+    if case and case.get("approvalStatus") in ("pending", "approved"):
+        raise HTTPException(
+            status_code=409,
+            detail="Planen er låst — genåbn den før den kan redigeres",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
@@ -112,6 +123,7 @@ async def api_create_case(request: Request, user=Depends(get_current_user)):
 async def api_update_case(case_id: int, request: Request, user=Depends(get_current_user)):
     if not user_can_access_case(user, case_id):
         raise HTTPException(status_code=403, detail="Ingen adgang til denne sag")
+    _assert_case_editable(case_id)
     try:
         data = await request.json()
         update_case(case_id, data, user)
@@ -125,6 +137,7 @@ async def api_update_case(case_id: int, request: Request, user=Depends(get_curre
 async def api_delete_case(case_id: int, user=Depends(get_current_user)):
     if not user_can_access_case(user, case_id):
         raise HTTPException(status_code=403, detail="Ingen adgang til denne sag")
+    _assert_case_editable(case_id)
     try:
         delete_case(case_id)
         return JSONResponse({"status": "ok"})
