@@ -967,9 +967,16 @@ function caseToExportRows(row){
   const status = STATUS_LABELS[row.approvalStatus] || 'Kladde';
   const out = [];
   ['mor','far'].forEach(parent => {
+    // Tilbagekomst er pr. forælder — vis den kun på den periode der afgør den
+    // (den sidst sluttende), så det ikke ligner en dato pr. periode.
+    const latest = latestEnd(cv[parent]);
     const tilb = fmt(parent==='mor' ? cv.morTilb : cv.farTilb);
+    let tilbShown = false;
     cv[parent].forEach(p => {
       const meta = p.meta || {};
+      const decides = !tilbShown && latest && p.calcEnd
+        && p.calcEnd.getTime() === latest.getTime();
+      if(decides) tilbShown = true;
       out.push([
         ...base,
         parent==='mor'?'Mor':'Far/medmor',
@@ -980,7 +987,7 @@ function caseToExportRows(row){
         meta.unit==='days' ? (p.days==null?'':p.days) : '',
         (meta.transferable && p.transferred) ? p.transferred : '',
         fmt(toWorkday(p.calcEnd)),
-        tilb,
+        decides ? tilb : '',
         status,
       ]);
     });
