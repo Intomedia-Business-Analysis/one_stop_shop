@@ -906,7 +906,22 @@ function toggleSettings(){
   document.getElementById('settingsToggle').classList.toggle('collapsed');
 }
 
-// ── EXPORT (Excel) — én række pr. orlovsperiode ──────
+// ── EXPORT (Excel) — fane 1: én række pr. sag, fane 2: én række pr. periode ──
+const OV_COLS = [
+  ['Medarbejder',        22,'left'  ],
+  ['Mor navn',           18,'left'  ],
+  ['Far / medmor',       18,'left'  ],
+  ['Terminsdato',        13,'center'],
+  ['Faktisk fødsel',     14,'center'],
+  ['Mor · orlov (uger)', 16,'center'],
+  ['Mor · ferie (dage)', 16,'center'],
+  ['Mor · tilbagekomst', 17,'center'],
+  ['Far · orlov (uger)', 16,'center'],
+  ['Far · ferie (dage)', 16,'center'],
+  ['Far · tilbagekomst', 17,'center'],
+  ['Status',             11,'center'],
+  ['Godkendt af',        16,'left'  ],
+];
 const XLS_COLS = [
   ['Medarbejder',   22,'left'  ],
   ['Mor navn',      18,'left'  ],
@@ -930,6 +945,18 @@ const HDR_STYLE = {
   font:{bold:true, color:{rgb:'FFFFFF'}, sz:10},
   alignment:{horizontal:'center', vertical:'center', wrapText:true},
 };
+
+function caseToOverviewRow(row){
+  const cv = calcPlan(row);
+  return [
+    row.hubUserName||'', row.morNavn||'', row.farNavn||'',
+    row.termin||'', row.foedselDato||'',
+    cv.morUger||0, cv.morDage||'', fmt(cv.morTilb),
+    cv.farUger||0, cv.farDage||'', fmt(cv.farTilb),
+    STATUS_LABELS[row.approvalStatus] || 'Kladde',
+    row.approvedByName||'',
+  ];
+}
 
 function caseToExportRows(row){
   const cv = calcPlan(row);
@@ -962,22 +989,29 @@ function caseToExportRows(row){
   return out;
 }
 
-function buildBarselWorkbook(rowsArr){
-  const aoa = [ XLS_COLS.map(c=>c[0]) ];
-  rowsArr.forEach(r => caseToExportRows(r).forEach(line => aoa.push(line)));
+function styledSheet(cols, aoa){
   const ws  = XLSX.utils.aoa_to_sheet(aoa);
   const enc = XLSX.utils.encode_cell;
-  ws['!cols'] = XLS_COLS.map(c => ({wch:c[1]}));
+  ws['!cols'] = cols.map(c => ({wch:c[1]}));
   ws['!rows'] = [{hpt:26}];
-  XLS_COLS.forEach((c,i)=>{ const cell=ws[enc({r:0,c:i})]; if(cell) cell.s=HDR_STYLE; });
+  cols.forEach((c,i)=>{ const cell=ws[enc({r:0,c:i})]; if(cell) cell.s=HDR_STYLE; });
   for(let ri=1; ri<aoa.length; ri++){
-    XLS_COLS.forEach((c,i)=>{
+    cols.forEach((c,i)=>{
       const cell=ws[enc({r:ri,c:i})];
       if(cell) cell.s={ font:{sz:10,color:{rgb:'2B2B2B'}}, alignment:{horizontal:c[2],vertical:'center'} };
     });
   }
+  return ws;
+}
+
+function buildBarselWorkbook(rowsArr){
+  const ovAoa = [ OV_COLS.map(c=>c[0]) ];
+  rowsArr.forEach(r => ovAoa.push(caseToOverviewRow(r)));
+  const detAoa = [ XLS_COLS.map(c=>c[0]) ];
+  rowsArr.forEach(r => caseToExportRows(r).forEach(line => detAoa.push(line)));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Barselsplan');
+  XLSX.utils.book_append_sheet(wb, styledSheet(OV_COLS, ovAoa), 'Oversigt');
+  XLSX.utils.book_append_sheet(wb, styledSheet(XLS_COLS, detAoa), 'Detaljer');
   return wb;
 }
 
