@@ -69,8 +69,9 @@
 
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap">
           <div>
+            {% set is_monitor = report_scope == 'monitor' %}
             <h1 class="page-title" style="margin-bottom:4px">Review — run #{{ run.run_id }}</h1>
-            <p class="page-sub">Periode {{ run.period or "alle" }} · {{ run.source_filename or run.source_path or "—" }} · status <span id="run-status">{{ run.status }}</span></p>
+            <p class="page-sub">{{ "Monitor-rapport (pr. site)" if is_monitor else "Business Media-rapport" }} · Periode {{ run.period or "alle" }} · {{ run.source_filename or run.source_path or "—" }} · status <span id="run-status">{{ run.status }}</span></p>
           </div>
         </div>
 
@@ -97,14 +98,14 @@
           </div>
         </div>
 
-        <!-- Performance pr. brand (det direktøren kommenterer på) -->
+        <!-- Performance pr. brand/site (det direktøren kommenterer på) -->
         <div class="dash-card">
-          <div class="dash-card-title"><span>Performance pr. brand</span></div>
+          <div class="dash-card-title"><span>{{ "Performance pr. site" if is_monitor else "Performance pr. brand" }}</span></div>
           <div style="overflow-x:auto">
           <table class="v-table">
             <thead>
               <tr>
-                <th>Brand</th>
+                <th>{{ "Site" if is_monitor else "Brand" }}</th>
                 <th class="num">Bruttosalg</th>
                 <th class="num">− heraf adm. salg</th>
                 <th class="num">Bruttosalg ekskl. adm</th>
@@ -162,54 +163,16 @@
           </div>
         </div>
 
-        <!-- Performance pr. brand pr. måned (vises kun ved interval over flere måneder) -->
-        {% if months_breakdown and months_breakdown|length > 1 %}
-        <div class="dash-card">
-          <div class="dash-card-title"><span>Performance pr. brand pr. måned</span></div>
-          <div class="mtabs">
-            {% for blk in months_breakdown %}
-              <button class="mtab {% if loop.first %}on{% endif %}" data-mpanel="m{{ loop.index }}">{{ blk.label }}</button>
-            {% endfor %}
+        <!-- Performance pr. måned — hentes asynkront (mange per-måned-queries),
+             så sideåbningen ikke venter på dem. Fragmentet erstatter indholdet;
+             ved én/ingen måneder (204) fjernes kortet. Loading-teksten vises kun
+             for runs hvis periode-label spænder flere måneder ('YYYY-MM – YYYY-MM'). -->
+        <div class="dash-card" id="months-card" {% if not (run.period and '–' in run.period) %}style="display:none"{% endif %}>
+          <div id="months-content">
+            <div class="dash-card-title"><span>{{ "Performance pr. site pr. måned" if is_monitor else "Performance pr. brand pr. måned" }}</span></div>
+            <p class="page-sub" style="margin:0">Indlæser måneds-opdeling…</p>
           </div>
-          {% for blk in months_breakdown %}
-          <div class="mpanel {% if loop.first %}on{% endif %}" id="m{{ loop.index }}">
-            <div style="overflow-x:auto">
-            <table class="v-table">
-              <thead>
-                <tr>
-                  <th>Brand</th>
-                  <th class="num">Bruttosalg</th>
-                  <th class="num">− heraf adm. salg</th>
-                  <th class="num">Bruttosalg ekskl. adm</th>
-                  <th class="num">Opsigelser</th>
-                  <th class="num">− heraf adm. opsigelser</th>
-                  <th class="num">Bruttoopsigelser ekskl. adm</th>
-                  <th class="num">Netto tilvækst</th>
-                  <th class="num">Budget</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for b in blk.rows %}
-                  {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
-                  <tr>
-                    <td style="font-weight:700">{{ b.brand }}</td>
-                    <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num muted">{{ "{:,.0f}".format(b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num">{{ "{:,.0f}".format(b.brutto - b.adm_nysalg)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num muted">{{ "{:,.0f}".format(b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
-                    <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-            </div>
-          </div>
-          {% endfor %}
         </div>
-        {% endif %}
 
         <!-- Administrative nysalg -->
         <div class="dash-card">
@@ -219,23 +182,27 @@
             <thead>
               <tr>
                 <th>Site</th><th>Kunde</th><th>Org</th><th>Konto</th><th>Måned</th>
-                <th class="num">Gross in</th><th class="num">Deal-værdi</th><th>Pipeline</th>
+                <th class="num">Gross in</th><th class="num">Deal-værdi</th>
+                <th class="num" title="Det der faktisk trækkes fra Actual Sale — deal-værdien når kun en del af beløbet er administrativt">Adm. andel</th>
+                <th>Pipeline</th>
                 <th>Medtag/udeluk</th>
               </tr>
             </thead>
             <tbody>
               {% if not admin_rows %}
-                <tr><td colspan="9" class="empty">Ingen administrative nysalg matchet for denne periode.</td></tr>
+                <tr><td colspan="10" class="empty">Ingen administrative nysalg matchet for denne periode.</td></tr>
               {% endif %}
               {% for m in admin_rows %}
+                {% set partial = (m.gross_in or 0) - (m.adm_share or 0) > 0.5 %}
                 <tr data-match="{{ m.match_id }}">
                   <td>{{ m.site }}</td>
-                  <td>{{ m.matched_org_name or "—" }}</td>
+                  <td>{{ m.matched_org_name or "—" }}{% if partial %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Kun den administrative andel trækkes fra — resten tæller som almindeligt nysalg">DELVIS</span>{% endif %}</td>
                   <td class="muted">{{ m.pipedrive_id }}</td>
                   <td class="muted">{{ m.account_number }}</td>
                   <td>{{ m.month_end }}</td>
                   <td class="num">{{ "{:,.0f}".format(m.gross_in or 0)|replace(",", ".") }}</td>
                   <td class="num">{{ "{:,.0f}".format(m.matched_value or 0)|replace(",", ".") }}</td>
+                  <td class="num" {% if partial %}style="font-weight:700"{% endif %}>{{ "{:,.0f}".format(m.adm_share or 0)|replace(",", ".") }}</td>
                   <td class="muted">{{ m.matched_pipeline or "—" }}</td>
                   <td>
                     <button class="toggle {% if m.override == 'exclude' %}on{% endif %}"
@@ -261,9 +228,11 @@
             (fx falsk gross-in ved skift af kontonummer → sæt til 0). Totalerne genberegnes ved ændring.
             Rækker mærket <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">ADM</span>
             er administrative og trækkes allerede fra Actual Sale/Churn (styres i "Administrative nysalg" ovenfor) — de tæller ikke med i totalen.
-            Er kun en <b>del</b> af beløbet administrativt, så skriv den administrative andel i
-            "Adm. in"/"Adm. out" — andelen trækkes fra, resten tæller som almindeligt salg/churn.
-            Blank = hele rækken følger admin-markeringen.
+            Er den matchede deal-værdi <b>mindre</b> end gross in/out, regnes rækken automatisk som
+            <span style="background:var(--border);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">DELVIS ADM</span>:
+            kun deal-værdien trækkes fra, resten tæller som almindeligt salg/churn.
+            Skriv selv en anden andel i "Adm. in"/"Adm. out" for at overstyre —
+            blank = automatikken (den viste grå værdi).
           </p>
           {% if not brand_movements %}
             <div class="empty">Ingen bevægelser med omsætning/opsigelser i denne periode.</div>
@@ -276,6 +245,10 @@
             .mv-table input.mv-val,.mv-table input.mv-adm{width:100%;box-sizing:border-box;text-align:right}
             .mv-table input.mv-adm::placeholder{color:var(--ink-4)}
           </style>
+          {#- Rækkerne renderes IKKE server-side: store perioder har titusindvis af
+              bevægelser, og både Jinja-renderingen og browserens DOM kvæles i dem.
+              De sendes som kompakt JSON pr. gruppe, og JS bygger rækkerne i bidder
+              af 200 når gruppen foldes ud ("Vis flere" for resten). -#}
           {% for grp in brand_movements %}
           <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
             <summary style="cursor:pointer;font-weight:700;padding:6px 0">
@@ -298,55 +271,13 @@
                   <th>Medtag</th>
                 </tr>
               </thead>
-              <tbody>
-                {% for r in grp.rows %}
-                <tr data-match="{{ r.match_id }}" {% if r.excluded or r.administrativ %}style="opacity:.55"{% endif %}>
-                  <td title="{{ r.site }}">{{ r.site }}</td>
-                  <td title="{{ r.customer }}">{{ r.customer }}{% if r.administrativ %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>{% elif r.adm_split %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Delvist administrativ — kun den angivne andel trækkes fra Actual Sale/Churn">DELVIS ADM</span>{% endif %}{% if r.edited %} <span class="muted" title="Værdi rettet">✎</span>{% endif %}</td>
-                  <td class="muted" title="{{ r.account_number }}">{{ r.account_number }}</td>
-                  <td>{{ r.month_end }}</td>
-                  <td class="muted" title="{{ r.movement }}">{{ r.movement }}</td>
-                  <td class="num">
-                    <input class="mv-val" type="number" step="1" inputmode="numeric"
-                           data-field="gross_in" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_in_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
-                  </td>
-                  <td class="num">
-                    <input class="mv-val" type="number" step="1" inputmode="numeric"
-                           data-field="gross_out" data-match="{{ r.match_id }}"
-                           value="{{ r.gross_out_input }}" {% if locked or r.administrativ %}disabled{% endif %}>
-                  </td>
-                  <td class="num">
-                    <input class="mv-adm" type="number" step="1" min="0" inputmode="numeric"
-                           data-field="adm_in" data-match="{{ r.match_id }}"
-                           value="{{ r.adm_in_input }}" placeholder="—"
-                           title="Administrativ andel af gross in"
-                           {% if locked %}disabled{% endif %}>
-                  </td>
-                  <td class="num">
-                    <input class="mv-adm" type="number" step="1" min="0" inputmode="numeric"
-                           data-field="adm_out" data-match="{{ r.match_id }}"
-                           value="{{ r.adm_out_input }}" placeholder="—"
-                           title="Administrativ andel af gross out"
-                           {% if locked %}disabled{% endif %}>
-                  </td>
-                  <td>
-                    {% if r.administrativ %}
-                      <span class="muted" title="Inkludering styres i Administrative nysalg ovenfor">Administrativ</span>
-                    {% else %}
-                    <button class="toggle {% if r.excluded %}on{% endif %}" data-mv-include
-                            data-match="{{ r.match_id }}"
-                            data-excluded="{{ '1' if r.excluded else '0' }}"
-                            {% if locked %}disabled{% endif %}>
-                      {{ "Udeladt" if r.excluded else "Medtaget" }}
-                    </button>
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
+              <tbody data-mv-body></tbody>
             </table>
+            <div style="text-align:center;padding:8px 0 4px">
+              <button class="btn-ghost" data-mv-more style="display:none">Vis flere</button>
             </div>
+            </div>
+            <script type="application/json" data-mv-rows>{{ grp.rows | tojson }}</script>
           </details>
           {% endfor %}
         </div>
@@ -427,14 +358,33 @@ async function postJSON(url, body){
   return r.json();
 }
 
-// Måneds-faner (per-måned performance)
-document.querySelectorAll('.mtab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const id = btn.dataset.mpanel;
-    document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b === btn));
-    document.querySelectorAll('.mpanel').forEach(p => p.classList.toggle('on', p.id === id));
-  });
+// Måneds-faner (per-måned performance) — delegeret, da indholdet hentes asynkront.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.mtab');
+  if(!btn) return;
+  const id = btn.dataset.mpanel;
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b === btn));
+  document.querySelectorAll('.mpanel').forEach(p => p.classList.toggle('on', p.id === id));
 });
+
+// Måneds-opdelingen beregnes server-side med mange per-måned-queries og hentes
+// derfor i baggrunden, så selve siden åbner hurtigt. 204 = én/ingen måneder.
+(async () => {
+  const card = document.getElementById('months-card');
+  const content = document.getElementById('months-content');
+  if(!card || !content) return;
+  try {
+    const r = await fetch(`/tools/admin-nysalg/${RUN}/months-fragment`, {credentials:'include'});
+    if(r.status === 204){ card.remove(); return; }
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const html = await r.text();
+    if(!html.trim()){ card.remove(); return; }
+    content.innerHTML = html;
+    card.style.display = '';
+  } catch(e){
+    content.innerHTML = '<p class="page-sub" style="margin:0">Måneds-opdelingen kunne ikke indlæses — genindlæs siden for at prøve igen.</p>';
+  }
+})();
 
 // Brand-kommentarer (gemmes ved blur)
 document.querySelectorAll('textarea.bc').forEach(ta => {
@@ -463,29 +413,104 @@ document.querySelectorAll('button.toggle[data-state]').forEach(btn => {
   });
 });
 
-// Bevægelser pr. brand: medtag/udeluk en række fra totalerne — opdaterer i baggrunden
-document.querySelectorAll('button[data-mv-include]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const excluded = btn.dataset.excluded !== '1';   // toggle
-    btn.disabled = true;
-    try {
-      const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
-      // Opdater knap + række i stedet for reload (bevarer scroll + åben gruppe).
-      btn.dataset.excluded = excluded ? '1' : '0';
-      btn.classList.toggle('on', excluded);
-      btn.textContent = excluded ? 'Udeladt' : 'Medtaget';
-      const tr = btn.closest('tr'); if(tr) tr.style.opacity = excluded ? '.55' : '';
-      applySummary(resp.summary);
-      applyBrands(resp.brands);   // genberegnet netto tilvækst pr. brand uden reload
-      toast(excluded ? 'Udeladt' : 'Medtaget');
-    } catch(e){ toast('Fejl: '+e.message); }
-    finally { btn.disabled = false; }
+// ── Bevægelser pr. brand ──────────────────────────────────────────────────────
+// Rækkerne ligger som JSON pr. gruppe og bygges i bidder af 200 når gruppen
+// foldes ud — titusindvis af server-renderede rækker gjorde både sideåbning og
+// udfoldning meget langsom. Events er delegerede, så dynamiske rækker virker.
+const LOCKED = {{ 'true' if locked else 'false' }};
+const MV_CHUNK = 200;
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const BADGE = 'background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700';
+
+function mvBadges(r){
+  let out = '';
+  if(r.administrativ && (r.adm_partial || r.adm_split))
+    out += ` <span style="${BADGE}" title="Delvist administrativ — kun den administrative andel (deal-værdi eller manuelt angivet) trækkes fra Actual Sale/Churn, resten tæller som almindeligt salg/churn">DELVIS ADM</span>`;
+  else if(r.administrativ)
+    out += ` <span style="${BADGE}" title="Administrativ — trækkes fra Actual Sale/Churn">ADM</span>`;
+  else if(r.adm_split)
+    out += ` <span style="${BADGE}" title="Delvist administrativ — kun den angivne andel trækkes fra Actual Sale/Churn">DELVIS ADM</span>`;
+  if(r.edited) out += ' <span class="muted" title="Værdi rettet">✎</span>';
+  return out;
+}
+
+function mvRowHtml(r){
+  const dim = r.excluded || (r.administrativ && !r.adm_partial) ? ' style="opacity:.55"' : '';
+  const valDis = (LOCKED || r.administrativ) ? ' disabled' : '';
+  const admDis = LOCKED ? ' disabled' : '';
+  const admInPh = r.adm_in_auto === '' ? '—' : r.adm_in_auto;
+  const admOutPh = r.adm_out_auto === '' ? '—' : r.adm_out_auto;
+  const medtag = r.administrativ
+    ? '<span class="muted" title="Inkludering styres i Administrative nysalg ovenfor">Administrativ</span>'
+    : `<button class="toggle${r.excluded ? ' on' : ''}" data-mv-include data-match="${r.match_id}"` +
+      ` data-excluded="${r.excluded ? '1' : '0'}"${LOCKED ? ' disabled' : ''}>${r.excluded ? 'Udeladt' : 'Medtaget'}</button>`;
+  return `<tr data-match="${r.match_id}"${dim}>` +
+    `<td title="${esc(r.site)}">${esc(r.site)}</td>` +
+    `<td title="${esc(r.customer)}">${esc(r.customer)}${mvBadges(r)}</td>` +
+    `<td class="muted" title="${esc(r.account_number)}">${esc(r.account_number)}</td>` +
+    `<td>${esc(r.month_end)}</td>` +
+    `<td class="muted" title="${esc(r.movement)}">${esc(r.movement)}</td>` +
+    `<td class="num"><input class="mv-val" type="number" step="1" inputmode="numeric" data-field="gross_in" data-match="${r.match_id}" value="${r.gross_in_input}"${valDis}></td>` +
+    `<td class="num"><input class="mv-val" type="number" step="1" inputmode="numeric" data-field="gross_out" data-match="${r.match_id}" value="${r.gross_out_input}"${valDis}></td>` +
+    `<td class="num"><input class="mv-adm" type="number" step="1" min="0" inputmode="numeric" data-field="adm_in" data-match="${r.match_id}" value="${r.adm_in_input}" placeholder="${admInPh}" title="Administrativ andel af gross in — blank = automatikken (den viste værdi)"${admDis}></td>` +
+    `<td class="num"><input class="mv-adm" type="number" step="1" min="0" inputmode="numeric" data-field="adm_out" data-match="${r.match_id}" value="${r.adm_out_input}" placeholder="${admOutPh}" title="Administrativ andel af gross out — blank = automatikken (den viste værdi)"${admDis}></td>` +
+    `<td>${medtag}</td></tr>`;
+}
+
+function mvShowMore(det){
+  const rows = det._mvRows || [];
+  const body = det.querySelector('[data-mv-body]');
+  const more = det.querySelector('[data-mv-more]');
+  const from = det._mvShown || 0;
+  const to = Math.min(from + MV_CHUNK, rows.length);
+  body.insertAdjacentHTML('beforeend', rows.slice(from, to).map(mvRowHtml).join(''));
+  det._mvShown = to;
+  const left = rows.length - to;
+  if(more){
+    more.style.display = left > 0 ? '' : 'none';
+    more.textContent = `Vis ${Math.min(MV_CHUNK, left)} flere (${left} tilbage)`;
+  }
+}
+
+document.querySelectorAll('details.mv-group').forEach(det => {
+  const dataEl = det.querySelector('script[data-mv-rows]');
+  det._mvRows = dataEl ? JSON.parse(dataEl.textContent) : [];
+  det._mvShown = 0;
+  det.addEventListener('toggle', () => {
+    if(det.open && det._mvShown === 0) mvShowMore(det);   // første bid ved udfoldning
   });
 });
 
-// Bevægelser pr. brand: ret gross in/out (gemmes når feltet forlades/ændres) — i baggrunden
-document.querySelectorAll('input.mv-val').forEach(inp => {
-  inp.addEventListener('change', async () => {
+// Bevægelser: medtag/udeluk + "Vis flere" — delegeret (rækker bygges dynamisk)
+document.addEventListener('click', async e => {
+  const more = e.target.closest('button[data-mv-more]');
+  if(more){ mvShowMore(more.closest('details.mv-group')); return; }
+
+  const btn = e.target.closest('button[data-mv-include]');
+  if(!btn) return;
+  const excluded = btn.dataset.excluded !== '1';   // toggle
+  btn.disabled = true;
+  try {
+    const resp = await postJSON(`/tools/admin-nysalg/${RUN}/row-include`, {match_id:Number(btn.dataset.match), excluded});
+    // Opdater knap + række i stedet for reload (bevarer scroll + åben gruppe).
+    btn.dataset.excluded = excluded ? '1' : '0';
+    btn.classList.toggle('on', excluded);
+    btn.textContent = excluded ? 'Udeladt' : 'Medtaget';
+    const tr = btn.closest('tr'); if(tr) tr.style.opacity = excluded ? '.55' : '';
+    applySummary(resp.summary);
+    applyBrands(resp.brands);   // genberegnet netto tilvækst pr. brand uden reload
+    toast(excluded ? 'Udeladt' : 'Medtaget');
+  } catch(e2){ toast('Fejl: '+e2.message); }
+  finally { btn.disabled = false; }
+});
+
+// Bevægelser: ret gross in/out og administrativ andel (gemmes ved ændring) — delegeret
+document.addEventListener('change', async e => {
+  const inp = e.target;
+  if(inp.matches('input.mv-val')){
     const tr = inp.closest('tr');
     const gi = tr.querySelector('input[data-field="gross_in"]');
     const go = tr.querySelector('input[data-field="gross_out"]');
@@ -498,14 +523,9 @@ document.querySelectorAll('input.mv-val').forEach(inp => {
       applySummary(resp.summary);   // genberegnede topkort uden reload
       applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
       toast('Værdi gemt');
-    } catch(e){ toast('Fejl: '+e.message); }
-  });
-});
-
-// Bevægelser pr. brand: delvist administrativ — skriv den administrative andel af
-// gross in/out (blank = alt-eller-intet efter admin-markeringen) — i baggrunden
-document.querySelectorAll('input.mv-adm').forEach(inp => {
-  inp.addEventListener('change', async () => {
+    } catch(e2){ toast('Fejl: '+e2.message); }
+  } else if(inp.matches('input.mv-adm')){
+    // Delvist administrativ — skriv andelen af gross in/out (blank = automatikken).
     const tr = inp.closest('tr');
     const ai = tr.querySelector('input[data-field="adm_in"]');
     const ao = tr.querySelector('input[data-field="adm_out"]');
@@ -518,8 +538,8 @@ document.querySelectorAll('input.mv-adm').forEach(inp => {
       applySummary(resp.summary);   // genberegnede topkort uden reload
       applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
       toast('Administrativ andel gemt');
-    } catch(e){ toast('Fejl: '+e.message); }
-  });
+    } catch(e2){ toast('Fejl: '+e2.message); }
+  }
 });
 
 // Klik brand til/fra rapporten (skjuler i tabel, måneds-opdeling og top-tal)

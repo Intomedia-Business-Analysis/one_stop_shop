@@ -134,6 +134,12 @@ INIT_STMTS = [
            WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'period'
              AND max_length < 120)
        ALTER TABLE admin_nysalg_run ALTER COLUMN period NVARCHAR(60) NULL""",
+    # Migration: rapport-scope pr. run — 'business_media' (alt undtagen Monitor,
+    # NULL tolkes som denne for gamle runs) eller 'monitor' (kun Monitor, pr. site).
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_run' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'report_scope')
+       ALTER TABLE admin_nysalg_run ADD report_scope NVARCHAR(20) NULL""",
     # Pr-brand-kommentar (direktøren kommenterer på den samlede brand-performance).
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_comment' AND xtype='U')
        CREATE TABLE admin_nysalg_brand_comment (
@@ -197,15 +203,20 @@ def load_site_map() -> dict:
 
 def create_run(created_by: str, source_path: Optional[str], source_filename: Optional[str],
                period: Optional[str], period_from: Optional[str] = None,
-               period_to: Optional[str] = None) -> int:
-    """period = læsbar label; period_from/period_to = ISO YYYY-MM-DD-interval (filter)."""
+               period_to: Optional[str] = None,
+               report_scope: str = "business_media") -> int:
+    """period = læsbar label; period_from/period_to = ISO YYYY-MM-DD-interval (filter).
+    report_scope: 'business_media' (alt undtagen Monitor) eller 'monitor' (kun
+    Monitor, pr. site)."""
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO admin_nysalg_run
-               (created_by, source_path, source_filename, period, period_from, period_to, status)
-           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, %s, %s, 'matched')""",
-        (created_by, source_path, source_filename, period, period_from, period_to),
+               (created_by, source_path, source_filename, period, period_from, period_to,
+                report_scope, status)
+           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, %s, %s, %s, 'matched')""",
+        (created_by, source_path, source_filename, period, period_from, period_to,
+         report_scope),
     )
     run_id = int(cur.fetchone()[0])
     conn.commit()
@@ -213,22 +224,30 @@ def create_run(created_by: str, source_path: Optional[str], source_filename: Opt
     return run_id
 
 
+def run_scope(run: dict) -> str:
+    """Rapport-scope for et run — gamle runs (NULL) er Business Media."""
+    return (run.get("report_scope") or "business_media").strip()
+
+
 def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> None:
-    """progress_cb(i, total) kaldes undervejs (hver 25. række + til sidst) så en
-    baggrundsjob-kører kan rapportere fremdrift."""
+    """progress_cb(i, total) kaldes pr. batch så en baggrundsjob-kører kan
+    rapportere fremdrift.
+
+    Indsættes i multi-række-batches (én INSERT pr. _INSERT_BATCH rækker) — store
+    udtræk har flere hundrede tusinde rækker, og én INSERT pr. række betød én
+    netværksrundtur pr. række.
+    """
+    _INSERT_BATCH = 200
     conn = get_conn()
     cur = conn.cursor()
     total = len(rows)
-    for i, r in enumerate(rows, start=1):
-        m = r.match
-        cur.execute(
-            """INSERT INTO admin_nysalg_match
-               (run_id, row_index, month_end, account_number, pipedrive_id, site, brands,
-                brand, movement, net_diff, gross_in, gross_out, administrativ, currency,
-                matched_deal_id, matched_value, matched_pipeline, matched_org_name,
-                match_sign, is_admin, ambiguous)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (
+    row_sql = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    for start in range(0, total, _INSERT_BATCH):
+        chunk = rows[start:start + _INSERT_BATCH]
+        params: list = []
+        for r in chunk:
+            m = r.match
+            params.extend((
                 run_id, r.row_index, r.month_end, r.account_number, r.pipedrive_id, r.site,
                 r.brands, r.brand, r.movement, r.net_diff, r.gross_in, r.gross_out,
                 1 if r.administrativ else 0, r.currency,
@@ -239,11 +258,19 @@ def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> Non
                 r.match_sign,
                 1 if r.is_admin_nysalg() else 0,
                 1 if r.ambiguous else 0,
-            ),
+            ))
+        cur.execute(
+            """INSERT INTO admin_nysalg_match
+               (run_id, row_index, month_end, account_number, pipedrive_id, site, brands,
+                brand, movement, net_diff, gross_in, gross_out, administrativ, currency,
+                matched_deal_id, matched_value, matched_pipeline, matched_org_name,
+                match_sign, is_admin, ambiguous)
+               VALUES """ + ",".join([row_sql] * len(chunk)),
+            tuple(params),
         )
-        if progress_cb and (i % 25 == 0 or i == total):
+        if progress_cb:
             try:
-                progress_cb(i, total)
+                progress_cb(min(start + _INSERT_BATCH, total), total)
             except Exception:
                 pass   # progress-rapportering må aldrig vælte indsættelsen
     conn.commit()
@@ -298,11 +325,36 @@ def delete_run(run_id: int) -> bool:
     return True
 
 
+# Rækker der overhovedet kan bidrage til rapporten: bevægelse, admin-markering
+# eller manuel efterbehandling. Alt andet bidrager med 0 til ALLE totaler og
+# filtreres fra i SQL — deles af get_matches og SQL-aggregaterne, så de to veje
+# ser præcis samme rækkesæt.
+_CONTRIBUTING_WHERE = """(COALESCE(net_diff, 0) <> 0
+                  OR COALESCE(gross_in, 0) <> 0
+                  OR COALESCE(gross_out, 0) <> 0
+                  OR is_admin = 1 OR administrativ = 1
+                  OR matched_deal_id IS NOT NULL
+                  OR total_excluded = 1 OR override IS NOT NULL
+                  OR gross_in_override IS NOT NULL OR gross_out_override IS NOT NULL
+                  OR adm_in_override IS NOT NULL OR adm_out_override IS NOT NULL)"""
+
+
 def get_matches(run_id: int) -> list[dict]:
+    """Match-rækker for et run — kun rækker der kan bidrage til rapporten.
+
+    Rækker uden bevægelse (net_diff/gross_in/gross_out = 0) og uden admin-match,
+    flag eller manuel efterbehandling bidrager med 0 til ALLE totaler og vises
+    ingen steder — de springes over i SQL i stedet for at blive hentet. Et run
+    over en lang periode gemmer let flere hundrede tusinde rækker, og at hente
+    dem alle over netværket tog minutter pr. kald.
+    """
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
     cur.execute(
-        "SELECT * FROM admin_nysalg_match WHERE run_id = %s ORDER BY row_index", (run_id,)
+        f"""SELECT * FROM admin_nysalg_match
+           WHERE run_id = %s
+             AND {_CONTRIBUTING_WHERE}
+           ORDER BY row_index""", (run_id,)
     )
     rows = cur.fetchall() or []
     conn.close()
@@ -562,6 +614,123 @@ def brand_budgets(date_from: str | None, date_to: str | None,
     return out
 
 
+# ── Monitor-rapporten (pr. enkelt site) ──────────────────────────────────────
+# report_scope='monitor': kun Monitor-bevægelser, opgjort pr. site (Byrummonitor,
+# Klimamonitor, …). Sitet ER rækken — hele den eksisterende brand-pipeline
+# genbruges ved at relabel'e matches med brand = site.
+
+def monitor_norm(site: str) -> str:
+    """Join-nøgle for et Monitor-site på tværs af kilder.
+
+    Zuora ('Sundhedsmonitor DK' / 'sundhedsmonitor.dk') og BudgetsIntoMedia
+    ('Sundhedsmonitor' / 'idrætsmonitor') staver sites forskelligt — normalisér
+    via matcherens normalize_site (lowercase, æøå-foldning, domænesuffiks væk)
+    og strip et evt. ' dk'-landesuffiks (Monitor er kun dansk).
+    """
+    from moduler.modul_admin_nysalg.matcher import normalize_site
+    n = normalize_site(site)
+    if n.endswith(" dk"):
+        n = n[:-3].strip()
+    return n
+
+
+def monitor_relabel(matches: list[dict]) -> list[dict]:
+    """Kopiér Monitor-matches med brand = sitets navn.
+
+    Derefter arbejder totaler, måneds-opdeling, bevægelsesliste, kommentarer,
+    skjul-knapper og Excel/PDF pr. enkelt site — uden ændringer i de delte helpers.
+    """
+    return [dict(m, brand=(m.get("site") or "").strip() or "Ukendt site")
+            for m in matches]
+
+
+def _monitor_budget_rows(date_from: str | None, date_to: str | None,
+                         by_month: bool) -> list[dict]:
+    """Rå budgetrækker for Monitor-abonnement pr. site (evt. også pr. måned)."""
+    where = ["[Brand] = 'Monitor'",
+             "LOWER(LTRIM(RTRIM(COALESCE([DealType],'')))) = 'subscription'"]
+    params: list = []
+    dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
+    where += dclauses
+    params += dparams
+    ym_col = "CONVERT(varchar(7), [BudgetDate], 126) AS ym, " if by_month else ""
+    ym_grp = "CONVERT(varchar(7), [BudgetDate], 126), " if by_month else ""
+    sql = (f"SELECT {ym_col}[Site] AS site, ISNULL(SUM([BudgetAmount]),0) AS budget "
+           f"FROM [dbo].[BudgetsIntoMedia] WHERE {' AND '.join(where)} "
+           f"GROUP BY {ym_grp}[Site]")
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall() or []
+        conn.close()
+        return rows
+    except Exception:
+        logger.exception("monitor budget-opslag fejlede")
+        return []
+
+
+def _monitor_budget_entry(r: dict) -> tuple[str, tuple[str, float]]:
+    site = (r.get("site") or "").strip()
+    # Budget-arket skriver nogle sites med småt ('idrætsmonitor') — vis pænt.
+    display = site[:1].upper() + site[1:]
+    return monitor_norm(site), (display, round(float(r.get("budget") or 0), 2))
+
+
+def monitor_site_budgets(date_from: str | None, date_to: str | None) -> dict:
+    """{monitor_norm(site): (visningsnavn, budget)} for perioden."""
+    out: dict = {}
+    for r in _monitor_budget_rows(date_from, date_to, by_month=False):
+        if (r.get("site") or "").strip():
+            k, v = _monitor_budget_entry(r)
+            out[k] = v
+    return out
+
+
+def monitor_site_budgets_by_month(date_from: str | None, date_to: str | None) -> dict:
+    """{'YYYY-MM': {monitor_norm(site): (visningsnavn, budget)}} — ét kald."""
+    out: dict = {}
+    for r in _monitor_budget_rows(date_from, date_to, by_month=True):
+        if (r.get("site") or "").strip():
+            k, v = _monitor_budget_entry(r)
+            out.setdefault((r.get("ym") or "")[:7], {})[k] = v
+    return out
+
+
+def monitor_brand_rows(matches: list[dict], norm_budgets: dict,
+                       comments: dict | None = None,
+                       extra_rows: list[dict] | None = None) -> list[dict]:
+    """Rækker til Monitor-rapporten: én pr. site + annonce-rækkerne (Job/Banner).
+
+    matches SKAL være relabel'et (brand = site, jf. monitor_relabel);
+    norm_budgets fra monitor_site_budgets(_by_month). Budget-sites uden
+    bevægelser i perioden vises med 0-tal, så budget/deviation er komplet.
+    Ren beregning (ingen DB) — annonce-rækkerne leveres via extra_rows.
+    """
+    from moduler.modul_admin_nysalg.brands import brand_geo
+    comments = comments or {}
+    # Budget pr. visningslabel: brug sitenavnet fra bevægelserne når det findes
+    # (så budget og bevægelser lander på SAMME række), ellers budgettets navn.
+    label_by_norm: dict[str, str] = {}
+    for m in matches:
+        lbl = m.get("brand") or ""
+        label_by_norm.setdefault(monitor_norm(lbl), lbl)
+    budgets: dict[str, float] = {}
+    ensure: list[str] = []
+    for norm, (display, budget) in norm_budgets.items():
+        lbl = label_by_norm.get(norm)
+        if lbl is None:
+            lbl = display
+            ensure.append(lbl)
+        budgets[lbl] = budget
+    rows = summarize_by_brand(matches, budgets, comments, extra_rows=extra_rows,
+                              ensure_labels=ensure, seed_defaults=False)
+    # Abonnements-sites først (alfabetisk), annonce-rækkerne (Job/Banner) sidst.
+    rows.sort(key=lambda r: (brand_geo(r["brand"])[1] != "Subscription",
+                             (r["brand"] or "").lower()))
+    return rows
+
+
 # ── Reklame-rækker (PipeDrive-deals, ikke abonnement) ────────────────────────
 
 def _budget_for_where(cur, frag: str, date_from: str | None, date_to: str | None) -> float:
@@ -581,6 +750,27 @@ def _budget_for_where(cur, frag: str, date_from: str | None, date_to: str | None
     return float((row["budget"] if row else 0) or 0)
 
 
+def _budget_by_month_for_where(cur, frag: str, date_from: str | None,
+                               date_to: str | None) -> dict:
+    """{'YYYY-MM': Σ BudgetAmount} for et WHERE-fragment — som _budget_for_where,
+    men alle måneder i intervallet i ét GROUP BY-kald (Fase B).
+
+    `frag` er kode-kontrolleret (fra brands.py), så LIKE-mønstre må stå som literaler.
+    """
+    where = [frag]
+    params: list = []
+    dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
+    where += dclauses
+    params += dparams
+    cur.execute(
+        "SELECT CONVERT(varchar(7), [BudgetDate], 126) AS ym, "
+        "ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia] "
+        "WHERE " + " AND ".join(where) +
+        " GROUP BY CONVERT(varchar(7), [BudgetDate], 126)", tuple(params))
+    return {(r["ym"] or "")[:7]: float(r["budget"] or 0)
+            for r in cur.fetchall() or []}
+
+
 def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> float:
     """Budget for en reklame-række fra BudgetsIntoMedia (0 ved manglende mapping)."""
     from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
@@ -590,9 +780,49 @@ def _ad_budget(cur, label: str, date_from: str | None, date_to: str | None) -> f
     return _budget_for_where(cur, frag, date_from, date_to)
 
 
+def brand_budgets_by_month(date_from: str | None, date_to: str | None,
+                           subscription_only: bool = True) -> dict:
+    """{'YYYY-MM': {brand-label: budget}} — som brand_budgets, men alle måneder i
+    intervallet i ÉT kald (GROUP BY måned) i stedet for én query pr. måned."""
+    from moduler.modul_admin_nysalg.brands import BUDGET_BRANDS
+    where = []
+    params: list = []
+    if subscription_only:
+        where.append("LOWER(LTRIM(RTRIM(COALESCE([DealType],'')))) = 'subscription'")
+    dclauses, dparams = _date_between("[BudgetDate]", date_from, date_to)
+    where += dclauses
+    params += dparams
+    sql = ("SELECT CONVERT(varchar(7), [BudgetDate], 126) AS ym, [Brand] AS brand, "
+           "ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia]")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " GROUP BY CONVERT(varchar(7), [BudgetDate], 126), [Brand]"
+    raw: dict[str, dict] = {}
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(sql, tuple(params))
+        for r in cur.fetchall() or []:
+            ym = (r["ym"] or "")[:7]
+            raw.setdefault(ym, {})[(r["brand"] or "").strip().lower()] = float(r["budget"] or 0)
+        conn.close()
+    except Exception:
+        logger.exception("brand_budgets_by_month fejlede")
+        return {}
+    out: dict[str, dict] = {}
+    for ym, brands_raw in raw.items():
+        out[ym] = {label: round(sum(brands_raw.get(bn.strip().lower(), 0.0)
+                                    for bn in brand_names), 2)
+                   for label, brand_names in BUDGET_BRANDS.items()}
+    return out
+
+
 def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
                          comments: dict | None = None,
-                         budgets: dict | None = None) -> list[dict]:
+                         budgets: dict | None = None,
+                         specs: list | None = None,
+                         dk_split: bool = True,
+                         parallel: bool = False) -> list[dict]:
     """Brand-rækker hentet direkte fra PipedriveDeals (findes ikke i Zuora).
 
     Dækker Job/Banner/Norge advertising og MarketWire (jf. PIPEDRIVE_ROWS).
@@ -601,111 +831,157 @@ def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
     har ingen cancellation-pipelines → opsigelser=0; MarketWire har rigtige
     opsigelser. Værdi i lokal valuta for NOK/SEK, ellers DKK. Filtreres på
     service_activation_date i intervallet (ISO YYYY-MM-DD, inkl.) og status='won'.
-    Budget: Job/Banner/Norge fra AD_BUDGET_WHERE, øvrige (MarketWire) fra det
-    normale brand-budget. Returnerer [] ved DB-fejl.
+    Budget: spec'ens egen 'budget_where' hvis sat, ellers Job/Banner/Norge fra
+    AD_BUDGET_WHERE, ellers det normale brand-budget. Returnerer [] ved DB-fejl.
+
+    specs/dk_split: Monitor-rapporten genbruger motoren med sine egne specs
+    (MONITOR_PIPEDRIVE_ROWS) og uden DK-annonce-opdelingen.
+    parallel=True kører hver spec (+ DK-opdelingen) i egen tråd/forbindelse —
+    bruges af de direkte kald (review/rapport). brand_rows_by_month lader den
+    stå sekventiel, da den allerede paralleliserer på tværs af måneder.
     """
     from constants import CANCELLATION_PIPELINES
     from moduler.modul_admin_nysalg.brands import (AD_BUDGET_WHERE, PIPEDRIVE_ROWS,
                                                    brand_currency)
     comments = comments or {}
     budgets = budgets or {}
+    if specs is None:
+        specs_list = PIPEDRIVE_ROWS
+    else:
+        specs_list = specs
     # Lokal valuta for NOK/SEK (jf. perf-modulet), ellers DKK.
     val = "CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END"
     cancel_ph = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
     cancel_up = [p.upper() for p in CANCELLATION_PIPELINES]
-    rows: list[dict] = []
-    try:
-        conn = get_conn()
-        cur = conn.cursor(as_dict=True)
-        for spec in PIPEDRIVE_ROWS:
-            where = [
-                "[status] = 'won'",
-                "COALESCE([administrativ],'') <> 'ja'",
-                "[service_activation_date] IS NOT NULL",
-                f"LOWER(LTRIM(RTRIM(COALESCE([{spec['scope_col']}],'')))) = %s",
-            ]
-            where_params: list = [spec["scope_val"].lower()]
-            pipes = spec.get("pipelines")
-            if pipes:
-                pipe_ph = "(" + ",".join(["%s"] * len(pipes)) + ")"
-                where.append(f"LOWER(LTRIM(RTRIM(COALESCE([pipeline_name],'')))) IN {pipe_ph}")
-                where_params += [p.lower() for p in pipes]
-            dclauses, dparams = _date_between(
-                "[service_activation_date]", date_from, date_to, cast_to_date=True)
-            where += dclauses
-            where_params += dparams
-            sql = f"""
+
+    def _spec_row(cur, spec) -> dict:
+        where = [
+            "[status] = 'won'",
+            "COALESCE([administrativ],'') <> 'ja'",
+            "[service_activation_date] IS NOT NULL",
+            f"LOWER(LTRIM(RTRIM(COALESCE([{spec['scope_col']}],'')))) = %s",
+        ]
+        where_params: list = [spec["scope_val"].lower()]
+        pipes = spec.get("pipelines")
+        if pipes:
+            pipe_ph = "(" + ",".join(["%s"] * len(pipes)) + ")"
+            where.append(f"LOWER(LTRIM(RTRIM(COALESCE([pipeline_name],'')))) IN {pipe_ph}")
+            where_params += [p.lower() for p in pipes]
+        dclauses, dparams = _date_between(
+            "[service_activation_date]", date_from, date_to, cast_to_date=True)
+        where += dclauses
+        where_params += dparams
+        sql = f"""
+            SELECT
+              ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
+                  THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+              ISNULL(ABS(SUM(CASE WHEN UPPER([pipeline_name]) IN {cancel_ph}
+                  THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END)), 0) AS ops
+            FROM [dbo].[PipedriveDeals]
+            WHERE {' AND '.join(where)}
+        """
+        # SELECT-placeholders (to cancel-lister) kommer før WHERE-params i SQL'en.
+        cur.execute(sql, tuple(cancel_up) * 2 + tuple(where_params))
+        row = cur.fetchone() or {}
+        brutto = round(float(row.get("won") or 0), 2)
+        ops = round(float(row.get("ops") or 0), 2)
+        label = spec["label"]
+        if spec.get("budget_where"):
+            budget = round(_budget_for_where(cur, spec["budget_where"],
+                                             date_from, date_to), 2)
+        elif label in AD_BUDGET_WHERE:
+            budget = round(_ad_budget(cur, label, date_from, date_to), 2)
+        else:
+            budget = round(float(budgets.get(label, 0.0) or 0.0), 2)
+
+        # Underrækker (drill-down): samme scope + ét site (eller site-mønster)
+        # pr. underrække, hver med sit eget site-budget. Delmængde af brutto/
+        # opsigelser — totalen i hovedrækken er uændret, og Σ underrække-budget
+        # = hovedrækkens budget. 'site_like' matcher med LIKE (fx alle Watch-
+        # sites), 'site' eksakt.
+        subrows: list[dict] = []
+        for sr in spec.get("subrows", []):
+            if sr.get("site_like"):
+                # Mønsteret er kode-kontrolleret (brands.py) → literal LIKE.
+                site_cond = f"LOWER(COALESCE([sites],'')) LIKE '{sr['site_like']}'"
+                site_params: list = []
+            else:
+                site_cond = "LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"
+                site_params = [sr["site"].lower()]
+            sr_where = where + [site_cond]
+            sr_params = where_params + site_params
+            cur.execute(f"""
                 SELECT
                   ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
                       THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
                   ISNULL(ABS(SUM(CASE WHEN UPPER([pipeline_name]) IN {cancel_ph}
                       THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END)), 0) AS ops
                 FROM [dbo].[PipedriveDeals]
-                WHERE {' AND '.join(where)}
-            """
-            # SELECT-placeholders (to cancel-lister) kommer før WHERE-params i SQL'en.
-            cur.execute(sql, tuple(cancel_up) * 2 + tuple(where_params))
-            row = cur.fetchone() or {}
-            brutto = round(float(row.get("won") or 0), 2)
-            ops = round(float(row.get("ops") or 0), 2)
-            label = spec["label"]
-            if label in AD_BUDGET_WHERE:
-                budget = round(_ad_budget(cur, label, date_from, date_to), 2)
-            else:
-                budget = round(float(budgets.get(label, 0.0) or 0.0), 2)
-
-            # Underrækker (drill-down): samme scope + ét site (eller site-mønster)
-            # pr. underrække, hver med sit eget site-budget. Delmængde af brutto/
-            # opsigelser — totalen i hovedrækken er uændret, og Σ underrække-budget
-            # = hovedrækkens budget. 'site_like' matcher med LIKE (fx alle Watch-
-            # sites), 'site' eksakt.
-            subrows: list[dict] = []
-            for sr in spec.get("subrows", []):
-                if sr.get("site_like"):
-                    # Mønsteret er kode-kontrolleret (brands.py) → literal LIKE.
-                    site_cond = f"LOWER(COALESCE([sites],'')) LIKE '{sr['site_like']}'"
-                    site_params: list = []
-                else:
-                    site_cond = "LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"
-                    site_params = [sr["site"].lower()]
-                sr_where = where + [site_cond]
-                sr_params = where_params + site_params
-                cur.execute(f"""
-                    SELECT
-                      ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
-                          THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
-                      ISNULL(ABS(SUM(CASE WHEN UPPER([pipeline_name]) IN {cancel_ph}
-                          THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END)), 0) AS ops
-                    FROM [dbo].[PipedriveDeals]
-                    WHERE {' AND '.join(sr_where)}
-                """, tuple(cancel_up) * 2 + tuple(sr_params))
-                srow = cur.fetchone() or {}
-                s_brutto = round(float(srow.get("won") or 0), 2)
-                s_ops = round(float(srow.get("ops") or 0), 2)
-                s_budget = (round(_budget_for_where(cur, sr["budget_where"], date_from, date_to), 2)
-                            if sr.get("budget_where") else None)
-                subrows.append({
-                    "brand": sr["label"], "brutto": s_brutto, "adm_nysalg": 0.0,
-                    "opsigelser": s_ops, "adm_opsigelser": 0.0,
-                    "netto": round(s_brutto - s_ops, 2), "budget": s_budget,
-                    "comment": "", "n_ambiguous": 0, "currency": brand_currency(label),
-                })
-
-            rows.append({
-                "brand": label, "brutto": brutto, "adm_nysalg": 0.0,
-                "opsigelser": ops, "adm_opsigelser": 0.0,
-                "netto": round(brutto - ops, 2), "budget": budget,
-                "comment": comments.get(label, "") or "", "n_ambiguous": 0,
-                "currency": brand_currency(label), "subrows": subrows,
+                WHERE {' AND '.join(sr_where)}
+            """, tuple(cancel_up) * 2 + tuple(sr_params))
+            srow = cur.fetchone() or {}
+            s_brutto = round(float(srow.get("won") or 0), 2)
+            s_ops = round(float(srow.get("ops") or 0), 2)
+            s_budget = (round(_budget_for_where(cur, sr["budget_where"], date_from, date_to), 2)
+                        if sr.get("budget_where") else None)
+            subrows.append({
+                "brand": sr["label"], "brutto": s_brutto, "adm_nysalg": 0.0,
+                "opsigelser": s_ops, "adm_opsigelser": 0.0,
+                "netto": round(s_brutto - s_ops, 2), "budget": s_budget,
+                "comment": "", "n_ambiguous": 0, "currency": brand_currency(label),
             })
+
+        return {
+            "brand": label, "brutto": brutto, "adm_nysalg": 0.0,
+            "opsigelser": ops, "adm_opsigelser": 0.0,
+            "netto": round(brutto - ops, 2), "budget": budget,
+            "comment": comments.get(label, "") or "", "n_ambiguous": 0,
+            "currency": brand_currency(label), "subrows": subrows,
+        }
+
+    def _run_spec(spec) -> dict:
+        conn = get_conn()
+        try:
+            return _spec_row(conn.cursor(as_dict=True), spec)
+        finally:
+            conn.close()
+
+    def _run_dk(cur=None) -> list[dict]:
         # DK Job/Banner med kilde-brand-opdeling (Watch DK / FINANS DK / Finans
         # programmatisk) — spejler banner-/job-performance-dashboardet. Isoleret, så
         # en fejl her (fx manglende ProgrammaticSales) ikke vælter Norge/MarketWire.
+        # Kun i Business Media-rapporten (dk_split) — Monitor har sine egne specs.
+        conn = None
         try:
-            rows += _dk_advertising_brand_rows(cur, date_from, date_to, comments)
+            if cur is None:
+                conn = get_conn()
+                cur_ = conn.cursor(as_dict=True)
+            else:
+                cur_ = cur
+            return _dk_advertising_brand_rows(cur_, date_from, date_to, comments)
         except Exception:
             logger.exception("DK annonce-opdeling (Job/Banner) fejlede")
-        conn.close()
+            return []
+        finally:
+            if conn is not None:
+                conn.close()
+
+    try:
+        if parallel:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(4, len(specs_list) + 1)) as ex:
+                futs = [ex.submit(_run_spec, s) for s in specs_list]
+                fut_dk = ex.submit(_run_dk) if dk_split else None
+                rows = [f.result() for f in futs]
+                if fut_dk is not None:
+                    rows += fut_dk.result()
+        else:
+            conn = get_conn()
+            cur = conn.cursor(as_dict=True)
+            rows = [_spec_row(cur, s) for s in specs_list]
+            if dk_split:
+                rows += _run_dk(cur)
+            conn.close()
     except Exception:
         logger.exception("pipedrive_brand_rows fejlede")
         return []
@@ -801,6 +1077,244 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
             "budget": budget, "comment": comments.get(label, "") or "",
             "n_ambiguous": 0, "currency": "DKK", "subrows": subrows,
         })
+    return out
+
+
+def pipedrive_brand_rows_by_month(months: list[str], comments: dict | None = None,
+                                  budgets_by_month: dict | None = None,
+                                  specs: list | None = None,
+                                  dk_split: bool = True) -> dict[str, list[dict]]:
+    """{'YYYY-MM': brand-rækker} — by-month-varianten af pipedrive_brand_rows.
+
+    Leverer præcis de samme rækker som pipedrive_brand_rows kaldt én gang pr.
+    måned (med månedens grænser), men med GROUP BY måned, så hele perioden koster
+    ét fast antal queries i stedet for ~25 pr. måned (Fase B). Alle måneder i
+    `months` får en række pr. spec — også måneder uden deals (0-tal + månedens
+    budget). budgets_by_month ({'YYYY-MM': {label: budget}}, jf.
+    brand_budgets_by_month) bruges for specs uden egen budget_where/AD-mapping.
+    Hver spec (+ DK-opdelingen) kører i egen tråd/forbindelse.
+    Returnerer {} ved DB-fejl — kalderen behandler manglende måneder som ingen
+    ekstra rækker, som pipedrive_brand_rows' [].
+    """
+    from constants import CANCELLATION_PIPELINES
+    from moduler.modul_admin_nysalg.brands import (AD_BUDGET_WHERE, PIPEDRIVE_ROWS,
+                                                   brand_currency)
+    comments = comments or {}
+    budgets_by_month = budgets_by_month or {}
+    specs_list = PIPEDRIVE_ROWS if specs is None else specs
+    months = [ym for ym in months if ym]
+    if not months:
+        return {}
+    # Hele kalendermåneder — spejler _month_bounds-grænserne i pr-måned-kaldene.
+    q_from = _month_bounds(months[0])[0]
+    q_to = _month_bounds(months[-1])[1]
+    val = "CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END"
+    ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
+    cancel_ph = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
+    cancel_up = [p.upper() for p in CANCELLATION_PIPELINES]
+
+    def _grouped(cur, where: list[str], where_params: list) -> dict:
+        """{ym: (brutto, opsigelser)} for et WHERE — én query, GROUP BY måned."""
+        cur.execute(f"""
+            SELECT {ym_expr} AS ym,
+              ISNULL(SUM(CASE WHEN UPPER([pipeline_name]) NOT IN {cancel_ph}
+                  THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END), 0) AS won,
+              ISNULL(ABS(SUM(CASE WHEN UPPER([pipeline_name]) IN {cancel_ph}
+                  THEN CAST({val} AS DECIMAL(18,2)) ELSE 0 END)), 0) AS ops
+            FROM [dbo].[PipedriveDeals]
+            WHERE {' AND '.join(where)}
+            GROUP BY {ym_expr}
+        """, tuple(cancel_up) * 2 + tuple(where_params))
+        return {(r["ym"] or "")[:7]: (round(float(r["won"] or 0), 2),
+                                      round(float(r["ops"] or 0), 2))
+                for r in cur.fetchall() or []}
+
+    def _spec_months(spec) -> dict[str, dict]:
+        """{ym: hovedrække} for én spec — samme rækkeform som _spec_row."""
+        conn = get_conn()
+        try:
+            cur = conn.cursor(as_dict=True)
+            where = [
+                "[status] = 'won'",
+                "COALESCE([administrativ],'') <> 'ja'",
+                "[service_activation_date] IS NOT NULL",
+                f"LOWER(LTRIM(RTRIM(COALESCE([{spec['scope_col']}],'')))) = %s",
+            ]
+            where_params: list = [spec["scope_val"].lower()]
+            pipes = spec.get("pipelines")
+            if pipes:
+                pipe_ph = "(" + ",".join(["%s"] * len(pipes)) + ")"
+                where.append(f"LOWER(LTRIM(RTRIM(COALESCE([pipeline_name],'')))) IN {pipe_ph}")
+                where_params += [p.lower() for p in pipes]
+            dclauses, dparams = _date_between(
+                "[service_activation_date]", q_from, q_to, cast_to_date=True)
+            where += dclauses
+            where_params += dparams
+
+            main = _grouped(cur, where, where_params)
+            label = spec["label"]
+            if spec.get("budget_where"):
+                bud_by_ym = _budget_by_month_for_where(cur, spec["budget_where"], q_from, q_to)
+            elif label in AD_BUDGET_WHERE:
+                bud_by_ym = _budget_by_month_for_where(cur, AD_BUDGET_WHERE[label], q_from, q_to)
+            else:
+                bud_by_ym = None   # månedens brand-budget fra budgets_by_month
+
+            sub_data: list[tuple] = []
+            for sr in spec.get("subrows", []):
+                if sr.get("site_like"):
+                    # Mønsteret er kode-kontrolleret (brands.py) → literal LIKE.
+                    site_cond = f"LOWER(COALESCE([sites],'')) LIKE '{sr['site_like']}'"
+                    site_params: list = []
+                else:
+                    site_cond = "LOWER(LTRIM(RTRIM(COALESCE([sites],'')))) = %s"
+                    site_params = [sr["site"].lower()]
+                sr_months = _grouped(cur, where + [site_cond], where_params + site_params)
+                sr_bud = (_budget_by_month_for_where(cur, sr["budget_where"], q_from, q_to)
+                          if sr.get("budget_where") else None)
+                sub_data.append((sr, sr_months, sr_bud))
+
+            out: dict[str, dict] = {}
+            for ym in months:
+                brutto, ops = main.get(ym, (0.0, 0.0))
+                if bud_by_ym is not None:
+                    budget = round(bud_by_ym.get(ym, 0.0), 2)
+                else:
+                    budget = round(float((budgets_by_month.get(ym) or {})
+                                         .get(label, 0.0) or 0.0), 2)
+                subrows = []
+                for sr, sr_months, sr_bud in sub_data:
+                    s_brutto, s_ops = sr_months.get(ym, (0.0, 0.0))
+                    subrows.append({
+                        "brand": sr["label"], "brutto": s_brutto, "adm_nysalg": 0.0,
+                        "opsigelser": s_ops, "adm_opsigelser": 0.0,
+                        "netto": round(s_brutto - s_ops, 2),
+                        "budget": (round(sr_bud.get(ym, 0.0), 2)
+                                   if sr_bud is not None else None),
+                        "comment": "", "n_ambiguous": 0,
+                        "currency": brand_currency(label),
+                    })
+                out[ym] = {
+                    "brand": label, "brutto": brutto, "adm_nysalg": 0.0,
+                    "opsigelser": ops, "adm_opsigelser": 0.0,
+                    "netto": round(brutto - ops, 2), "budget": budget,
+                    "comment": comments.get(label, "") or "", "n_ambiguous": 0,
+                    "currency": brand_currency(label), "subrows": subrows,
+                }
+            return out
+        finally:
+            conn.close()
+
+    def _run_dk() -> dict[str, list[dict]]:
+        # Isoleret som i pipedrive_brand_rows: en fejl her (fx manglende
+        # ProgrammaticSales) vælter ikke Norge/MarketWire-rækkerne.
+        conn = get_conn()
+        try:
+            return _dk_advertising_by_month(conn.cursor(as_dict=True),
+                                            q_from, q_to, months, comments)
+        except Exception:
+            logger.exception("DK annonce-opdeling pr. måned (Job/Banner) fejlede")
+            return {}
+        finally:
+            conn.close()
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(4, len(specs_list) + 1)) as ex:
+            futs = [ex.submit(_spec_months, s) for s in specs_list]
+            fut_dk = ex.submit(_run_dk) if dk_split else None
+            per_spec = [f.result() for f in futs]
+            dk_rows = fut_dk.result() if fut_dk is not None else {}
+    except Exception:
+        logger.exception("pipedrive_brand_rows_by_month fejlede")
+        return {}
+    return {ym: [sp[ym] for sp in per_spec if ym in sp] + dk_rows.get(ym, [])
+            for ym in months}
+
+
+def _dk_advertising_by_month(cur, date_from: str | None, date_to: str | None,
+                             months: list[str], comments: dict) -> dict[str, list[dict]]:
+    """{'YYYY-MM': DK-annoncerækker (Job + Banner)} — by-month-varianten af
+    _dk_advertising_brand_rows: samme rækker, men alle måneder i ét sæt
+    GROUP BY-queries (Fase B)."""
+    from moduler.modul_admin_nysalg.brands import AD_BUDGET_WHERE
+    from moduler.modul_rotation.queries import (WATCH_DK_SITES, FINANS_SITES,
+                                                WATCH_INT_SITES, _ADM_EXCLUDE)
+    comments = comments or {}
+    watch_sites = list(WATCH_DK_SITES) + list(WATCH_INT_SITES)
+    val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
+           "ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
+
+    def _site_revenue(pipeline: str, sites: list[str]) -> dict:
+        ph = "(" + ",".join(["%s"] * len(sites)) + ")"
+        dcl, dpar = _date_between("[service_activation_date]", date_from, date_to,
+                                  cast_to_date=True)
+        where = ["[status] = 'won'", "[account] = 'jppol_advertising'",
+                 "LOWER([pipeline_name]) = %s", f"[sites] IN {ph}"] + dcl
+        cur.execute(
+            f"SELECT {ym_expr} AS ym, ISNULL(SUM({val}),0) AS rev "
+            f"FROM [dbo].[PipedriveDeals] "
+            f"WHERE {' AND '.join(where)} {_ADM_EXCLUDE} GROUP BY {ym_expr}",
+            (pipeline,) + tuple(sites) + tuple(dpar))
+        return {(r["ym"] or "")[:7]: round(float(r["rev"] or 0), 2)
+                for r in cur.fetchall() or []}
+
+    def _programmatic_revenue() -> dict:
+        dcl, dpar = _date_between("[Date]", date_from, date_to, cast_to_date=True)
+        where = ["[Site] = 'FINANS DK'"] + dcl
+        cur.execute(
+            "SELECT CONVERT(varchar(7), [Date], 126) AS ym, "
+            "ISNULL(SUM([Amount]),0) AS rev FROM [dbo].[ProgrammaticSales] "
+            f"WHERE {' AND '.join(where)} GROUP BY CONVERT(varchar(7), [Date], 126)",
+            tuple(dpar))
+        return {(r["ym"] or "")[:7]: round(float(r["rev"] or 0), 2)
+                for r in cur.fetchall() or []}
+
+    def _sub(name: str, sale: float, budget: float | None = None) -> dict:
+        return {"brand": name, "brutto": sale, "adm_nysalg": 0.0,
+                "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": sale,
+                "budget": budget, "currency": "DKK"}
+
+    prog_by_ym = _programmatic_revenue()
+    prog_bud_by_ym = _budget_by_month_for_where(
+        cur, "[Brand]='FINANS DK' AND [DealType]='Banner' "
+             "AND [Salestype]='Programmatic'", date_from, date_to)
+    out: dict[str, list[dict]] = {ym: [] for ym in months}
+    for pipeline, label in (("job", "Job"), ("banner", "Banner")):
+        watch_by_ym = _site_revenue(pipeline, watch_sites)
+        finans_by_ym = _site_revenue(pipeline, FINANS_SITES)
+        watch_bud_by_ym = _budget_by_month_for_where(
+            cur, f"[Brand]='Watch DK' AND [DealType]='{label}'", date_from, date_to)
+        finans_bud_by_ym = _budget_by_month_for_where(
+            cur, f"[Brand]='FINANS DK' AND [DealType]='{label}' "
+                 "AND COALESCE([Salestype],'') <> 'Programmatic'", date_from, date_to)
+        main_bud_by_ym = _budget_by_month_for_where(
+            cur, AD_BUDGET_WHERE[label], date_from, date_to)
+        for ym in months:
+            watch = watch_by_ym.get(ym, 0.0)
+            finans = finans_by_ym.get(ym, 0.0)
+            finans_sub = _sub("FINANS DK", finans, round(finans_bud_by_ym.get(ym, 0.0), 2))
+            if pipeline == "job":
+                # Samme fodnote som _dk_advertising_brand_rows (intern allokering).
+                finans_sub["note"] = (
+                    "Job sales for Finans are shown as 0 because 6.25% of the job "
+                    "sales are internally allocated from WM DK to Finans.")
+            subrows = [_sub("Watch DK", watch, round(watch_bud_by_ym.get(ym, 0.0), 2)),
+                       finans_sub]
+            total = watch + finans
+            if pipeline == "banner":
+                prog = prog_by_ym.get(ym, 0.0)
+                subrows.append(_sub("Finans programmatisk", prog,
+                                    round(prog_bud_by_ym.get(ym, 0.0), 2)))
+                total += prog
+            out[ym].append({
+                "brand": label, "brutto": round(total, 2), "adm_nysalg": 0.0,
+                "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": round(total, 2),
+                "budget": round(main_bud_by_ym.get(ym, 0.0), 2),
+                "comment": comments.get(label, "") or "",
+                "n_ambiguous": 0, "currency": "DKK", "subrows": subrows,
+            })
     return out
 
 
@@ -922,35 +1436,70 @@ def effective_gross_out(m: dict) -> float:
     return float(ov) if ov is not None else _row_opsigelse(m)
 
 
+# Delvist administrative bevægelser: er den matchede deals værdi mindst så meget
+# mindre end gross-beløbet, er kun deal-værdien administrativ — resten tæller som
+# almindeligt salg/churn. Mindre afvigelser (afrunding/valutakurs) behandles som
+# helt administrative.
+ADM_PARTIAL_TOLERANCE = 0.01   # 1 %
+
+
+def auto_adm_share(gross: float, deal_value: Optional[float]) -> float:
+    """Automatisk administrativ andel af et gross-beløb for en admin-række.
+
+    |deal_value| bruges når den er mere end tolerancen mindre end gross (delvist
+    administrativ, fx deal 110.000 mod gross in 250.000); ellers hele gross
+    (alt-eller-intet som hidtil). Ingen deal-værdi (fx Zuora-flag uden match
+    eller manuel include) => hele gross.
+    """
+    if gross <= 0 or deal_value is None:
+        return gross if gross > 0 else 0.0
+    dv = abs(float(deal_value))
+    return dv if dv < gross * (1 - ADM_PARTIAL_TOLERANCE) else gross
+
+
 def effective_adm_in(m: dict) -> float:
     """Administrativ andel af gross in — det der trækkes fra Actual Sale.
 
-    Udeladt række tæller 0. adm_in_override (delvist administrativ bevægelse:
-    direktøren har skrevet præcis hvor meget der er administrativt) bruges hvis
-    sat; ellers alt-eller-intet: hele effective_gross_in hvis rækken er
-    administrativ (effective_is_admin), ellers 0.
+    Udeladt række tæller 0. adm_in_override (direktøren har skrevet præcis hvor
+    meget der er administrativt) bruges hvis sat; ellers, for administrative
+    rækker (effective_is_admin), den automatiske andel: deal-værdien når den er
+    mindre end gross in (delvist administrativ), ellers hele gross in.
+    Ikke-administrativ række => 0.
     """
     if m.get("total_excluded"):
         return 0.0
     ov = m.get("adm_in_override")
     if ov is not None:
         return float(ov)
-    return effective_gross_in(m) if effective_is_admin(m) else 0.0
+    if not effective_is_admin(m):
+        return 0.0
+    deal = m.get("matched_value") if m.get("match_sign") == "pos" else None
+    return auto_adm_share(effective_gross_in(m), deal)
 
 
 def effective_adm_out(m: dict) -> float:
-    """Administrativ andel af gross out (opsigelse) — jf. effective_adm_in."""
+    """Administrativ andel af gross out (opsigelse) — jf. effective_adm_in.
+
+    Deal-værdien (negativ ved administrativ opsigelse) bruges kun når rækken
+    matchede en negativ deal; rækker der alene bærer Zuoras administrativ-flag
+    har ingen deal-værdi og forbliver alt-eller-intet.
+    """
     if m.get("total_excluded"):
         return 0.0
     ov = m.get("adm_out_override")
     if ov is not None:
         return float(ov)
-    return effective_gross_out(m) if is_admin_opsigelse(m) else 0.0
+    if not is_admin_opsigelse(m):
+        return 0.0
+    deal = m.get("matched_value") if m.get("match_sign") == "neg" else None
+    return auto_adm_share(effective_gross_out(m), deal)
 
 
 def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
                        comments: dict | None = None,
-                       extra_rows: list[dict] | None = None) -> list[dict]:
+                       extra_rows: list[dict] | None = None,
+                       ensure_labels: list[str] | None = None,
+                       seed_defaults: bool = True) -> list[dict]:
     """Per-brand totaltal med de administrative bevægelser udskilt:
 
       brutto          = al bruttoomsætning/nysalg (Σ gross_in)
@@ -959,6 +1508,11 @@ def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
       adm_opsigelser  = heraf administrative opsigelser (trækkes fra) — administrativ-flag
       netto (tilvækst)= (brutto − adm_nysalg) − (opsigelser − adm_opsigelser)
       budget          = samlet mediebudget for brandet
+
+    ensure_labels = labels der altid skal have en (0-)række, ud over dem med
+    bevægelser. seed_defaults=False slår Business Media-rapportens faste rækker
+    (ALWAYS_SHOWN/BUDGET_BRANDS) fra — bruges af Monitor-rapporten, hvor
+    rækkerne er sites, ikke brands.
     """
     from moduler.modul_admin_nysalg.brands import (ALWAYS_SHOWN, DISPLAY_ORDER,
                                                    BUDGET_BRANDS, brand_currency, classify)
@@ -980,16 +1534,20 @@ def summarize_by_brand(matches: list[dict], budgets: dict | None = None,
         g = _bucket(label)
         g["brutto"] += effective_gross_in(m)
         g["opsigelser"] += effective_gross_out(m)
-        # Administrativ andel — alt-eller-intet, medmindre en delvis andel er sat.
+        # Administrativ andel — deal-værdien ved delvist administrative rækker
+        # (auto eller manuelt sat), ellers alt-eller-intet.
         g["adm_nysalg"] += effective_adm_in(m)
         g["adm_opsigelser"] += effective_adm_out(m)
         if m.get("ambiguous"):
             g["n_ambiguous"] += 1
 
     # Brands der altid skal vises + brands med budget (også uden bevægelser).
-    for label in list(ALWAYS_SHOWN) + list(BUDGET_BRANDS.keys()):
-        if budgets.get(label) or label in ALWAYS_SHOWN:
-            _bucket(label)
+    if seed_defaults:
+        for label in list(ALWAYS_SHOWN) + list(BUDGET_BRANDS.keys()):
+            if budgets.get(label) or label in ALWAYS_SHOWN:
+                _bucket(label)
+    for label in ensure_labels or []:
+        _bucket(label)
 
     for label, g in groups.items():
         g["budget"] = round(budgets.get(label, 0.0), 2)
@@ -1104,28 +1662,58 @@ def run_date_range(run: dict) -> tuple[str | None, str | None]:
 
 
 def brand_rows_by_month(matches: list[dict], date_from: str | None, date_to: str | None,
-                        comments: dict | None = None) -> dict[str, list[dict]]:
+                        comments: dict | None = None,
+                        scope: str = "business_media") -> dict[str, list[dict]]:
     """{'YYYY-MM': [brand_rows]} pr. måned i intervallet.
 
     Mangler datointervallet udledes månederne af bevægelsernes month_end. For hver
     måned genberegnes brand-rækkerne (Zuora-matches + PipeDrive-only-rækker + budget)
     med de eksisterende helpere, så summen pr. måned matcher den samlede visning.
+    scope='monitor': rækker pr. Monitor-site (matches skal være relabel'et) med
+    site-budgetter og Monitor Job/Banner som annonce-rækker.
+
+    Budgetter OG PipeDrive-rækkerne hentes for ALLE måneder i ét fast antal
+    GROUP BY-kald (Fase B — pipedrive_brand_rows_by_month), så selve
+    måneds-opdelingen er ren beregning uafhængig af periodelængden. Tidligere
+    kostede hver måned ~25 PipeDrive-/budget-queries.
     """
+    from moduler.modul_admin_nysalg.brands import MONITOR_PIPEDRIVE_ROWS
     comments = comments or {}
     months = months_in_range(date_from, date_to)
     if not months:
         months = sorted({(m.get("month_end") or "")[:7]
                          for m in matches if m.get("month_end")})
-    out: dict[str, list[dict]] = {}
-    for ym in months:
-        if not ym:
-            continue
-        m_from, m_to = _month_bounds(ym)
-        matches_m = [m for m in matches if (m.get("month_end") or "")[:7] == ym]
-        budgets_m = brand_budgets(m_from, m_to)
-        pd_rows = pipedrive_brand_rows(m_from, m_to, comments, budgets_m)
-        out[ym] = summarize_by_brand(matches_m, budgets_m, comments, extra_rows=pd_rows)
-    return out
+    months = [ym for ym in months if ym]
+    if not months:
+        return {}
+    # Uden eksplicit interval (månederne udledt af month_end) afgrænses budget-
+    # kaldet til de udledte måneder.
+    b_from = date_from or _month_bounds(months[0])[0]
+    b_to = date_to or _month_bounds(months[-1])[1]
+    matches_by_ym: dict[str, list[dict]] = {}
+    for m in matches:
+        matches_by_ym.setdefault((m.get("month_end") or "")[:7], []).append(m)
+
+    if scope == "monitor":
+        norm_budgets_all = monitor_site_budgets_by_month(b_from, b_to)
+        pd_by_month = pipedrive_brand_rows_by_month(
+            months, comments, specs=MONITOR_PIPEDRIVE_ROWS, dk_split=False)
+
+        def _one_month(ym: str) -> list[dict]:
+            return monitor_brand_rows(matches_by_ym.get(ym, []),
+                                      norm_budgets_all.get(ym, {}), comments,
+                                      extra_rows=pd_by_month.get(ym, []))
+    else:
+        budgets_all = brand_budgets_by_month(b_from, b_to)
+        pd_by_month = pipedrive_brand_rows_by_month(
+            months, comments, budgets_by_month=budgets_all)
+
+        def _one_month(ym: str) -> list[dict]:
+            return summarize_by_brand(matches_by_ym.get(ym, []),
+                                      budgets_all.get(ym, {}), comments,
+                                      extra_rows=pd_by_month.get(ym, []))
+
+    return {ym: _one_month(ym) for ym in months}
 
 
 def effective_is_admin(match_row: dict) -> bool:
@@ -1185,3 +1773,143 @@ def summarize(matches: list[dict]) -> dict:
         "n_admin": n_admin,
         "n_ambiguous": n_ambiguous,
     }
+
+
+# ── SQL-aggregering (Fase B) ─────────────────────────────────────────────────
+# Topkort- og per-brand-tallene beregnes i SQL Server som GROUP BY i stedet for
+# at hente alle match-rækker over netværket og regne i Python. effective_*-
+# funktionerne ovenfor ER den dokumenterede reference — CASE-udtrykkene her skal
+# give præcis samme resultat pr. række (paritetstest:
+# tests/test_admin_nysalg_sql_parity.py). Afvig ikke fra reglerne i den ene uden
+# at rette den anden OG testen.
+#
+# SQL'en er bevidst dialekt-portabel (kun COALESCE/NULLIF/ABS/LTRIM/RTRIM/CASE
+# og afledte kolonner via underforespørgsler — ingen CROSS APPLY), så paritets-
+# testen kan køre PRÆCIS samme query-tekst mod SQLite uden database-server.
+
+def _agg_sql(scope: str, placeholder: str = "%s") -> str:
+    """GROUP BY-query for et runs effektive tal pr. brand (én parameter: run_id).
+
+    scope='business_media': alt undtagen Monitor, grupperet på brand (NULL/tom
+    brand vises som 'Øvrige' — i praksis sætter insert_matches altid brand).
+    scope='monitor': kun Monitor, grupperet på site (spejler monitor_relabel).
+    placeholder: '%s' (pymssql) eller '?' (sqlite3 i paritetstesten).
+    """
+    if scope == "monitor":
+        label_expr = "COALESCE(NULLIF(LTRIM(RTRIM(site)), ''), 'Ukendt site')"
+        scope_where = "brand = 'Monitor'"
+    else:
+        label_expr = "COALESCE(NULLIF(LTRIM(RTRIM(brand)), ''), 'Øvrige')"
+        scope_where = "COALESCE(brand, '') <> 'Monitor'"
+    # ADM_PARTIAL_TOLERANCE indlejres som literal, så testen fanger drift.
+    tol = f"(1 - {ADM_PARTIAL_TOLERANCE})"
+    return f"""
+        SELECT label,
+               SUM(eff_gross_in)  AS brutto,
+               SUM(eff_adm_in)    AS adm_nysalg,
+               SUM(eff_gross_out) AS opsigelser,
+               SUM(eff_adm_out)   AS adm_opsigelser,
+               SUM(CASE WHEN eff_is_admin = 1 OR eff_adm_in > 0 THEN 1 ELSE 0 END) AS n_admin,
+               SUM(CASE WHEN ambiguous = 1 THEN 1 ELSE 0 END) AS n_ambiguous
+        FROM (
+            SELECT x.*,
+                   CASE WHEN x.total_excluded = 1 THEN 0
+                        WHEN x.adm_in_override IS NOT NULL THEN x.adm_in_override
+                        WHEN x.eff_is_admin = 0 THEN 0
+                        WHEN x.eff_gross_in <= 0 THEN 0
+                        WHEN x.match_sign = 'pos' AND x.matched_value IS NOT NULL
+                             AND ABS(x.matched_value) < x.eff_gross_in * {tol}
+                            THEN ABS(x.matched_value)
+                        ELSE x.eff_gross_in END AS eff_adm_in,
+                   CASE WHEN x.total_excluded = 1 THEN 0
+                        WHEN x.adm_out_override IS NOT NULL THEN x.adm_out_override
+                        WHEN x.is_admin_ops = 0 THEN 0
+                        WHEN x.eff_gross_out <= 0 THEN 0
+                        WHEN x.match_sign = 'neg' AND x.matched_value IS NOT NULL
+                             AND ABS(x.matched_value) < x.eff_gross_out * {tol}
+                            THEN ABS(x.matched_value)
+                        ELSE x.eff_gross_out END AS eff_adm_out
+            FROM (
+                SELECT {label_expr} AS label,
+                       total_excluded, adm_in_override, adm_out_override,
+                       match_sign, matched_value, ambiguous,
+                       CASE WHEN total_excluded = 1 THEN 0
+                            WHEN gross_in_override IS NOT NULL THEN gross_in_override
+                            ELSE COALESCE(gross_in, 0) END AS eff_gross_in,
+                       CASE WHEN total_excluded = 1 THEN 0
+                            WHEN gross_out_override IS NOT NULL THEN gross_out_override
+                            WHEN COALESCE(gross_out, 0) <> 0 THEN gross_out
+                            WHEN COALESCE(net_diff, 0) < 0 THEN ABS(net_diff)
+                            ELSE 0 END AS eff_gross_out,
+                       CASE WHEN override = 'exclude' THEN 0
+                            WHEN override = 'include' THEN 1
+                            WHEN is_admin = 1 THEN 1 ELSE 0 END AS eff_is_admin,
+                       CASE WHEN administrativ = 1 OR match_sign = 'neg' THEN 1
+                            ELSE 0 END AS is_admin_ops
+                FROM admin_nysalg_match
+                WHERE run_id = {placeholder}
+                  AND {scope_where}
+                  AND {_CONTRIBUTING_WHERE}
+            ) x
+        ) y
+        GROUP BY label
+    """
+
+
+def aggregate_by_brand_sql(run_id: int, scope: str = "business_media") -> dict:
+    """{label: {brutto, adm_nysalg, opsigelser, adm_opsigelser, n_admin,
+    n_ambiguous}} for et run — samme tal som summarize/summarize_by_brand over
+    get_matches, men beregnet i databasen i ÉN query (uafhængig af rækkeantal).
+
+    Værdierne er uafrundede floats — kaldere afrunder som de respektive
+    Python-helpers (summarize afrunder totalen, summarize_by_brand pr. brand).
+    """
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute(_agg_sql(scope), (run_id,))
+    rows = cur.fetchall() or []
+    conn.close()
+    return {r["label"]: {
+        "brutto": float(r["brutto"] or 0),
+        "adm_nysalg": float(r["adm_nysalg"] or 0),
+        "opsigelser": float(r["opsigelser"] or 0),
+        "adm_opsigelser": float(r["adm_opsigelser"] or 0),
+        "n_admin": int(r["n_admin"] or 0),
+        "n_ambiguous": int(r["n_ambiguous"] or 0),
+    } for r in rows}
+
+
+def summarize_from_groups(groups: dict, exclude_brands=frozenset()) -> dict:
+    """Topkort-tal (samme form som summarize) fra aggregate_by_brand_sql-grupper.
+
+    exclude_brands (fx skjulte brands) pilles fra inden summeringen — spejler
+    _apply_hidden, hvor topkortene genberegnes uden de skjulte brands.
+    Summerer de uafrundede gruppetal og afrunder til sidst, som summarize.
+    """
+    brutto = adm_nysalg = opsigelser = adm_opsigelser = 0.0
+    n_admin = n_ambiguous = 0
+    for label, g in groups.items():
+        if label in exclude_brands:
+            continue
+        brutto += g["brutto"]
+        adm_nysalg += g["adm_nysalg"]
+        opsigelser += g["opsigelser"]
+        adm_opsigelser += g["adm_opsigelser"]
+        n_admin += g["n_admin"]
+        n_ambiguous += g["n_ambiguous"]
+    netto = (brutto - adm_nysalg) - (opsigelser - adm_opsigelser)
+    return {
+        "brutto": round(brutto, 2),
+        "adm_nysalg": round(adm_nysalg, 2),
+        "opsigelser": round(opsigelser, 2),
+        "adm_opsigelser": round(adm_opsigelser, 2),
+        "netto_tilvaekst": round(netto, 2),
+        "n_admin": n_admin,
+        "n_ambiguous": n_ambiguous,
+    }
+
+
+def summarize_sql(run_id: int, scope: str = "business_media",
+                  exclude_brands=frozenset()) -> dict:
+    """Topkort-tal for et run beregnet i SQL — SQL-udgaven af summarize."""
+    return summarize_from_groups(aggregate_by_brand_sql(run_id, scope), exclude_brands)
