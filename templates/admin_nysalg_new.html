@@ -58,6 +58,24 @@
 
         <form id="run-form" class="dash-card" method="post" action="/tools/admin-nysalg/run" enctype="multipart/form-data">
           <div class="fld">
+            <label>Rapport-type</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="scope-opt" style="flex:1;min-width:220px;display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;cursor:pointer;font-size:13px;color:var(--ink)">
+                <input type="radio" name="report_scope" value="business_media" checked style="margin-top:2px">
+                <span><b>Business Media</b><br>
+                  <span class="hint" style="margin-top:2px;display:block">Alle medier undtagen Monitor — pr. brand (Watch, Finans, Norge, …).</span>
+                </span>
+              </label>
+              <label class="scope-opt" style="flex:1;min-width:220px;display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;cursor:pointer;font-size:13px;color:var(--ink)">
+                <input type="radio" name="report_scope" value="monitor" style="margin-top:2px">
+                <span><b>Monitor</b><br>
+                  <span class="hint" style="margin-top:2px;display:block">Kun Monitor — pr. enkelt site (Byrummonitor, Klimamonitor, …) + Job/Banner.</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="fld">
             <label>Periode (valgfri)</label>
             <div style="display:flex;gap:12px;flex-wrap:wrap">
               <div style="flex:1;min-width:150px">

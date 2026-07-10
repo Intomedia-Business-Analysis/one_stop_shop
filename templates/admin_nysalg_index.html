@@ -63,17 +63,18 @@
           <table class="v-table">
             <thead>
               <tr>
-                <th>Run</th><th>Periode</th><th>Kildefil</th><th>Oprettet</th>
+                <th>Run</th><th>Rapport</th><th>Periode</th><th>Kildefil</th><th>Oprettet</th>
                 <th>Af</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>
               {% if not runs %}
-                <tr><td colspan="7" class="empty">Ingen runs endnu — opret et nyt run for at komme i gang.</td></tr>
+                <tr><td colspan="8" class="empty">Ingen runs endnu — opret et nyt run for at komme i gang.</td></tr>
               {% endif %}
               {% for r in runs %}
                 <tr>
                   <td>#{{ r.run_id }}</td>
+                  <td>{{ "Monitor" if (r.report_scope or "business_media") == "monitor" else "Business Media" }}</td>
                   <td>{{ r.period or "—" }}</td>
                   <td>{{ r.source_filename or r.source_path or "—" }}</td>
                   <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—" }}</td>

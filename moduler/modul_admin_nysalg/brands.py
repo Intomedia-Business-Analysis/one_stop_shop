@@ -37,12 +37,16 @@ DISPLAY_ORDER = ["Watch DK", "Finans", "Watch NO", "FinansWatch SE",
                  "Norge Job", "Norge Banner", "Øvrige"]
 ALWAYS_SHOWN = ["Marketwire"]
 
-# Brands der helt udelades af denne rapport (ledelsesønske). Monitor vises i et
-# selvstændigt BI-spor; alt Monitor pilles ud af månedsrapporten — både
-# abonnements-brandet (Zuora-matches, filtreret i routeren) OG Monitor-andelen af
-# banner/job-annoncesalget (DK-annoncerækkerne summeres kun på Watch DK + FINANS
-# DK-sites, så Monitor-sites aldrig tælles med).
+# Rapporten findes i to udgaver (report_scope på run'et, vælges ved oprettelse):
+#   business_media – alle medier UNDTAGEN Monitor (den klassiske månedsrapport)
+#   monitor        – KUN Monitor, opgjort pr. enkelt site (Byrummonitor,
+#                    Klimamonitor, …) + Monitor Job/Banner-annoncesalg
+# Monitor pilles ud af Business Media-rapporten — både abonnements-brandet
+# (Zuora-matches, filtreret i routeren) OG Monitor-andelen af banner/job-
+# annoncesalget (DK-annoncerækkerne summeres kun på Watch DK + FINANS DK-sites,
+# så Monitor-sites aldrig tælles med).
 EXCLUDED_BRANDS = {"Monitor"}
+VALID_SCOPES = ("business_media", "monitor")
 
 # Geografi + type pr. brand-label → bruges til at gruppere rapporten land for land
 # (Subscription før Advertising) med subtotaler. Lande lægges IKKE sammen til én
@@ -65,8 +69,16 @@ TYPE_ORDER = ["Subscription", "Advertising"]
 
 
 def brand_geo(label: str) -> tuple[str, str]:
-    """(land, type) for et brand-label; ('Other','Subscription') som fallback."""
-    return BRAND_GEO.get(label, ("Other", "Subscription"))
+    """(land, type) for et brand-label; ('Other','Subscription') som fallback.
+
+    Monitor-rapportens rækker er enkelt-sites (Byrummonitor, Klimamonitor, …) og
+    kan ikke enumereres statisk — alt Monitor er dansk abonnement."""
+    hit = BRAND_GEO.get(label)
+    if hit:
+        return hit
+    if "monitor" in (label or "").lower():
+        return ("Denmark", "Subscription")
+    return ("Other", "Subscription")
 
 # PipeDrive-hentede brand-rækker (findes ikke i Zuora-udtrækket). Hver række
 # vælges via en [account]- eller [team]-scope i PipedriveDeals, filtreret på
@@ -110,6 +122,19 @@ PIPEDRIVE_ROWS = [
           "budget_where": "[Brand]='Watch NO' AND [DealType]='Banner' AND [Site]='Shifter'"},
      ]},
     {"label": "Marketwire",      "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
+]
+
+# Annonce-rækkerne i MONITOR-rapporten (report_scope='monitor'): job- og banner-
+# salg fra monitor-kontoens pipelines. Budget pr. række via 'budget_where'
+# (BudgetsIntoMedia har Monitor Job/Banner-budgettet samlet som 'All Monitor
+# Sites' — ikke pr. site, i modsætning til Subscription-budgettet).
+MONITOR_PIPEDRIVE_ROWS = [
+    {"label": "Job",    "scope_col": "account", "scope_val": "monitor",
+     "pipelines": ["jobmarked"],
+     "budget_where": "[Brand]='Monitor' AND [DealType]='Job'"},
+    {"label": "Banner", "scope_col": "account", "scope_val": "monitor",
+     "pipelines": ["banner"],
+     "budget_where": "[Brand]='Monitor' AND [DealType]='Banner'"},
 ]
 
 # Budget for reklame-rækkerne (BudgetsIntoMedia). WHERE-fragment uden periode —
@@ -172,8 +197,15 @@ BRAND_ACCOUNT = {
 
 
 def brand_account(label: str) -> str | None:
-    """PipeDrive-kontoen et brands org-id'er skal slås op i (None hvis ukendt)."""
-    return BRAND_ACCOUNT.get(label)
+    """PipeDrive-kontoen et brands org-id'er skal slås op i (None hvis ukendt).
+
+    Monitor-rapportens rækker er enkelt-sites — alle slås op i monitor-kontoen."""
+    hit = BRAND_ACCOUNT.get(label)
+    if hit:
+        return hit
+    if "monitor" in (label or "").lower():
+        return "monitor"
+    return None
 
 
 # Eksakt site → gruppelabel (fra constants.BRAND_GROUPS), lowercased opslag.

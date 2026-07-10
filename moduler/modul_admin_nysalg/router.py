@@ -15,7 +15,8 @@ import threading
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import (APIRouter, Body, Depends, File, Form, HTTPException, Request,
+                     UploadFile)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -114,11 +115,46 @@ def _month_label(ym: str) -> str:
         return ym
 
 
-def _months_breakdown(matches: list, date_from, date_to, comments: dict) -> list[dict]:
+def _months_breakdown(matches: list, date_from, date_to, comments: dict,
+                      scope: str = "business_media") -> list[dict]:
     """[{ym, label, rows}] pr. måned i intervallet (til review + rapport)."""
-    by_month = repo.brand_rows_by_month(matches, date_from, date_to, comments)
+    by_month = repo.brand_rows_by_month(matches, date_from, date_to, comments, scope=scope)
     return [{"ym": ym, "label": _month_label(ym), "rows": rows}
             for ym, rows in by_month.items()]
+
+
+def _scope_extra_rows(scope: str, date_from, date_to, brand_comments: dict,
+                      budgets: dict) -> tuple[list[dict], dict | None]:
+    """DB-delen af brand-rækkerne: (PipeDrive-annonce-rækker, monitor-site-budgetter).
+
+    Skilt fra selve opsummeringen, så review-handleren kan hente den parallelt
+    med de andre tunge opslag (matches, org-navne)."""
+    from moduler.modul_admin_nysalg.brands import MONITOR_PIPEDRIVE_ROWS
+    if scope == "monitor":
+        ad_rows = repo.pipedrive_brand_rows(date_from, date_to, brand_comments,
+                                            specs=MONITOR_PIPEDRIVE_ROWS, dk_split=False,
+                                            parallel=True)
+        return ad_rows, repo.monitor_site_budgets(date_from, date_to)
+    return repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets,
+                                     parallel=True), None
+
+
+def _scope_brand_rows(scope: str, matches: list[dict], date_from, date_to,
+                      brand_comments: dict, budgets: dict,
+                      prefetched: tuple | None = None) -> list[dict]:
+    """Brand-rækkerne for review/rapport efter runnets scope.
+
+    business_media: Zuora-brands + PipeDrive-annonce-rækkerne (som hidtil).
+    monitor: én række pr. Monitor-site (site-budgetter) + Monitor Job/Banner.
+    prefetched = resultatet af _scope_extra_rows hvis allerede hentet (parallelt).
+    """
+    extra_rows, norm_budgets = (prefetched if prefetched is not None
+                                else _scope_extra_rows(scope, date_from, date_to,
+                                                       brand_comments, budgets))
+    if scope == "monitor":
+        return repo.monitor_brand_rows(matches, norm_budgets or {},
+                                       brand_comments, extra_rows=extra_rows)
+    return repo.summarize_by_brand(matches, budgets, brand_comments, extra_rows=extra_rows)
 
 
 def _match_brand(m: dict) -> str:
@@ -127,14 +163,21 @@ def _match_brand(m: dict) -> str:
     return m.get("brand") or classify(m.get("site"))
 
 
-def _visible_matches(run_id: int) -> list[dict]:
-    """Match-rækker for et run minus de helt udeladte brands (fx Monitor).
+def _visible_matches(run: dict) -> list[dict]:
+    """Match-rækker for et run, afgrænset til runnets rapport-scope.
 
-    Monitor pilles ud så tidligt som muligt, så det forsvinder fra ALT i rapporten:
-    top-tal, brand-tabel, måneds-opdeling OG Excel-detaljefanerne."""
+    business_media: alt UNDTAGEN de udeladte brands (Monitor) — pilles ud så
+    tidligt som muligt, så det forsvinder fra ALT: top-tal, brand-tabel,
+    måneds-opdeling OG Excel-detaljefanerne.
+    monitor: KUN Monitor-bevægelser, relabel'et med brand = site, så hele
+    pipelinen arbejder pr. enkelt site.
+    """
     from moduler.modul_admin_nysalg.brands import EXCLUDED_BRANDS
-    return [m for m in repo.get_matches(run_id)
-            if _match_brand(m) not in EXCLUDED_BRANDS]
+    matches = repo.get_matches(run["run_id"])
+    if repo.run_scope(run) == "monitor":
+        return repo.monitor_relabel(
+            [m for m in matches if _match_brand(m) == "Monitor"])
+    return [m for m in matches if _match_brand(m) not in EXCLUDED_BRANDS]
 
 
 def _brand_summary_map(matches: list[dict]) -> dict:
@@ -153,7 +196,7 @@ def _brand_summary_map(matches: list[dict]) -> dict:
             if brand_geo(b["brand"])[1] == "Subscription"}
 
 
-def _brand_movements(matches: list[dict]) -> list[dict]:
+def _brand_movements(matches: list[dict], org_names: dict | None = None) -> list[dict]:
     """Bevægelser (gross in/out) grupperet pr. brand til review-siden.
 
     Direktøren ser her de Zuora-bevægelser fra udtrækket der indgår i omsætning OG
@@ -161,9 +204,11 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
     der rå bidrager (gross in eller out ≠ 0) listes — også udeladte (så de kan slås
     til igen). Kundenavn slås op pr. brands KONTO (org-id er ikke unikke), samme
     opslag som Excel-"Movements"-arket. Returneres i DISPLAY_ORDER.
+    org_names kan gives med, hvis kalderen allerede har hentet dem (parallelt).
     """
     from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER, brand_account
-    org_names = repo.pipedrive_org_names()
+    if org_names is None:
+        org_names = repo.pipedrive_org_names()
     groups: dict[str, list[dict]] = {}
     for m in matches:
         gi_raw = m.get("gross_in") or 0
@@ -177,6 +222,17 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
                     or (org_names.get(acct, {}).get(pid, "") if acct else ""))
         gi_ov, go_ov = m.get("gross_in_override"), m.get("gross_out_override")
         ai_ov, ao_ov = m.get("adm_in_override"), m.get("adm_out_override")
+        is_adm_in = repo.effective_is_admin(m)
+        is_adm_out = repo.is_admin_opsigelse(m)
+        # Effektiv administrativ andel uanset medtag/udeluk (til visning i Adm.-
+        # felterne) — automatisk delvis når deal-værdien er mindre end gross.
+        mc = dict(m, total_excluded=False)
+        adm_in_eff = repo.effective_adm_in(mc)
+        adm_out_eff = repo.effective_adm_out(mc)
+        gi_eff = float(gi_ov if gi_ov is not None else gi_raw)
+        go_eff = float(go_ov if go_ov is not None else go_raw)
+        adm_partial = ((is_adm_in and adm_in_eff < gi_eff - 0.5)
+                       or (is_adm_out and adm_out_eff < go_eff - 0.5))
         groups.setdefault(label, []).append({
             "match_id": m.get("match_id"),
             "site": m.get("site") or "",
@@ -190,10 +246,15 @@ def _brand_movements(matches: list[dict]) -> list[dict]:
             "gross_in_input": int(round(gi_ov if gi_ov is not None else gi_raw)),
             "gross_out_input": int(round(go_ov if go_ov is not None else go_raw)),
             # Delvist administrativ: den administrative andel af gross in/out.
-            # Blank = alt-eller-intet efter admin-match/flag.
+            # Blank = automatikken (deal-værdi hvis mindre end gross, ellers alt).
             "adm_in_input": "" if ai_ov is None else int(round(ai_ov)),
             "adm_out_input": "" if ao_ov is None else int(round(ao_ov)),
+            # Placeholder: den andel der faktisk trækkes fra, når feltet er blankt.
+            "adm_in_auto": int(round(adm_in_eff)) if is_adm_in else "",
+            "adm_out_auto": int(round(adm_out_eff)) if is_adm_out else "",
             "adm_split": ai_ov is not None or ao_ov is not None,
+            # Kun en del af beløbet er administrativt (auto eller manuelt).
+            "adm_partial": adm_partial,
             "edited": gi_ov is not None or go_ov is not None,
             "excluded": bool(m.get("total_excluded")),
             # Administrativ = trækkes allerede fra Actual Sale/Churn (admin-matchet).
@@ -231,9 +292,13 @@ def _apply_hidden(matches: list, brand_rows: list, months_breakdown: list,
 
 
 # ── Forside + nyt run ────────────────────────────────────────────────────────
+# Endpoints med DB-arbejde er bevidst sync (`def`, ikke `async def`): FastAPI
+# kører dem så i threadpoolen, så de blokerende pymssql-kald ikke fryser hele
+# event-loopet (og dermed resten af hubben) mens de kører. POST-bodies læses via
+# Body(...) i stedet for `await request.json()` af samme grund.
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request, user=Depends(get_current_user)):
+def index(request: Request, user=Depends(get_current_user)):
     _require_view(user)
     runs = repo.list_runs(100)
     return templates.TemplateResponse(request, "admin_nysalg_index.html", {
@@ -245,7 +310,7 @@ async def index(request: Request, user=Depends(get_current_user)):
 
 
 @router.post("/{run_id}/delete")
-async def delete_run(run_id: int, user=Depends(get_current_user)):
+def delete_run(run_id: int, user=Depends(get_current_user)):
     _require_admin(user)
     if not repo.delete_run(run_id):
         raise HTTPException(404, "Run ikke fundet")
@@ -254,7 +319,7 @@ async def delete_run(run_id: int, user=Depends(get_current_user)):
 
 
 @router.get("/new", response_class=HTMLResponse)
-async def new_run(request: Request, user=Depends(get_current_user)):
+def new_run(request: Request, user=Depends(get_current_user)):
     _require_view(user)
     return templates.TemplateResponse(request, "admin_nysalg_new.html", {
         "user": user,
@@ -295,7 +360,8 @@ def _set_job(job_id: str, **fields) -> None:
 
 
 def _run_worker(job_id, user, file_bytes, filename, src_path, src_name,
-                date_from, date_to, period_label) -> None:
+                date_from, date_to, period_label,
+                report_scope="business_media") -> None:
     """Kører matchningen i baggrunden og opdaterer job-state løbende."""
     try:
         _set_job(job_id, phase="Indlæser udtræk…", percent=8)
@@ -324,7 +390,7 @@ def _run_worker(job_id, user, file_bytes, filename, src_path, src_name,
 
         _set_job(job_id, phase="Gemmer resultat…", percent=45)
         run_id = repo.create_run(user.get("name"), src_path, src_name, period_label,
-                                 date_from, date_to)
+                                 date_from, date_to, report_scope=report_scope)
 
         def _prog(i, n):
             _set_job(job_id, percent=(45 + int(50 * i / n)) if n else 95)
@@ -350,11 +416,16 @@ async def run_match(
     source_path: str = Form(""),
     period_from: str = Form(""),
     period_to: str = Form(""),
+    report_scope: str = Form("business_media"),
     user=Depends(get_current_user),
 ):
     """Start matchningen som baggrundsjob. Returnerer {job_id}; frontend poller
     /run-status for progress og redirecter til review når jobbet er færdigt."""
+    from moduler.modul_admin_nysalg.brands import VALID_SCOPES
     _require_view(user)
+    if report_scope not in VALID_SCOPES:
+        return JSONResponse({"error": f"Ugyldig rapport-type: {report_scope!r}"},
+                            status_code=400)
 
     # Validér interval + kildevalg synkront, så brugeren får øjeblikkelig fejl.
     try:
@@ -383,7 +454,7 @@ async def run_match(
     threading.Thread(
         target=_run_worker,
         args=(job_id, user, file_bytes, filename, src_path, src_name,
-              date_from, date_to, period_label),
+              date_from, date_to, period_label, report_scope),
         daemon=True,
     ).start()
     return JSONResponse({"job_id": job_id})
@@ -403,29 +474,44 @@ async def run_status(job_id: str, user=Depends(get_current_user)):
 # ── Review ───────────────────────────────────────────────────────────────────
 
 @router.get("/{run_id}/review", response_class=HTMLResponse)
-async def review(run_id: int, request: Request, user=Depends(get_current_user)):
+def review(run_id: int, request: Request, user=Depends(get_current_user)):
     _require_view(user)
     run = _get_run_or_404(run_id)
-    matches = _visible_matches(run_id)
+    scope = repo.run_scope(run)
     date_from, date_to = repo.run_date_range(run)
-    budgets = repo.brand_budgets(date_from, date_to)
+    budgets = repo.brand_budgets(date_from, date_to) if scope != "monitor" else {}
     brand_comments = repo.get_brand_comments(run_id)
-    pd_rows = repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets)
-    brand_rows = repo.summarize_by_brand(matches, budgets, brand_comments, extra_rows=pd_rows)
-    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
-    admin_rows = [m for m in matches if repo.effective_is_admin(m)]
+    # De tre tunge, indbyrdes uafhængige opslag (match-rækker, org-navne og
+    # PipeDrive-annonce-rækker) hentes parallelt — sekventielt lå de i forlængelse
+    # af hinanden og udgjorde det meste af sidens åbnetid.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_matches = ex.submit(_visible_matches, run)
+        f_orgs = ex.submit(repo.pipedrive_org_names)
+        f_extra = ex.submit(_scope_extra_rows, scope, date_from, date_to,
+                            brand_comments, budgets)
+        matches = f_matches.result()
+        org_names = f_orgs.result()
+        prefetched = f_extra.result()
+    brand_rows = _scope_brand_rows(scope, matches, date_from, date_to,
+                                   brand_comments, budgets, prefetched=prefetched)
+    # adm_share = det der faktisk trækkes fra Actual Sale (deal-værdien ved
+    # delvist administrative rækker, ellers hele gross in).
+    admin_rows = [dict(m, adm_share=repo.effective_adm_in(dict(m, total_excluded=False)))
+                  for m in matches if repo.effective_is_admin(m)]
     # Brand-tabellen viser ALLE brands (også skjulte, så de kan klikkes tilbage),
-    # men topkort + måneds-opdeling afspejler skjulningen.
+    # men topkortene afspejler skjulningen. Måneds-opdelingen (mange per-måned-
+    # queries) hentes asynkront via /months-fragment, så siden åbner hurtigt.
     hidden = repo.get_hidden_brands(run_id)
-    summary, _, months_breakdown = _apply_hidden(matches, brand_rows, months_breakdown, hidden)
-    brand_movements = _brand_movements(matches)
+    summary, _, _ = _apply_hidden(matches, brand_rows, [], hidden)
+    brand_movements = _brand_movements(matches, org_names)
     return templates.TemplateResponse(request, "admin_nysalg_review.html", {
         "user": user,
         "run": run,
+        "report_scope": scope,
         "summary": summary,
         "brand_rows": brand_rows,
         "hidden_brands": sorted(hidden),
-        "months_breakdown": months_breakdown,
         "admin_rows": admin_rows,
         "brand_movements": brand_movements,
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
@@ -433,11 +519,40 @@ async def review(run_id: int, request: Request, user=Depends(get_current_user)):
     })
 
 
+@router.get("/{run_id}/months-fragment", response_class=HTMLResponse)
+def months_fragment(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Måneds-opdelingen som HTML-fragment — hentes asynkront af review-siden.
+
+    Beregningen laver ~25 PipeDrive-/budget-queries pr. måned og kan tage
+    adskillige sekunder for lange perioder; ved at hente den i baggrunden
+    blokerer den ikke sideåbningen. Tom body (204) ved én eller ingen måneder.
+    """
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    scope = repo.run_scope(run)
+    matches = _visible_matches(run)
+    date_from, date_to = repo.run_date_range(run)
+    brand_comments = repo.get_brand_comments(run_id)
+    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments,
+                                         scope=scope)
+    hidden = repo.get_hidden_brands(run_id)
+    if hidden:
+        months_breakdown = [
+            {**blk, "rows": [b for b in blk.get("rows", []) if b["brand"] not in hidden]}
+            for blk in months_breakdown
+        ]
+    if not months_breakdown or len(months_breakdown) < 2:
+        return HTMLResponse("", status_code=204)
+    return templates.TemplateResponse(request, "_admin_nysalg_months.html", {
+        "months_breakdown": months_breakdown,
+        "is_monitor": scope == "monitor",
+    })
+
+
 @router.post("/{run_id}/comment")
-async def save_comment(run_id: int, request: Request, user=Depends(get_current_user)):
+def save_comment(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     _require_view(user)
     _get_run_or_404(run_id)
-    body = await request.json()
     scope = body.get("scope")
     comment = (body.get("comment") or "").strip()
     if scope == "director":
@@ -458,20 +573,19 @@ async def save_comment(run_id: int, request: Request, user=Depends(get_current_u
 
 
 @router.post("/{run_id}/override")
-async def set_override(run_id: int, request: Request, user=Depends(get_current_user)):
+def set_override(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     _require_view(user)
     run = _get_run_or_404(run_id)
     if run.get("status") in ("approved", "reported"):
         raise HTTPException(409, "Run er låst — override kan ikke ændres")
-    body = await request.json()
     match_id = body.get("match_id")
     override = body.get("override")
     if override in ("", "default", None):
         override = None
     repo.set_override(run_id, int(match_id), override)
     # Returnér opdaterede topkort-tal + per-brand netto, så frontend kan opdatere uden reload.
-    matches = _visible_matches(run_id)
-    summary = repo.summarize(repo.get_matches(run_id))
+    matches = _visible_matches(run)
+    summary = repo.summarize(matches)
     return JSONResponse({"ok": True, "summary": summary,
                          "brands": _brand_summary_map(matches)})
 
@@ -482,29 +596,27 @@ def _require_unlocked(run: dict) -> None:
 
 
 @router.post("/{run_id}/row-include")
-async def row_include(run_id: int, request: Request, user=Depends(get_current_user)):
+def row_include(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     """Medtag/udeluk en enkelt bevægelse fra rapportens totaler."""
     _require_view(user)
     run = _get_run_or_404(run_id)
     _require_unlocked(run)
-    body = await request.json()
     match_id = body.get("match_id")
     if not match_id:
         raise HTTPException(400, "match_id påkrævet")
     repo.set_row_total_excluded(run_id, int(match_id), bool(body.get("excluded")))
-    matches = _visible_matches(run_id)
+    matches = _visible_matches(run)
     summary = repo.summarize(matches)
     return JSONResponse({"ok": True, "summary": summary,
                          "brands": _brand_summary_map(matches)})
 
 
 @router.post("/{run_id}/row-value")
-async def row_value(run_id: int, request: Request, user=Depends(get_current_user)):
+def row_value(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     """Ret gross in/gross out for en bevægelse (None pr. felt = ryd → brug rå værdi)."""
     _require_view(user)
     run = _get_run_or_404(run_id)
     _require_unlocked(run)
-    body = await request.json()
     match_id = body.get("match_id")
     if not match_id:
         raise HTTPException(400, "match_id påkrævet")
@@ -519,21 +631,20 @@ async def row_value(run_id: int, request: Request, user=Depends(get_current_user
 
     repo.set_row_value_override(run_id, int(match_id),
                                 _num(body.get("gross_in")), _num(body.get("gross_out")))
-    matches = _visible_matches(run_id)
+    matches = _visible_matches(run)
     summary = repo.summarize(matches)
     return JSONResponse({"ok": True, "summary": summary,
                          "brands": _brand_summary_map(matches)})
 
 
 @router.post("/{run_id}/row-adm")
-async def row_adm(run_id: int, request: Request, user=Depends(get_current_user)):
+def row_adm(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     """Sæt den administrative andel af gross in/out for en bevægelse (delvist
     administrativ deal — fx hvor kun en del af beløbet er administrativt).
     None/blank pr. felt = ryd → alt-eller-intet efter admin-match/flag."""
     _require_view(user)
     run = _get_run_or_404(run_id)
     _require_unlocked(run)
-    body = await request.json()
     match_id = body.get("match_id")
     if not match_id:
         raise HTTPException(400, "match_id påkrævet")
@@ -551,21 +662,20 @@ async def row_adm(run_id: int, request: Request, user=Depends(get_current_user))
 
     repo.set_row_adm_split(run_id, int(match_id),
                            _num(body.get("adm_in")), _num(body.get("adm_out")))
-    matches = _visible_matches(run_id)
+    matches = _visible_matches(run)
     summary = repo.summarize(matches)
     return JSONResponse({"ok": True, "summary": summary,
                          "brands": _brand_summary_map(matches)})
 
 
 @router.post("/{run_id}/brand-visibility")
-async def brand_visibility(run_id: int, request: Request, user=Depends(get_current_user)):
+def brand_visibility(run_id: int, body: dict = Body(...), user=Depends(get_current_user)):
     """Klik et brand til/fra rapporten. Skjulte brands fjernes fra brand-tabel,
     måneds-opdeling og top-tallene (både i review og den genererede rapport)."""
     _require_view(user)
     run = _get_run_or_404(run_id)
     if run.get("status") in ("approved", "reported"):
         raise HTTPException(409, "Run er låst — brands kan ikke skjules")
-    body = await request.json()
     brand = (body.get("brand") or "").strip()
     if not brand:
         raise HTTPException(400, "brand påkrævet")
@@ -574,14 +684,10 @@ async def brand_visibility(run_id: int, request: Request, user=Depends(get_curre
 
 
 @router.post("/{run_id}/approve")
-async def approve(run_id: int, request: Request, user=Depends(get_current_user)):
+def approve(run_id: int, body: dict = Body({}), user=Depends(get_current_user)):
     _require_approve(user)
     run = _get_run_or_404(run_id)
     # Gem evt. samlet kommentar sendt med godkendelsen.
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
     if "director_comment" in body:
         repo.set_director_comment(run_id, (body.get("director_comment") or "").strip())
     repo.approve_run(run_id, user.get("name"))
@@ -592,31 +698,40 @@ async def approve(run_id: int, request: Request, user=Depends(get_current_user))
 # ── Rapport ──────────────────────────────────────────────────────────────────
 
 @router.post("/{run_id}/report")
-async def make_report(run_id: int, request: Request, user=Depends(get_current_user)):
+def make_report(run_id: int, user=Depends(get_current_user)):
     _require_approve(user)
     run = _get_run_or_404(run_id)
     if run.get("status") not in ("approved", "reported"):
         raise HTTPException(409, "Run skal godkendes før rapporten kan genereres")
     from moduler.modul_admin_nysalg.brands import EXCLUDED_BRANDS
-    matches = _visible_matches(run_id)
+    scope = repo.run_scope(run)
+    matches = _visible_matches(run)
     brand_comments = repo.get_brand_comments(run_id)
     date_from, date_to = repo.run_date_range(run)
-    budgets = repo.brand_budgets(date_from, date_to)
-    brand_rows = repo.summarize_by_brand(
-        matches, budgets, brand_comments,
-        extra_rows=repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets))
-    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments)
+    budgets = repo.brand_budgets(date_from, date_to) if scope != "monitor" else {}
+    brand_rows = _scope_brand_rows(scope, matches, date_from, date_to,
+                                   brand_comments, budgets)
+    months_breakdown = _months_breakdown(matches, date_from, date_to, brand_comments,
+                                         scope=scope)
     # Skjulte brands pilles helt ud af rapporten (tabel, måneds-opdeling, top-tal).
     hidden = repo.get_hidden_brands(run_id)
     summary, brand_rows, months_breakdown = _apply_hidden(
         matches, brand_rows, months_breakdown, hidden)
-    # Afstemningsfanen (PipeDrive deals) skal også være fri for Monitor.
-    pd_deals = [d for d in repo.period_pipedrive_deals(date_from, date_to)
-                if d.get("brand") not in EXCLUDED_BRANDS]
+    # Afstemningsfanen (PipeDrive deals) følger scopet: Monitor-rapporten viser
+    # kun Monitor-deals; Business Media alt undtagen Monitor.
+    if scope == "monitor":
+        pd_deals = [d for d in repo.period_pipedrive_deals(date_from, date_to)
+                    if d.get("brand") == "Monitor"]
+    else:
+        pd_deals = [d for d in repo.period_pipedrive_deals(date_from, date_to)
+                    if d.get("brand") not in EXCLUDED_BRANDS]
     org_names = repo.pipedrive_org_names()
-    # Niche-opdeling (WM DK + WM NO) til Excel-fanen — kun ikke-skjulte brands.
-    site_brands = tuple(b for b in ("Watch DK", "Watch NO") if b not in hidden)
-    site_rows = repo.summarize_by_site(matches, site_brands) if site_brands else []
+    # Niche-opdeling (WM DK + WM NO) til Excel-fanen — kun Business Media (Monitor-
+    # rapportens hovedtabel ER allerede pr. site) og kun ikke-skjulte brands.
+    site_rows = []
+    if scope != "monitor":
+        site_brands = tuple(b for b in ("Watch DK", "Watch NO") if b not in hidden)
+        site_rows = repo.summarize_by_site(matches, site_brands) if site_brands else []
     try:
         xlsx_path = report.generate_excel(run, matches, summary, brand_rows,
                                           pd_deals=pd_deals, org_names=org_names,
@@ -636,7 +751,7 @@ async def make_report(run_id: int, request: Request, user=Depends(get_current_us
 
 
 @router.get("/{run_id}/download")
-async def download(run_id: int, fmt: str = "xlsx", user=Depends(get_current_user)):
+def download(run_id: int, fmt: str = "xlsx", user=Depends(get_current_user)):
     _require_view(user)
     run = _get_run_or_404(run_id)
     if not run.get("report_path"):

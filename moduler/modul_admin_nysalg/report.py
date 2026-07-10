@@ -306,11 +306,12 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                  or (org_names.get(acct, {}).get(pid, "") if acct else ""))
         # Administrativ = matchede en administrativ deal (nysalg ELLER opsigelse)
         # eller bærer Zuoras administrativ-flag. "Partial" = kun en del af beløbet
-        # er administrativt (adm_in/adm_out-andel sat af direktøren).
-        if effective_is_admin(m) or is_admin_opsigelse(m):
-            adm = "Yes"
-        elif effective_adm_in(m) > 0 or effective_adm_out(m) > 0:
+        # er administrativt (deal-værdi mindre end gross, eller andel sat manuelt).
+        adm_share = effective_adm_in(m) + effective_adm_out(m)
+        if 0 < adm_share < (gi + go) - 0.5:
             adm = "Partial"
+        elif effective_is_admin(m) or is_admin_opsigelse(m) or adm_share > 0:
+            adm = "Yes"
         else:
             adm = ""
         excluded = "Yes" if m.get("total_excluded") else ""
