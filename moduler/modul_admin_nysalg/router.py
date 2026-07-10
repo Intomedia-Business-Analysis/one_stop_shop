@@ -180,20 +180,36 @@ def _visible_matches(run: dict) -> list[dict]:
     return [m for m in matches if _match_brand(m) not in EXCLUDED_BRANDS]
 
 
-def _brand_summary_map(matches: list[dict]) -> dict:
-    """{brand: {brutto, adm_nysalg, opsigelser, adm_opsigelser, netto}} for de Zuora-
-    afledte abonnements-brands. Lader frontend opdatere netto tilvækst pr. brand live
-    (uden reload), når gross in/out eller medtag/udeluk ændres.
+def _click_summary_payload(run: dict) -> dict:
+    """Opdaterede topkort-tal + per-brand netto efter et klik i reviewet.
 
-    Kun Subscription-brands medtages: annonce-rækkerne (Job/Banner/Norge/Marketwire)
-    kommer fra PipeDrive og påvirkes ikke af gross in/out — og Marketwire ville ellers
-    optræde som en tom (0-)bucket fra summarize_by_brand og overskrive den rigtige
-    PipeDrive-række i tabellen."""
+    Beregnes i SQL i ÉN GROUP BY-query (Fase B) i stedet for at hente alle
+    match-rækker over netværket og regne i Python — klik-gem er dermed
+    uafhængig af runnets størrelse. Topkortene ekskluderer skjulte brands
+    (spejler _apply_hidden på review-siden); per-brand-tallene beholder dem,
+    da brand-tabellen viser skjulte brands så de kan klikkes tilbage.
+
+    Kun Subscription-brands medtages i brand-map'et: annonce-rækkerne
+    (Job/Banner/Norge/Marketwire) kommer fra PipeDrive og påvirkes ikke af
+    gross in/out — og en Zuora-bucket for dem ville ellers overskrive den
+    rigtige PipeDrive-række i tabellen.
+    """
     from moduler.modul_admin_nysalg.brands import brand_geo
-    return {b["brand"]: {k: b[k] for k in
-                         ("brutto", "adm_nysalg", "opsigelser", "adm_opsigelser", "netto")}
-            for b in repo.summarize_by_brand(matches)
-            if brand_geo(b["brand"])[1] == "Subscription"}
+    run_id = run["run_id"]
+    groups = repo.aggregate_by_brand_sql(run_id, repo.run_scope(run))
+    hidden = repo.get_hidden_brands(run_id)
+    brands = {}
+    for label, g in groups.items():
+        if brand_geo(label)[1] != "Subscription":
+            continue
+        b = {k: round(g[k], 2)
+             for k in ("brutto", "adm_nysalg", "opsigelser", "adm_opsigelser")}
+        b["netto"] = round((b["brutto"] - b["adm_nysalg"])
+                           - (b["opsigelser"] - b["adm_opsigelser"]), 2)
+        brands[label] = b
+    return {"ok": True,
+            "summary": repo.summarize_from_groups(groups, exclude_brands=hidden),
+            "brands": brands}
 
 
 def _brand_movements(matches: list[dict], org_names: dict | None = None) -> list[dict]:
@@ -584,10 +600,7 @@ def set_override(run_id: int, body: dict = Body(...), user=Depends(get_current_u
         override = None
     repo.set_override(run_id, int(match_id), override)
     # Returnér opdaterede topkort-tal + per-brand netto, så frontend kan opdatere uden reload.
-    matches = _visible_matches(run)
-    summary = repo.summarize(matches)
-    return JSONResponse({"ok": True, "summary": summary,
-                         "brands": _brand_summary_map(matches)})
+    return JSONResponse(_click_summary_payload(run))
 
 
 def _require_unlocked(run: dict) -> None:
@@ -605,10 +618,7 @@ def row_include(run_id: int, body: dict = Body(...), user=Depends(get_current_us
     if not match_id:
         raise HTTPException(400, "match_id påkrævet")
     repo.set_row_total_excluded(run_id, int(match_id), bool(body.get("excluded")))
-    matches = _visible_matches(run)
-    summary = repo.summarize(matches)
-    return JSONResponse({"ok": True, "summary": summary,
-                         "brands": _brand_summary_map(matches)})
+    return JSONResponse(_click_summary_payload(run))
 
 
 @router.post("/{run_id}/row-value")
@@ -631,10 +641,7 @@ def row_value(run_id: int, body: dict = Body(...), user=Depends(get_current_user
 
     repo.set_row_value_override(run_id, int(match_id),
                                 _num(body.get("gross_in")), _num(body.get("gross_out")))
-    matches = _visible_matches(run)
-    summary = repo.summarize(matches)
-    return JSONResponse({"ok": True, "summary": summary,
-                         "brands": _brand_summary_map(matches)})
+    return JSONResponse(_click_summary_payload(run))
 
 
 @router.post("/{run_id}/row-adm")
@@ -662,10 +669,7 @@ def row_adm(run_id: int, body: dict = Body(...), user=Depends(get_current_user))
 
     repo.set_row_adm_split(run_id, int(match_id),
                            _num(body.get("adm_in")), _num(body.get("adm_out")))
-    matches = _visible_matches(run)
-    summary = repo.summarize(matches)
-    return JSONResponse({"ok": True, "summary": summary,
-                         "brands": _brand_summary_map(matches)})
+    return JSONResponse(_click_summary_payload(run))
 
 
 @router.post("/{run_id}/brand-visibility")

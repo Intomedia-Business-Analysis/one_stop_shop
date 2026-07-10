@@ -38,6 +38,35 @@ blev aldrig færdig (~19 min. målt komponentvis). Nu: **5,5 s** (run 31, én m�
   pymssql frøs hele hubben.
 - `insert_matches` batcher 200 rækker pr. INSERT.
 
+## §2b UDFØRT — Fase B gennemført 2026-07-10 (samme dag, senere session)
+
+B1 + B2 + B3 er implementeret og verificeret (B4 bevidst udeladt, jf. §3):
+
+- **B1**: `repo._agg_sql(scope)` (dialekt-portabel GROUP BY-query),
+  `repo.aggregate_by_brand_sql`, `repo.summarize_from_groups`,
+  `repo.summarize_sql`. Klik-endpoints (`override`, `row-include`, `row-value`,
+  `row-adm`) bruger nu `router._click_summary_payload` — én SQL-query i stedet
+  for `_visible_matches`. NB: topkortene i klik-svaret ekskluderer nu skjulte
+  brands (konsistent med sideåbningens `_apply_hidden` — før var det en bug at
+  klik-svar inkluderede dem); per-brand-map'et beholder dem.
+  Bidrags-filteret er udtrukket som `repo._CONTRIBUTING_WHERE` (deles af
+  `get_matches` og aggregatet, så de to veje ser samme rækkesæt).
+- **B2**: `tests/test_admin_nysalg_sql_parity.py` — 27 fixture-rækker (alle
+  kombinationer af overrides/flags/tolerancegrænser) i in-memory SQLite, der
+  kører PRÆCIS samme query-tekst (placeholder `?`) og asserter SQL == Python
+  række for række og aggregeret, i begge scopes. 89 tests i alt, alle grønne.
+- **B3**: `repo.pipedrive_brand_rows_by_month(months, …)` + `_dk_advertising_by_month`
+  + `_budget_by_month_for_where` — samme rækker som pr-måned-kaldene, men
+  GROUP BY måned (fast antal queries). `brand_rows_by_month` bruger den og er
+  nu ren beregning pr. måned (per-måned-trådpuljen fjernet).
+
+Verificeret read-only mod rigtig DB (run 31 + 32): paritet OK på topkort,
+per-brand og by-month (stikprøve 3 måneder mod gammel vej). Målt (run 32,
+54 mdr.): klik-payload **0,46 s** (før ~3-4 s), PipeDrive-by-month 0,53 s mod
+~55 s for per-måned-vejen, hele måneds-opdelingen **1,23 s** (før ~20 s).
+Monitor-scope kun dækket af paritetstesten — der findes endnu ingen
+monitor-runs i DB (jf. §5). Husk genstart af hubben på port 8000 (§6).
+
 ## §3 Opgaven i delmål
 
 ### B1. SQL-aggregat for topkort + per-brand (klik-gem-stien) — vigtigst
