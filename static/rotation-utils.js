@@ -37,6 +37,21 @@ function makeMoneyFormatters(unit, opts = {}) {
   return { fmt, fmtAxis, fmtLabel };
 }
 
+/* Faste søjlefarver i rotations-dashboardene.
+   ROT_WIN bruges når omsætning/tilvækst når sit budget — samme grønne
+   signal på alle dashboards (kom først fra Department Performance). */
+const ROT_WIN = '#4E9E6F', ROT_ACTUAL = '#2B2A27', ROT_BUDGET = '#C9C1B5';
+
+/* Farve pr. søjle for omsætning/tilvækst: grøn når budgettet er nået,
+   ellers mørk. Rækker uden budget (0) forbliver mørke — der er intet at slå. */
+function budgetBarColors(rows, valueKey, budgetKey) {
+  return rows.map(r => {
+    const v = Number(r[valueKey] || 0);
+    const b = Number(r[budgetKey] || 0);
+    return (b > 0 && v >= b) ? ROT_WIN : ROT_ACTUAL;
+  });
+}
+
 /* Udfyld en tabel-tbody. cols: [{key, cls?, fmt?}]. Alle værdier escapes. */
 function fillTable(id, rows, cols) {
   const tb = document.getElementById(id);

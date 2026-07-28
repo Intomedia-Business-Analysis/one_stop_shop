@@ -175,6 +175,23 @@ def _owner_in_teams_sql(teams_ph: str) -> str:
 """
 
 
+def _marketwire_budget(cur, date_from, date_to) -> float:
+    """MarketWire-budgettet — ÉN kilde: BudgetsIntoMedia.
+
+    Teamet har også et personligt sælger-budget i SalespersonBudget (Jacob
+    Kristensen), men det er samme budget sat pr. sælger — lægges de sammen,
+    tælles budgettet dobbelt. Både Sales Performance og Department Performance
+    henter derfor budgettet her, så de to dashboards viser samme tal.
+    """
+    cur.execute("""
+        SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+        FROM [dbo].[BudgetsIntoMedia]
+        WHERE [Brand] = 'MarketWire' AND [DealType] = 'Subscription'
+          AND [BudgetDate] >= %s AND [BudgetDate] < %s
+    """, (date_from.isoformat(), date_to.isoformat()))
+    return float((cur.fetchone() or {}).get("budget", 0) or 0)
+
+
 def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_time",
                   teams: list | None = None):
     week_start, week_end = _week_range(today)
@@ -302,28 +319,26 @@ def db_sales_performance(today: date, date_col: str = "won_time",
             """, tuple(CANCELLATION_PIPELINES) * 2 + (date_from.isoformat(), date_to.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
             netto_map = {r["team"]: round(float(r["won"] or 0) - float(r["cancel"] or 0), 2) for r in cur.fetchall()}
 
+            # Team Marketwire hentes IKKE her: teamets budget kommer alene fra
+            # BudgetsIntoMedia nedenfor. Jacob Kristensens personlige budget i
+            # SalespersonBudget er samme budget sat pr. sælger, så uden denne
+            # undtagelse blev MarketWire-budgettet talt dobbelt (100t + 80t).
             cur.execute(f"""
                 SELECT [Team] AS team, SUM([BudgetAmount]) AS budget
                 FROM [dbo].[SalespersonBudget]
                 WHERE [BudgetDate] >= %s AND [BudgetDate] < %s
                   AND [Team] IN {teams_ph}
+                  AND [Team] <> 'Team Marketwire'
                 GROUP BY [Team]
             """, (date_from.isoformat(), date_to.isoformat()) + tuple(perf_teams))
             budget_map = {r["team"]: float(r["budget"] or 0) for r in cur.fetchall()}
 
             # MarketWire-budgettet ligger i BudgetsIntoMedia (ikke SalespersonBudget)
             # — men kun hvis Team Marketwire er blandt skærmens valgte teams.
-            mw_budget = 0.0
             if any(t.lower() == "team marketwire" for t in perf_teams):
-                cur.execute("""
-                    SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
-                    FROM [dbo].[BudgetsIntoMedia]
-                    WHERE [Brand] = 'MarketWire' AND [DealType] = 'Subscription'
-                      AND [BudgetDate] >= %s AND [BudgetDate] < %s
-                """, (date_from.isoformat(), date_to.isoformat()))
-                mw_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
-            if mw_budget:
-                budget_map["Team Marketwire"] = budget_map.get("Team Marketwire", 0.0) + mw_budget
+                mw_budget = _marketwire_budget(cur, date_from, date_to)
+                if mw_budget:
+                    budget_map["Team Marketwire"] = mw_budget
 
             all_teams = set(list(netto_map.keys()) + list(budget_map.keys()))
             rows = [{"team": t, "netto": netto_map.get(t, 0.0), "budget": round(budget_map.get(t, 0.0), 2)} for t in all_teams]
@@ -363,7 +378,11 @@ def db_sales_performance(today: date, date_col: str = "won_time",
         """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         deals_vundet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
 
-        # Deals omsætning — kun sælgere på de relevante teams (ekskl. Norge)
+        # Deals omsætning — kun sælgere på de relevante teams (ekskl. Norge).
+        # Widget'en viser GROSS revenue, dvs. kun solgt omsætning: negative deals
+        # (opsigelser og nedgraderinger, fx MarketWires minus-fornyelser) hører i
+        # cancellations-benet og trækkes ikke fra her. Uden filteret endte en
+        # MarketWire-sælger med negativ "omsætning" for måneden.
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name,
                    ISNULL(SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))),0) AS revenue
@@ -372,13 +391,23 @@ def db_sales_performance(today: date, date_col: str = "won_time",
               AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
               AND [won_time] >= %s AND [won_time] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
+              AND CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) > 0
               {owner_in_teams}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY revenue DESC
         """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         deals_omsaetning = [{"owner_name": r["owner_name"], "revenue": round(float(r["revenue"] or 0), 2)} for r in cur.fetchall()]
 
-        # Seneste deals vundet — kun subscription teams, ingen opsigelser
+        # Seneste deals vundet — kun subscription teams, ingen opsigelser.
+        # MarketWire kræver et ekstra filter: teamets pipelines (Fornyelse,
+        # Newbizz, Tilbud, Virksomhedsprøver, Opsigelser) rummer også NEGATIVE
+        # deals uden for Opsigelser — en fornyelse til lavere pris bogføres som
+        # et minusbeløb i Fornyelse. Kun positive deals er reelt vundet salg,
+        # så negative MarketWire-deals holdes ude af listen.
+        mw_positive_only = """
+            AND (COALESCE([team],'') <> 'Team Marketwire'
+                 OR CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2)) > 0)
+        """
         cur.execute(f"""
             SELECT TOP 20
                 COALESCE([owner_name],'Ukendt') AS owner_name,
@@ -393,6 +422,7 @@ def db_sales_performance(today: date, date_col: str = "won_time",
               AND [pipeline_name] NOT IN ('banner','job','Web Sale')
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
               AND [team] IN {teams_ph}
+              {mw_positive_only}
               {_ADM_EXCLUDE}
             ORDER BY [won_time] DESC
         """, tuple(CANCELLATION_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
@@ -701,9 +731,7 @@ def db_department_performance(today: date):
         """, tuple(CANCELLATION_PIPELINES) + (m_start.isoformat(), m_end.isoformat()))
         mw_revenue = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
-        cur.execute("SELECT ISNULL(SUM([BudgetAmount]),0) AS budget FROM [dbo].[BudgetsIntoMedia] WHERE [Brand]='marketwire' AND [BudgetDate] >= %s AND [BudgetDate] < %s",
-                    (m_start.isoformat(), m_end.isoformat()))
-        mw_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
+        mw_budget = _marketwire_budget(cur, m_start, m_end)
 
         conn.close()
         return {

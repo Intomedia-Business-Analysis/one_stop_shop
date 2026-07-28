@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/hub.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-<script src="/static/rotation-utils.js?v=2"></script>
+<script src="/static/rotation-utils.js?v=3"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; font-family: var(--font); background: var(--bg); color: var(--ink); }
@@ -211,6 +211,7 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font); backgroun
         <div class="chart-card">
           <div class="chart-title">Omsætning vs. budget — indeværende måned</div>
           <div class="legend-row">
+            <div class="legend-item"><div class="legend-dot" style="background:#4E9E6F"></div>Over budget</div>
             <div class="legend-item"><div class="legend-dot" style="background:#2B2A27"></div>Omsætning</div>
             <div class="legend-item"><div class="legend-dot" style="background:#C9C1B5"></div>Budget</div>
           </div>
@@ -355,8 +356,10 @@ function buildHBar(id, rows, labelKey, revenueKey, budgetKey) {
     data: {
       labels: rows.map(r => r[labelKey]),
       datasets: [
-        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:'#2B2A27', borderRadius:2 },
-        { label:'Budget',    data:rows.map(r=>r[budgetKey]||0),  backgroundColor:'#C9C1B5', borderRadius:2 },
+        // Omsætnings-søjlen lyser grønt når budgettet er nået — samme signal
+        // som Department Performance (budgetBarColors i rotation-utils.js).
+        { label:'Omsætning', data:rows.map(r=>r[revenueKey]||0), backgroundColor:budgetBarColors(rows, revenueKey, budgetKey), borderRadius:2 },
+        { label:'Budget',    data:rows.map(r=>r[budgetKey]||0),  backgroundColor:ROT_BUDGET, borderRadius:2 },
       ]
     },
     options: {

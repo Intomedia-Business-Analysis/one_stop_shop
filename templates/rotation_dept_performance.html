@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-<script src="/static/rotation-utils.js?v=2"></script>
+<script src="/static/rotation-utils.js?v=3"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root{
@@ -179,7 +179,9 @@ html, body { height:100%; overflow:hidden; font-family:var(--font); background:v
 <script>
 Chart.register(ChartDataLabels);
 const charts = {};
-const WIN='#4E9E6F', CREAM='#2B2A27', BUDGET='#C9C1B5';
+// WIN/CREAM/BUDGET kommer fra /static/rotation-utils.js (ROT_*), så alle
+// rotations-dashboards bruger samme farver og samme "over budget"-regel.
+const WIN=ROT_WIN, CREAM=ROT_ACTUAL, BUDGET=ROT_BUDGET;
 
 function fmt(v){ if(v==null) return '—'; return new Intl.NumberFormat('da-DK',{maximumFractionDigits:0}).format(v)+' kr.'; }
 function fmtAxis(v){ const a=Math.abs(v); if(a>=1000000) return (v/1000000).toLocaleString('da-DK',{maximumFractionDigits:1})+'mio.'; if(a>=1000) return (v/1000).toLocaleString('da-DK',{maximumFractionDigits:0})+'t.'; return v; }
@@ -189,7 +191,7 @@ function buildHBar(id, rows, labelKey, val1Key, val2Key){
   const ctx = document.getElementById(id).getContext('2d');
   if (charts[id]) charts[id].destroy();
   // actual bar lights up green when it meets/beats its budget — motivation
-  const actualColors = rows.map(r => (Number(r[val1Key]||0) >= Number(r[val2Key]||0) && Number(r[val2Key]||0) > 0) ? WIN : CREAM);
+  const actualColors = budgetBarColors(rows, val1Key, val2Key);
   charts[id] = new Chart(ctx, {
     type:'bar',
     data:{
