@@ -31,8 +31,10 @@ import pytest  # noqa: E402
 @pytest.fixture(scope="session")
 def app_module():
     import app as app_mod
-    # Usage-tracking forsøger at skrive til DB i baggrunden — slå den fra i tests
+    # Usage-tracking og besøgsregistrering forsøger at skrive til DB i
+    # baggrunden — slå dem fra i tests
     app_mod.record_pageview = lambda **kw: None
+    app_mod.personalization.record_visit = lambda *a, **kw: None
     return app_mod
 
 

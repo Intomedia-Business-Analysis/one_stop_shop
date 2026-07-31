@@ -145,6 +145,76 @@ def filter_categories(categories: list, user: dict) -> list:
     return result
 
 
+def visible_items(user: dict, categories: list | None = None) -> list[dict]:
+    """Alle nav-items brugeren må se, hver beriget med kategoriens titel.
+
+    `categories` kan gives med, hvis kalderen allerede har kaldt
+    filter_categories (så adgangsfiltreringen ikke laves to gange).
+    """
+    cats = categories if categories is not None else filter_categories(CATEGORIES, user)
+    return [{**item, "category": cat["title"]}
+            for cat in cats for item in cat["items"]]
+
+
+def visible_items_by_id(user: dict, categories: list | None = None) -> dict:
+    """{item_id: item} for de items brugeren må se — opslag til favoritter/seneste.
+
+    Bruges til at oversætte gemte item-id'er til rigtige menupunkter OG til at
+    filtrere dem: et id brugeren ikke længere har adgang til falder simpelthen ud.
+    """
+    return {item["id"]: item for item in visible_items(user, categories)}
+
+
+# ── Sti → nav-item ───────────────────────────────────────────────────────────
+# Bruges af "senest besøgt": middleware'en kender kun den besøgte sti, mens
+# favoritter/seneste arbejder på item-id'er. Undersider tælles som et besøg på
+# selve værktøjet (fx /tools/admin-nysalg/35/review → 'admin-nysalg'), så et
+# review-besøg også dukker op under seneste.
+
+def _split_url(url: str) -> tuple[str, str]:
+    """('/sti', 'query') for et item-url — query er '' når der ikke er nogen."""
+    path, _, query = (url or "").partition("?")
+    return path, query
+
+
+# {fuld sti inkl. query: item} — fanger varianter der KUN adskiller sig på query
+# (fx Sales Performance NO), som ellers ville kollidere på stien.
+_ITEMS_BY_FULL_URL: dict[str, dict] = {}
+# {sti uden query: item} — første item på stien vinder (hovedvarianten).
+_ITEMS_BY_PATH: dict[str, dict] = {}
+for _cat in CATEGORIES:
+    for _item in _cat["items"]:
+        _p, _q = _split_url(_item.get("url", ""))
+        if not _p:
+            continue
+        if _q:
+            _ITEMS_BY_FULL_URL.setdefault(f"{_p}?{_q}", _item)
+        _ITEMS_BY_PATH.setdefault(_p, _item)
+# Længste sti først, så en underside matcher det mest specifikke item
+# (/tools/rotation/sales-performance frem for /tools/rotation/).
+_ITEM_PATHS_BY_LENGTH = sorted(_ITEMS_BY_PATH, key=len, reverse=True)
+
+
+def resolve_item_id(path: str, query: str = "") -> str | None:
+    """Item-id'et en besøgt sti hører til — None hvis stien ikke er et nav-item.
+
+    Rækkefølge: eksakt sti+query, eksakt sti, længste sti-præfiks (undersider).
+    """
+    path = (path or "").rstrip("/") or "/"
+    for candidate in (f"{path}?{query}" if query else None,
+                      f"{path}/?{query}" if query else None):
+        if candidate and candidate in _ITEMS_BY_FULL_URL:
+            return _ITEMS_BY_FULL_URL[candidate]["id"]
+    for candidate in (path, path + "/"):
+        if candidate in _ITEMS_BY_PATH:
+            return _ITEMS_BY_PATH[candidate]["id"]
+    for item_path in _ITEM_PATHS_BY_LENGTH:
+        base = item_path.rstrip("/")
+        if base and path.startswith(base) and path[len(base):len(base) + 1] == "/":
+            return _ITEMS_BY_PATH[item_path]["id"]
+    return None
+
+
 def register_nav_globals(templates) -> None:
     """Registrer CATEGORIES, filter_categories og ROLE_LABELS på en
     Jinja2Templates-instans, så _sidebar.html kan rendere uden at hver

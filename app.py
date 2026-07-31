@@ -21,9 +21,16 @@ from auth import (
     has_access,
     resolve_resource_access,
     init_db,
+    session_user_id,
 )
 from log_setup import audit_log, setup_logging, _client_ip
-from nav_utils import CATEGORIES, filter_categories, register_nav_globals
+from nav_utils import (
+    CATEGORIES,
+    filter_categories,
+    register_nav_globals,
+    visible_items_by_id,
+)
+import personalization
 from moduler.modul_budget.router import router as budget_router
 from moduler.modul_admin.router import router as admin_router
 from moduler.modul_forcast.router import router as forecast_router
@@ -60,7 +67,9 @@ app = FastAPI(
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
 init_admin_nysalg_db()  # Opret admin-nysalg-tabeller ved opstart (idempotent)
+personalization.init_personalization_db()  # Favoritter + senest besøgt (idempotent)
 start_usage_worker()  # Baggrundstråd der flusher usage-loggen til DB
+personalization.start_visit_worker()  # Baggrundstråd der flusher besøg til DB
 # Session-nøglen SKAL være sat i .env — med en kendt fallback-nøgle ville
 # enhver kunne forfalske session-cookies og logge ind som vilkårlig bruger.
 # I DEV_MODE bruges en tilfældig nøgle pr. opstart (sessioner ryger ved genstart).
@@ -128,6 +137,10 @@ async def usage_tracking_middleware(request: Request, call_next):
                     status_code=response.status_code,
                     duration_ms=int((time.perf_counter() - start) * 1000),
                 )
+                # "Senest besøgt" i sidebaren — kun stier der er et nav-item
+                # (dashboards/tools), ikke forsiden og kategorisiderne.
+                personalization.record_visit(
+                    session_user_id(request), path, request.url.query)
     except Exception:
         pass  # tracking må aldrig vælte et request
     return response
@@ -396,6 +409,40 @@ async def budget_dashboard(request: Request, user=Depends(get_current_user)):
     })
 
 
+# ---------------------------------------------------------------------------
+# Favoritter og senest besøgt
+# ---------------------------------------------------------------------------
+# Begge lister gemmes pr. bruger i DB (personalization.py) og oversættes til
+# rigtige menupunkter via nav-registret. Et gemt id, som brugeren ikke længere
+# har adgang til (eller som er fjernet fra registret), falder stille ud.
+
+def _resolve_items(item_ids: list, by_id: dict) -> list:
+    """Item-id'er → nav-items i samme rækkefølge; ukendte/utilgængelige udelades.
+
+    Kun de felter visningen bruger tages med — rolle-/team-krav fra registret
+    hører ikke i sidens HTML (listerne serialiseres til JSON i søgepaletten).
+    """
+    return [{"id": it["id"], "title": it["title"], "type": it["type"],
+             "category": it.get("category", ""), "url": it["url"]}
+            for it in (by_id[i] for i in item_ids if i in by_id)]
+
+
+def _personal_lists(user: dict, categories: list | None = None,
+                    recent_limit: int = 10) -> tuple[list, list, set]:
+    """(favorit-items, senest besøgte items, favorit-id'er) for en bruger.
+
+    Favoritter filtreres bevidst IKKE ud af "senest besøgt": listen skal vise
+    hvad man faktisk har været inde på, og et tomt felt ville ellers ligne at
+    besøgsregistreringen ikke virker.
+    """
+    by_id = visible_items_by_id(user, categories)
+    fav_ids = personalization.get_favorite_ids(user["id"])
+    favorites = _resolve_items(fav_ids, by_id)
+    recent_ids = personalization.get_recent_item_ids(user["id"], recent_limit)
+    recent = _resolve_items(recent_ids, by_id)
+    return favorites, recent, set(fav_ids)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def hub(request: Request, user=Depends(get_current_user)):
     # Skærm-brugere har kun rotationen — send dem direkte derhen.
@@ -414,6 +461,7 @@ async def hub(request: Request, user=Depends(get_current_user)):
                 "category": cat["title"],
                 "url":      item["url"],
             })
+    favorites, recent, fav_ids = _personal_lists(user, categories, recent_limit=5)
     return templates.TemplateResponse(request, "hub.html", {
         "user":         user,
         "categories":   categories,
@@ -421,7 +469,67 @@ async def hub(request: Request, user=Depends(get_current_user)):
         "total_tools":  total_tools,
         "cat_count":    len(categories),
         "search_index": json.dumps(search_index),
+        "favorites":    favorites,
+        "recent_items": recent,
+        "fav_ids":      fav_ids,
     })
+
+
+@app.get("/favorites", response_class=HTMLResponse)
+async def favorites_page(request: Request, user=Depends(get_current_user)):
+    favorites, _, fav_ids = _personal_lists(user)
+    return templates.TemplateResponse(request, "personal_list.html", {
+        "user":       user,
+        "active_url": "/favorites",
+        "title":      "Mine favoritter",
+        "subtitle":   "Dine stjernemarkerede dashboards og tools — klik på stjernen "
+                      "for at fjerne en favorit.",
+        "items":      favorites,
+        "fav_ids":    fav_ids,
+        "empty_text": "Du har ingen favoritter endnu. Klik på stjernen ud for et "
+                      "dashboard eller tool for at samle dine genveje her.",
+    })
+
+
+@app.get("/recent", response_class=HTMLResponse)
+async def recent_page(request: Request, user=Depends(get_current_user)):
+    _, recent, fav_ids = _personal_lists(user, recent_limit=30)
+    return templates.TemplateResponse(request, "personal_list.html", {
+        "user":       user,
+        "active_url": "/recent",
+        "title":      "Seneste",
+        "subtitle":   "De dashboards og tools du senest har været inde på — nyeste først.",
+        "items":      recent,
+        "fav_ids":    fav_ids,
+        "empty_text": "Ingen besøg registreret endnu. Åbn et dashboard, så lander "
+                      "det her.",
+    })
+
+
+@app.post("/api/favorites/{item_id}/toggle")
+async def toggle_favorite_api(item_id: str, request: Request,
+                              user=Depends(get_current_user)):
+    """Slå favorit til/fra for ét menupunkt. Returnerer den nye tilstand.
+
+    Kun items brugeren faktisk må se kan markeres — ellers kunne et vilkårligt
+    id skrives i tabellen.
+    """
+    if item_id not in visible_items_by_id(user):
+        raise HTTPException(status_code=404, detail="Ukendt item eller ingen adgang")
+    try:
+        is_favorite = personalization.toggle_favorite(user["id"], item_id)
+    except Exception:
+        logger.exception("Kunne ikke skifte favorit (user_id=%s, item=%s)",
+                         user["id"], item_id)
+        raise HTTPException(status_code=500, detail="Favoritten kunne ikke gemmes")
+    return JSONResponse({"ok": True, "favorite": is_favorite})
+
+
+@app.get("/api/favorites")
+async def favorites_api(user=Depends(get_current_user)):
+    """Brugerens favoritter — bruges af søgepaletten og andre sider."""
+    by_id = visible_items_by_id(user)
+    return {"items": _resolve_items(personalization.get_favorite_ids(user["id"]), by_id)}
 
 
 @app.get("/category/{cat_id}", response_class=HTMLResponse)
@@ -441,6 +549,7 @@ async def category_detail(cat_id: str, request: Request, user=Depends(get_curren
         "subs":       subs,
         "total_db":   sum(1 for i in cat["items"] if i["type"] == "dashboard"),
         "total_t":    sum(1 for i in cat["items"] if i["type"] == "tool"),
+        "fav_ids":    set(personalization.get_favorite_ids(user["id"])),
     })
 
 
