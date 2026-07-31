@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retention — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention/overview' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1100px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Retention</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Retention</h1>
+            <p>Antal aktive kunder pr. måned</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Aktive kunder pr. måned</h2>
+            <p id="retention-chart-sub">Indlæser…</p>
+          </div>
+          <div class="panel-body">
+            <canvas id="retentionChart" height="90"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  const res = await fetch('/retention/monthly_active_counts');
+  const rows = await res.json();
+  const labels = rows.map(r => r.FirstDayOfMonth);
+  const counts = rows.map(r => r.active_count);
+
+  const sub = document.getElementById('retention-chart-sub');
+  sub.textContent = rows.length
+    ? `${rows.length} måneder — ${labels[0]} til ${labels[labels.length - 1]}`
+    : 'Ingen data';
+
+  const green = getComputedStyle(document.documentElement).getPropertyValue('--green').trim() || '#1F8A5B';
+
+  new Chart(document.getElementById('retentionChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Aktive kunder',
+        data: counts,
+        borderColor: green,
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.15,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            callback: function (val, index) {
+              // Vis kun label ved januar — giver rene årsskift i stedet for
+              // Chart.js' autoSkip, som ellers glider ujævnt (11/13 mdr. ad gangen).
+              const label = labels[index];
+              return label && label.slice(5, 7) === '01' ? label.slice(0, 4) : undefined;
+            },
+          },
+        },
+        y: { beginAtZero: true },
+      },
+    },
+  });
+})();
+</script>
+</body>
+</html>
