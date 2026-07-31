@@ -1,0 +1,41 @@
+{# Delt rækkevisning for dashboards/tools med favorit-stjerne.
+
+   Bruges af forsiden, /favorites, /recent og kategorisiderne, så en genvej ser
+   ens ud og kan stjernemarkeres alle steder den optræder.
+
+   items    – liste af nav-items (id, title, type, url, evt. category)
+   fav_ids  – sæt af item-id'er brugeren har som favorit
+   show_category – vis kategorinavnet som undertekst (til på tværs af kategorier)
+
+   Stjernen kræver static/hub-favorites.js på siden.
+#}
+{% macro item_rows(items, fav_ids, show_category=True) %}
+<div class="rec-list">
+  {% for it in items %}
+  {% set is_fav = it.id in fav_ids %}
+  <div class="ri">
+    <a href="{{ it.url }}" class="ri-link">
+      <div class="ri-icon {{ 'ri-icon--green' if it.type == 'dashboard' else 'ri-icon--amber' }}">
+        {% if it.type == 'dashboard' %}
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        {% else %}
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        {% endif %}
+      </div>
+      <div>
+        <div class="ri-name">{{ it.title }}</div>
+        {% if show_category and it.category %}<div class="ri-meta">{{ it.category }}</div>{% endif %}
+      </div>
+      <span class="ri-badge tag {{ 'tag-d' if it.type == 'dashboard' else 'tag-t' }}">
+        {{ 'Dashboard' if it.type == 'dashboard' else 'Tool' }}
+      </span>
+    </a>
+    <button type="button" class="ri-star{{ ' on' if is_fav }}" data-item-id="{{ it.id }}"
+            aria-pressed="{{ 'true' if is_fav else 'false' }}"
+            title="{{ 'Fjern fra favoritter' if is_fav else 'Tilføj til favoritter' }}">
+      {% include "icons/star.svg" %}
+    </button>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}

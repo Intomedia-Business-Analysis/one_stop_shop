@@ -425,6 +425,15 @@ a { text-decoration: none; color: inherit; }
 /* ── RECENT LIST ───────────────────────────────────────────────── */
 .rec-list { display: flex; flex-direction: column; gap: 2px; }
 
+/* Kort omkring en genvejsliste (favoritter / senest besøgt på forsiden) */
+.rec-wrap {
+  background:    var(--surface);
+  border:        1px solid var(--border);
+  border-radius: var(--r);
+  padding:       8px;
+  margin-bottom: 28px;
+}
+
 .ri {
   display:       flex;
   align-items:   center;
@@ -455,6 +464,44 @@ a { text-decoration: none; color: inherit; }
 .ri-name  { font-size: 12px; font-weight: 600; color: var(--ink); }
 .ri-meta  { font-size: 10px; color: var(--ink-4); margin-top: 1px; }
 .ri-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: var(--r-xs); }
+
+/* Række med favorit-stjerne: selve linket fylder rækken, stjernen ligger ved
+   siden af (en <button> må ikke ligge inde i et <a>). */
+.ri-link {
+  display:     flex;
+  align-items: center;
+  gap:         12px;
+  flex:        1;
+  min-width:   0;
+  text-decoration: none;
+  color:       inherit;
+}
+.ri-star {
+  flex-shrink:   0;
+  display:       flex;
+  align-items:   center;
+  justify-content: center;
+  width:         28px;
+  height:        28px;
+  padding:       0;
+  border:        none;
+  /* Uden appearance:none holder nogle browsere fast i systemets knaptekstfarve,
+     så den markerede stjerne bliver sort i stedet for accentfarven. */
+  -webkit-appearance: none;
+  appearance:    none;
+  border-radius: var(--r-xs);
+  background:    transparent;
+  cursor:        pointer;
+  color:         var(--ink-4);
+  opacity:       .45;
+  transition:    opacity .12s, color .12s, background .12s;
+}
+.ri-star svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.ri:hover .ri-star { opacity: 1; }
+.ri-star:hover { background: var(--green-light); color: var(--green); }
+.ri-star.on { opacity: 1; color: var(--amber); }
+.ri-star.on svg { fill: currentColor; }
+.ri-star:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
 
 /* ── COMMAND PALETTE ───────────────────────────────────────────── */
 .cp-backdrop {

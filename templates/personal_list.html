@@ -1,0 +1,66 @@
+{# Fælles side for "Mine favoritter" (/favorites) og "Seneste" (/recent).
+   Samme visning, forskellig kilde — kalderen sætter title/subtitle/items. #}
+{% from "_item_rows.html" import item_rows %}
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} – Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 220px; overflow-x: visible; }
+    .main { margin-left: 220px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    @media (max-width: 768px) {
+      .main { margin-left: 0; }
+      .sidebar { width: 264px; }
+      .content-area { padding: 16px; }
+    }
+    .topbar { position: sticky; top: 0; z-index: 10; }
+    .content-area { flex: 1; overflow-y: auto; padding: 28px 32px; }
+    .sbi { white-space: nowrap; overflow: visible; }
+    .pl-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px; }
+  </style>
+</head>
+<body data-favorites-page="{{ '1' if active_url == '/favorites' else '0' }}">
+<div class="shell">
+
+  {# active_url kommer fra render-konteksten ('/favorites' eller '/recent') #}
+  {% include "_sidebar.html" %}
+
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-right" style="margin-left:auto">
+        <a href="/" class="tb-btn">← Tilbage til hubben</a>
+      </div>
+    </header>
+
+    <div class="content-area">
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a>
+        <span class="bc-sep">/</span>
+        <span>{{ title }}</span>
+      </div>
+
+      <h1 class="page-title">{{ title }}</h1>
+      <p class="page-sub">{{ subtitle }}</p>
+
+      {% if items %}
+        <div class="pl-card" style="margin-top:18px">
+          {{ item_rows(items, fav_ids) }}
+        </div>
+      {% else %}
+        <div style="padding:40px;text-align:center;color:var(--ink-4);font-size:13px">
+          {{ empty_text }}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script src="/static/hub-favorites.js"></script>
+</body>
+</html>

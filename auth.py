@@ -581,6 +581,19 @@ _DEV_USER = {
 }
 
 
+def session_user_id(request: Request):
+    """Bruger-id fra sessionen — None hvis udlogget.
+
+    Bruges af middleware, der ikke kan bruge Depends(get_current_user). I
+    DEV_MODE returneres dev-brugerens id, så personaliseringen (favoritter,
+    senest besøgt) også virker under udvikling. Læser scope'et direkte, så den
+    ikke kaster hvis SessionMiddleware ikke har kørt.
+    """
+    if os.getenv("DEV_MODE") == "1":
+        return _DEV_USER["id"]
+    return (request.scope.get("session") or {}).get("user_id")
+
+
 def get_current_user(request: Request):
     """FastAPI Depends — kaster RequiresLoginException hvis ikke logget ind."""
     if os.getenv("DEV_MODE") == "1":

@@ -74,6 +74,8 @@ def test_csrf_egen_origin_tillades(client):
     "/tools/budget/",
     "/tools/budget/medie/data",
     "/admin/users",
+    "/favorites",
+    "/recent",
     "/tools/rotation/sales-performance-data",
 ])
 def test_kraever_login_redirect(client, path):
@@ -192,6 +194,52 @@ def test_screen_bruger_med_override_ser_rotationen(client, make_user, auth_overr
     auth_override(make_user(role="screen", role_access={"rotation": "read"}))
     r = client.get("/tools/rotation/")
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Favoritter og senest besøgt
+# ---------------------------------------------------------------------------
+# Testene kører uden DB: favorit-/besøgsopslagene fejler stille og giver tomme
+# lister, så siderne skal stadig svare 200 med deres tomme-tilstand.
+
+@pytest.mark.parametrize("path,heading", [
+    ("/favorites", "Mine favoritter"),
+    ("/recent",    "Seneste"),
+])
+def test_favorit_og_seneste_sider_virker(client, make_user, auth_override, path, heading):
+    auth_override(make_user(role="salesperson"))
+    r = client.get(path)
+    assert r.status_code == 200
+    assert heading in r.text
+
+
+def test_favorit_toggle_afviser_ukendt_item(client, make_user, auth_override):
+    auth_override(make_user(role="admin"))
+    r = client.post("/api/favorites/findes-ikke/toggle")
+    assert r.status_code == 404
+
+
+def test_favorit_toggle_afviser_item_uden_adgang(client, make_user, auth_override):
+    """En sælger må ikke kunne favorisere et værktøj hun ikke har adgang til.
+
+    Ellers kunne et vilkårligt id skrives i favorittabellen — og dukke op i
+    listen, hvis adgangen senere blev udvidet.
+    """
+    auth_override(make_user(role="salesperson"))
+    # admin-nysalg kræver 'management'
+    r = client.post("/api/favorites/admin-nysalg/toggle")
+    assert r.status_code == 404
+
+
+def test_favorit_api_viser_kun_synlige_items(client, make_user, auth_override,
+                                             monkeypatch, app_module):
+    """Et gemt favorit-id brugeren ikke har adgang til falder ud af listen."""
+    auth_override(make_user(role="salesperson"))
+    monkeypatch.setattr(app_module.personalization, "get_favorite_ids",
+                        lambda user_id: ["admin-nysalg", "forecast-tool"])
+    r = client.get("/api/favorites")
+    assert r.status_code == 200
+    assert [i["id"] for i in r.json()["items"]] == ["forecast-tool"]
 
 
 # ---------------------------------------------------------------------------
