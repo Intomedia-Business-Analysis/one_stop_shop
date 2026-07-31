@@ -834,8 +834,9 @@ def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
     Budget: spec'ens egen 'budget_where' hvis sat, ellers Job/Banner/Norge fra
     AD_BUDGET_WHERE, ellers det normale brand-budget. Returnerer [] ved DB-fejl.
 
-    specs/dk_split: Monitor-rapporten genbruger motoren med sine egne specs
-    (MONITOR_PIPEDRIVE_ROWS) og uden DK-annonce-opdelingen.
+    specs/dk_split: kaldere kan give egne specs og slå DK-annonce-opdelingen fra.
+    (Monitor-rapportens annoncerækker bygges for sig — se
+    monitor_advertising_brand_rows.)
     parallel=True kører hver spec (+ DK-opdelingen) i egen tråd/forbindelse —
     bruges af de direkte kald (review/rapport). brand_rows_by_month lader den
     stå sekventiel, da den allerede paralleliserer på tværs af måneder.
@@ -1078,6 +1079,141 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
             "n_ambiguous": 0, "currency": "DKK", "subrows": subrows,
         })
     return out
+
+
+# ── Monitor-rapportens annoncerækker (Job + Banner) ──────────────────────────
+# Monitor-annoncesalget ligger IKKE i monitor-kontoen — den har kun abonnements-
+# pipelines (Customer/Newbizz/Company Trial/…). Banner- og jobdeals for monitor-
+# sites ligger i den fælles danske annoncekonto 'jppol_advertising' med
+# pipeline_name 'Banner'/'Job' og genkendes på [sites]. Business Media-rapportens
+# DK-annoncerækker summerer kun Watch DK + FINANS DK-sites, så Monitor-andelen
+# hører netop her (de to rapporter tilsammen = hele DK-annoncesalget).
+#
+# Beløb i DKK. Annoncesalg har ingen cancellation-pipelines → opsigelser = 0.
+# Samme administrative-eksklusion som banner-/job-dashboardet og Business Media-
+# rapportens DK-rækker (_ADM_EXCLUDE), så tallene er sammenlignelige. Budgettet
+# ligger samlet på 'All Monitor Sites', så kun hovedrækken har budget —
+# underrækkerne pr. site vises med '—'.
+
+def _monitor_ad_revenue(cur, pipeline: str, date_from: str | None,
+                        date_to: str | None, by_month: bool = False) -> dict:
+    """{(ym, site): omsætning} for én annonce-pipeline på Monitor-sites.
+
+    ym er '' når by_month er False (hele perioden i én bucket).
+    """
+    from moduler.modul_rotation.queries import MONITOR_SITES, _ADM_EXCLUDE
+    ph = "(" + ",".join(["%s"] * len(MONITOR_SITES)) + ")"
+    dcl, dpar = _date_between("[service_activation_date]", date_from, date_to,
+                              cast_to_date=True)
+    where = ["[status] = 'won'", "[account] = 'jppol_advertising'",
+             "LOWER([pipeline_name]) = %s", f"[sites] IN {ph}"] + dcl
+    val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
+           "ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
+    # GROUP BY på en konstant er ikke lovligt i SQL Server — uden måneds-opdeling
+    # grupperes der kun på site, og ym-feltet sættes til ''.
+    select_ym = ym_expr if by_month else "''"
+    group_by = f"{ym_expr}, [sites]" if by_month else "[sites]"
+    cur.execute(
+        f"SELECT {select_ym} AS ym, [sites] AS site, ISNULL(SUM({val}),0) AS rev "
+        f"FROM [dbo].[PipedriveDeals] "
+        f"WHERE {' AND '.join(where)} {_ADM_EXCLUDE} GROUP BY {group_by}",
+        (pipeline,) + tuple(MONITOR_SITES) + tuple(dpar))
+    return {((r["ym"] or "")[:7], (r["site"] or "").strip()):
+            round(float(r["rev"] or 0), 2)
+            for r in cur.fetchall() or []}
+
+
+def _monitor_ad_rows(cur, date_from: str | None, date_to: str | None,
+                     comments: dict, yms: list[str]) -> dict[str, list[dict]]:
+    """{ym: [Job-række, Banner-række]} for Monitor-annoncesalget.
+
+    yms == [''] betyder hele perioden i én bucket (uden måneds-opdeling); ellers
+    hentes alle måneder i ét sæt GROUP BY-queries, som resten af Fase B.
+    """
+    from moduler.modul_admin_nysalg.brands import MONITOR_AD_BUDGET_WHERE
+    comments = comments or {}
+    by_month = yms != [""]
+
+    def _sub(site: str, sale: float) -> dict:
+        # Budget kun på hovedrækken ('All Monitor Sites') → None pr. site.
+        return {"brand": site, "brutto": sale, "adm_nysalg": 0.0,
+                "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": sale,
+                "budget": None, "comment": "", "n_ambiguous": 0,
+                "currency": "DKK"}
+
+    out: dict[str, list[dict]] = {ym: [] for ym in yms}
+    for pipeline, label in (("job", "Job"), ("banner", "Banner")):
+        rev = _monitor_ad_revenue(cur, pipeline, date_from, date_to, by_month=by_month)
+        frag = MONITOR_AD_BUDGET_WHERE[label]
+        if by_month:
+            bud_by_ym = _budget_by_month_for_where(cur, frag, date_from, date_to)
+            total_bud = None
+        else:
+            bud_by_ym = None
+            total_bud = round(_budget_for_where(cur, frag, date_from, date_to), 2)
+        for ym in yms:
+            # Underrækker pr. site, største først. Sites uden salg i perioden
+            # udelades — de har intet site-budget at holdes op mod.
+            sites = sorted(((site, v) for (y, site), v in rev.items()
+                            if y == ym and v),
+                           key=lambda kv: (-kv[1], kv[0]))
+            total = round(sum(v for _, v in sites), 2)
+            out[ym].append({
+                "brand": label, "brutto": total, "adm_nysalg": 0.0,
+                "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": total,
+                "budget": (round(bud_by_ym.get(ym, 0.0), 2) if by_month
+                           else total_bud),
+                "comment": comments.get(label, "") or "", "n_ambiguous": 0,
+                "currency": "DKK",
+                "subrows": [_sub(site, v) for site, v in sites],
+            })
+    return out
+
+
+def monitor_advertising_brand_rows(date_from: str | None, date_to: str | None,
+                                   comments: dict | None = None) -> list[dict]:
+    """Annoncerækkerne (Job + Banner) til Monitor-rapporten. [] ved DB-fejl.
+
+    Isoleret fejlhåndtering som DK-opdelingen: en fejl her må ikke vælte
+    abonnements-rækkerne i rapporten.
+    """
+    conn = None
+    try:
+        conn = get_conn()
+        return _monitor_ad_rows(conn.cursor(as_dict=True), date_from, date_to,
+                                comments or {}, [""])[""]
+    except Exception:
+        logger.exception("Monitor annonce-rækker (Job/Banner) fejlede")
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def monitor_advertising_by_month(months: list[str], comments: dict | None = None
+                                 ) -> dict[str, list[dict]]:
+    """{'YYYY-MM': annoncerækker} — by-month-varianten af
+    monitor_advertising_brand_rows (alle måneder i ét sæt GROUP BY-queries).
+
+    Returnerer {} ved DB-fejl — kalderen behandler manglende måneder som ingen
+    ekstra rækker."""
+    months = [ym for ym in months if ym]
+    if not months:
+        return {}
+    q_from = _month_bounds(months[0])[0]
+    q_to = _month_bounds(months[-1])[1]
+    conn = None
+    try:
+        conn = get_conn()
+        return _monitor_ad_rows(conn.cursor(as_dict=True), q_from, q_to,
+                                comments or {}, months)
+    except Exception:
+        logger.exception("Monitor annonce-rækker pr. måned (Job/Banner) fejlede")
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def pipedrive_brand_rows_by_month(months: list[str], comments: dict | None = None,
@@ -1677,7 +1813,6 @@ def brand_rows_by_month(matches: list[dict], date_from: str | None, date_to: str
     måneds-opdelingen er ren beregning uafhængig af periodelængden. Tidligere
     kostede hver måned ~25 PipeDrive-/budget-queries.
     """
-    from moduler.modul_admin_nysalg.brands import MONITOR_PIPEDRIVE_ROWS
     comments = comments or {}
     months = months_in_range(date_from, date_to)
     if not months:
@@ -1696,8 +1831,7 @@ def brand_rows_by_month(matches: list[dict], date_from: str | None, date_to: str
 
     if scope == "monitor":
         norm_budgets_all = monitor_site_budgets_by_month(b_from, b_to)
-        pd_by_month = pipedrive_brand_rows_by_month(
-            months, comments, specs=MONITOR_PIPEDRIVE_ROWS, dk_split=False)
+        pd_by_month = monitor_advertising_by_month(months, comments)
 
         def _one_month(ym: str) -> list[dict]:
             return monitor_brand_rows(matches_by_ym.get(ym, []),
