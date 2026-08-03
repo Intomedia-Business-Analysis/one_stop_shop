@@ -13,6 +13,11 @@ def db_monthly_active_counts(owner_name: str | None = None,
     if owner_name:
         clause += ' AND o.owner_name = %s'
         params += (owner_name,)
+    # Kendt begrænsning (verificeret 2026-08-03): Watch DE's 9 kunde×site-
+    # kombinationer ejes alle af Christian Linde, som ikke findes i HubUsers.
+    # dbo.retention_owner mapper dem til 'Team Watch DE', men det team findes
+    # ikke i Teams — så ingen afdelingsleder kan få dem med i et team-filter.
+    # De tælles derfor kun i den ufiltrerede (firmabrede) visning.
     if teams:
         ph = ','.join(['%s'] * len(teams))
         clause += f' AND o.team IN ({ph})'

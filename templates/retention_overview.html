@@ -66,35 +66,132 @@
 </div>
 <script>
 (async function () {
-  const res = await fetch('/retention/monthly_active_counts');
-  const rows = await res.json();
-  const labels = rows.map(r => r.FirstDayOfMonth);
-  const counts = rows.map(r => r.active_count);
+  const sub    = document.getElementById('retention-chart-sub');
+  const canvas = document.getElementById('retentionChart');
 
-  const sub = document.getElementById('retention-chart-sub');
-  sub.textContent = rows.length
-    ? `${rows.length} måneder — ${labels[0]} til ${labels[labels.length - 1]}`
-    : 'Ingen data';
+  const nf  = new Intl.NumberFormat('da-DK');
+  const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-  const green = getComputedStyle(document.documentElement).getPropertyValue('--green').trim() || '#1F8A5B';
+  const cssVar = (name, fallback) =>
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 
-  new Chart(document.getElementById('retentionChart'), {
+  // #RRGGBB → rgba(), så de to arealer kan lægges halvgennemsigtigt oven på hinanden.
+  const rgba = (hex, alpha) => {
+    const h = hex.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  };
+
+  const fail = (msg) => { sub.textContent = msg; canvas.remove(); };
+
+  // Rolle-filtreringen i router.py svarer 403 med en forklaring i {"detail": ...}.
+  // Uden res.ok-tjekket ville res.json() give et objekt, og rows.map kaste en
+  // TypeError — resultatet var en blank graf uden antydning af årsagen.
+  let rows;
+  try {
+    const res = await fetch('/retention/monthly_active_counts');
+    if (!res.ok) {
+      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = body.detail;
+      } catch (e) { /* ikke-JSON fejlsvar — behold standardteksten */ }
+      return fail(detail);
+    }
+    rows = await res.json();
+  } catch (e) {
+    return fail('Kunne ikke hente data — netværksfejl.');
+  }
+
+  if (!Array.isArray(rows) || !rows.length) return fail('Ingen data');
+
+  const labels       = rows.map(r => r.FirstDayOfMonth);
+  const attributed   = rows.map(r => r.attributed_count);
+  const unattributed = rows.map(r => r.active_count - r.attributed_count);
+
+  // Split'et for seneste måned i panel-headeren — ellers forsvinder de ~16%
+  // ikke-tilskrevne kunder tavst, og summen af sælger-visninger kan aldrig
+  // stemme med firmatotalen.
+  const last   = rows[rows.length - 1];
+  const lastUn = last.active_count - last.attributed_count;
+  const pct    = last.active_count ? (lastUn / last.active_count) * 100 : 0;
+  sub.textContent =
+    `${rows.length} måneder (${labels[0]} – ${labels[labels.length - 1]}) · seneste: `
+    + `${nf.format(last.active_count)} aktive, heraf ${nf.format(lastUn)} ikke tilskrevet `
+    + `(${nf1.format(pct)} %)`;
+
+  const brand = cssVar('--green', '#1C1C1A');
+  // --warn frem for --taupe: paletten er monokrom, og de ikke-tilskrevne kunder
+  // er netop en "vær opmærksom"-post, ikke en neutral baggrundsserie.
+  const warn  = cssVar('--warn', '#8A6D1F');
+
+  new Chart(canvas, {
     type: 'line',
     data: {
       labels: labels,
-      datasets: [{
-        label: 'Aktive kunder',
-        data: counts,
-        borderColor: green,
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.15,
-      }],
+      // Stablet areal: nederste lag er de tilskrevne, øverste de ikke-tilskrevne,
+      // så stakkens overkant er totalen (= den linje grafen viste før).
+      datasets: [
+        {
+          label: 'Tilskrevet en sælger',
+          data: attributed,
+          borderColor: brand,
+          backgroundColor: rgba(brand, 0.12),
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.15,
+          fill: true,
+        },
+        {
+          label: '(Ikke tilskrevet)',
+          data: unattributed,
+          borderColor: warn,
+          backgroundColor: rgba(warn, 0.35),
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.15,
+          fill: true,
+        },
+      ],
     },
     options: {
       responsive: true,
-      plugins: { legend: { display: false } },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            font: { size: 11 },
+            // Arealernes fyld er for gennemsigtigt til at kunne ses i en 10px
+            // swatch (0.12 alpha bliver næsten hvid) — brug linjefarven solidt
+            // i legenden i stedet. datasetIndex + hidden bevarer klik-til-skjul.
+            generateLabels: (chart) => chart.data.datasets.map((ds, i) => ({
+              text: ds.label,
+              fillStyle: ds.borderColor,
+              strokeStyle: ds.borderColor,
+              lineWidth: 1,
+              hidden: !chart.isDatasetVisible(i),
+              datasetIndex: i,
+            })),
+          },
+        },
+        tooltip: {
+          callbacks: {
+            // Samme problem som i legenden — tooltip'ens farvefirkanter skal
+            // vise linjefarven, ikke det gennemsigtige arealfyld.
+            labelColor: (ctx) => ({
+              borderColor: ctx.dataset.borderColor,
+              backgroundColor: ctx.dataset.borderColor,
+              borderWidth: 0,
+            }),
+            // Chart.js viser kun hvert lags egen værdi i en stak, så totalen
+            // tilføjes eksplicit — det er den brugeren leder efter.
+            footer: (items) => 'I alt: ' + nf.format(items.reduce((s, i) => s + i.parsed.y, 0)),
+          },
+        },
+      },
       scales: {
         x: {
           ticks: {
@@ -108,7 +205,7 @@
             },
           },
         },
-        y: { beginAtZero: true },
+        y: { beginAtZero: true, stacked: true },
       },
     },
   });
