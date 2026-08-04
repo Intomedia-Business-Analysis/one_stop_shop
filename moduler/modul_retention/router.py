@@ -6,6 +6,7 @@ from auth import allowed_data_teams, get_current_user, has_access
 from nav_utils import register_nav_globals
 from moduler.modul_saelger_portfolio.queries import get_led_teams
 from .queries import db_monthly_active_counts
+from .risk import customers_at_risk
 
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)
@@ -58,6 +59,20 @@ def get_monthly_active_counts(user=Depends(get_current_user)):
     return db_monthly_active_counts(owner_name=owner_name, teams=teams)
 
 
+@router.get("/retention/risk")
+def get_customers_at_risk(user=Depends(get_current_user)):
+    """Risikolisten. Samme rolle-filtrering som trendlinjen.
+
+    NB: `_resolve_filters` returnerer `owner_name` fra `retention_owner`-verdenen
+    (`user["name"]`), mens risikolisten filtrerer på ACV's org-ejer. Det er samme
+    personnavn i begge kilder — HubUsers' `name` — så filteret virker; men de to
+    visninger kan medtage forskellige kunder for samme sælger, fordi kilderne er
+    uenige om ejerskab i 47% af rækkerne. Det skal fremgå af siden.
+    """
+    owner_name, teams = _resolve_filters(user)
+    return customers_at_risk(owner_name=owner_name, teams=teams)
+
+
 @router.get("/retention/overview", response_class=HTMLResponse)
 async def retention_overview(request: Request, user=Depends(get_current_user)):
     # Selve dataene hentes client-side og er beskyttet af _resolve_filters, men
@@ -66,3 +81,12 @@ async def retention_overview(request: Request, user=Depends(get_current_user)):
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang til retention")
     return templates.TemplateResponse(request, "retention_overview.html", {"user": user})
+
+
+@router.get("/retention/risk_overview", response_class=HTMLResponse)
+async def retention_risk_overview(request: Request, user=Depends(get_current_user)):
+    # Samme adgangsvagt som de øvrige retention-sider: dataene er beskyttet af
+    # _resolve_filters, men skallen skal heller ikke kunne åbnes af en screen-bruger.
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang til retention")
+    return templates.TemplateResponse(request, "retention_risk.html", {"user": user})

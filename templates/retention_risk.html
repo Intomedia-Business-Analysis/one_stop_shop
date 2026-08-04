@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Churn-risiko — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+
+    /* Zone-kort. Kroner er det store tal, antal kunder det lille — omvendt af
+       oplæggets søjlediagram, fordi en leder disponerer efter kroner. */
+    .zones { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:24px; }
+    .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
+             border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
+    .zcard.kritisk      { border-left-color:var(--danger); }
+    .zcard.opmærksomhed { border-left-color:var(--warn); }
+    .zcard.sund         { border-left-color:var(--win); }
+    .zcard.intet_signal { border-left-color:var(--ink-4); }
+    .zcard .zlabel { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+    .zcard .zarr   { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
+    .zcard .zmeta  { font-size:11px; color:var(--ink-3); line-height:1.5; }
+
+    .note { font-size:11px; border-radius:var(--r-sm); padding:10px 12px; margin-bottom:14px; line-height:1.55; }
+    .note.warn   { background:var(--warn-light);   color:var(--ink-2); border:1px solid var(--border-strong); }
+    .note.danger { background:var(--danger-light); color:var(--ink-2); border:1px solid var(--border-strong); }
+
+    .tbl-wrap { overflow-x:auto; }
+    table.risk { width:100%; border-collapse:collapse; font-size:12px; }
+    table.risk th, table.risk td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+    table.risk th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em;
+                    cursor:pointer; user-select:none; position:sticky; top:0; background:var(--surface); }
+    table.risk th:hover { color:var(--ink); }
+    table.risk th .arrow { color:var(--ink-4); font-size:9px; }
+    table.risk td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    table.risk tbody tr:hover { background:var(--bg); }
+
+    .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
+    .pill.kritisk      { background:var(--danger-light); color:var(--danger); }
+    .pill.opmærksomhed { background:var(--warn-light);   color:var(--warn); }
+    .pill.sund         { background:var(--win-light);    color:var(--win); }
+    .pill.intet_signal { background:var(--taupe-light);  color:var(--ink-2); }
+    .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
+           background:var(--taupe-light); color:var(--ink-2); margin-left:6px; }
+
+    .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .filters label { font-size:11px; color:var(--ink-2); display:flex; align-items:center; gap:5px; cursor:pointer; }
+    .filters input[type="search"] { font-family:var(--font); font-size:12px; padding:6px 10px;
+                                    border:1px solid var(--border-strong); border-radius:var(--r-sm); min-width:200px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention/risk_overview' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1400px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <a href="/retention/overview" class="bc-link">Retention</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Churn-risiko</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Churn-risiko</h1>
+            <p>Aktive kunder rangeret efter hvor længe siden de sidst var aktive</p>
+          </div>
+        </div>
+
+        <div id="notes"></div>
+        <div class="zones" id="zones"></div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Kunder i risiko</h2>
+              <p id="tbl-sub">Indlæser…</p>
+            </div>
+            <div class="filters">
+              <input type="search" id="q" placeholder="Søg kunde eller ejer…" autocomplete="off">
+              <label><input type="checkbox" id="show-all"> Vis også sunde og uden signal</label>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="tbl-wrap">
+              <table class="risk">
+                <thead><tr id="head"></tr></thead>
+                <tbody id="body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  const nf0  = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
+  const nf1  = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  const notes  = document.getElementById('notes');
+  const zonesEl= document.getElementById('zones');
+  const sub    = document.getElementById('tbl-sub');
+  const head   = document.getElementById('head');
+  const body   = document.getElementById('body');
+  const q      = document.getElementById('q');
+  const showAll= document.getElementById('show-all');
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // Kroner i millioner på kortene, hele kroner i tabellen. 208.000.000 er
+  // ulæseligt i en kolonne man skal skimme.
+  const mio = (v) => nf1.format((v || 0) / 1e6) + ' mio. kr.';
+
+  const fail = (msg) => {
+    sub.textContent = msg;
+    notes.innerHTML = '<div class="note danger">' + esc(msg) + '</div>';
+  };
+
+  // Som på overview-siden: 403 fra rolle-vagten kommer som {"detail": ...}, og
+  // uden res.ok-tjekket ville koden fejle på et objekt der ikke har .rows.
+  let data;
+  try {
+    const res = await fetch('/retention/risk');
+    if (!res.ok) {
+      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+      try { const b = await res.json(); if (b && b.detail) detail = b.detail; } catch (e) {}
+      return fail(detail);
+    }
+    data = await res.json();
+  } catch (e) {
+    return fail('Kunne ikke hente data — netværksfejl.');
+  }
+
+  const rows = data.rows || [];
+  const meta = data.meta || {};
+
+  // ── Noter. Rækkefølgen er efter hvor meget de kan føre en bruger på afveje.
+  const n = [];
+  if (meta.usage_error) {
+    n.push('<div class="note danger"><strong>Der er intet usage-signal indlæst.</strong> '
+      + 'Alle kunder står derfor som “intet signal” — det betyder IKKE at ingen er i risiko. '
+      + esc(meta.usage_error).replace(/\n/g, '<br>') + '</div>');
+  } else {
+    const age = meta.usage_file_age_days;
+    const ageTxt = age === 0 ? 'i dag' : (age === 1 ? 'i går' : age + ' dage gammelt');
+    const cls = (age != null && age > 7) ? 'danger' : 'warn';
+    n.push('<div class="note ' + cls + '">Usage-data fra <strong>' + esc(meta.usage_export_date)
+      + '</strong> (' + esc(ageTxt) + ', ' + esc(meta.usage_filename) + '). '
+      + (age != null && age > 7
+          ? 'Et inaktivitets-signal er selv værdiløst når det er gammelt — kør eksportet igen.'
+          : 'Signalet opdateres kun når eksportet køres igen.')
+      + '</div>');
+  }
+  if (meta.thresholds_validated === false) {
+    n.push('<div class="note warn"><strong>Tærsklerne er et gæt, ikke et måleresultat.</strong> '
+      + esc(meta.thresholds.attention_days) + ' og ' + esc(meta.thresholds.critical_days)
+      + ' dage stammer fra churn-oplægget. De skal måles mod de kunder der faktisk er holdt op, '
+      + 'før zonerne bruges til at prioritere en arbejdsdag.</div>');
+  }
+  const forbehold = [];
+  // "aldrig" ville være for stærkt: nogle få af dem HAR et signal, fordi deres
+  // Zuora-konto også dækker en anden site. Teksten siger derfor at FINANS DK
+  // ikke bidrager — ikke at kunden umuligt kan have et signal.
+  if (meta.utrackbare)        forbehold.push(nf0.format(meta.utrackbare) + ' kunder abonnerer kun på FINANS DK, som ikke bidrager med noget usage-signal (markeret <span class="tag">utrackbar</span>) — de fleste af dem står derfor uden signal');
+  if (meta.delvist_trackbare) forbehold.push(nf0.format(meta.delvist_trackbare) + ' har FINANS DK blandt flere sites, så signalet dækker kun en del (<span class="tag">delvis</span>)');
+  if (meta.uden_arr)          forbehold.push(nf0.format(meta.uden_arr) + ' kunder har ingen ACV-række og indgår ikke i kronesummerne');
+  if (meta.uden_ejer)         forbehold.push(nf0.format(meta.uden_ejer) + ' har ingen tilskrevet ejer og ses kun i den firmabrede visning');
+  if (meta.uden_team)         forbehold.push(nf0.format(meta.uden_team) + ' har en ejer uden aktivt team-medlemskab og når derfor ingen afdelingsleder');
+  if (forbehold.length) {
+    n.push('<div class="note warn"><strong>Forbehold:</strong><br>· ' + forbehold.join('<br>· ') + '</div>');
+  }
+  n.push('<div class="note warn"><strong>Ejerskab:</strong> denne liste bruger kundens '
+    + 'nuværende ejer i Pipedrive (ACV), mens trendgrafen på retention-siden bruger ejeren på '
+    + 'sidste aktiverings-deal. De to er uenige for knap halvdelen af rækkerne, så en sælgers '
+    + 'to visninger kan indeholde forskellige kunder.</div>');
+  notes.innerHTML = n.join('');
+
+  // ── Zone-kort
+  zonesEl.innerHTML = (data.zone_order || []).map(z => {
+    const b = (data.zones || {})[z];
+    if (!b) return '';
+    const extra = [];
+    if (b.uden_arr)   extra.push(nf0.format(b.uden_arr) + ' uden ARR');
+    if (b.utrackbare) extra.push(nf0.format(b.utrackbare) + ' utrackbare');
+    return '<div class="zcard ' + z + '">'
+      + '<div class="zlabel">' + esc(b.label) + '</div>'
+      + '<div class="zarr">' + mio(b.arr_dkk) + '</div>'
+      + '<div class="zmeta">' + nf0.format(b.customers) + ' kunder'
+      + (extra.length ? '<br>' + extra.join(' · ') : '') + '</div>'
+      + '</div>';
+  }).join('');
+
+  // ── Tabel
+  const COLS = [
+    { key:'org_name',   label:'Kunde' },
+    { key:'zone',       label:'Zone' },
+    { key:'days_since_last_activity', label:'Dage tavs', num:true },
+    { key:'arr_dkk',    label:'ARR (kr.)', num:true },
+    { key:'owner_name', label:'Ejer' },
+    { key:'teams',      label:'Team' },
+    { key:'last_activity_date', label:'Sidst aktiv' },
+    { key:'active_days',label:'Aktive dage', num:true },
+    { key:'page_views', label:'Page views', num:true },
+    { key:'sites',      label:'Sites', num:true },
+    { key:'account',    label:'Account' },
+  ];
+
+  let sortKey = 'arr_dkk', sortDir = -1;
+
+  const value = (r, k) => {
+    const v = r[k];
+    // null skal ALTID sortere nederst, uanset retning — ellers fylder kunder
+    // uden data toppen af listen, og det er ikke dem man skal ringe til.
+    if (v === null || v === undefined || v === '') return null;
+    return v;
+  };
+
+  function visible() {
+    const term = q.value.trim().toLowerCase();
+    return rows.filter(r => {
+      if (!showAll.checked && r.zone !== 'kritisk' && r.zone !== 'opmærksomhed') return false;
+      if (!term) return true;
+      return (r.org_name || '').toLowerCase().includes(term)
+          || (r.owner_name || '').toLowerCase().includes(term);
+    });
+  }
+
+  function render() {
+    head.innerHTML = COLS.map(c =>
+      '<th data-key="' + c.key + '"' + (c.num ? ' class="num"' : '') + '>' + esc(c.label)
+      + (sortKey === c.key ? ' <span class="arrow">' + (sortDir === 1 ? '▲' : '▼') + '</span>' : '')
+      + '</th>').join('');
+
+    const list = visible().slice().sort((a, b) => {
+      const va = value(a, sortKey), vb = value(b, sortKey);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sortDir;
+      return String(va).localeCompare(String(vb), 'da') * sortDir;
+    });
+
+    body.innerHTML = list.map(r => {
+      const tag = r.finans_dk === 'alle'  ? '<span class="tag">utrackbar</span>'
+                : r.finans_dk === 'nogle' ? '<span class="tag">delvis</span>' : '';
+      return '<tr>'
+        + '<td>' + esc(r.org_name) + tag + '</td>'
+        + '<td><span class="pill ' + r.zone + '">' + esc((data.zones[r.zone] || {}).label || r.zone) + '</span></td>'
+        + '<td class="num">' + (r.days_since_last_activity == null ? '–' : nf0.format(r.days_since_last_activity)) + '</td>'
+        + '<td class="num">' + (r.arr_dkk == null ? '–' : nf0.format(r.arr_dkk)) + '</td>'
+        + '<td>' + (r.owner_name ? esc(r.owner_name) : '<em>(Ikke tilskrevet)</em>') + '</td>'
+        + '<td>' + esc(r.teams || '–') + '</td>'
+        + '<td>' + esc(r.last_activity_date || '–') + '</td>'
+        + '<td class="num">' + (r.active_days == null ? '–' : nf0.format(r.active_days)) + '</td>'
+        + '<td class="num">' + (r.page_views == null ? '–' : nf0.format(r.page_views)) + '</td>'
+        + '<td class="num" title="' + esc(r.sites_list || '') + '">' + nf0.format(r.sites) + '</td>'
+        + '<td>' + esc(r.account) + '</td>'
+        + '</tr>';
+    }).join('');
+
+    const arr = list.reduce((s, r) => s + (r.arr_dkk || 0), 0);
+    sub.textContent = nf0.format(list.length) + ' af ' + nf0.format(rows.length)
+      + ' kunder vist · ' + mio(arr) + ' i visningen · ' + mio(meta.arr_total) + ' i alt';
+  }
+
+  head.addEventListener('click', (e) => {
+    const th = e.target.closest('th');
+    if (!th) return;
+    const key = th.dataset.key;
+    // Nyt felt: start faldende for tal (størst først er det interessante) og
+    // stigende for tekst. Samme felt igen: vend retningen.
+    if (key === sortKey) sortDir = -sortDir;
+    else { sortKey = key; sortDir = (COLS.find(c => c.key === key) || {}).num ? -1 : 1; }
+    render();
+  });
+  q.addEventListener('input', render);
+  showAll.addEventListener('change', render);
+
+  render();
+})();
+</script>
+</body>
+</html>

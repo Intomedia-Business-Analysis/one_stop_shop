@@ -88,6 +88,23 @@ CATEGORIES = [
         ],
     },
     {
+        "id": "retention",
+        "title": "Retention",
+        "description": "Aktive kunder over tid og churn-risiko pr. kunde",
+        "icon": "settings",
+        "color": "amber",
+        # salesperson matcher adgangsvagten i modul_retention/router.py, hvor
+        # _resolve_filters afviser alt under salesperson (dvs. screen-rollen).
+        # Sætter man den højere her, forsvinder menupunktet for de sælgere
+        # siderne er bygget til, uden at endpointet holder op med at virke.
+        "min_role": "salesperson",
+        "subcategories": [],
+        "items": [
+            {"id": "retention-overview", "title": "Aktive kunder",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/overview"},
+            {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/risk_overview"},
+        ],
+    },
+    {
         "id": "rapportering",
         "title": "Rapportering",
         "description": "ARR-/salgsrapportering og afstemning",
