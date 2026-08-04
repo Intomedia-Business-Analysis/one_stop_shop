@@ -30,6 +30,7 @@ from .queries import db_customers_at_risk_base
 from .usage import (
     ZONE_ATTENTION_DAYS,
     ZONE_CRITICAL_DAYS,
+    _account_to_customer_map,
     customer_key,
     load_usage_recency,
     recency_by_customer,
@@ -99,6 +100,17 @@ def customers_at_risk(owner_name: str | None = None,
         usage_error = f"{type(e).__name__}: {e}"
         logger.exception("Recency-data kunne ikke læses")
 
+    # Hvilke kunder KAN vi overhovedet oversætte fra Snowplow til? Bruges til at
+    # forklare hvorfor en kunde mangler signal — og den forklaring er forskellen
+    # på "vi ved det ikke" og "kunden er helt tavs", som er det stærkeste
+    # churn-signal vi har. Uden Zuora-snapshottet springes opdelingen over
+    # frem for at lade hele siden fejle.
+    kan_oversaettes: set = set()
+    try:
+        kan_oversaettes = set(_account_to_customer_map().values())
+    except Exception:
+        logger.warning("Zuora-snapshot utilgængeligt — kan ikke forklare manglende signaler")
+
     rows = []
     for r in base:
         key = customer_key(r["account"], r["org_id"])
@@ -141,9 +153,38 @@ def customers_at_risk(owner_name: str | None = None,
         if r["finans_dk"] == "alle":
             b["utrackbare"] += 1
 
+    # Hvorfor mangler et signal? Tre helt forskellige tilstande, som ikke må
+    # blandes sammen i UI'et. Målt 2026-08-04: 444 utrackbare (2,7 mio.), 2.422
+    # uden Zuora-konto (1,8 mio., altså mikrokunder à ~740 kr.) og 620 helt tavse
+    # (6,9 mio.). Kun de to første er reel blindhed — de sidste er det stærkeste
+    # churn-signal i datasættet og bør flyttes op i zonerne (se planen).
+    mangler = {"utrackbar": [0, 0.0], "ingen_zuora": [0, 0.0], "helt_tavs": [0, 0.0]}
+    for r in rows:
+        if r["zone"] != "intet_signal":
+            continue
+        arr = r["arr_dkk"] or 0
+        if r["finans_dk"] == "alle":
+            n = "utrackbar"
+        elif kan_oversaettes and customer_key(r["account"], r["org_id"]) not in kan_oversaettes:
+            n = "ingen_zuora"
+        else:
+            n = "helt_tavs"
+        mangler[n][0] += 1
+        mangler[n][1] += arr
+
+    blind_arr = mangler["utrackbar"][1] + mangler["ingen_zuora"][1]
+    arr_total = sum(r["arr_dkk"] for r in rows if r["arr_dkk"] is not None)
+
     meta = {
         "customers":     len(rows),
-        "arr_total":     sum(r["arr_dkk"] for r in rows if r["arr_dkk"] is not None),
+        "arr_total":     arr_total,
+        "med_signal":    sum(1 for r in rows if r["zone"] != "intet_signal"),
+        # Andelen af KRONER vi kan sige noget om. Det er det ærlige svar på "er
+        # datagrundlaget godt nok": 30% af kunderne mangler signal, men de bærer
+        # kun ~2% af omsætningen, fordi hullerne sidder hos de mindste kunder.
+        "arr_daekning":  (arr_total - blind_arr) / arr_total if arr_total else 0,
+        "mangler_signal": {k: {"customers": v[0], "arr_dkk": v[1]}
+                           for k, v in mangler.items()},
         "uden_arr":      sum(1 for r in rows if r["arr_dkk"] is None),
         "uden_ejer":     sum(1 for r in rows if not r["owner_name"]),
         "uden_team":     sum(1 for r in rows if r["owner_name"] and not r["teams"]),
