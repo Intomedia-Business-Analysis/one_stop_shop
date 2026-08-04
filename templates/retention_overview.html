@@ -54,6 +54,19 @@
           <div class="panel-header">
             <h2>Aktive kunder pr. måned</h2>
             <p id="retention-chart-sub">Indlæser…</p>
+            <!-- Ejerskabet er et nutidsbillede (kundens nuværende ejer i
+                 Pipedrive), trukket bagud over hele historikken. Det har to
+                 konsekvenser en læser ikke kan gætte, og som derfor står her:
+                 en sælger ser kunder han har arvet, og de tidlige år
+                 under-tilskriver, fordi kunder der siden er churnet ikke har en
+                 nuværende ejer (juni 2016: 79% tilskrevet mod 92% i 2026). -->
+            <p style="font-size:11px;color:var(--ink-3);margin:6px 0 0;">
+              Tilskrivningen bruger kundens <strong>nuværende</strong> ejer, ikke den
+              der oprindeligt solgte abonnementet — samme definition som på
+              churn-risiko-siden. Derfor viser linjen “min bogs historie”, og de
+              tidlige år har en større ikke-tilskrevet andel, fordi kunder der siden
+              er holdt op ikke har en nuværende ejer.
+            </p>
           </div>
           <div class="panel-body">
             <canvas id="retentionChart" height="90"></canvas>

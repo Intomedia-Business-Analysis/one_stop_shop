@@ -33,14 +33,24 @@
     .note.warn   { background:var(--warn-light);   color:var(--ink-2); border:1px solid var(--border-strong); }
     .note.danger { background:var(--danger-light); color:var(--ink-2); border:1px solid var(--border-strong); }
 
+    /* Sikkerhedsnet: med fixed layout burde tabellen altid passe, men på en smal
+       skærm skal den kunne scrolles frem for at blive klippet af. */
     .tbl-wrap { overflow-x:auto; }
-    table.risk { width:100%; border-collapse:collapse; font-size:12px; }
-    table.risk th, table.risk td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; }
+    /* table-layout:fixed + procentbredder gør at tabellen ALDRIG bliver bredere
+       end panelet. Kolonner med tekst må ombrydes; kun tal og zone-pillen holdes
+       på én linje. Uden fixed layout strækker de længste kundenavne og
+       team-lister tabellen ud, og så skal man scrolle vandret for at se noget. */
+    table.risk { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+    table.risk th, table.risk td { padding:8px 10px; text-align:left;
+                                   border-bottom:1px solid var(--border); vertical-align:top; }
     table.risk th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em;
                     cursor:pointer; user-select:none; position:sticky; top:0; background:var(--surface); }
     table.risk th:hover { color:var(--ink); }
     table.risk th .arrow { color:var(--ink-4); font-size:9px; }
-    table.risk td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    table.risk th.num, table.risk td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    /* Lange ord uden mellemrum (fx et domæne i et firmanavn) må brydes, ellers
+       sprænger de deres kolonne selv med fixed layout. */
+    table.risk td.txt { overflow-wrap:anywhere; }
     table.risk tbody tr:hover { background:var(--bg); }
 
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
@@ -190,17 +200,19 @@
   // Zuora-konto også dækker en anden site. Teksten siger derfor at FINANS DK
   // ikke bidrager — ikke at kunden umuligt kan have et signal.
   if (meta.utrackbare)        forbehold.push(nf0.format(meta.utrackbare) + ' kunder abonnerer kun på FINANS DK, som ikke bidrager med noget usage-signal (markeret <span class="tag">utrackbar</span>) — de fleste af dem står derfor uden signal');
-  if (meta.delvist_trackbare) forbehold.push(nf0.format(meta.delvist_trackbare) + ' har FINANS DK blandt flere sites, så signalet dækker kun en del (<span class="tag">delvis</span>)');
+  if (meta.delvist_trackbare) forbehold.push(nf0.format(meta.delvist_trackbare) + ' har FINANS DK blandt flere sites, så signalet dækker kun en del af deres abonnementer (fremgår af kundens tooltip i tabellen)');
   if (meta.uden_arr)          forbehold.push(nf0.format(meta.uden_arr) + ' kunder har ingen ACV-række og indgår ikke i kronesummerne');
   if (meta.uden_ejer)         forbehold.push(nf0.format(meta.uden_ejer) + ' har ingen tilskrevet ejer og ses kun i den firmabrede visning');
   if (meta.uden_team)         forbehold.push(nf0.format(meta.uden_team) + ' har en ejer uden aktivt team-medlemskab og når derfor ingen afdelingsleder');
   if (forbehold.length) {
     n.push('<div class="note warn"><strong>Forbehold:</strong><br>· ' + forbehold.join('<br>· ') + '</div>');
   }
-  n.push('<div class="note warn"><strong>Ejerskab:</strong> denne liste bruger kundens '
-    + 'nuværende ejer i Pipedrive (ACV), mens trendgrafen på retention-siden bruger ejeren på '
-    + 'sidste aktiverings-deal. De to er uenige for knap halvdelen af rækkerne, så en sælgers '
-    + 'to visninger kan indeholde forskellige kunder.</div>');
+  // Den tidligere note om at denne side og trendgrafen var uenige om ejerskab er
+  // fjernet: begge bruger nu ACV's org-ejer. Tilbage står den forudsætning der
+  // FAKTISK gælder — at ejerskabet er et nutidsbillede, også bagud i tiden.
+  n.push('<div class="note warn"><strong>Ejerskab er et nutidsbillede:</strong> kundens '
+    + 'nuværende ejer i Pipedrive, ikke den der oprindeligt solgte abonnementet. '
+    + 'Samme definition bruges på trendgrafen.</div>');
   notes.innerHTML = n.join('');
 
   // ── Zone-kort
@@ -219,23 +231,40 @@
   }).join('');
 
   // ── Tabel
+  // Syv kolonner der tilsammen fylder 100%, så tabellen passer i panelet.
+  // Sidst aktiv, page views, sites-listen og account er flyttet til tooltips
+  // (title-attributter) frem for egne kolonner: de er nyttige når man studerer
+  // én kunde, men de tvang vandret scroll for alle 2.499 rækker.
   const COLS = [
-    { key:'org_name',   label:'Kunde' },
-    { key:'zone',       label:'Zone' },
-    { key:'days_since_last_activity', label:'Dage tavs', num:true },
-    { key:'arr_dkk',    label:'ARR (kr.)', num:true },
-    { key:'owner_name', label:'Ejer' },
-    { key:'teams',      label:'Team' },
-    { key:'last_activity_date', label:'Sidst aktiv' },
-    { key:'active_days',label:'Aktive dage', num:true },
-    { key:'page_views', label:'Page views', num:true },
-    { key:'sites',      label:'Sites', num:true },
-    { key:'account',    label:'Account' },
+    { key:'org_name',   label:'Kunde',        w:'27%' },
+    { key:'zone',       label:'Zone',         w:'13%' },
+    { key:'days_since_last_activity', label:'Dage tavs',   w:'9%',  num:true },
+    { key:'arr_dkk',    label:'Årsværdi kr.', w:'11%', num:true },
+    { key:'owner_name', label:'Ejer',         w:'16%' },
+    { key:'teams',      label:'Team',         w:'15%' },
+    { key:'active_days',label:'Aktive dage',  w:'9%',  num:true },
   ];
 
-  let sortKey = 'arr_dkk', sortDir = -1;
+  // Pillen viser kun zonens navn; dagsintervallet står på zone-kortene ovenfor
+  // og ville gentage sig selv 2.499 gange her. Fuld tekst ligger i title.
+  const zoneShort = (label) => String(label || '').replace(/\s*\(.*\)\s*$/, '');
+  // "Team FINANS DK, Team Watch DK" -> "FINANS DK, Watch DK". Præfikset er ens på
+  // alle teams og koster en tredjedel af kolonnens bredde.
+  const teamShort = (t) => String(t || '').replace(/\bTeam\s+/g, '');
+
+  // Zonens alvor som tal, taget fra API'ets egen raekkefoelge. Sorteres zonen som
+  // tekst, bliver den alfabetisk (intet_signal, kritisk, opmærksomhed, sund) —
+  // altsaa nonsens for et risikomaal.
+  const ZONE_RANK = {};
+  (data.zone_order || []).forEach((z, i) => { ZONE_RANK[z] = i; });
+
+  // Standard: vaerste zone foerst, ARR som andenprioritet. En kunde der har vaeret
+  // tavs i 158 dage er taettere paa at vaere tabt end en paa 20 dage, uanset
+  // beloeb — og man kan altid klikke paa ARR-kolonnen for det omvendte.
+  let sortKey = 'zone', sortDir = 1;
 
   const value = (r, k) => {
+    if (k === 'zone') return ZONE_RANK[r.zone] === undefined ? 99 : ZONE_RANK[r.zone];
     const v = r[k];
     // null skal ALTID sortere nederst, uanset retning — ellers fylder kunder
     // uden data toppen af listen, og det er ikke dem man skal ringe til.
@@ -255,34 +284,48 @@
 
   function render() {
     head.innerHTML = COLS.map(c =>
-      '<th data-key="' + c.key + '"' + (c.num ? ' class="num"' : '') + '>' + esc(c.label)
+      '<th data-key="' + c.key + '" style="width:' + c.w + '"'
+      + (c.num ? ' class="num"' : '') + '>' + esc(c.label)
       + (sortKey === c.key ? ' <span class="arrow">' + (sortDir === 1 ? '▲' : '▼') + '</span>' : '')
       + '</th>').join('');
 
     const list = visible().slice().sort((a, b) => {
       const va = value(a, sortKey), vb = value(b, sortKey);
-      if (va === null && vb === null) return 0;
-      if (va === null) return 1;
-      if (vb === null) return -1;
-      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sortDir;
-      return String(va).localeCompare(String(vb), 'da') * sortDir;
+      let cmp = 0;
+      if (va === null && vb === null)      cmp = 0;
+      else if (va === null)                cmp = 1;   // null altid nederst
+      else if (vb === null)                cmp = -1;
+      else if (typeof va === 'number' && typeof vb === 'number') cmp = (va - vb) * sortDir;
+      else cmp = String(va).localeCompare(String(vb), 'da') * sortDir;
+      if (cmp !== 0) return cmp;
+      // Andenprioritet er ALTID stoerste beloeb foerst, saa den vaerste zone
+      // praesenteres med de dyreste kunder oeverst. Uden dette faldt raekker med
+      // samme zone tilbage paa vilkaarlig raekkefoelge.
+      const aa = a.arr_dkk == null ? -1 : a.arr_dkk;
+      const bb = b.arr_dkk == null ? -1 : b.arr_dkk;
+      return bb - aa;
     });
 
     body.innerHTML = list.map(r => {
-      const tag = r.finans_dk === 'alle'  ? '<span class="tag">utrackbar</span>'
-                : r.finans_dk === 'nogle' ? '<span class="tag">delvis</span>' : '';
+      // Kun 'utrackbar' vises som mærke. 'delvis' sad på 696 kunder, koncentreret
+      // i toppen hvor de største kunder har flest sites — et mærke på 14 af 20
+      // rækker fortæller ingenting. Oplysningen ligger nu i kundens tooltip.
+      const tag = r.finans_dk === 'alle' ? ' <span class="tag">utrackbar</span>' : '';
+      const kundeTitel = [r.org_name, r.account,
+                          r.finans_dk === 'nogle' ? 'FINANS DK indgår — signalet dækker kun en del' : '',
+                          r.sites_list].filter(Boolean).join(' · ');
+      const zoneFuld = (data.zones[r.zone] || {}).label || r.zone;
       return '<tr>'
-        + '<td>' + esc(r.org_name) + tag + '</td>'
-        + '<td><span class="pill ' + r.zone + '">' + esc((data.zones[r.zone] || {}).label || r.zone) + '</span></td>'
-        + '<td class="num">' + (r.days_since_last_activity == null ? '–' : nf0.format(r.days_since_last_activity)) + '</td>'
+        + '<td class="txt" title="' + esc(kundeTitel) + '">' + esc(r.org_name) + tag + '</td>'
+        + '<td><span class="pill ' + r.zone + '" title="' + esc(zoneFuld) + '">'
+          + esc(zoneShort(zoneFuld)) + '</span></td>'
+        + '<td class="num" title="' + esc(r.last_activity_date ? 'Sidst aktiv ' + r.last_activity_date : 'Ingen registreret aktivitet') + '">'
+          + (r.days_since_last_activity == null ? '–' : nf0.format(r.days_since_last_activity)) + '</td>'
         + '<td class="num">' + (r.arr_dkk == null ? '–' : nf0.format(r.arr_dkk)) + '</td>'
-        + '<td>' + (r.owner_name ? esc(r.owner_name) : '<em>(Ikke tilskrevet)</em>') + '</td>'
-        + '<td>' + esc(r.teams || '–') + '</td>'
-        + '<td>' + esc(r.last_activity_date || '–') + '</td>'
-        + '<td class="num">' + (r.active_days == null ? '–' : nf0.format(r.active_days)) + '</td>'
-        + '<td class="num">' + (r.page_views == null ? '–' : nf0.format(r.page_views)) + '</td>'
-        + '<td class="num" title="' + esc(r.sites_list || '') + '">' + nf0.format(r.sites) + '</td>'
-        + '<td>' + esc(r.account) + '</td>'
+        + '<td class="txt">' + (r.owner_name ? esc(r.owner_name) : '<em>(Ikke tilskrevet)</em>') + '</td>'
+        + '<td class="txt" title="' + esc(r.teams || '') + '">' + esc(teamShort(r.teams) || '–') + '</td>'
+        + '<td class="num" title="' + esc(r.page_views == null ? '' : nf0.format(r.page_views) + ' sidevisninger') + '">'
+          + (r.active_days == null ? '–' : nf0.format(r.active_days)) + '</td>'
         + '</tr>';
     }).join('');
 
@@ -296,8 +339,10 @@
     if (!th) return;
     const key = th.dataset.key;
     // Nyt felt: start faldende for tal (størst først er det interessante) og
-    // stigende for tekst. Samme felt igen: vend retningen.
+    // stigende for tekst. Zonen starter stigende, fordi rang 0 er den værste.
+    // Samme felt igen: vend retningen.
     if (key === sortKey) sortDir = -sortDir;
+    else if (key === 'zone') { sortKey = key; sortDir = 1; }
     else { sortKey = key; sortDir = (COLS.find(c => c.key === key) || {}).num ? -1 : 1; }
     render();
   });
