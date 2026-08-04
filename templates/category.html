@@ -1,3 +1,4 @@
+{% from "_item_rows.html" import item_rows %}
 <!DOCTYPE html>
 <html lang="da">
 <head>
@@ -111,24 +112,8 @@
             <span class="section-label">{{ sub.title }}</span>
             <span style="font-size:10px;color:var(--ink-4)">{{ sub.description }}</span>
           </div>
-          <div class="rec-list anim-fade">
-            {% for item in sub_items %}
-            <a href="{{ item.url }}" class="ri">
-              <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
-                {% if item.type == 'dashboard' %}
-                <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                {% else %}
-                <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                {% endif %}
-              </div>
-              <div>
-                <div class="ri-name">{{ item.title }}</div>
-              </div>
-              <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">
-                {{ item.type | capitalize }}
-              </span>
-            </a>
-            {% endfor %}
+          <div class="anim-fade">
+            {{ item_rows(sub_items, fav_ids, show_category=False) }}
           </div>
           {% endif %}
         {% endfor %}
@@ -144,20 +129,8 @@
         <div class="section-head" style="margin-top:20px">
           <span class="section-label">Generelt</span>
         </div>
-        <div class="rec-list anim-fade">
-          {% for item in ungrouped %}
-          <a href="{{ item.url }}" class="ri">
-            <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
-              {% if item.type == 'dashboard' %}
-              <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              {% else %}
-              <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              {% endif %}
-            </div>
-            <div><div class="ri-name">{{ item.title }}</div></div>
-            <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">{{ item.type | capitalize }}</span>
-          </a>
-          {% endfor %}
+        <div class="anim-fade">
+          {{ item_rows(ungrouped, fav_ids, show_category=False) }}
         </div>
         {% endif %}
 
@@ -166,21 +139,7 @@
         <div class="section-head" style="margin-top:8px">
           <span class="section-label">Alle items</span>
         </div>
-        <div class="rec-list">
-          {% for item in cat['items'] %}
-          <a href="{{ item.url }}" class="ri">
-            <div class="ri-icon" style="background:{% if item.type=='dashboard' %}var(--green-light){% else %}var(--amber-light){% endif %}">
-              {% if item.type == 'dashboard' %}
-              <svg viewBox="0 0 24 24" style="stroke:var(--green);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-              {% else %}
-              <svg viewBox="0 0 24 24" style="stroke:var(--amber);fill:none;stroke-width:1.6;stroke-linecap:round;width:13px;height:13px"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-              {% endif %}
-            </div>
-            <div><div class="ri-name">{{ item.title }}</div></div>
-            <span class="ri-badge tag {% if item.type=='dashboard' %}tag-d{% else %}tag-t{% endif %}">{{ item.type | capitalize }}</span>
-          </a>
-          {% endfor %}
-        </div>
+        {{ item_rows(cat['items'], fav_ids, show_category=False) }}
       {% endif %}
 
       {% if not cat['items'] %}
@@ -197,5 +156,6 @@
 function openCP() {}
 document.addEventListener('keydown', e => { if (e.key === 'Escape') {} });
 </script>
+<script src="/static/hub-favorites.js"></script>
 </body>
 </html>

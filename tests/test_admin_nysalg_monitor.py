@@ -14,9 +14,12 @@ import sys
 # Gør repo-roden importerbar når filen køres direkte (uden pytest/conftest).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from moduler.modul_admin_nysalg.brands import brand_account, brand_geo  # noqa: E402
+from moduler.modul_admin_nysalg.brands import (  # noqa: E402
+    MONITOR_AD_BUDGET_WHERE, brand_account, brand_geo,
+)
 from moduler.modul_admin_nysalg.repo import (  # noqa: E402
-    monitor_brand_rows, monitor_norm, monitor_relabel, summarize_by_brand,
+    _monitor_ad_rows, monitor_brand_rows, monitor_norm, monitor_relabel,
+    summarize_by_brand,
 )
 
 
@@ -116,6 +119,80 @@ def test_summarize_seed_defaults_off_skips_always_shown():
     # ensure_labels skaber 0-rækker uafhængigt af seed_defaults.
     rows = summarize_by_brand([], seed_defaults=False, ensure_labels=["Byrummonitor"])
     assert [r["brand"] for r in rows] == ["Byrummonitor"]
+
+
+# ── Annoncerækker (Job + Banner) ─────────────────────────────────────────────
+# Monitor-annoncesalget ligger i den fælles danske annoncekonto
+# ('jppol_advertising') og genkendes på [sites] — monitor-kontoen har KUN
+# abonnements-pipelines, så en scope på den giver 0 kr. i rapporten.
+
+class _FakeCursor:
+    """Minimal cursor: gemmer SQL'en og svarer med forudlagte rækker pr. tabel."""
+
+    def __init__(self, deal_rows):
+        self.deal_rows = deal_rows
+        self.sql: list[str] = []
+        self.params: list[tuple] = []
+        self._rows: list[dict] = []
+
+    def execute(self, sql, params=()):
+        self.sql.append(sql)
+        self.params.append(tuple(params))
+        if "BudgetsIntoMedia" in sql:
+            self._rows = [{"budget": 500000}]
+        else:
+            self._rows = self.deal_rows
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+def _ad_rows():
+    deals = [
+        {"ym": "", "site": "Skolemonitor", "rev": 100.0},
+        {"ym": "", "site": "Byrummonitor", "rev": 300.0},
+    ]
+    cur = _FakeCursor(deals)
+    rows = _monitor_ad_rows(cur, "2026-06-01", "2026-06-30", {}, [""])[""]
+    return cur, {r["brand"]: r for r in rows}
+
+
+def test_monitor_ads_read_from_the_danish_advertising_account():
+    cur, _ = _ad_rows()
+    deal_sql = " ".join(s for s in cur.sql if "PipedriveDeals" in s)
+    assert "[account] = 'jppol_advertising'" in deal_sql
+    assert "'monitor'" not in deal_sql          # abonnements-kontoen har intet annoncesalg
+    # Pipeline-navnene i PipeDrive er 'Job'/'Banner' (ikke 'jobmarked').
+    pipes = {p[0] for s, p in zip(cur.sql, cur.params) if "PipedriveDeals" in s}
+    assert pipes == {"job", "banner"}
+
+
+def test_monitor_ad_rows_total_and_site_subrows():
+    _, by_brand = _ad_rows()
+    assert set(by_brand) == {"Job", "Banner"}
+    job = by_brand["Job"]
+    assert job["brutto"] == 400.0 and job["netto"] == 400.0   # annoncesalg: ingen opsigelser
+    assert job["opsigelser"] == 0.0
+    assert job["budget"] == 500000.0                          # 'All Monitor Sites'-budgettet
+    # Underrækker pr. site, største først — uden eget budget (budget er samlet).
+    assert [s["brand"] for s in job["subrows"]] == ["Byrummonitor", "Skolemonitor"]
+    assert [s["budget"] for s in job["subrows"]] == [None, None]
+
+
+def test_monitor_ad_rows_land_in_the_advertising_section():
+    _, by_brand = _ad_rows()
+    assert brand_geo("Job") == ("Denmark", "Advertising")
+    assert brand_geo("Banner") == ("Denmark", "Advertising")
+    assert by_brand["Job"]["currency"] == "DKK"
+
+
+def test_monitor_ad_budget_is_scoped_to_monitor_brand():
+    for label, frag in MONITOR_AD_BUDGET_WHERE.items():
+        assert "[Brand]='Monitor'" in frag
+        assert f"[DealType]='{label}'" in frag
 
 
 # ── Geo/konto-fallback for site-labels ───────────────────────────────────────

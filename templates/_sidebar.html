@@ -20,10 +20,10 @@
     <a href="/" class="sbi{% if _active == '/' %} on{% endif %}">
       {% include "icons/grid.svg" %} Hub
     </a>
-    <a href="#" class="sbi">
+    <a href="/favorites" class="sbi{% if _active == '/favorites' %} on{% endif %}">
       {% include "icons/star.svg" %} Mine favoritter
     </a>
-    <a href="#" class="sbi">
+    <a href="/recent" class="sbi{% if _active == '/recent' %} on{% endif %}">
       {% include "icons/clock.svg" %} Seneste
     </a>
   </nav>

@@ -124,18 +124,18 @@ PIPEDRIVE_ROWS = [
     {"label": "Marketwire",      "scope_col": "team",    "scope_val": "Team Marketwire",      "pipelines": None},
 ]
 
-# Annonce-rækkerne i MONITOR-rapporten (report_scope='monitor'): job- og banner-
-# salg fra monitor-kontoens pipelines. Budget pr. række via 'budget_where'
-# (BudgetsIntoMedia har Monitor Job/Banner-budgettet samlet som 'All Monitor
-# Sites' — ikke pr. site, i modsætning til Subscription-budgettet).
-MONITOR_PIPEDRIVE_ROWS = [
-    {"label": "Job",    "scope_col": "account", "scope_val": "monitor",
-     "pipelines": ["jobmarked"],
-     "budget_where": "[Brand]='Monitor' AND [DealType]='Job'"},
-    {"label": "Banner", "scope_col": "account", "scope_val": "monitor",
-     "pipelines": ["banner"],
-     "budget_where": "[Brand]='Monitor' AND [DealType]='Banner'"},
-]
+# Budget for annonce-rækkerne (Job/Banner) i MONITOR-rapporten. Budgettet ligger
+# samlet på 'All Monitor Sites' — ikke pr. site, i modsætning til Subscription-
+# budgettet — så kun hovedrækkerne har budget, ikke underrækkerne pr. site.
+# Selve omsætningen bygges i repo.monitor_advertising_brand_rows: monitor-kontoen
+# i PipeDrive har KUN abonnements-pipelines, så monitor-sites' banner-/jobdeals
+# ligger i den fælles danske annoncekonto ('jppol_advertising') og genkendes på
+# [sites]. Business Media-rapportens DK-annoncerækker summerer kun Watch DK +
+# FINANS DK-sites, så Monitor-andelen af annoncesalget hører netop her.
+MONITOR_AD_BUDGET_WHERE = {
+    "Job":    "[Brand]='Monitor' AND [DealType]='Job'",
+    "Banner": "[Brand]='Monitor' AND [DealType]='Banner'",
+}
 
 # Budget for reklame-rækkerne (BudgetsIntoMedia). WHERE-fragment uden periode —
 # periodeafgrænsning på [BudgetDate] lægges på i repo. Job/Banner (jppol_advertising

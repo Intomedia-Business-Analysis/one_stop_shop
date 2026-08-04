@@ -129,11 +129,9 @@ def _scope_extra_rows(scope: str, date_from, date_to, brand_comments: dict,
 
     Skilt fra selve opsummeringen, så review-handleren kan hente den parallelt
     med de andre tunge opslag (matches, org-navne)."""
-    from moduler.modul_admin_nysalg.brands import MONITOR_PIPEDRIVE_ROWS
     if scope == "monitor":
-        ad_rows = repo.pipedrive_brand_rows(date_from, date_to, brand_comments,
-                                            specs=MONITOR_PIPEDRIVE_ROWS, dk_split=False,
-                                            parallel=True)
+        ad_rows = repo.monitor_advertising_brand_rows(date_from, date_to,
+                                                     brand_comments)
         return ad_rows, repo.monitor_site_budgets(date_from, date_to)
     return repo.pipedrive_brand_rows(date_from, date_to, brand_comments, budgets,
                                      parallel=True), None
