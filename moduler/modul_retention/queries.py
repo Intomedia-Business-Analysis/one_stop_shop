@@ -303,3 +303,176 @@ def db_customers_at_risk_base(owner_name: str | None = None,
     except Exception:
         logger.exception("db_customers_at_risk_base fejlede")
         return []
+
+
+def db_abonnementer(maaned: str) -> list:
+    """Abonnementerne i én måned, med abonnementets første måned som alder.
+
+    Grain er `(account, org_id, sites)` = PRD §3's måleenhed. `maaned` er
+    'YYYY-MM' og skal være den sidste HELE måned — samme reference som
+    zones.bestem_zone regner i.
+
+    `foerste_maaned` er MIN over HELE historikken (viewet går tilbage til
+    2016-03), ikke over usage-eksportens 13 måneder. Målt 2026-08-07: med
+    13-måneders-vinduet bliver 436 abonnementer fejlagtigt "ny", fordi de har
+    et hul i historikken — 147 af dem har aldrig læst noget. Vinduet ville
+    altså give dem vægt 0,00 og fjerne dem fra specialistens liste.
+
+    Alternativet var start på seneste SAMMENHÆNGENDE kæde. Det er forkastet:
+    mellem april og maj 2026 blev 1.769 eksisterende abonnementer genskabt
+    (mod 19-42 i en normal måned), og kædestart ville give hele den bunke
+    vægt 0,00 på grundlag af en dataartefakt.
+
+    Rækkeantallet ligger under viewets, fordi 2026-07 har to ægte dubletrækker
+    som GROUP BY her folder sammen (15.203 mod 15.205, målt 2026-08-07). Tallet
+    er ikke fast: viewet er live, og et redigeret Pipedrive-deal kan tilføje en
+    række i en måned der ellers er afsluttet — 15.204 samme dag kl. 11.
+    """
+    # Én reference til dbo.retention, ikke to. Viewet har 1.484.578 rækker, og
+    # queryen MÅ IKKE joines mod _acv_owner_cte i samme statement: den variant
+    # timede ud efter 300 s, mens hver del alene tager under ét sekund. Ejeren
+    # hentes derfor separat i db_acv_ejere og joines i Python (2,1 s + 0,3 s).
+    sql = f"""
+        WITH historik AS (
+            SELECT r.account, r.org_id, r.sites, r.org_name, r.FirstDayOfMonth,
+                   -- PARTITION BY uden ISNULL: window-partitionering samler
+                   -- NULL i én gruppe, og marketwires 35 rækker har sites NULL.
+                   MIN(r.FirstDayOfMonth) OVER (
+                       PARTITION BY r.account, r.org_id, r.sites
+                   ) AS foerste_maaned
+            FROM dbo.retention r
+            WHERE r.FirstDayOfMonth <= %s
+              {_KUN_B2B}
+        )
+        SELECT account, org_id, sites,
+               MAX(org_name) AS org_name,
+               -- varchar(7) og ikke en dato: hele modulet sammenligner måneder
+               -- som tekst ('YYYY-MM'), så en date her ville kræve konvertering
+               -- i hvert kaldested — og zones.py regner udelukkende på strenge.
+               CONVERT(varchar(7), MIN(foerste_maaned), 23) AS foerste_maaned
+        FROM historik
+        WHERE FirstDayOfMonth = %s
+        GROUP BY account, org_id, sites
+    """
+
+    foerste_dag = f"{maaned}-01"
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(sql, (foerste_dag, foerste_dag))
+        result = cur.fetchall()
+        conn.close()
+        return result
+    except Exception:
+        logger.exception("db_abonnementer(%s) fejlede", maaned)
+        return []
+
+
+def db_acv_ejere(owner_name: str | None = None,
+                 teams: list | None = None) -> dict:
+    """{(account, org_id): {owner_name, arr_dkk, acv_sites}} — ejer og ARR.
+
+    Skilt ud som sin egen query frem for et join i db_abonnementer: se
+    performance-noten dér. Resultatet er 15.174 kunder på 0,3 s, og 99,2% af
+    juli-abonnementerne finder et match.
+
+    Grainen er KUNDEN `(account, org_id)`, ikke abonnementet — ACV's
+    site-vokabular kan ikke brolægges til retentions (kun 20 af 45 kanoniske
+    nøgler matcher, se db_customers_at_risk_base). `arr_dkk` er derfor kundens
+    samlede ARR, og den må IKKE summeres pr. abonnement uden at deles først.
+    """
+    # Lokal import: usage.py trækker pandas ind ved import, og DB-laget skal
+    # kunne importeres uden. customer_key str()'er org_id, som kommer tilbage
+    # som int både herfra og fra db_abonnementer — nøglerne SKAL gå gennem
+    # samme funktion, ellers matcher 1 aldrig '1'.
+    from .usage import customer_key
+
+    cte, params = _acv_owner_cte()
+
+    clause = ''
+    if owner_name:
+        clause += ' AND k.owner_name = %s'
+        params += (owner_name,)
+    if teams:
+        # Tomt team-filter springes over her og fanges i routerens
+        # _resolve_filters — samme arbejdsdeling som modulets to andre queries.
+        team_sql, team_params = _team_exists_clause(teams)
+        clause += team_sql
+        params += team_params
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            f"""WITH {cte}
+            SELECT k.account, k.org_id, k.owner_name, k.arr_dkk, k.acv_sites
+            FROM acv_kunde k
+            WHERE 1 = 1
+                {clause};""",
+            params,
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return {customer_key(r["account"], r["org_id"]): r for r in rows}
+    except Exception:
+        logger.exception("db_acv_ejere fejlede")
+        return {}
+
+
+def abonnementer_med_ejer(maaned: str,
+                          owner_name: str | None = None,
+                          teams: list | None = None) -> list:
+    """Månedens abonnementer med ejer, ARR og alder — input til zonerne.
+
+    Joinet ligger i Python og ikke i SQL af rene performance-grunde; se noten i
+    db_abonnementer.
+
+    Filter-semantikken efterligner bevidst SQL-versionens: UDEN ejer/team-filter
+    beholdes abonnementer uden ACV-række (LEFT JOIN), så CEO-visningen viser
+    firmaets fulde portefølje. MED filter droppes de (INNER), fordi en sælger
+    ellers ville se kunder han ikke ejer. Det rammer alle watch_de- og
+    marketwire-kunder, som ACV slet ikke har brands for."""
+
+    from .usage import customer_key
+
+    abo = db_abonnementer(maaned)
+    ejere = db_acv_ejere(owner_name, teams)
+    filtreret = bool(owner_name or teams)
+
+    resultat = []
+    for r in abo:
+        kunde = customer_key(r["account"], r["org_id"])
+        ejer = ejere.get(kunde) or {}
+        if not ejer and filtreret:
+            continue
+        resultat.append({
+            "kunde":          kunde,
+            "account":        kunde[0],
+            "org_id":         kunde[1],
+            "org_name":       r["org_name"],
+            "sites":          r["sites"],
+            "foerste_maaned": r["foerste_maaned"],
+            "owner_name":     ejer.get("owner_name"),
+            # Navngivet kunde_arr_dkk og ikke arr_dkk, så den ikke kan forveksles
+            # med abonnementets andel: summeres denne kolonne over en kundes tre
+            # abonnementer, tælles ARR'en tre gange.
+            "kunde_arr_dkk":  ejer.get("arr_dkk"),
+            "acv_sites":      ejer.get("acv_sites"),
+        })
+
+    # Antallet tælles EFTER filtreringen, så fordelingen summerer til kundens
+    # ARR inden for den visning brugeren faktisk ser.
+    antal: dict = {}
+    for r in resultat:
+        antal[r["kunde"]] = antal.get(r["kunde"], 0) + 1
+    for r in resultat:
+        r["sites_i_alt"] = antal[r["kunde"]]
+        # Lige deling er et VALG, ikke en måling: ACV kender kronerne pr.
+        # (org_id, site), men de to site-vokabularer kan ikke brolægges. Indtil
+        # broen findes, er lige deling den eneste fordeling der ikke opfinder en
+        # rangorden mellem kundens sites.
+        r["arr_pr_abonnement"] = (
+            r["kunde_arr_dkk"] / r["sites_i_alt"]
+            if r["kunde_arr_dkk"] is not None else None
+        )
+    return resultat
