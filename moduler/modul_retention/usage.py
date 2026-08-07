@@ -1,9 +1,9 @@
-"""Usage-trend: page views pr. kunde pr. måned, som churn-risiko-signal.
+"""Usage: sidevisninger pr. abonnement pr. måned, som churn-risiko-signal.
 
-Dataen stammer fra Snowplow (`bronze_page_view` i Redshift, external schema
-`snowplow_dsa_prv_external`). Queryen kan IKKE køres live: den scanner tabellen
-to gange og tager ~8 minutter, og Redshift Spectrum fakturerer pr. byte scannet
-fra S3 (~$5/TB), så hvert opslag koster både tid og kroner.
+Dataen stammer fra Snowplow (`snowplow_v2_pageview` i Redshift, external schema
+`erhvervsmedier_dsa_prv_external`). Queryen kan IKKE køres live: Redshift
+Spectrum fakturerer pr. byte scannet fra S3 (~$5/TB), og 13 måneder tager ~40
+sekunder, så hvert opslag koster både tid og kroner.
 
 Derfor samme løsning som Zuora-snapshottet i `modul_portfolio_alignment`:
 queryen køres i DataGrip, resultatet lægges som fil i en kendt mappe, og appen
@@ -13,8 +13,9 @@ det mtime-nøglede opslag herunder.
 
 Der er TO eksporter, begge i samme mappe (kan overrides via USAGE_SNAPSHOT_DIR):
 
-    usage_trend_DDMMYYYY.csv    — page views pr. konto pr. måned (3 mdr.)
-        access_account_number, month, page_views, prev_month_page_views, change
+    usage_trend_DDMMYYYY.csv    — pr. konto pr. site pr. måned (13 mdr.)
+        account_number, site, maaned, page_views, artikelvisninger,
+        aktive_dage, unikke_brugere
 
     usage_recency_DDMMYYYY.csv  — dage siden sidste aktivitet (12 mdr.)
         access_account_number, last_activity_date, days_since_last_activity,
@@ -24,6 +25,16 @@ Begge læses positionelt med eller uden header-række, som Zuora-snapshottet.
 Ændrer du rækkefølgen i SQL'en, skal USAGE_COLUMNS/RECENCY_COLUMNS følge med.
 SQL'en ligger i `Desktop\\DataBase Views DataGrip\\usage_trend.txt` og
 `usage_recency.txt`.
+
+TREND ER PRIMÆRSIGNALET, IKKE RECENCY. Målt 2026-08-04: fordi recency-tærsklen
+er 14 dage, kan zonen "sund" ikke eksistere når filen er ældre end 14 dage — ved
+14 dages alder er 77% af kunderne flyttet til en værre zone udelukkende pga.
+filens alder, og ved 30 dage er ALLE kritiske. Et dagsbaseret signal kræver
+ugentlig eksport-kadence, som bliver glemt. "Læste 0 gange i sidste HELE måned"
+er derimod et komplet faktum om en afsluttet måned og rådner ikke. Se zones.py.
+
+Recency-eksportet beholdes fordi det er billigt og giver dags-opløsning inden
+for indeværende måned, men det bærer ikke zonerne længere.
 
 Recency har et bredere vindue med vilje: en kunde der har været tavs længere end
 vinduet forsvinder helt ud af resultatet, og "mangler i output" er den højeste
@@ -79,8 +90,11 @@ DEFAULT_USAGE_DIR = (
 _FILE_DATE_RE = re.compile(r"_(\d{2})(\d{2})(\d{4})$")
 
 TREND_PREFIX = "usage_trend"
+# Kolonnerækkefølgen i eksportens SELECT er kontrakten. Filen læses positionelt,
+# så flyttes en kolonne i SQL'en, skal denne liste følge med.
 USAGE_COLUMNS = [
-    "access_account_number", "month", "page_views", "prev_month_page_views", "change",
+    "account_number", "site", "maaned",
+    "page_views", "artikelvisninger", "aktive_dage", "unikke_brugere",
 ]
 
 RECENCY_PREFIX = "usage_recency"
@@ -237,21 +251,25 @@ def _as_int(v) -> Optional[int]:
 
 
 def load_usage_trend(path: Optional[Path] = None) -> dict:
-    """Læs usage-trend-eksportet fra CSV eller XLSX.
+    """Læs usage_trend-eksporten som en DataFrame.
+
+    Returnerer en DataFrame og ikke en dict-af-dicts: filen er ~156.000 rækker,
+    og `iterrows()` over dem tager minutter. Opslag pr. abonnement bygges én gang
+    i forbrug_pr_abonnement().
 
     Returnerer:
-        rows       — alle rækker, inkl. dem uden access_account_number
-                     (anonyme besøg; medtaget for totaler, ubrugelige pr. kunde)
-        by_account — {access_account_number: {month: {...}}} for de navngivne
-        months     — sorteret liste af måneder i filen (ISO, første i måneden)
-        meta       — path, filnavn, export_date, række-tællinger
+        frame    — DataFrame med kolonnerne i USAGE_COLUMNS, renset
+        maaneder — sorteret liste af måneder i filen ('YYYY-MM')
+        meta     — sti, filnavn, eksportdato, tællinger
     """
     target = path or find_latest_usage_file()
     if not target:
         raise _missing_file_error(TREND_PREFIX)
 
     try:
-        cache_key = (str(target), target.stat().st_mtime)
+        # "trend" i nøglen: recency-loaderen bruger samme _USAGE_CACHE, og et
+        # præfiks gør en kollision umulig i stedet for blot usandsynlig.
+        cache_key = ("trend", str(target), target.stat().st_mtime)
         cached = _USAGE_CACHE.get(cache_key)
         if cached is not None:
             return cached
@@ -259,67 +277,52 @@ def load_usage_trend(path: Optional[Path] = None) -> dict:
         cache_key = None
 
     if target.suffix.lower() == ".xlsx":
-        df_raw = pd.read_excel(target, header=None)
+        df = pd.read_excel(target, header=None)
     else:
-        df_raw = pd.read_csv(target, header=None, sep=",", encoding="utf-8")
+        # dtype=str: kontonumre som K00370461 er tekst. Lader vi pandas gætte
+        # pr. blok, kan samme kolonne tolkes forskelligt i to halvdele af filen.
+        df = pd.read_csv(target, header=None, sep=",", encoding="utf-8", dtype=str)
 
-    # Header-detektion på første celle — samme trick som Zuora-snapshottet, så
-    # filen kan eksporteres med eller uden kolonnenavne.
-    if str(df_raw.iloc[0].iloc[0]).strip().lower() == "access_account_number":
-        df = df_raw.iloc[1:].reset_index(drop=True)
-    else:
-        df = df_raw
+    # Header-detektion på første celle — filen kan eksporteres med eller uden.
+    if str(df.iloc[0].iloc[0]).strip().lower() == "account_number":
+        df = df.iloc[1:].reset_index(drop=True)
 
     if df.shape[1] < len(USAGE_COLUMNS):
         raise ValueError(
-            f"Usage-fil {target.name} har {df.shape[1]} kolonner, "
-            f"forventer mindst {len(USAGE_COLUMNS)}: {USAGE_COLUMNS}"
+            f"Usage-fil {target.name} har {df.shape[1]} kolonner, forventer "
+            f"mindst {len(USAGE_COLUMNS)}: {USAGE_COLUMNS}"
         )
-    df = df.iloc[:, :len(USAGE_COLUMNS)]
+    df = df.iloc[:, :len(USAGE_COLUMNS)].copy()
     df.columns = USAGE_COLUMNS
 
-    rows: list[dict] = []
-    by_account: dict[str, dict[str, dict]] = {}
-    months: set[str] = set()
-    anonymous = 0
+    df["account_number"] = df["account_number"].astype(str).str.strip()
+    df["site"] = df["site"].astype(str).str.strip()
+    # [:7] klipper til 'YYYY-MM' uanset om eksporten skriver det korte eller det
+    # lange datoformat. Hele modulet sammenligner måneder som tekst.
+    df["maaned"] = df["maaned"].astype(str).str.strip().str[:7]
+    for kol in ("page_views", "artikelvisninger", "aktive_dage", "unikke_brugere"):
+        df[kol] = pd.to_numeric(df[kol], errors="coerce").fillna(0).astype("int64")
 
-    for _, r in df.iterrows():
-        # DATE_TRUNC giver '2026-07-01 00:00:00' — vi vil kun datoen.
-        month = str(r["month"]).strip()[:10] if pd.notna(r["month"]) else None
-        if not month:
-            continue
-        acct = str(r["access_account_number"]).strip() if pd.notna(r["access_account_number"]) else ""
-        row = {
-            "month":                 month,
-            "access_account_number": acct or None,
-            "page_views":            _as_int(r["page_views"]) or 0,
-            "prev_month_page_views": _as_int(r["prev_month_page_views"]),
-            "change":                _as_int(r["change"]),
-        }
-        rows.append(row)
-        months.add(month)
-        if acct:
-            by_account.setdefault(acct, {})[month] = row
-        else:
-            anonymous += 1
+    # En ulæselig måned kan ikke placeres på en tidsakse og ville falde stille ud
+    # af enhver månedssammenligning. Frasortér den synligt frem for tavst.
+    gyldig = df["maaned"].str.match(r"^\d{4}-\d{2}$", na=False)
+    if (~gyldig).any():
+        logger.warning("Usage-fil %s: %d rækker har ulæselig måned og springes over",
+                       target.name, int((~gyldig).sum()))
+    df = df[gyldig].reset_index(drop=True)
 
     meta = {
-        "path":            str(target),
-        "filename":        target.name,
+        "path":         str(target),
+        "filename":     target.name,
         # Fra den fil der faktisk blev indlæst — ikke fra et nyt opslag i mappen,
         # som ville give et forkert svar når `path` er givet eksplicit.
-        "export_date":     _date_from_path(target),
-        "row_count":       len(rows),
-        "account_count":   len(by_account),
-        "anonymous_rows":  anonymous,
-        "months":          len(months),
+        "export_date":  _date_from_path(target),
+        "row_count":    len(df),
+        "konti":        int(df["account_number"].nunique()),
+        "sites":        int(df["site"].nunique()),
     }
-    result = {
-        "rows":       rows,
-        "by_account": by_account,
-        "months":     sorted(months),
-        "meta":       meta,
-    }
+    result = {"frame": df, "maaneder": sorted(df["maaned"].unique().tolist()),
+              "meta": meta}
     if cache_key:
         _USAGE_CACHE[cache_key] = result
     return result
@@ -388,61 +391,72 @@ def latest_complete_month(months: list) -> Optional[str]:
     par dages besøg holdt op mod en hel forrige måned får enhver kunde til at se
     ud som et frit fald. Den må derfor aldrig være default for et churn-signal.
     """
-    this_month = date.today().replace(day=1).isoformat()
+    # strftime("%Y-%m") og ikke isoformat(): månederne i filen er syv tegn, og
+    # '2026-08' < '2026-08-01' er SANDT, fordi den korte streng er et præfiks af
+    # den lange. Med isoformat ville den ufuldstændige indeværende måned altså
+    # blive regnet som komplet — præcis den fejl funktionen findes for.
+    this_month = date.today().strftime("%Y-%m")
     complete = [m for m in months if m < this_month]
     return complete[-1] if complete else None
 
 
-def usage_by_customer(month: Optional[str] = None) -> dict:
-    """Usage for én måned, nøglet på (account, org_id) i stedet for Zuora-konto.
+def forbrug_pr_abonnement() -> dict:
+    """Sidevisninger slået op på abonnement og på kunde.
 
-    `month` default = seneste KOMPLETTE måned, ikke seneste måned i filen — se
-    latest_complete_month. Én organisation kan have flere Zuora-konti, så
-    `page_views` summeres pr. kunde; `change` summeres tilsvarende, og er None
-    hvis ingen af kontiene har en forrige måned.
+    Returnerer:
+        pr_abonnement — {(kunde, kanonisk_site): {maaned: sidevisninger}}
+        pr_kunde      — {kunde: {maaned: sidevisninger}}
+        maaneder      — sorteret liste
+        meta          — fra load_usage_trend, plus tællinger
 
-    Nøglen er (account, org_id) og ikke org_id alene — se modul-docstringen: to
-    fremmede virksomheder kan dele org_id, og deres besøg ville blive lagt sammen.
+    `pr_kunde` findes for pakkeabonnementer: `Watch Medier DK` giver adgang til
+    alle Watch-titler, og kun 7% af dens 264 abonnenter læser pakkens eget site,
+    mens 79% læser noget. Målt på sitet ville hele pakken stå permanent kritisk.
+    Se zones.PAKKE_SITES.
 
-    Hver bucket bærer selv `month`, så kalderen altid kan se hvilken måned tallet
-    gælder — også hvis der blev faldet tilbage til en ufuldstændig måned.
+    Sitet normaliseres med zones.kanonisk_site, som også folder .com-udgaverne
+    ind i søster-sitet — samme funktion som abonnementssiden bruger, og dét er
+    grunden til at de to vokabularer mødes (41 af 46 sites matcher direkte).
 
-    Kræver Zuora-snapshottet for at kunne oversætte account_number →
-    (account, org_id). Mangler det, kastes FileNotFoundError videre derfra.
+    Kunder uden Zuora-kobling udelades: uden den kan et kontonummer ikke blive
+    til en kunde. Antallet ligger i meta, så hullet er synligt og ikke bare væk.
     """
-    usage = load_usage_trend()
-    if not usage["months"]:
-        return {}
-    target_month = month or latest_complete_month(usage["months"])
-    if not target_month:
-        target_month = usage["months"][-1]
-        logger.warning(
-            "Usage-eksportet %s indeholder kun indeværende måned (%s) — "
-            "tallene er ufuldstændige og vil ligne et fald for alle kunder.",
-            usage["meta"]["filename"], target_month,
-        )
+    # Lokal import: der er ingen cirkel i dag, men lægges den i toppen opstår
+    # den i det øjeblik zones.py får brug for noget herfra.
+    from .zones import kanonisk_site
 
+    usage = load_usage_trend()
+    df = usage["frame"]
     acct_to_customer = _account_to_customer_map()
 
-    out: dict[tuple[str, str], dict] = {}
-    for acct, by_month in usage["by_account"].items():
-        row = by_month.get(target_month)
-        if row is None:
+    pr_abonnement: dict = {}
+    pr_kunde: dict = {}
+    ukoblede = set()
+
+    # zip over de rå kolonner og ikke df.iterrows(): iterrows bygger en Series
+    # pr. række og tager minutter på 156.000 rækker.
+    for konto, site, maaned, pv in zip(df["account_number"], df["site"],
+                                       df["maaned"], df["page_views"]):
+        kunde = acct_to_customer.get(konto)
+        if kunde is None:
+            ukoblede.add(konto)
             continue
-        key = acct_to_customer.get(acct)
-        if not key:
-            continue  # Zuora-konto uden pipedrive_id — ikke en kunde vi kan koble
-        bucket = out.setdefault(key, {
-            "month":       target_month,
-            "page_views":  0,
-            "change":      None,
-            "accounts":    0,
-        })
-        bucket["page_views"] += row["page_views"]
-        bucket["accounts"]   += 1
-        if row["change"] is not None:
-            bucket["change"] = (bucket["change"] or 0) + row["change"]
-    return out
+        site_k = kanonisk_site(site)
+        # Lægges sammen, ikke tildeles: en kunde kan have flere Zuora-konti på
+        # samme site, og .com- og .dk-rækker folder sammen til samme nøgle.
+        a = pr_abonnement.setdefault((kunde, site_k), {})
+        a[maaned] = a.get(maaned, 0) + int(pv)
+        k = pr_kunde.setdefault(kunde, {})
+        k[maaned] = k.get(maaned, 0) + int(pv)
+
+    meta = dict(usage["meta"])
+    meta["kunder"] = len(pr_kunde)
+    meta["abonnementer"] = len(pr_abonnement)
+    # Antal KONTI der ikke kan kobles, ikke antal rækker — de to tal fortæller
+    # vidt forskellige historier.
+    meta["konti_uden_zuora"] = len(ukoblede)
+    return {"pr_abonnement": pr_abonnement, "pr_kunde": pr_kunde,
+            "maaneder": usage["maaneder"], "meta": meta}
 
 
 # ---------------------------------------------------------------------------
