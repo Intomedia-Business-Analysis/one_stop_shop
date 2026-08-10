@@ -29,6 +29,18 @@ INTET_SITE = "(intet site)"
 # databasen håndhæver i CK_RetOut_followup_paa_aabne.
 AABNE_UDFALD = ("forskudt", "tilbud_sendt")
 
+# Hvor `arr_before_dkk` kom fra. ARR pr. abonnement er kundens ARR divideret
+# med antal sites (queries.py: "lige deling er et VALG, ikke en måling"), fordi
+# ACV's og retentions site-vokabularer ikke kan brolægges endnu. Registreres et
+# udfald på det tal, arver §9's "kroner reddet" divisionen — og et gæt kan
+# ikke skelnes fra et målt beløb i en decimal-kolonne bagefter.
+#
+# Specialisten har den rigtige pris foran sig under opkaldet. Formularen
+# forudfylder med delingen (`lige_deling`) og skifter til `bekraeftet`, så snart
+# feltet redigeres. Databasen håndhæver værdierne i CK_RetOut_arr_kilde.
+ARR_KILDE_DELING = "lige_deling"
+ARR_KILDE_BEKRAEFTET = "bekraeftet"
+
 # db.py forbinder med tds_version="7.0", og TDS 7.0 kender ikke `date` og
 # `datetime2` — de kom i 7.3. SQL Server sender dem derfor som STRENGE
 # ('2026-08-14' og '2026-08-14 15:04:05.1234567'), mens det gamle `datetime`
@@ -113,16 +125,18 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
                 """INSERT INTO dbo.RetentionOutcomes
                        (account, org_id, site, conversation_id,
                         contact_result, outcome,
-                        arr_before_dkk, arr_after_local, arr_after_currency,
+                        arr_before_dkk, arr_before_kilde,
+                        arr_after_local, arr_after_currency,
                         fx_rate, arr_after_dkk,
                         renewal_date, expiry_date, followup_date,
                         note, created_by)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s)""",
+                           %s, %s, %s, %s, %s, %s)""",
                 (samtale["account"], samtale["org_id"],
                  u.get("site") or INTET_SITE, conversation_id,
                  u["contact_result"], u.get("outcome"),
-                 u.get("arr_before_dkk"), lokal, u.get("arr_after_currency"),
+                 u.get("arr_before_dkk"), u.get("arr_before_kilde"),
+                 lokal, u.get("arr_after_currency"),
                  kurs, arr_after_dkk,
                  u.get("renewal_date"), u.get("expiry_date"),
                  u.get("followup_date"), u.get("note"), samtale["created_by"]),
@@ -180,6 +194,76 @@ def db_seneste_udfald() -> dict:
     except Exception:
         logger.exception("db_seneste_udfald fejlede")
         return {}
+
+
+def db_historik(account: str, org_id: int) -> list:
+    """Alle samtaler for én kunde, nyeste først, hver med sine udfald.
+
+    PRD §7.4: "Tidligere udfald og samtaler, nyeste først". Grupperet på
+    SAMTALEN og ikke på udfaldet, fordi ét opkald kan have dækket fem
+    abonnementer — fem løsrevne rækker ville læses som fem opkald.
+
+    Nøglen er kunden `(account, org_id)` og ikke abonnementet: siden viser hele
+    kundens historik, også udfald på sites hun ikke længere har. Et opsagt
+    abonnement er netop det, man har brug for at kende før man ringer.
+
+    Returnerer en liste af samtaler med `udfald` som liste. Tom liste hvis der
+    intet er — og tom liste ved FEJL, hvilket er en bevidst svaghed: siden må
+    ikke gå ned, fordi historikken ikke kan hentes, men en tom historik ser ud
+    som "vi har aldrig talt med dem". Derfor logges fejlen.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """SELECT c.conversation_id, c.contacted_at, c.channel, c.summary,
+                      c.created_by, c.created_at,
+                      o.outcome_id, o.site, o.contact_result, o.outcome,
+                      o.arr_before_dkk, o.arr_before_kilde,
+                      o.arr_after_dkk, o.arr_after_local,
+                      o.arr_after_currency, o.fx_rate,
+                      o.renewal_date, o.expiry_date, o.followup_date, o.note
+               FROM dbo.RetentionConversations c
+               LEFT JOIN dbo.RetentionOutcomes o
+                      ON o.conversation_id = c.conversation_id
+               WHERE c.account = %s AND c.org_id = %s
+               ORDER BY c.contacted_at DESC, c.conversation_id DESC,
+                        o.outcome_id ASC;""",
+            (account, org_id),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("db_historik fejlede (account=%s, org_id=%s)", account, org_id)
+        return []
+
+    # LEFT JOIN: en samtale uden udfald kan ikke opstå gennem
+    # registrer_samtale(), men kan gennem en manuel indsættelse. Den skal vises
+    # som en samtale uden udfald, ikke skjules.
+    samtaler: dict = {}
+    for r in rows:
+        cid = r["conversation_id"]
+        s = samtaler.get(cid)
+        if s is None:
+            s = {"conversation_id": cid,
+                 "contacted_at": _som_tidspunkt(r["contacted_at"]),
+                 "channel": r["channel"], "summary": r["summary"],
+                 "created_by": r["created_by"],
+                 "created_at": _som_tidspunkt(r["created_at"]),
+                 "udfald": []}
+            samtaler[cid] = s
+        if r["outcome_id"] is not None:
+            s["udfald"].append(_normaliser({
+                k: r[k] for k in
+                ("outcome_id", "site", "contact_result", "outcome",
+                 "arr_before_dkk", "arr_before_kilde",
+                 "arr_after_dkk", "arr_after_local",
+                 "arr_after_currency", "fx_rate",
+                 "renewal_date", "expiry_date", "followup_date", "note")
+            }))
+    # dict bevarer indsættelsesrækkefølgen, og queryen er allerede sorteret
+    # nyeste først — derfor ingen ny sortering her.
+    return list(samtaler.values())
 
 
 def db_opfoelgninger(til_og_med) -> list:

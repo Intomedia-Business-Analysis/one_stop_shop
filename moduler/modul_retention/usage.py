@@ -365,6 +365,31 @@ def latest_complete_month(months: list) -> Optional[str]:
     return complete[-1] if complete else None
 
 
+def serie_og_dage(forbrug: dict, kunde: tuple, site: str) -> tuple[dict, dict]:
+    """(sidevisninger, aktive dage) pr. måned for ét abonnement.
+
+    Pakkeabonnementer måles på KUNDENS samlede forbrug: `Watch Medier DK` giver
+    adgang til alle Watch-titler, og kun 7% af abonnenterne læser pakkens eget
+    site, mens 79% læser noget. Se zones.PAKKE_SITES.
+
+    Dagene slås op på SAMME niveau som sidevisningerne — ellers ville en pakke
+    få vanebruger-testen på ét site og zonen på syv.
+
+    Ligger her og ikke i risiko.py, fordi kunde-detaljesiden (PRD §7.4) skal
+    tegne præcis den serie, zonen blev beregnet på. To kopier af valget ville
+    kunne drive fra hinanden, og så ville grafen modsige zonen ved siden af.
+    """
+    # Lokal import af samme grund som i forbrug_pr_abonnement: zones.py må
+    # kunne få brug for noget herfra uden at der opstår en cirkel.
+    from .zones import PAKKE_SITES
+
+    if site in PAKKE_SITES:
+        return (forbrug["pr_kunde"].get(kunde, {}),
+                forbrug["dage_pr_kunde"].get(kunde, {}))
+    return (forbrug["pr_abonnement"].get((kunde, site), {}),
+            forbrug["dage_pr_abonnement"].get((kunde, site), {}))
+
+
 def forbrug_pr_abonnement() -> dict:
     """Sidevisninger slået op på abonnement og på kunde.
 

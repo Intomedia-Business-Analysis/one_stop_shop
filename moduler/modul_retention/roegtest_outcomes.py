@@ -101,12 +101,14 @@ def main() -> int:
                 # at koden ikke spærrer for det — den må ikke "rette" tallet.
                 {"site": SITE_A, "contact_result": "kontakt_opnaaet",
                  "outcome": "fornyet", "arr_before_dkk": 40000,
+                 "arr_before_kilde": outcomes.ARR_KILDE_BEKRAEFTET,
                  "arr_after_local": 60000, "arr_after_currency": "SEK",
                  "fx_rate": "0.72", "renewal_date": dt.date(2026, 9, 1)},
                 # Åbent udfald: kræver followup_date, ellers brænder
                 # CK_RetOut_followup_paa_aabne.
                 {"site": SITE_B, "contact_result": "kontakt_opnaaet",
                  "outcome": "tilbud_sendt", "arr_before_dkk": 25000,
+                 "arr_before_kilde": outcomes.ARR_KILDE_DELING,
                  "followup_date": dt.date(2026, 8, 14),
                  "note": "Sender tilbud mandag"},
             ],
@@ -126,6 +128,15 @@ def main() -> int:
                  float(a["arr_after_dkk"]) == 43200.0, "faktisk=" + str(a["arr_after_dkk"]))
             tjek("fx_rate gemt uændret", float(a["fx_rate"]) == 0.72)
             tjek("conversation_id peger tilbage", a["conversation_id"] == cid)
+            # Uden denne kolonne kan et bekræftet beløb ikke skelnes fra den
+            # lige deling, når §9's forudsigelsesrate skal beregnes.
+            tjek("arr_before_kilde gemt som bekraeftet",
+                 a["arr_before_kilde"] == outcomes.ARR_KILDE_BEKRAEFTET,
+                 repr(a["arr_before_kilde"]))
+        if b:
+            tjek("arr_before_kilde gemt som lige_deling",
+                 b["arr_before_kilde"] == outcomes.ARR_KILDE_DELING,
+                 repr(b["arr_before_kilde"]))
 
         print("--- 3: datoer er datoer, ikke strenge ---")
         # TDS 7.0 kender ikke date/datetime2 og sender dem som tekst. Uden
@@ -182,6 +193,29 @@ def main() -> int:
              antal("RetentionOutcomes") == 4, "faktisk=" + str(antal("RetentionOutcomes")))
         tjek("den gamle followup 14/8 kalder ikke længere",
              len(outcomes.db_opfoelgninger(dt.date(2026, 8, 14))) == 0)
+
+        print("--- 6b: historik grupperet paa samtalen ---")
+        # PRD §7.4. Kunden har nu to samtaler: den foerste med TO udfald, den
+        # anden med ET. Grupperingen er hele pointen — fem loesrevne raekker
+        # ville laeses som fem opkald.
+        hist = outcomes.db_historik(ACCOUNT, ORG_ID)
+        tjek("to samtaler for kunden", len(hist) == 2, "fandt " + str(len(hist)))
+        if len(hist) == 2:
+            tjek("nyeste foerst", hist[0]["contacted_at"] > hist[1]["contacted_at"],
+                 repr(hist[0]["contacted_at"]))
+            tjek("nyeste samtale har 1 udfald", len(hist[0]["udfald"]) == 1)
+            tjek("aeldste samtale har 2 udfald", len(hist[1]["udfald"]) == 2)
+            tjek("datoer normaliseret ogsaa her",
+                 all(u["renewal_date"] is None or type(u["renewal_date"]) is dt.date
+                     for s in hist for u in s["udfald"]))
+            tjek("summary baaret med", hist[1]["summary"] == "Talte om fornyelse")
+            tjek("historikken baerer arr_before_kilde med",
+                 {u["arr_before_kilde"] for u in hist[1]["udfald"]}
+                 == {outcomes.ARR_KILDE_BEKRAEFTET, outcomes.ARR_KILDE_DELING})
+        tjek("anden kunde har egen historik",
+             len(outcomes.db_historik("marketwire", 1)) == 1)
+        tjek("ukendt kunde giver tom liste",
+             outcomes.db_historik("findes-ikke", 999) == [])
 
         print("--- 7: atomicitet ---")
         # Andet udfald har et outcome der ikke findes ('opgraderet' — PRD §6.2's

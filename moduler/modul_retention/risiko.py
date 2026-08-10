@@ -32,9 +32,9 @@ from .usage import (
     _account_to_customer_map,
     forbrug_pr_abonnement,
     latest_complete_month,
+    serie_og_dage,
 )
 from .zones import (
-    PAKKE_SITES,
     STOPPET_VINDUE,
     VANEBRUGER_VINDUE,
     ZONE_LABELS,
@@ -114,16 +114,10 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             zone, serie, snit = "intet_signal", {}, None
             dage_serie, vanebruger, dage_12m = {}, True, None
         else:
-            # Pakkeabonnementer måles på KUNDENS samlede forbrug: kun 7% af
-            # Watch Medier DK's abonnenter læser pakkens eget site, mens 79%
-            # læser noget. Se zones.PAKKE_SITES.
-            pakke = site in PAKKE_SITES
-            serie = (forbrug["pr_kunde"].get(kunde, {}) if pakke
-                     else forbrug["pr_abonnement"].get((kunde, site), {}))
-            # Dagene slås op på SAMME niveau som sidevisningerne. Ellers ville en
-            # pakke få vanebruger-testen på ét site og zonen på syv.
-            dage_serie = (forbrug["dage_pr_kunde"].get(kunde, {}) if pakke
-                          else forbrug["dage_pr_abonnement"].get((kunde, site), {}))
+            # Pakke- kontra site-niveau afgøres ét sted, usage.serie_og_dage,
+            # så kunde-detaljesiden (PRD §7.4) tegner præcis den serie zonen
+            # blev beregnet på.
+            serie, dage_serie = serie_og_dage(forbrug, kunde, site)
             zone = bestem_zone(serie, reference, a["foerste_maaned"], site,
                                kunde in med_zuora)
             vanebruger = er_vanebruger(dage_serie, reference)
