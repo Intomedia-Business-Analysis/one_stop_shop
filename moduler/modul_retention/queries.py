@@ -405,7 +405,22 @@ def db_acv_ejere(owner_name: str | None = None,
         cur = conn.cursor(as_dict=True)
         cur.execute(
             f"""WITH {cte}
-            SELECT k.account, k.org_id, k.owner_name, k.arr_dkk, k.acv_sites
+            SELECT k.account, k.org_id, k.owner_name, k.arr_dkk, k.acv_sites,
+                   -- Korreleret subquery, IKKE et join mod HubUsers: 'Victoria
+                   -- Eikevold' har to aktive brugerrækker (id 64 og 78), og et
+                   -- join på navn ville dublere hendes kunder og dermed tælle
+                   -- deres ARR to gange. DISTINCT inde i subqueryen, fordi
+                   -- STRING_AGG ikke selv kan tage DISTINCT. Samme mønster som
+                   -- db_customers_at_risk_base.
+                   (SELECT STRING_AGG(x.name, ', ') WITHIN GROUP (ORDER BY x.name)
+                      FROM (
+                        SELECT DISTINCT t.name
+                        FROM dbo.HubUsers u
+                        JOIN dbo.TeamMemberships tm ON tm.user_id = u.id
+                        JOIN dbo.Teams t ON t.id = tm.team_id
+                        WHERE u.name = k.owner_name
+                          AND {_AKTIVT_MEDLEMSKAB}
+                      ) x) AS teams
             FROM acv_kunde k
             WHERE 1 = 1
                 {clause};""",
@@ -453,6 +468,7 @@ def abonnementer_med_ejer(maaned: str,
             "sites":          r["sites"],
             "foerste_maaned": r["foerste_maaned"],
             "owner_name":     ejer.get("owner_name"),
+            "teams":          ejer.get("teams"),
             # Navngivet kunde_arr_dkk og ikke arr_dkk, så den ikke kan forveksles
             # med abonnementets andel: summeres denne kolonne over en kundes tre
             # abonnementer, tælles ARR'en tre gange.

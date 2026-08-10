@@ -11,39 +11,35 @@ læser den nyeste — så vi undgår systemintegration mod koncernens dataplatfo
 Der er derfor hverken scheduler eller cache-tabel; "cachen" er filen selv plus
 det mtime-nøglede opslag herunder.
 
-Der er TO eksporter, begge i samme mappe (kan overrides via USAGE_SNAPSHOT_DIR):
+ÉN eksport (mappen kan overrides via USAGE_SNAPSHOT_DIR):
 
     usage_trend_DDMMYYYY.csv    — pr. konto pr. site pr. måned (13 mdr.)
         account_number, site, maaned, page_views, artikelvisninger,
         aktive_dage, unikke_brugere
 
-    usage_recency_DDMMYYYY.csv  — dage siden sidste aktivitet (12 mdr.)
-        access_account_number, last_activity_date, days_since_last_activity,
-        active_days, page_views
+Filen læses POSITIONELT med eller uden header-række, som Zuora-snapshottet.
+Ændrer du rækkefølgen i SQL'en, skal USAGE_COLUMNS følge med — ellers læses tal
+som tekst uden at fejle. SQL'en ligger i
+`Desktop\\DataBase Views DataGrip\\usage_trend.txt` med sin egen dokumentation.
 
-Begge læses positionelt med eller uden header-række, som Zuora-snapshottet.
-Ændrer du rækkefølgen i SQL'en, skal USAGE_COLUMNS/RECENCY_COLUMNS følge med.
-SQL'en ligger i `Desktop\\DataBase Views DataGrip\\usage_trend.txt` og
-`usage_recency.txt`.
-
-TREND ER PRIMÆRSIGNALET, IKKE RECENCY. Målt 2026-08-04: fordi recency-tærsklen
-er 14 dage, kan zonen "sund" ikke eksistere når filen er ældre end 14 dage — ved
-14 dages alder er 77% af kunderne flyttet til en værre zone udelukkende pga.
-filens alder, og ved 30 dage er ALLE kritiske. Et dagsbaseret signal kræver
+SIGNALET ER MÅNEDLIGT, IKKE DAGSBASERET. Recency-modellen — dage siden sidste
+aktivitet — er fjernet 2026-08-10 sammen med risk.py, jf. PRD §3. Begrundelsen
+skal stå her, så den ikke bliver genopfundet: fordi tærsklen var 14 dage, kunne
+zonen "sund" ikke eksistere når filen var ældre end 14 dage. Målt 2026-08-04 var
+77% af kunderne ved 14 dages filalder flyttet til en værre zone udelukkende pga.
+filens alder, og ved 30 dage var ALLE kritiske. Et dagsbaseret signal kræver
 ugentlig eksport-kadence, som bliver glemt. "Læste 0 gange i sidste HELE måned"
 er derimod et komplet faktum om en afsluttet måned og rådner ikke. Se zones.py.
 
-Recency-eksportet beholdes fordi det er billigt og giver dags-opløsning inden
-for indeværende måned, men det bærer ikke zonerne længere.
-
-Recency har et bredere vindue med vilje: en kunde der har været tavs længere end
-vinduet forsvinder helt ud af resultatet, og "mangler i output" er den højeste
-risiko — men kan ikke skelnes fra "aldrig trackt". Med 12 måneder kan de to
-tilstande skelnes. Se recency_zone(), som derfor har "intet_signal" som en
-selvstændig tilstand og ikke som kritisk.
+BÅDE sidevisninger og aktive dage bæres videre, og begge bruges. Sidevisninger
+afgør zonen; aktive dage afgør om der var en vane at miste (zones.er_vanebruger).
+Målt 2026-08-10: blandt de 1.842 stoppede abonnementer er medianen 4,0
+sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. To faste
+besøg om måneden er en vane, og volumen alene kan ikke skelne den fra støj.
 
 Nøgle-kæden til retention er indirekte:
-    Snowplow access_account_number = Zuora account_number → pipedrive_id = org_id
+    Snowplow access_agreements[].account_number = Zuora account_number
+        → pipedrive_id = org_id
 Zuora-snapshottet er altså påkrævet for at kunne koble usage til en kunde i
 `dbo.retention`. Mangler snapshottet, kan rå usage stadig læses — kun
 oversættelsen til kunde-nøglen fejler.
@@ -54,14 +50,28 @@ VIGTIGT: org_id er kun unikt INDEN FOR én Pipedrive-account. Nøglen er derfor
 PipeDrive_ACV, og org_name matcher i 0 af dem (org_id 3995 er både
 "Sorø Akademis Skole" og "Ret og Råd Sekretariatet A/S"). I Zuora-snapshottet
 optræder 893 af 8.948 pipedrive_id'er under mere end ét brand. Nøgles usage på
-org_id alene, blandes to fremmede virksomheders besøg sammen — og fordi
-recency_by_customer() tager min(dage), gør én aktiv fremmed en tavs kunde
-"sund". Fejlen peger altså mod at SKJULE risiko.
+org_id alene, blandes to fremmede virksomheders besøg sammen — og en aktiv
+fremmed ville gøre en tavs kunde sund, altså SKJULE risiko.
 
-Kendt begrænsning: FINANS DK's site sætter aldrig `access_account_number` i
-Snowplow (komplet tracking-hul, verificeret over 3 måneder), så FINANS
-DK-kunder får aldrig et usage-signal. Det skal fremgå i dashboardet, ellers
-ligner de kunder uden aktivitet.
+KENDTE HULLER (målt 2026-08-07):
+
+  * Watch-appen kan ikke tilskrives. `prod.watchmedier.native.ios` (522.073
+    rækker i juli 2026) og `.android` (44.117) har NUL rækker med brugbar
+    `access_agreements` i `snowplow_v2_screenview`. En kunde hvor alle læser i
+    appen står derfor som tavs. Finans-appen sætter feltet korrekt
+    (`dk.jp.finans`: 97.462 af 225.129), så det er en manglende implementering,
+    ikke en umulighed. Spørgsmålet ligger hos datascientisten.
+
+  * finans.dk ligger i `jyllandsposten_dsa_prv_external`. Det var ALDRIG et
+    tracking-hul — det var et rettighedsproblem, og adgangen kom 2026-08-07. Vi
+    målte 318.441 web-rækker med adgangsaftale i juli alene. `usage_trend.txt`
+    henter nu både web og app derfra, men en eksportfil fra FØR 2026-08-10
+    indeholder dem ikke, og så står finans.dk's 1.163 abonnementer fortsat som
+    "intet_signal". Bemærk konsekvensen når de er med: finans blander web+app,
+    mens alle Watch-sites er web alene.
+
+  * Shifter, Kom24 NO og Medier24 NO ligger uden for erhvervsmedier-schemaet.
+    marketwire har intet site i `dbo.retention`. Se zones.UNTRACKBARE_SITES.
 """
 
 import logging
@@ -96,19 +106,6 @@ USAGE_COLUMNS = [
     "account_number", "site", "maaned",
     "page_views", "artikelvisninger", "aktive_dage", "unikke_brugere",
 ]
-
-RECENCY_PREFIX = "usage_recency"
-RECENCY_COLUMNS = [
-    "access_account_number", "last_activity_date", "days_since_last_activity",
-    "active_days", "page_views",
-]
-
-# Zone-tærskler i dage siden sidste aktivitet. 14 dage er fase 1-reglen fra
-# churn-oplægget — et gæt, ikke et måleresultat. De SKAL valideres mod
-# dbo.retention (hvor lang tavshed havde de kunder, der faktisk churnede?)
-# før de bruges til at prioritere en sælgers arbejdsdag.
-ZONE_ATTENTION_DAYS = 14
-ZONE_CRITICAL_DAYS = 30
 
 # Cache-key: (sti, mtime). Samme fil → samme resultat, ingen genparsning.
 _USAGE_CACHE: dict[tuple, dict] = {}
@@ -177,11 +174,6 @@ def find_latest_usage_file(folder: Optional[Path] = None) -> Optional[Path]:
     return _find_latest(TREND_PREFIX, folder)
 
 
-def find_latest_recency_file(folder: Optional[Path] = None) -> Optional[Path]:
-    """Nyeste usage_recency-eksport."""
-    return _find_latest(RECENCY_PREFIX, folder)
-
-
 def _date_from_path(p: Path) -> Optional[str]:
     """Eksport-dato (ISO) ud af ét filnavn, med filens mtime som fallback."""
     m = _FILE_DATE_RE.search(p.stem)
@@ -195,16 +187,6 @@ def _date_from_path(p: Path) -> Optional[str]:
         return datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d")
     except OSError:
         return None
-
-
-def current_usage_date() -> Optional[str]:
-    """Eksport-dato for den fil der ville blive indlæst nu.
-
-    Bruges til at vise datafriskhed i dashboardet — uden den kan brugeren ikke
-    se, om usage-signalet er fra i går eller fra sidste måned.
-    """
-    p = find_latest_usage_file()
-    return _date_from_path(p) if p else None
 
 
 # ---------------------------------------------------------------------------
@@ -229,25 +211,6 @@ def _missing_file_error(prefix: str) -> FileNotFoundError:
         f"Ingen {prefix}_*.csv eller .xlsx fundet. Tjekkede stier "
         f"(fra USAGE_SNAPSHOT_DIR i .env):\n{detalje}"
     )
-
-
-def _as_int(v) -> Optional[int]:
-    """Tolerant int-konvertering. None ved tomt/uparsbart.
-
-    `prev_month_page_views` og `change` er NULL for den første måned i vinduet
-    (LAG har intet at se tilbage på), og det skal kunne skelnes fra 0 besøg.
-    """
-    if v is None or (isinstance(v, float) and pd.isna(v)):
-        return None
-    try:
-        if pd.isna(v):
-            return None
-    except (TypeError, ValueError):
-        pass
-    try:
-        return int(float(str(v).strip()))
-    except (TypeError, ValueError):
-        return None
 
 
 def load_usage_trend(path: Optional[Path] = None) -> dict:
@@ -483,169 +446,3 @@ def forbrug_pr_abonnement() -> dict:
             "dage_pr_abonnement": dage_pr_abonnement,
             "dage_pr_kunde": dage_pr_kunde,
             "maaneder": usage["maaneder"], "meta": meta}
-
-
-# ---------------------------------------------------------------------------
-# Recency — dage siden sidste aktivitet (fase 1-signalet)
-# ---------------------------------------------------------------------------
-
-def recency_zone(days: Optional[int]) -> str:
-    """Zone ud fra dage siden sidste aktivitet.
-
-    `None` giver "intet_signal" — ikke "kritisk". Forskellen er afgørende: en
-    kunde uden Snowplow-spor kan være tavs, men kan også bare være utrackbar
-    (FINANS DK sætter aldrig access_account_number). At vise et datahul som
-    kritisk risiko sender sælgeren efter en kunde, der måske læser hver dag.
-    """
-    if days is None:
-        return "intet_signal"
-    if days >= ZONE_CRITICAL_DAYS:
-        return "kritisk"
-    if days >= ZONE_ATTENTION_DAYS:
-        return "opmærksomhed"
-    return "sund"
-
-
-def load_usage_recency(path: Optional[Path] = None) -> dict:
-    """Læs usage_recency-eksportet (dage siden sidste aktivitet pr. konto).
-
-    `days_since_last_activity` REGNES HER, ud fra `last_activity_date` og dagens
-    dato — ikke læst fra filen. Kolonnen i eksportet var korrekt den dag queryen
-    kørte, men et fem dage gammelt eksport ville ellers undervurdere inaktiviteten
-    med fem dage, og signalet ville blive mildere med tiden i stedet for skarpere.
-    Den eksporterede værdi bevares som `days_at_export` til sammenligning.
-
-    Returnerer:
-        rows        — én pr. konto
-        by_account  — {access_account_number: row}
-        meta        — path, filnavn, export_date, file_age_days, tællinger pr. zone
-    """
-    target = path or find_latest_recency_file()
-    if not target:
-        raise _missing_file_error(RECENCY_PREFIX)
-
-    try:
-        cache_key = (str(target), target.stat().st_mtime, date.today().isoformat())
-        cached = _USAGE_CACHE.get(cache_key)
-        if cached is not None:
-            return cached
-    except OSError:
-        cache_key = None
-
-    if target.suffix.lower() == ".xlsx":
-        df_raw = pd.read_excel(target, header=None)
-    else:
-        df_raw = pd.read_csv(target, header=None, sep=",", encoding="utf-8")
-
-    if str(df_raw.iloc[0].iloc[0]).strip().lower() == "access_account_number":
-        df = df_raw.iloc[1:].reset_index(drop=True)
-    else:
-        df = df_raw
-
-    if df.shape[1] < len(RECENCY_COLUMNS):
-        raise ValueError(
-            f"Recency-fil {target.name} har {df.shape[1]} kolonner, "
-            f"forventer mindst {len(RECENCY_COLUMNS)}: {RECENCY_COLUMNS}"
-        )
-    df = df.iloc[:, :len(RECENCY_COLUMNS)]
-    df.columns = RECENCY_COLUMNS
-
-    today = date.today()
-    rows: list[dict] = []
-    by_account: dict[str, dict] = {}
-    zones: dict[str, int] = {}
-
-    for _, r in df.iterrows():
-        acct = str(r["access_account_number"]).strip() if pd.notna(r["access_account_number"]) else ""
-        if not acct:
-            continue
-        raw_date = str(r["last_activity_date"]).strip()[:10] if pd.notna(r["last_activity_date"]) else ""
-        try:
-            last = date.fromisoformat(raw_date)
-        except ValueError:
-            logger.warning("Ulæselig last_activity_date %r for konto %s — springes over",
-                           raw_date, acct)
-            continue
-        days = (today - last).days
-        row = {
-            "access_account_number": acct,
-            "last_activity_date":    last.isoformat(),
-            "days_since_last_activity": days,
-            "days_at_export":        _as_int(r["days_since_last_activity"]),
-            "active_days":           _as_int(r["active_days"]) or 0,
-            "page_views":            _as_int(r["page_views"]) or 0,
-            "zone":                  recency_zone(days),
-        }
-        rows.append(row)
-        by_account[acct] = row
-        zones[row["zone"]] = zones.get(row["zone"], 0) + 1
-
-    export_date = _date_from_path(target)
-    file_age = None
-    if export_date:
-        try:
-            file_age = (today - date.fromisoformat(export_date)).days
-        except ValueError:
-            pass
-
-    meta = {
-        "path":          str(target),
-        "filename":      target.name,
-        "export_date":   export_date,
-        # Hvor gammelt eksportet er. Dashboardet bør vise det: et signal om
-        # inaktivitet er selv værdiløst, hvis det er en måned gammelt.
-        "file_age_days": file_age,
-        "account_count": len(by_account),
-        "zones":         zones,
-        "thresholds":    {
-            "attention_days": ZONE_ATTENTION_DAYS,
-            "critical_days":  ZONE_CRITICAL_DAYS,
-        },
-    }
-    result = {"rows": rows, "by_account": by_account, "meta": meta}
-    if cache_key:
-        _USAGE_CACHE[cache_key] = result
-    return result
-
-
-def recency_by_customer() -> dict:
-    """Recency nøglet på (account, org_id) i stedet for Zuora-kontonummer.
-
-    Har en organisation flere Zuora-konti, tæller den MEST NYLIGE aktivitet på
-    tværs af dem: er én konto aktiv, er kunden aktiv. Derfor min(dage), ikke
-    gennemsnit — et gennemsnit ville få en kunde med én aktiv og én sovende konto
-    til at se halvt i risiko ud, hvilket ingen kan handle på.
-
-    Netop dét min() er grunden til at nøglen SKAL indeholde account: delte to
-    fremmede virksomheder én nøgle, ville den mest aktive af dem gøre den anden
-    "sund", og risikoen ville forsvinde ud af listen uden spor.
-
-    `active_days` og `page_views` summeres, da de er volumen-mål.
-    """
-    rec = load_usage_recency()
-    acct_to_customer = _account_to_customer_map()
-
-    out: dict[tuple[str, str], dict] = {}
-    for acct, row in rec["by_account"].items():
-        key = acct_to_customer.get(acct)
-        if not key:
-            continue  # Zuora-konto uden pipedrive_id — kan ikke kobles til en kunde
-        bucket = out.get(key)
-        if bucket is None:
-            out[key] = {
-                "days_since_last_activity": row["days_since_last_activity"],
-                "last_activity_date":       row["last_activity_date"],
-                "active_days":              row["active_days"],
-                "page_views":               row["page_views"],
-                "zone":                     row["zone"],
-                "accounts":                 1,
-            }
-            continue
-        bucket["accounts"]    += 1
-        bucket["active_days"] += row["active_days"]
-        bucket["page_views"]  += row["page_views"]
-        if row["days_since_last_activity"] < bucket["days_since_last_activity"]:
-            bucket["days_since_last_activity"] = row["days_since_last_activity"]
-            bucket["last_activity_date"]       = row["last_activity_date"]
-            bucket["zone"]                     = row["zone"]
-    return out

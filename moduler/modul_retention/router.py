@@ -6,7 +6,7 @@ from auth import allowed_data_teams, get_current_user, has_access
 from nav_utils import register_nav_globals
 from moduler.modul_saelger_portfolio.queries import get_led_teams
 from .queries import db_monthly_active_counts
-from .risk import customers_at_risk
+from .risiko import abonnementer_i_risiko
 
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)
@@ -60,17 +60,25 @@ def get_monthly_active_counts(user=Depends(get_current_user)):
 
 
 @router.get("/retention/risk")
-def get_customers_at_risk(user=Depends(get_current_user)):
-    """Risikolisten. Samme rolle-filtrering som trendlinjen.
+def get_abonnementer_i_risiko(user=Depends(get_current_user)):
+    """Risikolisten pr. ABONNEMENT. Samme rolle-filtrering som trendlinjen.
+
+    Skiftet fra recency-modellen (risk.customers_at_risk) 2026-08-10, jf. PRD §3
+    hvor 14/30-dages-tærsklerne udfases: signalet rådnede med filens alder, og
+    grainen var kunden, hvilket er den forkerte måleenhed (PRD §2 og §7.2).
+    Ruten beholder sit navn, så eksisterende links og bogmærker virker.
 
     NB: `_resolve_filters` returnerer `owner_name` fra `retention_owner`-verdenen
     (`user["name"]`), mens risikolisten filtrerer på ACV's org-ejer. Det er samme
     personnavn i begge kilder — HubUsers' `name` — så filteret virker; men de to
     visninger kan medtage forskellige kunder for samme sælger, fordi kilderne er
     uenige om ejerskab i 47% af rækkerne. Det skal fremgå af siden.
+
+    `abo_maaned` sendes bevidst IKKE videre: produktionsvisningen skal altid være
+    indeværende måned, og parameteren findes kun til kontrolkørsler.
     """
     owner_name, teams = _resolve_filters(user)
-    return customers_at_risk(owner_name=owner_name, teams=teams)
+    return abonnementer_i_risiko(owner_name=owner_name, teams=teams)
 
 
 @router.get("/retention/overview", response_class=HTMLResponse)

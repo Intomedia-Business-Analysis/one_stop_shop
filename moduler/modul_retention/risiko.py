@@ -43,6 +43,7 @@ from .zones import (
     er_vanebruger,
     foregaaende_maaneder,
     kanonisk_site,
+    maaneders_alder,
     zone_vaegt,
 )
 
@@ -153,6 +154,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             "site_kanonisk":   site,
             "foerste_maaned":  a["foerste_maaned"],
             "owner_name":      a["owner_name"],
+            "teams":           a["teams"],
             "zone":            zone,
             "zone_label":      ZONE_LABELS[zone],
             "vaegt":           vaegt,
@@ -207,6 +209,15 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     for z, b in zones.items():
         b["kunder"] = len(kunder_pr_zone.get(z, set()))
 
+    # Signalets alder MÅLES I MÅNEDER, ikke i dage. Et månedligt signal rådner
+    # ikke inden for måneden — det var hele grunden til at forlade recency. Men
+    # er referencen to måneder gammel, er eksporten ikke kørt, og zonerne
+    # beskriver en tilstand der kan være overstået. 0 = referencen er sidste hele
+    # måned, altså så friskt som modellen kan blive.
+    ref_alder = None
+    if reference:
+        ref_alder = maaneders_alder(reference, abo_maaned) - 1
+
     arr_total = sum(r["arr_dkk"] for r in rows if r["arr_dkk"] is not None)
     # "ARR i risiko" er kroner i zoner med vægt over nul. Sund og ny bidrager
     # altså ikke, mens intet_signal gør — et datahul på en stor kunde er ikke
@@ -219,11 +230,21 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         "kunder":           len({(r["account"], r["org_id"]) for r in rows}),
         "abo_maaned":       abo_maaned,
         "reference_maaned": reference,
+        "reference_alder":  ref_alder,
         "arr_total":        arr_total,
         "arr_i_risiko":     arr_i_risiko,
         "med_signal":       sum(1 for r in rows if r["zone"] != "intet_signal"),
         "uden_arr":         sum(1 for r in rows if r["arr_dkk"] is None),
         "uden_ejer":        sum(1 for r in rows if not r["owner_name"]),
+        "uden_team":        sum(1 for r in rows
+                                if r["owner_name"] and not r["teams"]),
+        # Hvor mange af de stoppede der havde en vane at miste. Tallet hører i
+        # forbeholdene: det er selve begrundelsen for at 565 af dem har halv
+        # vægt, og uden det ser vægtforskellen vilkårlig ud.
+        "stoppet_vanebrugere": sum(1 for r in rows
+                                   if r["zone"] == "stoppet" and r["vanebruger"]),
+        "stoppet_uden_vane":   sum(1 for r in rows
+                                   if r["zone"] == "stoppet" and not r["vanebruger"]),
         "mikrokunder":      sum(1 for r in rows if r["mikrokunde"]),
         "usage_export_date": usage_meta.get("export_date"),
         "usage_filename":    usage_meta.get("filename"),

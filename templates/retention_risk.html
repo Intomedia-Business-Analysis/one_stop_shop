@@ -16,34 +16,46 @@
     .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
     .panel-body { padding:20px; }
 
-    /* Zone-kort. Kroner er det store tal, antal kunder det lille — omvendt af
-       oplæggets søjlediagram, fordi en leder disponerer efter kroner. */
+    /* Zone-kort. Kroner er det store tal; ANTAL ABONNEMENTER og ANTAL KUNDER
+       står begge nedenunder, fordi de svarer på to forskellige spørgsmål:
+       abonnementer er hvad der står på spil, kunder er hvor mange samtaler det
+       kræver (PRD §7.2). De er ikke ens — en kunde kan ligge i tre zoner. */
     .zones { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:24px; }
     .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
              border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
-    .zcard.kritisk      { border-left-color:var(--danger); }
-    .zcard.opmærksomhed { border-left-color:var(--warn); }
-    .zcard.sund         { border-left-color:var(--win); }
-    .zcard.intet_signal { border-left-color:var(--ink-4); }
+    /* Farven følger VÆGTEN, ikke zonens navn. Tre zoner deler gul, fordi de
+       reelt har samme prioritet (0,40-0,50) — syv forskellige farver ville
+       antyde en rangorden modellen ikke har. Vægten står på kortet, så
+       grupperingen forklarer sig selv. */
+    .zcard.stoppet       { border-left-color:var(--danger); }
+    .zcard.laenge_tavs   { border-left-color:var(--warn); }
+    .zcard.aldrig_i_brug { border-left-color:var(--warn); }
+    .zcard.faldende      { border-left-color:var(--warn); }
+    .zcard.sund          { border-left-color:var(--win); }
+    .zcard.ny            { border-left-color:var(--taupe); }
+    .zcard.intet_signal  { border-left-color:var(--ink-4); }
     .zcard .zlabel { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
     .zcard .zarr   { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
     .zcard .zmeta  { font-size:11px; color:var(--ink-3); line-height:1.5; }
+    .zcard .zvaegt { font-size:10px; color:var(--ink-4); margin-top:5px; }
 
-    /* Kortene ER filteret. Fire separate knapper med samme fire tekster lige
-       nedenunder ville være dobbelt op — her står tallet og handlingen samme sted. */
+    /* Kortene ER filteret. Separate knapper med samme tekster nedenunder ville
+       være dobbelt op — her står tallet og handlingen samme sted. */
     .zcard { cursor:pointer; transition:box-shadow .12s, transform .12s; text-align:left;
              font-family:inherit; width:100%; }
     .zcard:hover  { box-shadow:0 5px 18px rgba(28,28,26,.14); transform:translateY(-1px); }
     .zcard:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
-    /* Valgt kort får sin EGEN zonefarve som baggrund, ikke en neutral grå. Farven
-       er den samme som zonens pille i tabellen, så man kan se på farven alene
-       hvilket udvalg man kigger på. ✕ i labelen er den farveblinde-sikre
-       markering af at et klik mere rydder filteret. */
-    .zcard.valgt  { border-color:var(--border-strong); }
-    .zcard.kritisk.valgt      { background:var(--danger-light); }
-    .zcard.opmærksomhed.valgt { background:var(--warn-light); }
-    .zcard.sund.valgt         { background:var(--win-light); }
-    .zcard.intet_signal.valgt { background:var(--taupe-light); }
+    /* Valgt kort får sin EGEN zonefarve som baggrund, ikke en neutral grå, så man
+       kan se på farven alene hvilket udvalg man kigger på. ✕ i labelen er den
+       farveblinde-sikre markering af at et klik mere rydder filteret. */
+    .zcard.valgt { border-color:var(--border-strong); }
+    .zcard.stoppet.valgt       { background:var(--danger-light); }
+    .zcard.laenge_tavs.valgt   { background:var(--warn-light); }
+    .zcard.aldrig_i_brug.valgt { background:var(--warn-light); }
+    .zcard.faldende.valgt      { background:var(--warn-light); }
+    .zcard.sund.valgt          { background:var(--win-light); }
+    .zcard.ny.valgt            { background:var(--taupe-light); }
+    .zcard.intet_signal.valgt  { background:var(--taupe-light); }
     .zcard.valgt .zlabel::after { content:' ✕'; color:var(--ink-3); }
     .zcard .zhint { font-size:10px; color:var(--ink-4); margin-top:6px; }
 
@@ -68,8 +80,7 @@
     .fine strong { color:var(--ink-2); font-weight:600; }
 
     /* Foldet som standard: usynlig for den der bare skal ned i listen, ét klik væk
-       for den der bliver spurgt "kan vi stole på det her?". Tallene stod før som
-       fire gule kasser og derefter som et tæt afsnit småtryk — begge gange i vejen. */
+       for den der bliver spurgt "kan vi stole på det her?". */
     .daek { margin:0 0 24px; font-size:11px; color:var(--ink-3); }
     .daek > summary { cursor:pointer; color:var(--ink-2); font-weight:600;
                       padding:4px 0; user-select:none; width:max-content; }
@@ -77,13 +88,10 @@
     .daek ul { margin:6px 0 0; padding-left:18px; line-height:1.7; }
     .daek li strong { color:var(--ink-2); font-weight:600; }
 
-    /* Sikkerhedsnet: med fixed layout burde tabellen altid passe, men på en smal
-       skærm skal den kunne scrolles frem for at blive klippet af. */
     .tbl-wrap { overflow-x:auto; }
     /* table-layout:fixed + procentbredder gør at tabellen ALDRIG bliver bredere
        end panelet. Kolonner med tekst må ombrydes; kun tal og zone-pillen holdes
-       på én linje. Uden fixed layout strækker de længste kundenavne og
-       team-lister tabellen ud, og så skal man scrolle vandret for at se noget. */
+       på én linje. */
     table.risk { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
     table.risk th, table.risk td { padding:8px 10px; text-align:left;
                                    border-bottom:1px solid var(--border); vertical-align:top; }
@@ -92,18 +100,22 @@
     table.risk th:hover { color:var(--ink); }
     table.risk th .arrow { color:var(--ink-4); font-size:9px; }
     table.risk th.num, table.risk td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-    /* Lange ord uden mellemrum (fx et domæne i et firmanavn) må brydes, ellers
-       sprænger de deres kolonne selv med fixed layout. */
     table.risk td.txt { overflow-wrap:anywhere; }
     table.risk tbody tr:hover { background:var(--bg); }
 
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
-    .pill.kritisk      { background:var(--danger-light); color:var(--danger); }
-    .pill.opmærksomhed { background:var(--warn-light);   color:var(--warn); }
-    .pill.sund         { background:var(--win-light);    color:var(--win); }
-    .pill.intet_signal { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.stoppet       { background:var(--danger-light); color:var(--danger); }
+    .pill.laenge_tavs   { background:var(--warn-light);   color:var(--warn); }
+    .pill.aldrig_i_brug { background:var(--warn-light);   color:var(--warn); }
+    .pill.faldende      { background:var(--warn-light);   color:var(--warn); }
+    .pill.sund          { background:var(--win-light);    color:var(--win); }
+    .pill.ny            { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.intet_signal  { background:var(--taupe-light);  color:var(--ink-2); }
     .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
            background:var(--taupe-light); color:var(--ink-2); margin-left:6px; }
+    /* Halv vægt fordi der ikke var en vane at miste. Egen farve, fordi det er
+       den oplysning der afgør om rækken er værd at ringe på. */
+    .tag.ingenvane { background:var(--warn-light); color:var(--warn); }
 
     .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .filters label { font-size:11px; color:var(--ink-2); display:flex; align-items:center; gap:5px; cursor:pointer; }
@@ -141,7 +153,7 @@
         <div class="summary-bar">
           <div>
             <h1>Churn-risiko</h1>
-            <p>Aktive kunder rangeret efter hvor længe siden de sidst var aktive</p>
+            <p>Aktive abonnementer rangeret efter score = årsværdi × risikovægt</p>
           </div>
         </div>
 
@@ -156,11 +168,11 @@
         <div class="panel">
           <div class="panel-header">
             <div>
-              <h2>Kunder i risiko</h2>
+              <h2>Abonnementer i risiko</h2>
               <p id="tbl-sub">Indlæser…</p>
             </div>
             <div class="filters">
-              <input type="search" id="q" placeholder="Søg kunde eller ejer…" autocomplete="off">
+              <input type="search" id="q" placeholder="Søg kunde, site eller ejer…" autocomplete="off">
             </div>
           </div>
           <div class="panel-body">
@@ -180,19 +192,22 @@
 </div>
 <script>
 (async function () {
-  const nf0  = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
-  const nf1  = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const nf0 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  // Egen formatter til vægte. nf1 har én decimal, og med den blev 0,15 vist som
+  // 0,2 — kortet påstod altså en vægt der ikke findes i modellen. Vægte er små
+  // tal hvor anden decimal er betydningsbærende, og 1,00 skal se ud som en
+  // bevidst værdi, ikke som et afrundet 1.
+  const nfv = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const notes  = document.getElementById('notes');
-  const zonesEl= document.getElementById('zones');
-  const sub    = document.getElementById('tbl-sub');
-  const head   = document.getElementById('head');
-  const body   = document.getElementById('body');
-  const q      = document.getElementById('q');
-  const pager  = document.getElementById('pager');
+  const notes   = document.getElementById('notes');
+  const zonesEl = document.getElementById('zones');
+  const sub     = document.getElementById('tbl-sub');
+  const head    = document.getElementById('head');
+  const body    = document.getElementById('body');
+  const q       = document.getElementById('q');
+  const pager   = document.getElementById('pager');
 
-  // Sidedeling. 50 rækker er nok til at overskue en arbejdsdag og lidt mere;
-  // pageSize kan ændres i bunden af tabellen.
   let page = 1;
   let pageSize = 50;
 
@@ -208,8 +223,8 @@
     notes.innerHTML = '<div class="note danger">' + esc(msg) + '</div>';
   };
 
-  // Som på overview-siden: 403 fra rolle-vagten kommer som {"detail": ...}, og
-  // uden res.ok-tjekket ville koden fejle på et objekt der ikke har .rows.
+  // 403 fra rolle-vagten kommer som {"detail": ...}, og uden res.ok-tjekket
+  // ville koden fejle på et objekt der ikke har .rows.
   let data;
   try {
     const res = await fetch('/retention/risk');
@@ -223,50 +238,53 @@
     return fail('Kunne ikke hente data — netværksfejl.');
   }
 
-  const rows = data.rows || [];
-  const meta = data.meta || {};
+  const rows  = data.rows  || [];
+  const meta  = data.meta  || {};
+  const zoner = data.zones || {};
 
-  // ── Noter. Her stod fire gule kasser, og tilsammen signalerede de "stol ikke
-  // på det her", før man havde set et eneste tal. Kun én af dem var en egentlig
-  // advarsel; de tre andre var oplysninger blæst op til bannere. De er flyttet
-  // derhen hvor de hører: friskhed og dækning i panel-underteksterne, tærskler
-  // under zone-kortene, ejerskabs-definitionen som fodnote under tabellen.
-  // En kasse vises nu KUN når der faktisk er noget i vejen.
+  // ── Noter. En kasse vises KUN når der faktisk er noget i vejen.
   const n = [];
-  const age = meta.usage_file_age_days;
   if (meta.usage_error) {
-    n.push('<div class="note danger"><strong>Der er intet usage-signal indlæst.</strong> '
-      + 'Alle kunder står derfor som “intet signal” — det betyder IKKE at ingen er i risiko. '
+    n.push('<div class="note danger"><strong>Der er intet forbrugssignal indlæst.</strong> '
+      + 'Alle abonnementer står derfor som “intet signal” — det betyder IKKE at ingen er i risiko. '
       + esc(meta.usage_error).replace(/\n/g, '<br>') + '</div>');
-  } else if (age != null && age > 7) {
-    // Over en uge BEGYNDER tallene at lyve: alle ser ældre tavse ud end de er.
-    // Målt — ved 14 dages alder kan zonen "sund" slet ikke forekomme.
-    n.push('<div class="note danger"><strong>Usage-data er ' + esc(age) + ' dage gammelt.</strong> '
-      + 'Alle kunder ser derfor op til ' + esc(age) + ' dage mere tavse ud end de måske er, '
-      + 'og zonerne skrider. Kør eksportet igen.</div>');
+  } else if (meta.reference_alder != null && meta.reference_alder > 0) {
+    // Alderen måles i MÅNEDER, ikke dage. Et månedligt signal rådner ikke inden
+    // for måneden — det var hele grunden til at forlade dagsmodellen. Men er
+    // referencen en måned for gammel, er eksporten ikke kørt.
+    n.push('<div class="note danger"><strong>Forbrugsdata er '
+      + esc(meta.reference_alder) + ' måned' + (meta.reference_alder > 1 ? 'er' : '')
+      + ' bagud.</strong> Zonerne beskriver ' + esc(meta.reference_maaned)
+      + ' og kan være overhalet. Kør eksportet igen — se usage_trend.txt.</div>');
   }
   notes.innerHTML = n.join('');
 
-  // ── Zone-kort, som samtidig er filteret. null = standardvisningen (de to
-  // zoner der kræver handling); ellers præcis én zone. Klik på et valgt kort
-  // rydder filteret igen.
+  // ── Zone-kort, som samtidig er filteret. null = standardvisningen (alle zoner
+  // med risikovægt over nul); ellers præcis én zone.
   let zoneFilter = null;
+
+  // Zoner med vægt 0 er ikke en arbejdsliste. De er ét klik væk på kortene.
+  const iRisiko = (r) => (r.vaegt || 0) > 0;
 
   function tegnZoner() {
     zonesEl.innerHTML = (data.zone_order || []).map(z => {
-      const b = (data.zones || {})[z];
+      const b = zoner[z];
       if (!b) return '';
       const extra = [];
-      if (b.uden_arr)   extra.push(nf0.format(b.uden_arr) + ' uden årsværdi');
-      if (b.utrackbare) extra.push(nf0.format(b.utrackbare) + ' utrackbare');
+      if (b.uden_arr)    extra.push(nf0.format(b.uden_arr) + ' uden årsværdi');
+      if (b.mikrokunder) extra.push(nf0.format(b.mikrokunder) + ' mikrokunder');
       const valgt = zoneFilter === z;
       return '<button type="button" class="zcard ' + z + (valgt ? ' valgt' : '')
         + '" data-zone="' + z + '" title="'
         + esc(valgt ? 'Klik for at rydde filteret' : 'Vis kun ' + b.label) + '">'
         + '<div class="zlabel">' + esc(b.label) + '</div>'
         + '<div class="zarr">' + mio(b.arr_dkk) + '</div>'
-        + '<div class="zmeta">' + nf0.format(b.customers) + ' kunder'
+        // Begge tal, jf. PRD §7.2: abonnementer er hvad der står på spil,
+        // kunder er hvor mange samtaler det kræver.
+        + '<div class="zmeta">' + nf0.format(b.abonnementer) + ' abonnementer · '
+        + nf0.format(b.kunder) + ' kunder'
         + (extra.length ? '<br>' + extra.join(' · ') : '') + '</div>'
+        + '<div class="zvaegt">risikovægt ' + nfv.format(b.vaegt) + '</div>'
         + (valgt ? '' : '<div class="zhint">klik for at vise</div>')
         + '</button>';
     }).join('');
@@ -282,70 +300,62 @@
     render();
   });
 
-  // Forudsætningerne under kortene, hvor de hører til: zonerne ER tærsklerne, og
-  // datoen fortæller hvad tallene gælder. Tidligere to gule kasser.
-  const th = meta.thresholds || {};
-  const friskTxt = meta.usage_error ? 'intet usage-signal indlæst'
-    : (meta.usage_export_date
-        ? 'usage-data pr. ' + meta.usage_export_date
-          + (age === 0 ? ' (i dag)' : age === 1 ? ' (i går)' : ' (' + age + ' dage siden)')
-        : 'ukendt datakilde');
-  // Den ene forudsætning der SKAL være synlig: uden den læses zonerne som fakta,
-  // og så prioriterer nogen en arbejdsdag efter et tal fra et oplæg. "Zoner efter
-  // dage siden sidste aktivitet" er skåret væk — det står nu i Zone-kolonnens
-  // tooltip, hvor det ikke gentages for alle læsere hver gang.
+  // Forudsætningerne under kortene. Den ene der SKAL være synlig er at
+  // tærsklerne er gæt — uden den læses zonerne som fakta, og så prioriterer
+  // nogen en arbejdsdag efter et tal fra et oplæg.
+  const friskTxt = meta.usage_error
+    ? 'intet forbrugssignal indlæst'
+    : 'zoner målt på ' + esc(meta.reference_maaned) + ' (sidste hele måned)'
+      + (meta.usage_export_date ? ', eksport pr. ' + esc(meta.usage_export_date) : '');
   document.getElementById('zones-note').innerHTML =
-    esc(friskTxt) + ' · '
+    friskTxt + ' · abonnementer aktive i ' + esc(meta.abo_maaned) + ' · '
     + (meta.thresholds_validated === false
-        ? '<strong>tærsklerne ' + esc(th.attention_days) + '/' + esc(th.critical_days)
-          + ' dage er oplæggets gæt</strong>, ikke målt mod faktisk churn'
-        : 'tærskler ' + esc(th.attention_days) + '/' + esc(th.critical_days) + ' dage');
+        ? '<strong>vægtene er ikke kalibreret mod faktisk churn endnu</strong> (PRD §9)'
+        : 'vægte kalibreret mod faktiske udfald');
 
-  // ── Tabel
-  // Syv kolonner der tilsammen fylder 100%, så tabellen passer i panelet.
-  // Sidst aktiv, page views, sites-listen og account er flyttet til tooltips
-  // (title-attributter) frem for egne kolonner: de er nyttige når man studerer
-  // én kunde, men de tvang vandret scroll for alle 2.499 rækker.
-  // `hint` bliver et tooltip på overskriften. Definitioner hører her frem for i en
-  // fodnote: de er der for den der spørger, og i vejen for alle andre.
+  // ── Tabel. Ni kolonner der tilsammen fylder 100%, så tabellen passer i
+  // panelet. `hint` bliver et tooltip på overskriften — definitioner hører der
+  // frem for i en fodnote: de er der for den der spørger, og i vejen for andre.
   const COLS = [
-    { key:'org_name',   label:'Kunde',        w:'27%', hint:'Hold musen over navnet for sites og forretningsenhed' },
-    { key:'zone',       label:'Zone',         w:'13%', hint:'Efter dage siden sidste registrerede aktivitet' },
-    { key:'days_since_last_activity', label:'Dage tavs',   w:'9%',  num:true,
-      hint:'Dage siden kunden sidst havde aktivitet. Regnes fra dagens dato, ikke fra eksport-datoen' },
-    { key:'arr_dkk',    label:'Årsværdi kr.', w:'11%', num:true,
-      hint:'Annual Recurring Revenue — kundens abonnementer omregnet til kroner pr. år' },
-    { key:'owner_name', label:'Ejer',         w:'16%',
-      hint:'Kundens nuværende ejer i Pipedrive, ikke den der oprindeligt solgte abonnementet. Samme definition som på trendgrafen' },
-    { key:'teams',      label:'Team',         w:'15%',
+    { key:'org_name',        label:'Kunde',      w:'18%',
+      hint:'Handlingsenheden. Hold musen over navnet for kontonummer og antal abonnementer' },
+    { key:'site',            label:'Site',       w:'12%',
+      hint:'Måleenheden er abonnementet (account, org_id, site) — PRD §2' },
+    { key:'zone',            label:'Zone',       w:'11%',
+      hint:'Beregnet på sidevisninger i sidste hele måned mod de 3 foregående' },
+    { key:'aktive_dage_12m', label:'Dage',       w:'7%', num:true,
+      hint:'Forskellige dage med aktivitet i de 12 måneder før referencen. Over 20 = vanebruger (PRD §3), og først da vejer et stop fuldt' },
+    { key:'pv_reference',    label:'Forbrug',    w:'10%', num:true,
+      hint:'Sidevisninger i referencemåneden, og til højre snittet af de 3 foregående. Det er de to tal zonen er beregnet af' },
+    { key:'score',           label:'Score',      w:'10%', num:true,
+      hint:'Årsværdi × risikovægt × timingfaktor. Timingfaktoren er 1,0 for alle, indtil fornyelsesdatoer findes (PRD §4)' },
+    { key:'arr_dkk',         label:'Årsværdi kr.', w:'9%', num:true,
+      hint:'Abonnementets andel af kundens ARR, fordelt ligeligt på kundens sites. Lige deling er et valg, ikke en måling — ACV kan ikke brolægges til retentions site-vokabular' },
+    { key:'owner_name',      label:'Ejer',       w:'13%',
+      hint:'Kundens nuværende org-ejer i Pipedrive, ikke den der oprindeligt solgte. Samme definition som på trendgrafen' },
+    { key:'teams',           label:'Team',       w:'10%',
       hint:'Ejerens aktive team-medlemskaber. Uden et team når kunden ingen afdelingsleder' },
-    { key:'active_days',label:'Aktive dage',  w:'9%',  num:true,
-      hint:'Antal forskellige dage med aktivitet i de seneste 12 måneder — et bedre mål end sidevisninger, som én tung session kan puste op' },
   ];
 
-  // Pillen viser kun zonens navn; dagsintervallet står på zone-kortene ovenfor
-  // og ville gentage sig selv 2.499 gange her. Fuld tekst ligger i title.
-  const zoneShort = (label) => String(label || '').replace(/\s*\(.*\)\s*$/, '');
   // "Team FINANS DK, Team Watch DK" -> "FINANS DK, Watch DK". Præfikset er ens på
   // alle teams og koster en tredjedel af kolonnens bredde.
   const teamShort = (t) => String(t || '').replace(/\bTeam\s+/g, '');
 
-  // Zonens alvor som tal, taget fra API'ets egen raekkefoelge. Sorteres zonen som
-  // tekst, bliver den alfabetisk (intet_signal, kritisk, opmærksomhed, sund) —
-  // altsaa nonsens for et risikomaal.
+  // Zonens alvor som tal, taget fra API'ets egen rækkefølge. Sorteres zonen som
+  // tekst, bliver den alfabetisk — altså nonsens for et risikomål.
   const ZONE_RANK = {};
   (data.zone_order || []).forEach((z, i) => { ZONE_RANK[z] = i; });
 
-  // Standard: vaerste zone foerst, ARR som andenprioritet. En kunde der har vaeret
-  // tavs i 158 dage er taettere paa at vaere tabt end en paa 20 dage, uanset
-  // beloeb — og man kan altid klikke paa ARR-kolonnen for det omvendte.
-  let sortKey = 'zone', sortDir = 1;
+  // Standard: score faldende, som PRD §4 foreskriver. Serveren leverer listen
+  // sorteret sådan, men vi sætter det eksplicit, så en klik-sortering kan vendes
+  // tilbage til udgangspunktet.
+  let sortKey = 'score', sortDir = -1;
 
   const value = (r, k) => {
     if (k === 'zone') return ZONE_RANK[r.zone] === undefined ? 99 : ZONE_RANK[r.zone];
     const v = r[k];
-    // null skal ALTID sortere nederst, uanset retning — ellers fylder kunder
-    // uden data toppen af listen, og det er ikke dem man skal ringe til.
+    // null skal ALTID sortere nederst, uanset retning — ellers fylder rækker
+    // uden data toppen, og det er ikke dem man skal ringe til.
     if (v === null || v === undefined || v === '') return null;
     return v;
   };
@@ -353,15 +363,14 @@
   function visible() {
     const term = q.value.trim().toLowerCase();
     return rows.filter(r => {
-      // Uden valgt zone vises de to der kræver handling. Sunde kunder og kunder
-      // uden signal er ikke en arbejdsliste, men de er ét klik væk på kortene.
       if (zoneFilter === null) {
-        if (r.zone !== 'kritisk' && r.zone !== 'opmærksomhed') return false;
+        if (!iRisiko(r)) return false;
       } else if (r.zone !== zoneFilter) {
         return false;
       }
       if (!term) return true;
       return (r.org_name || '').toLowerCase().includes(term)
+          || (r.site || '').toLowerCase().includes(term)
           || (r.owner_name || '').toLowerCase().includes(term);
     });
   }
@@ -383,62 +392,78 @@
       else if (typeof va === 'number' && typeof vb === 'number') cmp = (va - vb) * sortDir;
       else cmp = String(va).localeCompare(String(vb), 'da') * sortDir;
       if (cmp !== 0) return cmp;
-      // Andenprioritet er ALTID stoerste beloeb foerst, saa den vaerste zone
-      // praesenteres med de dyreste kunder oeverst. Uden dette faldt raekker med
-      // samme zone tilbage paa vilkaarlig raekkefoelge.
-      const aa = a.arr_dkk == null ? -1 : a.arr_dkk;
-      const bb = b.arr_dkk == null ? -1 : b.arr_dkk;
+      // Andenprioritet er ALTID største score først, så samme zone præsenteres
+      // med de dyreste abonnementer øverst.
+      const aa = a.score == null ? -1 : a.score;
+      const bb = b.score == null ? -1 : b.score;
       return bb - aa;
     });
 
-    // Sidedeling. Listen er en KØ, ikke et dokument: er den sorteret efter værdi,
-    // er side 1 arbejdslisten og resten findes for fuldstændighedens skyld. At
-    // rendere 2.499 rækker gav to minutters scroll for at nå bunden.
+    // Sidedeling. Listen er en KØ, ikke et dokument: sorteret efter score er
+    // side 1 arbejdslisten, og resten findes for fuldstændighedens skyld.
     const sider = Math.max(1, Math.ceil(list.length / pageSize));
     if (page > sider) page = sider;      // filter/søgning kan have gjort listen kortere
     const fra = (page - 1) * pageSize;
     const side = list.slice(fra, fra + pageSize);
 
     body.innerHTML = side.map(r => {
-      // Kun 'utrackbar' vises som mærke. 'delvis' sad på 696 kunder, koncentreret
-      // i toppen hvor de største kunder har flest sites — et mærke på 14 af 20
-      // rækker fortæller ingenting. Oplysningen ligger nu i kundens tooltip.
-      const tag = r.finans_dk === 'alle' ? ' <span class="tag">utrackbar</span>' : '';
+      const tags = [];
+      if (r.mikrokunde) {
+        tags.push('<span class="tag" title="Kundens samlede årsværdi er under 5.000 kr. '
+          + '— får aldrig et opkald (PRD §10, regel 2)">mikrokunde</span>');
+      }
+      // Den vigtigste enkeltoplysning på rækken: et stop uden forudgående vane
+      // er en onboarding-sag, ikke et retention-opkald (PRD §3).
+      if (r.zone === 'stoppet' && !r.vanebruger) {
+        tags.push('<span class="tag ingenvane" title="Højst 20 aktive dage på et år '
+          + '— der var ingen vane at miste, så vægten er halveret">ingen vane</span>');
+      }
       const kundeTitel = [r.org_name, r.account,
-                          r.finans_dk === 'nogle' ? 'FINANS DK indgår — signalet dækker kun en del' : '',
-                          r.sites_list].filter(Boolean).join(' · ');
-      const zoneFuld = (data.zones[r.zone] || {}).label || r.zone;
+                          r.sites_i_alt ? r.sites_i_alt + ' abonnementer i alt' : '',
+                          r.kunde_arr_dkk != null
+                            ? 'kundens samlede årsværdi ' + nf0.format(r.kunde_arr_dkk) + ' kr.' : '',
+                         ].filter(Boolean).join(' · ');
+      const zoneFuld = (zoner[r.zone] || {}).label || r.zone;
+      const forbrug = r.pv_reference == null ? '–'
+        : nf0.format(r.pv_reference) + ' / '
+          // INGEN .replace('.', ',') her. Intl.NumberFormat('da-DK') formaterer
+          // allerede dansk, og replace'et ramte tusindtalsseparatoren: et snit
+          // på 6.991,3 blev vist som 6,991,3. Fejlen ramte netop de rækker med
+          // størst volumen, altså dem der betyder mest.
+          + (r.pv_snit_3 == null ? '–' : nf1.format(r.pv_snit_3));
       return '<tr>'
-        + '<td class="txt" title="' + esc(kundeTitel) + '">' + esc(r.org_name) + tag + '</td>'
-        + '<td><span class="pill ' + r.zone + '" title="' + esc(zoneFuld) + '">'
-          + esc(zoneShort(zoneFuld)) + '</span></td>'
-        + '<td class="num" title="' + esc(r.last_activity_date ? 'Sidst aktiv ' + r.last_activity_date : 'Ingen registreret aktivitet') + '">'
-          + (r.days_since_last_activity == null ? '–' : nf0.format(r.days_since_last_activity)) + '</td>'
+        + '<td class="txt" title="' + esc(kundeTitel) + '">' + esc(r.org_name) + tags.join('') + '</td>'
+        + '<td class="txt" title="' + esc('Første måned i dbo.retention: ' + (r.foerste_maaned || '?')) + '">'
+          + esc(r.site || '–') + '</td>'
+        + '<td><span class="pill ' + r.zone + '" title="'
+          + esc(zoneFuld + ' · risikovægt ' + nfv.format(r.vaegt)) + '">' + esc(zoneFuld) + '</span></td>'
+        + '<td class="num">' + (r.aktive_dage_12m == null ? '–' : nf0.format(r.aktive_dage_12m)) + '</td>'
+        + '<td class="num" title="' + esc('Referencemåned mod snittet af de 3 foregående') + '">'
+          + esc(forbrug) + '</td>'
+        + '<td class="num">' + (r.score == null ? '–' : nf0.format(r.score)) + '</td>'
         + '<td class="num">' + (r.arr_dkk == null ? '–' : nf0.format(r.arr_dkk)) + '</td>'
         + '<td class="txt">' + (r.owner_name ? esc(r.owner_name) : '<em>(Ikke tilskrevet)</em>') + '</td>'
         + '<td class="txt" title="' + esc(r.teams || '') + '">' + esc(teamShort(r.teams) || '–') + '</td>'
-        + '<td class="num" title="' + esc(r.page_views == null ? '' : nf0.format(r.page_views) + ' sidevisninger') + '">'
-          + (r.active_days == null ? '–' : nf0.format(r.active_days)) + '</td>'
         + '</tr>';
     }).join('');
 
-    // Underteksten beskriver UDVALGET, ikke siden — ellers ser en leder "50 kunder
-    // i risiko" og tror det er hele problemet.
+    // Underteksten beskriver UDVALGET, ikke siden — ellers ser en leder
+    // "50 abonnementer i risiko" og tror det er hele problemet. Kunder tælles
+    // som mængde, fordi samme kunde kan have flere abonnementer i udvalget.
     const arr = list.reduce((s, r) => s + (r.arr_dkk || 0), 0);
+    const kunder = new Set(list.map(r => r.account + '|' + r.org_id)).size;
     const zoneNavn = zoneFilter
-      ? zoneShort((data.zones[zoneFilter] || {}).label || zoneFilter).toLowerCase()
-      : 'kritisk og opmærksomhed';
-    sub.textContent = nf0.format(list.length) + ' kunder i ' + zoneNavn
+      ? ((zoner[zoneFilter] || {}).label || zoneFilter).toLowerCase()
+      : 'zoner med risikovægt';
+    sub.textContent = nf0.format(list.length) + ' abonnementer hos '
+      + nf0.format(kunder) + ' kunder i ' + zoneNavn
       + (q.value.trim() ? ' der matcher søgningen' : '')
-      + ' · ' + mio(arr) + ' i udvalget · ' + mio(meta.arr_total) + ' i alt'
-      + (meta.arr_daekning
-          ? ' · usage-signal dækker ' + nf1.format(meta.arr_daekning * 100) + ' % af årsværdien'
-          : '');
+      + ' · ' + mio(arr) + ' i udvalget · ' + mio(meta.arr_total) + ' i alt';
 
     const til = Math.min(fra + pageSize, list.length);
     pager.innerHTML =
       '<span>' + (list.length ? 'Viser ' + nf0.format(fra + 1) + '–' + nf0.format(til)
-                                + ' af ' + nf0.format(list.length) : 'Ingen kunder i udvalget')
+                                + ' af ' + nf0.format(list.length) : 'Ingen abonnementer i udvalget')
       + (sider > 1 ? ' · side ' + page + ' af ' + nf0.format(sider) : '') + '</span>'
       + '<span class="pbtns">'
       + '<label style="margin-right:8px;">Pr. side '
@@ -470,39 +495,40 @@
     if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // Forbeholdene: foldet sammen, ikke fjernet. De var først fire gule kasser, så
-  // ét tæt afsnit småtryk — begge gange i vejen for tallene. Nu er de ét klik væk
-  // for den der bliver spurgt "kan vi stole på det her?", og usynlige for den der
-  // bare skal ned i listen. Kolonne-definitioner ligger som tooltips.
-  const ms = meta.mangler_signal || {};
+  // Forbeholdene: foldet sammen, ikke fjernet. Ét klik væk for den der bliver
+  // spurgt "kan vi stole på det her?", usynlige for den der bare skal i listen.
   const punkter = [];
-  if (meta.arr_daekning) {
-    punkter.push('<strong>Usage-signal for ' + nf0.format(meta.med_signal) + ' af '
-      + nf0.format(meta.customers) + ' kunder — ' + nf1.format(meta.arr_daekning * 100)
-      + ' % af årsværdien.</strong> De manglende er overvejende små kunder.');
+  punkter.push('<strong>Måleenheden er abonnementet</strong> (account, org_id, site), '
+    + 'ikke kunden. ' + nf0.format(meta.abonnementer) + ' abonnementer hos '
+    + nf0.format(meta.kunder) + ' kunder. Summen af zonekortenes kundetal er '
+    + 'derfor større end ' + nf0.format(meta.kunder) + ' — samme kunde kan ligge i '
+    + 'flere zoner med flere sites.');
+  punkter.push('<strong>Forbrugssignal for ' + nf0.format(meta.med_signal) + ' af '
+    + nf0.format(meta.abonnementer) + ' abonnementer.</strong> De øvrige står som '
+    + '“intet signal”: enten et site uden kilde, eller en kunde uden Zuora-kobling. '
+    + 'Et datahul er ikke bevis på sundhed, og de har derfor vægt 0,15 — ikke 0.');
+  if (meta.stoppet_uden_vane) {
+    punkter.push(nf0.format(meta.stoppet_vanebrugere) + ' af de stoppede abonnementer '
+      + 'var <strong>vanebrugere</strong> med over 20 aktive dage på et år og vejer fuldt. '
+      + 'De øvrige ' + nf0.format(meta.stoppet_uden_vane) + ' havde ingen vane at miste '
+      + 'og vejer halvt — de er onboarding-sager, ikke retention-opkald (PRD §3).');
   }
-  if (ms.helt_tavs && ms.helt_tavs.customers) {
-    punkter.push(nf0.format(ms.helt_tavs.customers) + ' kunder (' + mio(ms.helt_tavs.arr_dkk)
-      + ') har haft <strong>nul aktivitet i over 12 måneder</strong> og falder derfor ud af '
-      + 'usage-eksportet. Det er ikke manglende data, men den kraftigste advarsel i '
-      + 'datasættet — de bør flyttes op i zonerne.');
+  if (meta.mikrokunder) {
+    punkter.push(nf0.format(meta.mikrokunder) + ' abonnementer hører til kunder under '
+      + '5.000 kr./år. De <strong>vises men får aldrig et opkald</strong> (PRD §10, regel 2). '
+      + 'De er med, så kortenes tal summerer til den virkelige portefølje.');
   }
-  if (ms.utrackbar && ms.utrackbar.customers) {
-    punkter.push(nf0.format(ms.utrackbar.customers) + ' kunder (' + mio(ms.utrackbar.arr_dkk)
-      + ') abonnerer kun på FINANS DK, som aldrig sætter et spor i Snowplow. De kan '
-      + 'ikke få et signal, uanset hvor aktive de er.');
-  }
-  if (ms.ingen_zuora && ms.ingen_zuora.customers) {
-    punkter.push(nf0.format(ms.ingen_zuora.customers) + ' kunder (' + mio(ms.ingen_zuora.arr_dkk)
-      + ' i alt) har ingen Zuora-konto at oversætte fra — mikrokunder à godt 700 kr.');
-  }
-  if (meta.delvist_trackbare) {
-    punkter.push(nf0.format(meta.delvist_trackbare) + ' kunder har FINANS DK blandt flere sites, '
-      + 'så signalet dækker kun en del af deres abonnementer.');
-  }
-  if (meta.uden_arr)  punkter.push(nf0.format(meta.uden_arr) + ' kunder har ingen årsværdi og indgår ikke i kronesummerne.');
-  if (meta.uden_ejer) punkter.push(nf0.format(meta.uden_ejer) + ' kunder har ingen tilskrevet ejer og ses kun i den firmabrede visning.');
-  if (meta.uden_team) punkter.push(nf0.format(meta.uden_team) + ' kunder har en ejer uden aktivt team-medlemskab og når derfor ingen afdelingsleder.');
+  punkter.push('<strong>Årsværdien pr. abonnement er fordelt ligeligt</strong> på kundens '
+    + 'sites. ACV kender kronerne pr. site, men dens site-vokabular kan ikke brolægges '
+    + 'til dbo.retentions (20 af 45 nøgler matcher). Lige deling opfinder derfor en '
+    + 'rangorden mellem en kundes sites — brug kundens samlede årsværdi i tooltippet '
+    + 'når beløbet skal bruges til noget.');
+  punkter.push('<strong>Watch-appen kan ikke tilskrives.</strong> 566.190 skærmvisninger '
+    + 'i juli 2026 mangler adgangsaftale, så en kunde der læser alt i appen står som '
+    + 'tavs. Finans-appen sætter feltet korrekt, så det er en manglende implementering.');
+  if (meta.uden_arr)  punkter.push(nf0.format(meta.uden_arr) + ' abonnementer har ingen årsværdi og kan derfor ikke få en score. De ligger nederst — de er uopgjorte, ikke risikofrie.');
+  if (meta.uden_ejer) punkter.push(nf0.format(meta.uden_ejer) + ' abonnementer har ingen tilskrevet ejer og ses kun i den firmabrede visning.');
+  if (meta.uden_team) punkter.push(nf0.format(meta.uden_team) + ' abonnementer har en ejer uden aktivt team-medlemskab og når derfor ingen afdelingsleder.');
 
   document.getElementById('daekning-body').innerHTML =
     '<ul><li>' + punkter.join('</li><li>') + '</li></ul>';
@@ -517,12 +543,9 @@
     if (key === sortKey) sortDir = -sortDir;
     else if (key === 'zone') { sortKey = key; sortDir = 1; }
     else { sortKey = key; sortDir = (COLS.find(c => c.key === key) || {}).num ? -1 : 1; }
-    // Ny sortering ændrer hvem der ligger på side 1, så vi hopper tilbage dertil.
-    // Ellers ser man side 12 af en helt ny rækkefølge, hvilket ingen kan gennemskue.
     page = 1;
     render();
   });
-  // Ny søgning starter på side 1 — ellers står man på en tom side 12.
   q.addEventListener('input', () => { page = 1; render(); });
 
   render();
