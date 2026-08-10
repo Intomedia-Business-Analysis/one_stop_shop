@@ -166,6 +166,24 @@ def db_monthly_active_counts(owner_name: str | None = None,
     se firmaets samlede tal og tro det var hans egen bog. I WHERE bliver joinet
     reelt et inner join, hvilket er det ønskede for sælger/team-visninger, mens
     den ufiltrerede CEO-visning beholder LEFT-adfærden.
+
+    Returnerer pr. måned: `active_count` (abonnementer), `attributed_count`
+    (abonnementer med en ACV-ejer), `customer_count` (distinkte (account,
+    org_id)), `churned_count` og `churn_pct`. PRD §7.1 kræver de to sidste
+    kolonner, og kunde-linjen findes for at gøre forskellen på 15.205 og 11.621
+    synlig i stedet for forvirrende.
+
+    CHURN-DEFINITIONEN er GAP-baseret, ikke "sidste måned abonnementet fandtes".
+    Et abonnement kan forsvinde og komme tilbage: maj 2026 havde 1.769
+    genstartede mod 19-42 i en normal måned. En MAX-baseret definition ville kun
+    se det sidste farvel og undertælle al historisk churn, så `LEAD` finder i
+    stedet HVER gang der opstår et hul. Den sidste måned i dataen udelades —
+    ellers ville alle nulevende abonnementer se ud som om de churnede.
+
+    Målt 2026-08-10: churn ligger på 0,4-1,8% gennem hele historikken. Juni 2026
+    er undtagelsen med 2,20%, måneden efter at porteføljen sprang fra 12.035 til
+    15.486 abonnementer. Grafen får derfor en lodret klippe i maj 2026, som SKAL
+    forklares på siden — se PRD §11 pkt. 7.
     """
     cte, params = _acv_owner_cte()
 
@@ -185,18 +203,73 @@ def db_monthly_active_counts(owner_name: str | None = None,
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
         cur.execute(
-           f"""WITH {cte}
-            SELECT r.FirstDayOfMonth,
-                   COUNT(*)             AS active_count,
-                   COUNT(k.owner_name)  AS attributed_count
-            FROM dbo.retention r
-            LEFT JOIN acv_kunde k
-                   ON k.account = r.account AND k.org_id = r.org_id
-            WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
-                {_KUN_B2B}
-                {clause}
-            GROUP BY r.FirstDayOfMonth
-            ORDER BY r.FirstDayOfMonth;""",
+                       f"""WITH {cte},
+            base AS (
+                SELECT r.FirstDayOfMonth,
+                       r.account,
+                       r.org_id,
+                       -- marketwire har sites = NULL. En fast streng holder de 35
+                       -- rækker samlet i PARTITION BY nedenfor, i stedet for at
+                       -- lade NULL-semantik afgøre om de hører sammen.
+                       ISNULL(r.sites, '(intet site)') AS sites,
+                       k.owner_name
+                FROM dbo.retention r
+                LEFT JOIN acv_kunde k
+                       ON k.account = r.account AND k.org_id = r.org_id
+                WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
+                    {_KUN_B2B}
+                    {clause}
+            ),
+            sidste AS (
+                SELECT MAX(FirstDayOfMonth) AS max_maaned FROM base
+            ),
+            huller AS (
+                SELECT FirstDayOfMonth,
+                       LEAD(FirstDayOfMonth) OVER (
+                           PARTITION BY account, org_id, sites
+                           ORDER BY FirstDayOfMonth) AS naeste
+                FROM base
+            ),
+            churn AS (
+                SELECT DATEADD(month, 1, h.FirstDayOfMonth) AS maaned,
+                       COUNT(*) AS churned_count
+                FROM huller h
+                CROSS JOIN sidste s
+                WHERE h.FirstDayOfMonth < s.max_maaned
+                  AND (h.naeste IS NULL
+                       OR h.naeste > DATEADD(month, 1, h.FirstDayOfMonth))
+                GROUP BY DATEADD(month, 1, h.FirstDayOfMonth)
+            ),
+            aktive AS (
+                SELECT FirstDayOfMonth,
+                       COUNT(*)                                     AS active_count,
+                       COUNT(owner_name)                            AS attributed_count,
+                       COUNT(DISTINCT CONCAT(account, '|', org_id)) AS customer_count
+                FROM base
+                GROUP BY FirstDayOfMonth
+            )
+            SELECT a.FirstDayOfMonth,
+                   a.active_count,
+                   a.attributed_count,
+                   a.customer_count,
+                   ISNULL(c.churned_count, 0) AS churned_count,
+                   -- Under 1.000 aktive abonnementer i M-1 er raten støj og
+                   -- ikke måling: i 2016-2018 er der 1-5 churn om måneden på et
+                   -- grundlag under 600, så linjen hopper mellem 0 og 7% uden at
+                   -- afspejle andet end afrunding. Grænsen rammer først april
+                   -- 2019 (1.161 aktive i marts). NULL giver et hul i grafen,
+                   -- hvilket er et ærligt "det kan ikke måles endnu" frem for en
+                   -- takket kurve der ligner information.
+                   CAST(CASE
+                          WHEN LAG(a.active_count)
+                               OVER (ORDER BY a.FirstDayOfMonth) >= 1000
+                          THEN 100.0 * ISNULL(c.churned_count, 0)
+                               / LAG(a.active_count)
+                                 OVER (ORDER BY a.FirstDayOfMonth)
+                        END AS decimal(5,2)) AS churn_pct
+            FROM aktive a
+            LEFT JOIN churn c ON c.maaned = a.FirstDayOfMonth
+            ORDER BY a.FirstDayOfMonth;""",
             params,
         )
         result = cur.fetchall()

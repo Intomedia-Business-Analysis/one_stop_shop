@@ -46,13 +46,13 @@
         <div class="summary-bar">
           <div>
             <h1>Retention</h1>
-            <p>Antal aktive kunder pr. måned</p>
+            <p>Antal aktive abonnementer pr. måned</p>
           </div>
         </div>
 
         <div class="panel">
           <div class="panel-header">
-            <h2>Aktive kunder pr. måned</h2>
+            <h2>Aktive abonnementer pr. måned</h2>
             <p id="retention-chart-sub">Indlæser…</p>
             <!-- Ejerskabet er et nutidsbillede (kundens nuværende ejer i
                  Pipedrive), trukket bagud over hele historikken. Det har to
@@ -121,6 +121,8 @@
   const labels       = rows.map(r => r.FirstDayOfMonth);
   const attributed   = rows.map(r => r.attributed_count);
   const unattributed = rows.map(r => r.active_count - r.attributed_count);
+  const customers    = rows.map(r => r.customer_count);
+  const churn        = rows.map(r => r.churn_pct);
 
   // Split'et for seneste måned i panel-headeren — ellers forsvinder de ~16%
   // ikke-tilskrevne kunder tavst, og summen af sælger-visninger kan aldrig
@@ -130,8 +132,9 @@
   const pct    = last.active_count ? (lastUn / last.active_count) * 100 : 0;
   sub.textContent =
     `${rows.length} måneder (${labels[0]} – ${labels[labels.length - 1]}) · seneste: `
-    + `${nf.format(last.active_count)} aktive, heraf ${nf.format(lastUn)} ikke tilskrevet `
-    + `(${nf1.format(pct)} %)`;
+    + `${nf.format(last.active_count)} abonnementer hos `
+    + `${nf.format(last.customer_count)} kunder, heraf `
+    + `${nf.format(lastUn)} ikke tilskrevet (${nf1.format(pct)} %)`;
 
   const brand = cssVar('--green', '#1C1C1A');
   // --warn frem for --taupe: paletten er monokrom, og de ikke-tilskrevne kunder
@@ -164,6 +167,31 @@
           pointRadius: 0,
           tension: 0.15,
           fill: true,
+        },
+        {
+          // Egen stak, så linjen IKKE lægges oven på abonnementsarealet.
+          // Kontrollen er triviel: kundelinjen skal ligge UNDER stakkens
+          // overkant (11.583 mod 15.150 i august 2026). Står den omkring
+          // 26.700, blev den stakket alligevel — se noten nedenfor.
+          stack: 'kunder',
+          label: 'Kunder',
+          data: customers,
+          borderColor: brand,
+          borderWidth: 2,
+          borderDash: [5, 3],
+          pointRadius: 0,
+          tension: 0.15,
+          fill: false,
+        },
+        {
+          label: 'Churn-rate (%)',
+          data: churn,
+          yAxisID: 'y2',
+          borderColor: cssVar('--taupe', '#8A857C'),
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.15,
+          fill: false,
         },
       ],
     },
@@ -200,8 +228,13 @@
               borderWidth: 0,
             }),
             // Chart.js viser kun hvert lags egen værdi i en stak, så totalen
-            // tilføjes eksplicit — det er den brugeren leder efter.
-            footer: (items) => 'I alt: ' + nf.format(items.reduce((s, i) => s + i.parsed.y, 0)),
+            // tilføjes eksplicit — det er den brugeren leder efter. Kun de to
+            // STAKKEDE serier tæller med: kundelinjen og churn-raten er andre
+            // enheder og ville gøre summen meningsløs.
+            footer: (items) => 'I alt: ' + nf.format(
+              items.filter(i => i.dataset.yAxisID !== 'y2'
+                             && i.dataset.stack !== 'kunder')
+                   .reduce((s, i) => s + i.parsed.y, 0)),
           },
         },
       },
@@ -219,6 +252,16 @@
           },
         },
         y: { beginAtZero: true, stacked: true },
+        // Churn-raten er 0-3% og kan ikke dele akse med 15.000 abonnementer.
+        // drawOnChartArea: false, så den højre akse ikke lægger et andet
+        // gitter oven i det venstre.
+        y2: {
+          position: 'right',
+          beginAtZero: true,
+          stacked: false,
+          grid: { drawOnChartArea: false },
+          ticks: { callback: (v) => nf1.format(v) + ' %' },
+        },
       },
     },
   });

@@ -90,7 +90,7 @@ CATEGORIES = [
     {
         "id": "retention",
         "title": "Retention",
-        "description": "Aktive kunder over tid og churn-risiko pr. kunde",
+        "description": "Aktive abonnementer over tid og churn-risiko pr. abonnement",
         "icon": "settings",
         "color": "amber",
         # salesperson matcher adgangsvagten i modul_retention/router.py, hvor
@@ -100,7 +100,7 @@ CATEGORIES = [
         "min_role": "salesperson",
         "subcategories": [],
         "items": [
-            {"id": "retention-overview", "title": "Aktive kunder",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/overview"},
+            {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/overview"},
             {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/risk_overview"},
         ],
     },
