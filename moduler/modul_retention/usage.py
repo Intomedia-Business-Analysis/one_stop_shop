@@ -404,10 +404,12 @@ def forbrug_pr_abonnement() -> dict:
     """Sidevisninger slået op på abonnement og på kunde.
 
     Returnerer:
-        pr_abonnement — {(kunde, kanonisk_site): {maaned: sidevisninger}}
-        pr_kunde      — {kunde: {maaned: sidevisninger}}
-        maaneder      — sorteret liste
-        meta          — fra load_usage_trend, plus tællinger
+        pr_abonnement      — {(kunde, kanonisk_site): {maaned: sidevisninger}}
+        pr_kunde           — {kunde: {maaned: sidevisninger}}
+        dage_pr_abonnement — {(kunde, kanonisk_site): {maaned: aktive dage}}
+        dage_pr_kunde      — {kunde: {maaned: aktive dage}}
+        maaneder           — sorteret liste
+        meta               — fra load_usage_trend, plus tællinger
 
     `pr_kunde` findes for pakkeabonnementer: `Watch Medier DK` giver adgang til
     alle Watch-titler, og kun 7% af dens 264 abonnenter læser pakkens eget site,
@@ -420,6 +422,19 @@ def forbrug_pr_abonnement() -> dict:
 
     Kunder uden Zuora-kobling udelades: uden den kan et kontonummer ikke blive
     til en kunde. Antallet ligger i meta, så hullet er synligt og ikke bare væk.
+
+    `dage_pr_abonnement`/`dage_pr_kunde` bærer `aktive_dage` og er grundlaget for
+    zones.er_vanebruger. Kolonnen har ligget i eksporten hele tiden og blev
+    kasseret her indtil 2026-08-10, hvor målingen viste hvorfor den er
+    nødvendig: blandt de 1.842 stoppede abonnementer er medianen 4,0
+    sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. To
+    faste besøg om måneden er en vane, og sidevisnings-volumen kan ikke se det.
+
+    ADVARSEL om dagene: de lægges sammen som sidevisningerne, så en dag kan
+    tælles to gange — to Zuora-konti på samme site, eller for `dage_pr_kunde`
+    det samme kalenderdøgn på fem sites. Summen er en ØVRE grænse. Fejlen peger
+    mod at kalde noget en vane, altså mod at vise risiko frem for at skjule den.
+    En præcis optælling kræver dags-opløsning, som eksporten aggregerer væk.
     """
     # Lokal import: der er ingen cirkel i dag, men lægges den i toppen opstår
     # den i det øjeblik zones.py får brug for noget herfra.
@@ -431,12 +446,15 @@ def forbrug_pr_abonnement() -> dict:
 
     pr_abonnement: dict = {}
     pr_kunde: dict = {}
+    dage_pr_abonnement: dict = {}
+    dage_pr_kunde: dict = {}
     ukoblede = set()
 
     # zip over de rå kolonner og ikke df.iterrows(): iterrows bygger en Series
     # pr. række og tager minutter på 156.000 rækker.
-    for konto, site, maaned, pv in zip(df["account_number"], df["site"],
-                                       df["maaned"], df["page_views"]):
+    for konto, site, maaned, pv, dage in zip(df["account_number"], df["site"],
+                                             df["maaned"], df["page_views"],
+                                             df["aktive_dage"]):
         kunde = acct_to_customer.get(konto)
         if kunde is None:
             ukoblede.add(konto)
@@ -448,6 +466,12 @@ def forbrug_pr_abonnement() -> dict:
         a[maaned] = a.get(maaned, 0) + int(pv)
         k = pr_kunde.setdefault(kunde, {})
         k[maaned] = k.get(maaned, 0) + int(pv)
+        # Samme opsummering for dagene — se advarslen i docstringen om at det
+        # gør summen til en øvre grænse.
+        da = dage_pr_abonnement.setdefault((kunde, site_k), {})
+        da[maaned] = da.get(maaned, 0) + int(dage)
+        dk = dage_pr_kunde.setdefault(kunde, {})
+        dk[maaned] = dk.get(maaned, 0) + int(dage)
 
     meta = dict(usage["meta"])
     meta["kunder"] = len(pr_kunde)
@@ -456,6 +480,8 @@ def forbrug_pr_abonnement() -> dict:
     # vidt forskellige historier.
     meta["konti_uden_zuora"] = len(ukoblede)
     return {"pr_abonnement": pr_abonnement, "pr_kunde": pr_kunde,
+            "dage_pr_abonnement": dage_pr_abonnement,
+            "dage_pr_kunde": dage_pr_kunde,
             "maaneder": usage["maaneder"], "meta": meta}
 
 

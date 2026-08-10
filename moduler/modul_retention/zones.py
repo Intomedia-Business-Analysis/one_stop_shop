@@ -43,15 +43,37 @@ STOPPET_VINDUE = 3
 # Hvor stort et fald der skal til for zonen "faldende". 0,50 = halveret.
 FALD_GRAENSE = 0.50
 
+# PRD §3: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
+# 0. Vægt 1,00" mod "Aldrig i brug — højst 1 aktiv dag i 12 måneder. Vægt 0,50".
+# Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og målingen 2026-08-10
+# viser hvorfor: blandt de 1.842 stoppede abonnementer er medianen 4,0
+# sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. Ørsted
+# læste AgriWatch på 56 forskellige dage med et snit på 1,7 sidevisninger — en
+# vane, som volumen alene ville have kaldt støj.
+VANEBRUGER_DAGE = 20
+VANEBRUGER_VINDUE = 12
+
 # Visningsrækkefølge: værst først, datahuller sidst.
 ZONE_ORDER = ["stoppet", "laenge_tavs", "aldrig_i_brug", "faldende",
               "sund", "ny", "intet_signal"]
 
 # Vægten i score = ARR × vægt × timingfaktor. Kun "stoppet" er 1,00, fordi det er
 # den eneste tilstand hvor noget er sket for nylig og et opkald kan nå at virke.
+#
+# `laenge_tavs` sat til 0,50 den 2026-08-10, samme som `aldrig_i_brug`: begge er
+# "signalet er væk for længe siden, lav redningssandsynlighed". Valgt frem for
+# 0,70 fordi 0,70 ville være det eneste tal i vektoren uden dækning i PRD §3 —
+# de øvrige fem kommer derfra. Zonerne vises fortsat hver for sig, de har blot
+# samme prioritet, og ZONE_ORDER bryder uafgjort i sorteringen. Alle vægte er
+# provisoriske indtil forudsigelsesraten kan kalibrere dem på rigtige udfald
+# (PRD §9).
+#
+# Tabellen er de NOMINELLE vægte. Den faktiske vægt for et abonnement kommer fra
+# zone_vaegt(), som sænker "stoppet" til aldrig_i_brug-niveau når der ikke var en
+# vane at miste.
 ZONE_VAEGT = {
     "stoppet":       1.00,
-    "laenge_tavs":   0.70,
+    "laenge_tavs":   0.50,
     "aldrig_i_brug": 0.50,
     "faldende":      0.40,
     "intet_signal":  0.15,
@@ -163,6 +185,22 @@ def er_trackbare(site: Optional[str], har_zuora_kobling: bool) -> bool:
 # Selve zonelogikken
 # ---------------------------------------------------------------------------
 
+def er_vanebruger(dage: dict, reference: str) -> bool:
+    """Havde abonnementet en vane at miste? PRD §3's tærskel.
+
+    `dage` er {måned: aktive dage} for abonnementet. For pakkeabonnementer skal
+    kalderen sende KUNDENS dage, præcis samme regel som for sidevisningerne —
+    ellers testes vanen på ét site mens zonen beregnes på syv.
+
+    Vinduet er de 12 måneder FØR referencen. Referencemåneden tælles ikke med:
+    zonen handler netop om at den er tom, og at tage den med ville sænke summen
+    for præcis de abonnementer reglen skal bedømme.
+    """
+    i_vindue = sum(dage.get(m, 0)
+                   for m in foregaaende_maaneder(reference, VANEBRUGER_VINDUE))
+    return i_vindue > VANEBRUGER_DAGE
+
+
 def bestem_zone(forbrug: dict,
                 reference: str,
                 foerste_maaned: str,
@@ -204,11 +242,25 @@ def bestem_zone(forbrug: dict,
     return "aldrig_i_brug"
 
 
-def zone_vaegt(zone: str) -> float:
+def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
     """Risikovægten til score = ARR × vægt × timingfaktor (PRD §4).
+
+    `vanebruger` modulerer KUN "stoppet", jf. PRD §3: en stoppet vanebruger er
+    1,00 og kræver et opkald i dag, mens et abonnement uden vane at miste er en
+    onboarding-sag og deler vægt med "aldrig i brug". De øvrige zoner er
+    upåvirkede — "faldende" er 97,7% vanebrugere og ligger allerede under 0,50,
+    og "laenge_tavs"/"aldrig_i_brug" er 0,50 uanset.
+
+    Default True, så en kalder uden dage-data ikke får risiko skjult. Fejlen
+    peger dermed mod at vise for meget frem for for lidt.
+
+    Slår op i ZONE_VAEGT["aldrig_i_brug"] frem for at hardkode 0,50: ændres den
+    vægt, skal de to følges, fordi det er samme argument der bærer dem.
 
     Ukendt zone giver 0,0 og ikke en fejl: en ny zone må aldrig kunne skubbe
     kunder op på listen ved et uheld, kun ned.
     """
+    if zone == "stoppet" and not vanebruger:
+        return ZONE_VAEGT["aldrig_i_brug"]
     return ZONE_VAEGT.get(zone, 0.0)
 
