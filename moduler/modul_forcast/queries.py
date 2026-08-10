@@ -43,6 +43,41 @@ ADVERTISING_TEAMS: dict[str, str] = {
 ADVERTISING_ACCOUNT = "jppol_advertising"
 ADVERTISING_ACCOUNTS = ("jppol_advertising", "watch_no_advertising")
 
+# MarketWire ligger i sin egen Pipedrive-account og bruger produktspecifikke
+# deal_types ("MarketWire Premium /Bloomberg", "MarketWire Nyhedstjeneste", …)
+# — aldrig 'Abonnement'/'Subscription', og før 2026 er deal_type slet ikke sat.
+# [sites] er heller ikke udfyldt på deals'ene. Brandet afgrænses derfor på
+# account, præcis som banner/job afgrænses på deres advertising-account.
+# Pipelines i accounten er rene (Fornyelse, Virksomhedsprøver, Opsigelser,
+# Newbizz, Tilbud), og Opsigelser har negative værdier, så de nettes korrekt
+# ind i tilvæksten. Uden det her gav alle forecast-queries 0 for Team Marketwire.
+MARKETWIRE_BRAND = "marketwire"
+MARKETWIRE_ACCOUNT = "marketwire"
+
+# Standard-afgrænsningen af abonnementsdeals — genbruges af historik, realiseret
+# tilvækst og åben pipeline, så de tre tal altid dækker de samme deals.
+_SUBSCRIPTION_SCOPE = (
+    "AND [pipeline_name] <> 'Web sale' "
+    "AND [deal_type] IN ('Abonnement', 'Subscription') "
+    "AND [administrativ] IS NULL"
+)
+_MARKETWIRE_SCOPE = (
+    "AND [pipeline_name] <> 'Web sale' "
+    "AND [account] = %s "
+    "AND [administrativ] IS NULL"
+)
+
+
+def deal_scope(team_brand: str | None) -> tuple[str, list]:
+    """WHERE-fragment for de deals, der tæller som tilvækst for teamet.
+
+    Returnerer (clause, params). MarketWire afgrænses på account i stedet for
+    deal_type — se MARKETWIRE_ACCOUNT ovenfor.
+    """
+    if team_brand == MARKETWIRE_BRAND:
+        return _MARKETWIRE_SCOPE, [MARKETWIRE_ACCOUNT]
+    return _SUBSCRIPTION_SCOPE, []
+
 
 # Fælles pooled DB-forbindelse — se db.py.
 from db import get_conn  # noqa: E402,F401
@@ -221,6 +256,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
 
     site_clause, site_list, owner_clause, owner_params = build_team_filter(team, team_brand)
     base_site_params = tuple(site_list)
+    scope_clause, scope_params = deal_scope(team_brand)
 
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
@@ -262,9 +298,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                   {owner_clause}
@@ -276,17 +310,15 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                   {owner_clause}
                   AND [team] = %s
                 GROUP BY [owner_name], YEAR([service_activation_date])
             """, (
-                date_m1[0], date_m1[1], *owner_params, team,
-                date_m2[0], date_m2[1], *owner_params, team,
+                *scope_params, date_m1[0], date_m1[1], *owner_params, team,
+                *scope_params, date_m2[0], date_m2[1], *owner_params, team,
             ))
 
     elif level == "team":
@@ -317,15 +349,13 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
             """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_m1[0], date_m1[1],
                   adv_pipeline, team, ADVERTISING_ACCOUNT, date_m2[0], date_m2[1]))
         elif team:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [team] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team], YEAR([service_activation_date])
@@ -335,13 +365,12 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [team] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team], YEAR([service_activation_date])
-            """, (team, date_m1[0], date_m1[1], team, date_m2[0], date_m2[1]))
+            """, (*scope_params, team, date_m1[0], date_m1[1],
+                  *scope_params, team, date_m2[0], date_m2[1]))
         else:
             # Alle teams: subscription-deals + advertising-deals (job/banner)
             cur.execute("""
@@ -355,6 +384,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                         OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
+                        OR ([account] = 'marketwire' AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                       )
                 GROUP BY [team], YEAR([service_activation_date])
                 UNION ALL
@@ -368,6 +398,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                         OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
+                        OR ([account] = 'marketwire' AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                       )
                 GROUP BY [team], YEAR([service_activation_date])
             """, (date_m1[0], date_m1[1], date_m2[0], date_m2[1]))
@@ -436,15 +467,13 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [owner_name] IS NOT NULL
                   AND [service_activation_date] BETWEEN %s AND %s
                   {owner_clause}
                   AND [team] = %s
                 GROUP BY [owner_name]
-            """, (date_cur[0], date_cur[1], *owner_params, team))
+            """, (*scope_params, date_cur[0], date_cur[1], *owner_params, team))
 
     elif level == "team":
         if team and team in ADVERTISING_TEAMS:
@@ -461,18 +490,16 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 GROUP BY [team]
             """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         elif team:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [team] = %s
                   AND [service_activation_date] BETWEEN %s AND %s
                 GROUP BY [team]
-            """, (team, date_cur[0], date_cur[1]))
+            """, (*scope_params, team, date_cur[0], date_cur[1]))
         else:
             cur.execute("""
                 SELECT [team] AS dimension_key,
@@ -484,6 +511,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                         OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
+                        OR ([account] = 'marketwire' AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                       )
                 GROUP BY [team]
             """, (date_cur[0], date_cur[1]))
@@ -529,16 +557,14 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [owner_name] IS NOT NULL
                   AND [value_dkk] <> '0'
                   AND [expected_close_date] BETWEEN %s AND %s
                   {owner_clause}
                   AND [team] = %s
                 GROUP BY [owner_name]
-            """, (date_cur[0], date_cur[1], *owner_params, team))
+            """, (*scope_params, date_cur[0], date_cur[1], *owner_params, team))
 
     elif level == "team":
         if team and team in ADVERTISING_TEAMS:
@@ -556,19 +582,17 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 GROUP BY [team]
             """, (adv_pipeline, team, ADVERTISING_ACCOUNT, date_cur[0], date_cur[1]))
         elif team:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
-                  AND [pipeline_name] <> 'Web sale'
-                  AND [deal_type] IN ('Abonnement', 'Subscription')
-                  AND [administrativ] IS NULL
+                  {scope_clause}
                   AND [team] = %s
                   AND [value_dkk] <> '0'
                   AND [expected_close_date] BETWEEN %s AND %s
                 GROUP BY [team]
-            """, (team, date_cur[0], date_cur[1]))
+            """, (*scope_params, team, date_cur[0], date_cur[1]))
         else:
             cur.execute("""
                 SELECT [team] AS dimension_key,
@@ -581,6 +605,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   AND (
                         ([deal_type] IN ('Abonnement', 'Subscription') AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                         OR ([pipeline_name] IN ('job', 'banner') AND [account] IN ('jppol_advertising', 'watch_no_advertising'))
+                        OR ([account] = 'marketwire' AND [administrativ] IS NULL AND [pipeline_name] <> 'Web sale')
                       )
                 GROUP BY [team]
             """, (date_cur[0], date_cur[1]))
@@ -831,6 +856,7 @@ def db_open_pipeline_deals(year: int, month: int, owner: str, team: str, team_br
         """, (adv_pipeline, team, ADVERTISING_ACCOUNT, owner, date_lo, date_hi))
     else:
         _, _, owner_clause, owner_params = build_team_filter(team, team_brand)
+        scope_clause, scope_params = deal_scope(team_brand)
         cur.execute(f"""
             SELECT [pd_deal_id] AS deal_id,
                    [title] AS title,
@@ -840,16 +866,14 @@ def db_open_pipeline_deals(year: int, month: int, owner: str, team: str, team_br
                    CONVERT(NVARCHAR(10), [expected_close_date], 23) AS expected_close
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'open'
-              AND [pipeline_name] <> 'Web sale'
-              AND [deal_type] IN ('Abonnement', 'Subscription')
-              AND [administrativ] IS NULL
+              {scope_clause}
               AND [owner_name] = %s
               AND [value_dkk] <> '0'
               AND [expected_close_date] BETWEEN %s AND %s
               {owner_clause}
               AND [team] = %s
             ORDER BY [expected_close_date], {val_expr} DESC
-        """, (owner, date_lo, date_hi, *owner_params, team))
+        """, (*scope_params, owner, date_lo, date_hi, *owner_params, team))
 
     deals = []
     for r in cur.fetchall():
