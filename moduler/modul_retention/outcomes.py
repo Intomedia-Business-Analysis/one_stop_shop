@@ -73,6 +73,22 @@ def _som_tidspunkt(vaerdi):
     return vaerdi
 
 
+# To vokabularer for det samme tal. `dbo.retention.org_id` er INT, og
+# RetentionOutcomes følger den — men risikolaget bærer org_id som STRENG
+# ('6779'), fordi det kommer fra ACV/Pipedrive-verdenen, hvor id'er er tekst.
+#
+# Konsekvensen er tavs og alvorlig: et opslag på (account, '6779', site) i en
+# ordbog nøglet med (account, 6779, site) rammer ALDRIG. Ingen fejl, bare et
+# tomt "seneste udfald" på hver kunde. Derfor ejer dette modul konverteringen:
+# databasen får altid int, ordbogsnøgler er altid str.
+def _db_org_id(vaerdi) -> int:
+    return int(vaerdi)
+
+
+def _noegle_org_id(vaerdi) -> str:
+    return str(vaerdi)
+
+
 def _normaliser(raekke: dict) -> dict:
     for felt in _DATO_FELTER:
         if felt in raekke:
@@ -107,8 +123,9 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
                    (account, org_id, contacted_at, channel, summary, created_by)
                OUTPUT INSERTED.conversation_id
                VALUES (%s, %s, %s, %s, %s, %s)""",
-            (samtale["account"], samtale["org_id"], samtale["contacted_at"],
-             samtale["channel"], samtale.get("summary"), samtale["created_by"]),
+            (samtale["account"], _db_org_id(samtale["org_id"]),
+             samtale["contacted_at"], samtale["channel"],
+             samtale.get("summary"), samtale["created_by"]),
         )
         conversation_id = cur.fetchone()[0]
 
@@ -132,7 +149,7 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
                         note, created_by)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                            %s, %s, %s, %s, %s, %s)""",
-                (samtale["account"], samtale["org_id"],
+                (samtale["account"], _db_org_id(samtale["org_id"]),
                  u.get("site") or INTET_SITE, conversation_id,
                  u["contact_result"], u.get("outcome"),
                  u.get("arr_before_dkk"), u.get("arr_before_kilde"),
@@ -167,6 +184,10 @@ def db_seneste_udfald() -> dict:
     seneste udfald, ikke af data (PRD §6.4). Hentes ufiltreret og filtreres i
     Python, fordi prioriteringslisten alligevel har alle abonnementer i hånden.
 
+    NØGLENS org_id ER EN STRENG, også selv om kolonnen er INT: risikolaget
+    bærer org_id som tekst, og et opslag med den forkerte type rammer aldrig
+    uden at fejle. Se `_noegle_org_id`.
+
     Dato- og tidsfelter kommer ud som rigtige `date`/`datetime` — se
     `_normaliser`. Kalderen skal ikke parse noget.
 
@@ -190,7 +211,10 @@ def db_seneste_udfald() -> dict:
         )
         rows = cur.fetchall()
         conn.close()
-        return {(r["account"], r["org_id"], r["site"]): _normaliser(r) for r in rows}
+        # Nøglens org_id er STRENG, så opslag fra risikolaget rammer. Se
+        # _noegle_org_id.
+        return {(r["account"], _noegle_org_id(r["org_id"]), r["site"]):
+                _normaliser(r) for r in rows}
     except Exception:
         logger.exception("db_seneste_udfald fejlede")
         return {}
@@ -229,7 +253,7 @@ def db_historik(account: str, org_id: int) -> list:
                WHERE c.account = %s AND c.org_id = %s
                ORDER BY c.contacted_at DESC, c.conversation_id DESC,
                         o.outcome_id ASC;""",
-            (account, org_id),
+            (account, _db_org_id(org_id)),
         )
         rows = cur.fetchall()
         conn.close()

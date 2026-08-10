@@ -36,6 +36,10 @@ from moduler.modul_retention import outcomes  # noqa: E402
 # tabellerne accepterer det (der er ingen fremmednøgle mod et VIEW), men et
 # opdigtet ville skjule en typefejl på account/site-længderne.
 ACCOUNT, ORG_ID = "monitor", 790
+# Risikolaget bærer org_id som STRENG. Der skrives med int og slås op med str,
+# netop for at bevise at normaliseringen i outcomes.py holder begge veje — et
+# opslag med forkert type rammer aldrig og fejler ikke.
+ORG_ID_STR = "790"
 SITE_A, SITE_B = "Klimamonitor", "Byrummonitor"
 BRUGER = "roegtest@intomedia.dk"
 I_DAG = dt.date(2026, 8, 10)
@@ -120,9 +124,12 @@ def main() -> int:
 
         print("--- 2: arr_after_dkk beregnet og frosset ---")
         seneste = outcomes.db_seneste_udfald()
-        a = seneste.get((ACCOUNT, ORG_ID, SITE_A))
-        b = seneste.get((ACCOUNT, ORG_ID, SITE_B))
-        tjek("opslag på (account, org_id, site) rammer", a is not None)
+        a = seneste.get((ACCOUNT, ORG_ID_STR, SITE_A))
+        b = seneste.get((ACCOUNT, ORG_ID_STR, SITE_B))
+        tjek("opslag med org_id som STRENG rammer (som risikolaget gør)",
+             a is not None)
+        tjek("opslag med int rammer IKKE — nøglen er str",
+             seneste.get((ACCOUNT, ORG_ID, SITE_A)) is None)
         if a:
             tjek("arr_after_dkk = 60000 * 0,72 = 43200",
                  float(a["arr_after_dkk"]) == 43200.0, "faktisk=" + str(a["arr_after_dkk"]))
@@ -168,7 +175,7 @@ def main() -> int:
         )
         tjek("samtale uden site accepteres", isinstance(cid2, int))
         seneste = outcomes.db_seneste_udfald()
-        noegle = ("marketwire", 1, outcomes.INTET_SITE)
+        noegle = ("marketwire", "1", outcomes.INTET_SITE)
         tjek("nøglen er sentinel, ikke NULL", noegle in seneste)
         tjek("outcome er NULL når der ikke var kontakt",
              seneste.get(noegle, {}).get("outcome") is None)
@@ -188,7 +195,7 @@ def main() -> int:
         )
         seneste = outcomes.db_seneste_udfald()
         tjek("seneste udfald for SITE_B er nu fornyet",
-             seneste.get((ACCOUNT, ORG_ID, SITE_B), {}).get("outcome") == "fornyet")
+             seneste.get((ACCOUNT, ORG_ID_STR, SITE_B), {}).get("outcome") == "fornyet")
         tjek("fire udfald i alt (2 + sentinel + nyt), intet opdateret",
              antal("RetentionOutcomes") == 4, "faktisk=" + str(antal("RetentionOutcomes")))
         tjek("den gamle followup 14/8 kalder ikke længere",
@@ -198,7 +205,8 @@ def main() -> int:
         # PRD §7.4. Kunden har nu to samtaler: den foerste med TO udfald, den
         # anden med ET. Grupperingen er hele pointen — fem loesrevne raekker
         # ville laeses som fem opkald.
-        hist = outcomes.db_historik(ACCOUNT, ORG_ID)
+        # Str ind, samme resultat: db_historik konverterer selv til INT.
+        hist = outcomes.db_historik(ACCOUNT, ORG_ID_STR)
         tjek("to samtaler for kunden", len(hist) == 2, "fandt " + str(len(hist)))
         if len(hist) == 2:
             tjek("nyeste foerst", hist[0]["contacted_at"] > hist[1]["contacted_at"],
