@@ -16,6 +16,12 @@
     .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
     .panel-body { padding:20px; }
 
+    /* Kundenavnet fører til kunde-detaljen (PRD §7.4). Understregning først på
+       hover: 200 understregede navne ville støje mere end de vejleder. */
+    .kundelink { color:inherit; text-decoration:none; border-bottom:1px solid transparent; }
+    .kundelink:hover { border-bottom-color:var(--ink-3); }
+    .kundelink:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+
     /* Zone-kort. Kroner er det store tal; ANTAL ABONNEMENTER og ANTAL KUNDER
        står begge nedenunder, fordi de svarer på to forskellige spørgsmål:
        abonnementer er hvad der står på spil, kunder er hvor mange samtaler det
@@ -432,7 +438,13 @@
           // størst volumen, altså dem der betyder mest.
           + (r.pv_snit_3 == null ? '–' : nf1.format(r.pv_snit_3));
       return '<tr>'
-        + '<td class="txt" title="' + esc(kundeTitel) + '">' + esc(r.org_name) + tags.join('') + '</td>'
+        // Kundenavnet er indgangen til PRD §7.4. Linket sidder på NAVNET og
+        // ikke på hele rækken: rækken er et abonnement, men man ringer til en
+        // kunde, og et klik hvor som helst ville skjule den forskel.
+        + '<td class="txt" title="' + esc(kundeTitel) + '">'
+          + '<a class="kundelink" href="/retention/kunde/'
+          + encodeURIComponent(r.account) + '/' + encodeURIComponent(r.org_id)
+          + '">' + esc(r.org_name) + '</a>' + tags.join('') + '</td>'
         + '<td class="txt" title="' + esc('Første måned i dbo.retention: ' + (r.foerste_maaned || '?')) + '">'
           + esc(r.site || '–') + '</td>'
         + '<td><span class="pill ' + r.zone + '" title="'

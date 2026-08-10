@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from nav_utils import register_nav_globals
+from .kunde import kunde_detalje
 from .queries import db_monthly_active_counts
 from .risiko import abonnementer_i_risiko
 
@@ -27,6 +28,11 @@ EKSKLUDEREDE_ROLLER = ["marketing", "management"]
 # — og menu og endpoint bruger så garanteret samme nøgle.
 RES_OVERBLIK = "retention-overview"
 RES_RISIKO = "retention-risk"
+# Kunde-detaljen står IKKE i nav_utils.CATEGORIES: den er en gennemklikning,
+# ikke et sted man går hen — PRD §7.4 nås fra risikolisten og senere fra
+# prioriteringssiden. Id'et findes alligevel, så adgangen kan styres på samme
+# måde som siderne, hvis nogen får brug for det.
+RES_KUNDE = "retention-kunde"
 
 _AFVIST = "Retention er forbeholdt Sales Operations"
 
@@ -109,3 +115,28 @@ async def retention_risk_overview(request: Request, user=Depends(get_current_use
     # _resolve_filters, men skallen skal heller ikke kunne åbnes uden adgang.
     _kraev_adgang(user, RES_RISIKO)
     return templates.TemplateResponse(request, "retention_risk.html", {"user": user})
+
+
+@router.get("/retention/kunde_data/{account}/{org_id}")
+def get_kunde_detalje(account: str, org_id: str, user=Depends(get_current_user)):
+    """Alt om én kunde (PRD §7.4).
+
+    `org_id` tages som STRENG og ikke int: risikolaget bærer det som tekst, og
+    en int i stien ville give en nøgle der aldrig matcher. outcomes.py
+    konverterer selv, når databasen skal have den.
+    """
+    _, teams = _resolve_filters(user, RES_KUNDE)
+    return kunde_detalje(account, org_id, teams=teams)
+
+
+@router.get("/retention/kunde/{account}/{org_id}", response_class=HTMLResponse)
+async def retention_kunde(request: Request, account: str, org_id: str,
+                          user=Depends(get_current_user)):
+    # Siden skal kunne åbnes for ENHVER kunde, ikke kun dem på risikolisten
+    # (PRD §7.4) — ellers kan et udfald ikke registreres på et sundt
+    # abonnement. Derfor slås kunden ikke op her: findes hun ikke, viser siden
+    # sin egen tomme tilstand frem for en 404.
+    _kraev_adgang(user, RES_KUNDE)
+    return templates.TemplateResponse(request, "retention_kunde.html",
+                                      {"user": user, "account": account,
+                                       "org_id": org_id})
