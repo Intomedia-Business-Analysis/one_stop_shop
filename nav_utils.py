@@ -93,15 +93,21 @@ CATEGORIES = [
         "description": "Aktive abonnementer over tid og churn-risiko pr. abonnement",
         "icon": "settings",
         "color": "amber",
-        # salesperson matcher adgangsvagten i modul_retention/router.py, hvor
-        # _resolve_filters afviser alt under salesperson (dvs. screen-rollen).
-        # Sætter man den højere her, forsvinder menupunktet for de sælgere
-        # siderne er bygget til, uden at endpointet holder op med at virke.
-        "min_role": "salesperson",
+        # sales_operations SKAL matche MIN_ROLLE i modul_retention/router.py.
+        # Hævet fra salesperson 2026-08-10: retention-specialisten er en Sales
+        # Operations-bruger, og modulet viser hele firmaets churn-billede, så
+        # sælgere og sales managers har ingen adgang længere. Sættes den lavere
+        # her end i routeren, får sælgere et menupunkt der svarer 403.
+        #
+        # exclude_roles står KUN på de to items, ikke her: filter_categories
+        # sender ikke exclude_roles med på kategori-tjekket (kun på items), så
+        # nøglen ville blive tavst ignoreret på dette niveau. Det virker
+        # alligevel, fordi en kategori uden synlige items droppes helt.
+        "min_role": "sales_operations",
         "subcategories": [],
         "items": [
-            {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/overview"},
-            {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson", "url": "/retention/risk_overview"},
+            {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
         ],
     },
     {

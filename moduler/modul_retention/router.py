@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from auth import allowed_data_teams, get_current_user, has_access
+from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from nav_utils import register_nav_globals
-from moduler.modul_saelger_portfolio.queries import get_led_teams
 from .queries import db_monthly_active_counts
 from .risiko import abonnementer_i_risiko
 
@@ -14,48 +13,62 @@ register_nav_globals(templates)
 router = APIRouter()
 
 
-def _resolve_filters(user: dict) -> tuple[str | None, list | None]:
-    """Oversæt brugerens rolle til (owner_name, team) for retention-queryen.
-    - screen: ingen adgang - retention er ikke en del af skærmrotation.
-    - salesperson; kun egen bog.
-    - sales_manager:de teams brugern er LEDER for. Falder tilbage til egne
-    medlemskber hvis lederollen ikke er registreret i TeamMemberships
-    (Samme løsning som sælger_portfolio). Uden nogen af dem: 403 fren for
-    tavst at vise firmatotalen - et uafgrænset tal ser ud som et team-tal.
-    - Seles-operations og derover (marketing, management, admin): firmabredt,
-    inkl. de 16% kunder unden tilskrevet ejer i PipeDrive.
+MIN_ROLLE = "sales_operations"
+
+# Marketing (rang 4) og management (rang 5) rangerer HØJERE end sales_operations
+# (rang 3) og ville ellers slippe ind gennem rangen alene. Besluttet 2026-08-10:
+# retention er præcis Sales Operations + admin. admin bypasser altid
+# exclude_roles i auth.resolve_resource_access, så adgangen kan ikke låses ude.
+EKSKLUDEREDE_ROLLER = ["marketing", "management"]
+
+# Ressource-id'erne er de samme som nav-items i nav_utils.CATEGORIES. Det er
+# ikke kosmetik: resolve_resource_access slår op på præcis dette id, så en
+# admin kan åbne én side for én bruger via UserResourceAccess uden kodeændring
+# — og menu og endpoint bruger så garanteret samme nøgle.
+RES_OVERBLIK = "retention-overview"
+RES_RISIKO = "retention-risk"
+
+_AFVIST = "Retention er forbeholdt Sales Operations"
+
+
+def _kraev_adgang(user: dict, resource_id: str) -> None:
+    """403 medmindre brugeren må se den pågældende retention-side.
+
+    Bruger resolve_resource_access og ikke has_access, fordi has_access kalder
+    videre med resource_id="" og uden exclude_roles — den kan hverken se
+    override-rækkerne eller holde marketing og management ude.
     """
-    if not has_access(user, "salesperson"):
-        raise HTTPException(403, "Ingen adgang til retention")
+    if resolve_resource_access(user, resource_id, MIN_ROLLE,
+                               exclude_roles=EKSKLUDEREDE_ROLLER) == "none":
+        raise HTTPException(403, _AFVIST)
 
-    allowed = allowed_data_teams(user)  # None = ubegrænset
 
-    if has_access(user, "sales_operations"):
-        # Ubegrænset → (None, None) = firmabredt. Er brugeren derimod
-        # HubUserTeamAccess-begrænset, bliver "hele firmaet" de tilladte teams
-        # — samme regel som _effective_team i perf-modulet.
-        return None, allowed
-    if has_access(user, "sales_manager"):
-        teams = get_led_teams(user["id"]) or user.get("_teams") or []
-        if not teams:
-            raise HTTPException(
-                403, "Du er registreret som Sales Manager, men har ingen team-medlemskaber. "
-                "Kontakt en systemadministrator for at få det rettet, hvis du mener det er en fejl."
-            )
-        if allowed is not None:
-            teams = [t for t in teams if t in allowed]
-            if not teams:
-                raise HTTPException(
-                    403, "Din data-adgang er begrænset til teams, du ikke er leder for. "
-                    "Kontakt en systemadministrator."
-                )
-        return None, teams
-    return user["name"], None
+def _resolve_filters(user: dict, resource_id: str) -> tuple[str | None, list | None]:
+    """Oversæt brugerens rolle til (owner_name, team) for retention-queryen.
+
+    Modulet er lukket for alt under Sales Operations (besluttet 2026-08-10).
+    Retention-specialisten ER en Sales Operations-bruger og skal se hele
+    firmaets churn-billede, så der findes ikke længere en egen-bog-visning:
+    en sælger har ingen adgang overhovedet.
+
+    Derfor er `owner_name` altid None — der er ingen rolle tilbage, der skal
+    afgrænses til én persons bog. De tidligere salesperson- og
+    sales_manager-grene er FJERNET frem for ladt stå: en uåbnelig gren i
+    adgangskontrol er farlig, fordi den ser ud til at virke, hvis nogen senere
+    sænker vagten.
+
+    Teams kan stadig være begrænset: har admin sat HubUserTeamAccess på
+    brugeren, bliver "hele firmaet" de tilladte teams — samme regel som
+    _effective_team i perf-modulet. Ubegrænset giver (None, None) = firmabredt,
+    inkl. de 16% kunder uden tilskrevet ejer i PipeDrive.
+    """
+    _kraev_adgang(user, resource_id)
+    return None, allowed_data_teams(user)
 
 
 @router.get("/retention/monthly_active_counts")
 def get_monthly_active_counts(user=Depends(get_current_user)):
-    owner_name, teams = _resolve_filters(user)
+    owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
     return db_monthly_active_counts(owner_name=owner_name, teams=teams)
 
 
@@ -68,33 +81,31 @@ def get_abonnementer_i_risiko(user=Depends(get_current_user)):
     grainen var kunden, hvilket er den forkerte måleenhed (PRD §2 og §7.2).
     Ruten beholder sit navn, så eksisterende links og bogmærker virker.
 
-    NB: `_resolve_filters` returnerer `owner_name` fra `retention_owner`-verdenen
-    (`user["name"]`), mens risikolisten filtrerer på ACV's org-ejer. Det er samme
-    personnavn i begge kilder — HubUsers' `name` — så filteret virker; men de to
-    visninger kan medtage forskellige kunder for samme sælger, fordi kilderne er
-    uenige om ejerskab i 47% af rækkerne. Det skal fremgå af siden.
+    `owner_name` er altid None nu, hvor modulet kræver Sales Operations: ingen
+    tilbageværende rolle skal se sin egen bog. Den gamle advarsel om at
+    `retention_owner` og ACV's org-ejer er uenige om ejerskab i 47% af rækkerne
+    gælder derfor ikke længere for ADGANGEN — men den gælder stadig for enhver
+    visning der grupperer på ejer, og det skal fremgå af siden.
 
     `abo_maaned` sendes bevidst IKKE videre: produktionsvisningen skal altid være
     indeværende måned, og parameteren findes kun til kontrolkørsler.
     """
-    owner_name, teams = _resolve_filters(user)
+    owner_name, teams = _resolve_filters(user, RES_RISIKO)
     return abonnementer_i_risiko(owner_name=owner_name, teams=teams)
 
 
 @router.get("/retention/overview", response_class=HTMLResponse)
 async def retention_overview(request: Request, user=Depends(get_current_user)):
     # Selve dataene hentes client-side og er beskyttet af _resolve_filters, men
-    # skallen skal heller ikke kunne åbnes — en screen-bruger har intet at gøre
-    # på siden, og et tomt panel med en fejlbesked er en dårlig afvisning.
-    if not has_access(user, "salesperson"):
-        raise HTTPException(403, "Ingen adgang til retention")
+    # skallen skal heller ikke kunne åbnes — en bruger uden adgang har intet at
+    # gøre på siden, og et tomt panel med en fejlbesked er en dårlig afvisning.
+    _kraev_adgang(user, RES_OVERBLIK)
     return templates.TemplateResponse(request, "retention_overview.html", {"user": user})
 
 
 @router.get("/retention/risk_overview", response_class=HTMLResponse)
 async def retention_risk_overview(request: Request, user=Depends(get_current_user)):
     # Samme adgangsvagt som de øvrige retention-sider: dataene er beskyttet af
-    # _resolve_filters, men skallen skal heller ikke kunne åbnes af en screen-bruger.
-    if not has_access(user, "salesperson"):
-        raise HTTPException(403, "Ingen adgang til retention")
+    # _resolve_filters, men skallen skal heller ikke kunne åbnes uden adgang.
+    _kraev_adgang(user, RES_RISIKO)
     return templates.TemplateResponse(request, "retention_risk.html", {"user": user})
