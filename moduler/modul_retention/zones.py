@@ -115,10 +115,12 @@ UNTRACKBARE_SITES = {
     None,           # marketwire har intet site i dbo.retention
 }
 
-# Adskilt fra UNTRACKBARE_SITES, fordi det er et RETTIGHEDSPROBLEM og ikke et
-# tracking-hul: finans.dk ligger i jyllandsposten-schemaet, som vi ikke har
-# læseadgang til. 1.163 abonnementer. Slet linjen den dag adgangen er på plads.
-UNTRACKBARE_SITES.add("finans.dk")
+# finans.dk stod her indtil 2026-08-10. Adgangen til jyllandsposten-schemaet kom
+# 2026-08-07, og eksporten dækker nu sitet: 1.692 konti, fladt over alle 13 hele
+# måneder. Signalet er WEB ALENE — finans-appen er bevidst udeladt af
+# usage_trend.txt, fordi en app-migrering i juni 2026 ellers ville have skabt
+# falske stoppet-zoner. Det gør finans sammenligneligt med Watch-sitene, som
+# også er web alene.
 
 
 # ---------------------------------------------------------------------------

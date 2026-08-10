@@ -63,12 +63,14 @@ KENDTE HULLER (målt 2026-08-07):
     ikke en umulighed. Spørgsmålet ligger hos datascientisten.
 
   * finans.dk ligger i `jyllandsposten_dsa_prv_external`. Det var ALDRIG et
-    tracking-hul — det var et rettighedsproblem, og adgangen kom 2026-08-07. Vi
-    målte 318.441 web-rækker med adgangsaftale i juli alene. `usage_trend.txt`
-    henter nu både web og app derfra, men en eksportfil fra FØR 2026-08-10
-    indeholder dem ikke, og så står finans.dk's 1.163 abonnementer fortsat som
-    "intet_signal". Bemærk konsekvensen når de er med: finans blander web+app,
-    mens alle Watch-sites er web alene.
+    tracking-hul — det var et rettighedsproblem, og adgangen kom 2026-08-07.
+    `usage_trend.txt` henter WEB derfra, men IKKE appen: dækningstjekket
+    2026-08-10 viste et app-skifte midt i vinduet, hvor det samlede app-signal
+    faldt fra ~150.000 rækker om måneden til 45.237 i juni og 106.352 i juli.
+    Et niveauskifte dér ville give falske "stoppet" ved vægt 1,00 for konti
+    hvis brugere kun lå på den gamle app. Alle sites i eksporten er derfor web
+    alene. En eksportfil fra FØR 2026-08-10 har slet ingen finans-rækker, og så
+    står finans.dk's 1.163 abonnementer fortsat som "intet_signal".
 
   * Shifter, Kom24 NO og Medier24 NO ligger uden for erhvervsmedier-schemaet.
     marketwire har intet site i `dbo.retention`. Se zones.UNTRACKBARE_SITES.
