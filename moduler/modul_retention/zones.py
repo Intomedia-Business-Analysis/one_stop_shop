@@ -20,7 +20,15 @@ HVORFOR "ny" ER EN EGEN TILSTAND: mellem april og maj 2026 voksede porteføljen
 med 2.498 kunder og 3.451 abonnementer, fordelt næsten jævnt over hvert eneste
 site. Ægte salg ankommer ikke sådan, så det er efter alt at dømme en bulk-import.
 Uden `ny` ville hele den tilgang stå som churn-risiko på den første liste
-specialisten ser. Alderen måles på abonnementets første måned i `dbo.retention`.
+specialisten ser.
+
+Alderen måles IKKE på abonnementets første måned i `dbo.retention` alene, men på
+det tidligste af den og den første måned med læsning — se foerste_kendte_maaned.
+En bulk-import giver en ny RÆKKE på en relation, der kan være år gammel, og for
+59,6% af de abonnementer zonen fangede ved reference 2026-07 var der forbrug før
+rækkens egen første måned. Målt på kontraktrækken alene dæmpede zonen 4,8 mio.
+kr. i årsværdi, hvoraf 327 abonnementer var etablerede læsere i fald eller stop.
+Rettet 2026-08-11.
 
 HVORFOR PAKKER MÅLES PÅ KUNDEN: `Watch Medier DK` giver adgang til alle
 Watch-titler. Kun 7% af dens 264 abonnenter læser watchmedier.dk selv, mens 79%
@@ -187,6 +195,35 @@ def er_trackbare(site: Optional[str], har_zuora_kobling: bool) -> bool:
 # Selve zonelogikken
 # ---------------------------------------------------------------------------
 
+def foerste_kendte_maaned(forbrug: dict, foerste_maaned: str) -> str:
+    """Tidligste spor af abonnementet: registreringen eller den første læsning.
+
+    HVORFOR IKKE BARE `foerste_maaned`: den er en KONTRAKT-kendsgerning fra
+    dbo.retention, ikke en oplysning om hvor længe kunden har læst. De to falder
+    kun sammen, når rækken og relationen begynder samtidig — og det gør de ikke
+    i 59,6% af de abonnementer, `ny` fanger ved reference 2026-07. Der er
+    forbrug FØR abonnementets egen første måned, median otte måneder.
+
+    Et site lagt ind på en eksisterende kunde, en genforhandlet kontrakt eller
+    en bulk-import giver alle en ny RÆKKE på en gammel relation. Læsningen
+    afslører det: har kunden læst sitet i et år, er der rigeligt at sammenligne
+    med, uanset hvad rækken siger.
+
+    Målt på det tidligste af de to bliver `ny` det, navnet lover — "for ny til
+    at vurderes" — frem for "kontrakten er ung".
+
+    GRÆNSE: forbrugseksporten dækker 14 måneder. Er relationen ældre end
+    vinduet, kan vi ikke se det, og så er den her datering stadig for ung. Det
+    er ufarligt, fordi vinduet er langt længere end NY_MAANEDER.
+    """
+    if not foerste_maaned:
+        return foerste_maaned
+    laest = [m for m, v in forbrug.items() if v]
+    if not laest:
+        return foerste_maaned
+    return min(min(laest), foerste_maaned)
+
+
 def er_vanebruger(dage: dict, reference: str) -> bool:
     """Havde abonnementet en vane at miste? PRD §3's tærskel.
 
@@ -224,7 +261,26 @@ def bestem_zone(forbrug: dict,
     """
     if not er_trackbare(site, har_zuora_kobling):
         return "intet_signal"
-    if maaneders_alder(foerste_maaned, reference) < NY_MAANEDER:
+
+    # Abonnementet fandtes IKKE i referencemåneden. Så kan referencens forbrug
+    # umuligt være dets, og enhver sammenligning beskriver kunden frem for denne
+    # række. Forbrugssporet kan godt være ældre — kunden læser sitet på en anden
+    # aftale eller en pakke — men det gør ikke rækken gammel.
+    #
+    # Spærringen står FØR den forbrugsbaserede datering, fordi den ellers falder
+    # væk netop for de nyeste abonnementer: målt 2026-08-11 gav den seks rækker
+    # en rigtig zone, heriblandt en uge gammel aftale som "stoppet" med vægt
+    # 1,00 — øverst på listen. Se risiko.py's docstring om abo_maaned efter
+    # reference.
+    if maaneders_alder(foerste_maaned, reference) < 0:
+        return "ny"
+
+    # Ellers måles alderen på det tidligste SPOR, ikke på kontraktrækken.
+    # `faldende` kræver tre måneders FORBRUG at sammenligne med — ikke tre
+    # måneders abonnement — og de to er forskellige, når rækken er nyere end
+    # relationen. Se foerste_kendte_maaned.
+    if maaneders_alder(foerste_kendte_maaned(forbrug, foerste_maaned),
+                       reference) < NY_MAANEDER:
         return "ny"
 
     tidligere = [forbrug.get(m, 0)

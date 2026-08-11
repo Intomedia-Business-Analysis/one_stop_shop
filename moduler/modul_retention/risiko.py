@@ -20,9 +20,8 @@ TO FORSKELLIGE MÅNEDER, og forvekslingen er den farligste fejl i filen:
                 frit fald.
 
 Et abonnement startet i indeværende måned har derfor en foerste_maaned der
-ligger EFTER reference. maaneders_alder giver da et negativt tal, som er under
-NY_MAANEDER, og zonen bliver "ny" — det rigtige svar.
-"""
+ligger EFTER reference. Det negative tal fanges af sin egen spærring i
+zones.bestem_zone, før den forbrugsbaserede datering — se kommentaren dér."""
 
 import logging
 from datetime import date
