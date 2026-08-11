@@ -59,6 +59,48 @@
     .tom   { font-size:12px; color:var(--ink-3); padding:8px 0; }
     .advar { background:#fdf6e3; border:1px solid var(--warn); border-radius:var(--r); padding:10px 14px;
              font-size:11px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
+
+    /* --- Registreringsformular (PRD §7.4) --- */
+    /* datetime-local står ikke i hub.css' .fld-liste, så den arver ikke selv. */
+    .fld input[type="datetime-local"] {
+      font-family:var(--font); font-size:12px; padding:8px 11px;
+      border:1px solid var(--border-strong); border-radius:var(--r-sm);
+      background:var(--bg); color:var(--ink); outline:none; width:100%;
+    }
+    .fld input[type="datetime-local"]:focus { border-color:var(--green); }
+
+    /* Ét felt pr. valgt abonnement. Kanten er kraftigere end abonnementskortets,
+       fordi den her indeholder noget der SKRIVES, ikke noget der læses. */
+    .reg-abo { border:1px solid var(--border-strong); border-radius:var(--r);
+               padding:14px 16px; margin-bottom:12px; background:var(--bg); }
+    .reg-abo-top { display:flex; justify-content:space-between; align-items:center;
+                   gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .reg-abo-navn { font-size:13px; font-weight:700; color:var(--ink); }
+
+    /* Afkrydsningslisten: hvilke abonnementer handlede samtalen om. */
+    .vaelg { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+             gap:8px 16px; margin-bottom:18px; }
+    .vaelg label { display:flex; align-items:flex-start; gap:8px; font-size:12px;
+                   color:var(--ink-2); cursor:pointer; line-height:1.5; font-weight:500;
+                   text-transform:none; letter-spacing:0; }
+    .vaelg input { margin-top:2px; flex:none; }
+    .vaelg .z { font-size:10px; color:var(--ink-4); }
+
+    /* ARR-kilden er ikke dekoration: den siger om beløbet er målt eller gættet,
+       og §9's "kroner reddet" arver forskellen. Derfor vises den, og derfor
+       skifter den synligt, når feltet redigeres. */
+    .kilde { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+             padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .kilde.lige_deling { background:#fdf6e3; color:var(--ink-2); border:1px solid var(--warn); }
+    .kilde.bekraeftet  { background:#eef7ee; color:var(--ink-2); border:1px solid var(--win); }
+
+    .fejl { background:#fdecea; border:1px solid var(--danger); border-radius:var(--r);
+            padding:10px 14px; font-size:11px; color:var(--ink-2); margin-bottom:16px; line-height:1.7; }
+    .fejl ul { margin:6px 0 0; padding-left:18px; }
+    .kvit { background:#eef7ee; border:1px solid var(--win); border-radius:var(--r);
+            padding:10px 14px; font-size:12px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
+    .reg-handling { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+    .kraev { color:var(--danger); }
   </style>
 </head>
 <body>
@@ -108,6 +150,84 @@
             </div>
           </div>
           <div class="panel-body" id="abonnementer"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Registrér samtale</h2>
+              <p>Hvad der FAKTISK skete. Uden det kan zonevægtene aldrig kalibreres (PRD §9).</p>
+            </div>
+            <button type="button" class="btn-primary" id="reg-aabn">Registrér samtale</button>
+          </div>
+          <div class="panel-body" id="reg-body" hidden>
+            <div id="reg-fejl"></div>
+
+            <div class="form-grid-3">
+              <div class="fld">
+                <label for="reg-tid">Tidspunkt</label>
+                <input type="datetime-local" id="reg-tid">
+              </div>
+              <div class="fld">
+                <label for="reg-kanal">Kanal</label>
+                <select id="reg-kanal">
+                  {% for vaerdi, label in kanaler.items() %}
+                  <option value="{{ vaerdi }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label for="reg-resultat">Kom du igennem?</label>
+                <select id="reg-resultat">
+                  {% for vaerdi, label in kontaktresultater.items() %}
+                  <option value="{{ vaerdi }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="fld" style="margin-bottom:18px;">
+              <label for="reg-resume">Resumé af samtalen</label>
+              <textarea id="reg-resume" rows="2"
+                        placeholder="Gælder hele samtalen. Noter pr. abonnement skrives nedenfor."></textarea>
+            </div>
+
+            <!-- Vises kun ved kontakt opnået: databasen kræver et udfald pr.
+                 abonnement, og forbyder et udfald når der ikke var kontakt
+                 (CK_RetOut_outcome_kraever_kontakt). -->
+            <div id="reg-med-kontakt">
+              <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);">
+                Hvilke abonnementer handlede samtalen om?
+              </label>
+              <div class="vaelg" id="reg-vaelg"></div>
+              <div id="reg-udfald"></div>
+            </div>
+
+            <!-- Vises kun uden kontakt: én række med sentinel-site og intet udfald. -->
+            <div id="reg-uden-kontakt" hidden>
+              <p class="fine" style="margin-top:0;">
+                Uden kontakt registreres samtalen på kunden og ikke på et abonnement.
+                Der gemmes derfor intet udfald — forsøget tæller, jf. PRD §8's grænse på
+                tre kontaktforsøg.
+              </p>
+              <div class="form-grid">
+                <div class="fld">
+                  <label for="reg-uk-note">Note</label>
+                  <input type="text" id="reg-uk-note" placeholder="Fx: lagde på, ringer igen torsdag">
+                </div>
+                <div class="fld">
+                  <label for="reg-uk-followup">Ring igen (valgfrit)</label>
+                  <input type="date" id="reg-uk-followup">
+                </div>
+              </div>
+            </div>
+
+            <div class="reg-handling">
+              <button type="button" class="btn-primary" id="reg-gem">Gem registrering</button>
+              <button type="button" class="btn-cancel" id="reg-annuller">Annullér</button>
+              <span class="fine" id="reg-status"></span>
+            </div>
+          </div>
         </div>
 
         <div class="panel">
@@ -277,7 +397,278 @@
              ${u.note ? '<br><span class="fine">' + esc(u.note) + '</span>' : ''}</div>`
           ).join('') || '<div class="fine">Ingen udfald registreret på samtalen.</div>'}</div>
         </div>`).join('') + `</div>`
-    : '<div class="tom">Ingen samtaler registreret endnu. Registrering bygges i næste skridt (PRD §7.4).</div>';
+    : '<div class="tom">Ingen samtaler registreret endnu.</div>';
+
+  // ================= registreringsformular (PRD §7.4) =================
+  // Vokabularet kommer fra outcomes.py via routeren. Det må IKKE gentages her:
+  // værdierne er databasens CHECK-constraints, og en option med en værdi
+  // databasen afviser fejler først når specialisten har lagt på.
+  const KONTAKTRESULTATER  = {{ kontaktresultater | tojson }};
+  const UDFALDSTYPER       = {{ udfaldstyper | tojson }};
+  const AABNE_UDFALD       = {{ aabne_udfald | tojson }};
+  const KONTAKT_OPNAAET    = {{ kontakt_opnaaet | tojson }};
+  const KILDE_DELING       = {{ arr_kilde_deling | tojson }};
+  const KILDE_BEKRAEFTET   = {{ arr_kilde_bekraeftet | tojson }};
+  const KILDE_LABEL        = {{ arr_kilder | tojson }};
+
+  const el = id => document.getElementById(id);
+
+  // Kvittering efter en gemt registrering. Siden genindlæses, fordi ALLE tal
+  // skal være friske — ARR, zoner, historik og KPI'erne — og ikke kun de blokke,
+  // der lige faldt mig ind at gentegne. Beskeden overlever reloadet her.
+  const kvit = sessionStorage.getItem('retention_kvit');
+  if (kvit) {
+    sessionStorage.removeItem('retention_kvit');
+    try {
+      const q = JSON.parse(kvit);
+      el('advarsler').insertAdjacentHTML('afterbegin',
+        `<div class="kvit">Samtalen er registreret (nr. ${esc(q.id)}) med
+         ${q.udfald} udfald. Tallene på siden er hentet igen.</div>`);
+    } catch (e) { /* en ulæselig kvittering må ikke spærre siden */ }
+  }
+
+  // Sentinel-valget. Har kunden ingen aktive abonnementer, kan der stadig
+  // registreres — en netop opsagt kunde er præcis den, man skal kunne skrive
+  // 'allerede_opsagt' på (PRD §7.4). Tom site → INTET_SITE serverside.
+  // Den lige deling er kundens ARR / antal sites og kommer ud som en rå float
+  // (121952.61538461539). Rundes til hele kroner, af to grunde: kortet ovenfor
+  // viser samme tal med nul decimaler, og en division med femten decimaler
+  // påstår en præcision, et SKØN ikke har. Bekræfter specialisten beløbet,
+  // skriver hun det rigtige tal, og kilden skifter til `bekraeftet`.
+  const heleKroner = v => (v === null || v === undefined) ? null : Math.round(v);
+
+  const valgbare = abos.length
+    ? abos.map(a => ({ site: a.site, navn: a.site, zone: a.zone_label,
+                       arr: heleKroner(a.arr_dkk) }))
+    : [{ site: '', navn: 'Kunden (intet specifikt abonnement)', zone: null,
+         arr: heleKroner(k.arr_dkk) }];
+
+  el('reg-vaelg').innerHTML = valgbare.map((v, i) => `
+    <label>
+      <input type="checkbox" data-i="${i}" ${valgbare.length === 1 ? 'checked' : ''}
+             aria-label="${esc(v.navn)}">
+      <span>${esc(v.navn)}${v.zone ? ` <span class="z">${esc(v.zone)}</span>` : ''}</span>
+    </label>`).join('');
+
+  // UDFALDSTYPER er en liste af [værdi, label]-par og ikke en dict, netop for at
+  // rækkefølgen holder — se kommentaren i router.py om Jinjas sort_keys.
+  const udfaldOptions = ['<option value="">— vælg udfald —</option>'].concat(
+    UDFALDSTYPER.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`)
+  ).join('');
+
+  // Et felt pr. valgt abonnement. Årsværdien er forudfyldt med den lige deling
+  // og MÆRKET som skøn; rører specialisten feltet, skifter mærket til bekræftet.
+  // Det er hele grunden til at arr_before_kilde findes: uden mærket kan §9 ikke
+  // skelne et målt beløb fra en division.
+  const blok = (v, i) => `
+    <div class="reg-abo" data-i="${i}" data-kilde="${v.arr === null || v.arr === undefined ? '' : KILDE_DELING}">
+      <div class="reg-abo-top">
+        <div class="reg-abo-navn">${esc(v.navn)}</div>
+        <span class="kilde ${v.arr === null || v.arr === undefined ? '' : KILDE_DELING}"
+              data-rolle="kilde-maerke">${v.arr === null || v.arr === undefined
+                ? 'Ingen årsværdi kendt' : esc(KILDE_LABEL[KILDE_DELING])}</span>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Udfald</label>
+          <select data-felt="outcome">${udfaldOptions}</select>
+        </div>
+        <div class="fld">
+          <label>Årsværdi før (kr.)</label>
+          <input type="number" step="0.01" data-felt="arr_before_dkk"
+                 value="${v.arr === null || v.arr === undefined ? '' : v.arr}">
+        </div>
+        <div class="fld">
+          <label data-rolle="followup-label">Opfølgning</label>
+          <input type="date" data-felt="followup_date">
+        </div>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Årsværdi efter (lokal valuta)</label>
+          <input type="number" step="0.01" data-felt="arr_after_local">
+        </div>
+        <div class="fld">
+          <label>Valuta</label>
+          <input type="text" maxlength="3" data-felt="arr_after_currency" placeholder="DKK">
+        </div>
+        <div class="fld">
+          <label>Kurs til DKK</label>
+          <input type="number" step="0.0001" data-felt="fx_rate" placeholder="1">
+        </div>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Fornyelsesdato</label>
+          <input type="date" data-felt="renewal_date">
+        </div>
+        <div class="fld">
+          <label>Udløbsdato</label>
+          <input type="date" data-felt="expiry_date">
+        </div>
+        <div class="fld">
+          <label>Note</label>
+          <input type="text" data-felt="note">
+        </div>
+      </div>
+    </div>`;
+
+  const valgte = () => [...el('reg-vaelg').querySelectorAll('input:checked')]
+    .map(c => Number(c.dataset.i));
+
+  function tegnUdfaldsfelter() {
+    const beholdt = {};
+    el('reg-udfald').querySelectorAll('.reg-abo').forEach(b => {
+      beholdt[b.dataset.i] = { html: b.innerHTML, kilde: b.dataset.kilde };
+    });
+    el('reg-udfald').innerHTML = valgte().map(i => blok(valgbare[i], i)).join('');
+    // Genindsæt det, der allerede var skrevet: en afkrydsning må ikke nulstille
+    // felter, specialisten har udfyldt for de øvrige abonnementer.
+    el('reg-udfald').querySelectorAll('.reg-abo').forEach(b => {
+      const g = beholdt[b.dataset.i];
+      if (g) { b.innerHTML = g.html; b.dataset.kilde = g.kilde; }
+    });
+  }
+
+  el('reg-vaelg').addEventListener('change', tegnUdfaldsfelter);
+
+  // Kilde-mærket skifter i det øjeblik beløbet redigeres, og opfølgningsfeltet
+  // markeres som krævet, når udfaldet holder sagen åben
+  // (CK_RetOut_followup_paa_aabne).
+  el('reg-udfald').addEventListener('input', ev => {
+    const blk = ev.target.closest('.reg-abo');
+    if (!blk) return;
+    if (ev.target.dataset.felt === 'arr_before_dkk') {
+      blk.dataset.kilde = ev.target.value === '' ? '' : KILDE_BEKRAEFTET;
+      const maerke = blk.querySelector('[data-rolle="kilde-maerke"]');
+      maerke.className = 'kilde ' + blk.dataset.kilde;
+      maerke.textContent = blk.dataset.kilde
+        ? KILDE_LABEL[blk.dataset.kilde] : 'Ingen årsværdi angivet';
+    }
+    // Et beløb efter samtalen uden kurs bliver IKKE gemt i kroner — serveren
+    // afviser det. Valuta og kurs udfyldes derfor, når beløbet skrives, men
+    // aldrig på forhånd: en kurs uden et beløb er også en fejl.
+    if (ev.target.dataset.felt === 'arr_after_local' && ev.target.value !== '') {
+      const val = blk.querySelector('[data-felt="arr_after_currency"]');
+      const kur = blk.querySelector('[data-felt="fx_rate"]');
+      if (!val.value) val.value = 'DKK';
+      if (!kur.value) kur.value = '1';
+    }
+  });
+
+  el('reg-udfald').addEventListener('change', ev => {
+    if (ev.target.dataset.felt !== 'outcome') return;
+    const blk = ev.target.closest('.reg-abo');
+    const aaben = AABNE_UDFALD.includes(ev.target.value);
+    blk.querySelector('[data-rolle="followup-label"]').innerHTML =
+      'Opfølgning' + (aaben ? ' <span class="kraev">*</span>' : '');
+  });
+
+  function skiftKontaktform() {
+    const medKontakt = el('reg-resultat').value === KONTAKT_OPNAAET;
+    el('reg-med-kontakt').hidden  = !medKontakt;
+    el('reg-uden-kontakt').hidden = medKontakt;
+  }
+  el('reg-resultat').addEventListener('change', skiftKontaktform);
+
+  el('reg-aabn').addEventListener('click', () => {
+    el('reg-body').hidden = !el('reg-body').hidden;
+    if (el('reg-body').hidden) return;
+    const nu = new Date();
+    nu.setMinutes(nu.getMinutes() - nu.getTimezoneOffset());
+    el('reg-tid').value = nu.toISOString().slice(0, 16);
+    skiftKontaktform();
+    tegnUdfaldsfelter();
+    el('reg-body').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  el('reg-annuller').addEventListener('click', () => { el('reg-body').hidden = true; });
+
+  const visFejl = liste => {
+    el('reg-fejl').innerHTML = liste.length
+      ? `<div class="fejl"><strong>Registreringen blev ikke gemt:</strong>
+         <ul>${liste.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`
+      : '';
+    if (liste.length) el('reg-fejl').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  function byg() {
+    const resultat = el('reg-resultat').value;
+    const samtale = {
+      contacted_at: el('reg-tid').value,
+      channel:      el('reg-kanal').value,
+      summary:      el('reg-resume').value
+    };
+
+    if (resultat !== KONTAKT_OPNAAET) {
+      // Én række på kunden, intet site, intet udfald. Serveren oversætter tom
+      // site til sentinel — se outcomes.INTET_SITE.
+      return { ...samtale, udfald: [{
+        site: null, contact_result: resultat,
+        note: el('reg-uk-note').value,
+        followup_date: el('reg-uk-followup').value
+      }] };
+    }
+
+    const udfald = [...el('reg-udfald').querySelectorAll('.reg-abo')].map(blk => {
+      const f = navn => blk.querySelector(`[data-felt="${navn}"]`).value;
+      const beloeb = f('arr_before_dkk');
+      return {
+        site:               valgbare[Number(blk.dataset.i)].site,
+        contact_result:     resultat,
+        outcome:            f('outcome'),
+        arr_before_dkk:     beloeb,
+        // Kilden hører til beløbet. Er beløbet tomt, er der ingen kilde at
+        // angive, og serveren ville afvise en kilde uden et tal.
+        arr_before_kilde:   beloeb === '' ? '' : blk.dataset.kilde,
+        arr_after_local:    f('arr_after_local'),
+        arr_after_currency: f('arr_after_currency'),
+        fx_rate:            f('fx_rate'),
+        renewal_date:       f('renewal_date'),
+        expiry_date:        f('expiry_date'),
+        followup_date:      f('followup_date'),
+        note:               f('note')
+      };
+    });
+    return { ...samtale, udfald };
+  }
+
+  el('reg-gem').addEventListener('click', async () => {
+    const knap = el('reg-gem');
+    // Den lokale kontrol er en høflighed, ikke en grænse: serveren validerer
+    // igen, fordi browseren kan omgås.
+    if (el('reg-resultat').value === KONTAKT_OPNAAET && !valgte().length) {
+      visFejl(['Vælg mindst ét abonnement samtalen handlede om.']);
+      return;
+    }
+    visFejl([]);
+    knap.disabled = true;
+    el('reg-status').textContent = 'Gemmer…';
+    try {
+      const res = await fetch(
+        `/retention/kunde/${encodeURIComponent(ACCOUNT)}/${encodeURIComponent(ORG_ID)}/samtale`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(byg()) });
+      const svar = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 422 sender en LISTE af fejl, så alle vises på én gang. Andre fejl
+        // har en enkelt tekst.
+        const d = svar.detail;
+        visFejl(Array.isArray(d) ? d : [d || ('HTTP ' + res.status)]);
+        el('reg-status').textContent = '';
+        knap.disabled = false;
+        return;
+      }
+      sessionStorage.setItem('retention_kvit',
+        JSON.stringify({ id: svar.conversation_id, udfald: svar.udfald }));
+      location.reload();
+    } catch (e) {
+      visFejl(['Registreringen kunne ikke sendes: ' + String(e) +
+               '. Intet er gemt — prøv igen.']);
+      el('reg-status').textContent = '';
+      knap.disabled = false;
+    }
+  });
 })();
 </script>
 </body>

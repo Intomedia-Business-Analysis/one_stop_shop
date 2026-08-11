@@ -41,6 +41,46 @@ AABNE_UDFALD = ("forskudt", "tilbud_sendt")
 ARR_KILDE_DELING = "lige_deling"
 ARR_KILDE_BEKRAEFTET = "bekraeftet"
 
+# DATABASENS VOKABULAR, ikke UI-tekst. Nøglerne SKAL være præcis de værdier
+# CK_RetConv_channel, CK_RetOut_contact_result og CK_RetOut_outcome tillader.
+# De står her og ikke i skabelonen, fordi en formular med et valg databasen
+# afviser først fejler EFTER opkaldet, når specialisten har lagt på og ikke kan
+# spørge igen. Værdien er kontrakten; labelen er til mennesker.
+KANALER = {"telefon": "Telefon", "mail": "Mail", "moede": "Møde"}
+
+# Det ene resultat der kræver et udfald. CK_RetOut_outcome_kraever_kontakt er en
+# BIIMPLIKATION: kontakt opnået ⇒ udfald skal være sat, alt andet ⇒ udfald skal
+# være NULL. Begge retninger håndhæves, så et udfald kan ikke smugles ind på en
+# samtale hvor der ikke var nogen i røret.
+KONTAKT_OPNAAET = "kontakt_opnaaet"
+KONTAKTRESULTATER = {
+    KONTAKT_OPNAAET:   "Kontakt opnået",
+    "ingen_kontakt":   "Ingen kontakt",
+    "ikke_kontaktbar": "Ikke kontaktbar",
+}
+
+# SEKS udfald. `opgraderet` findes IKKE — verificeret mod CK_RetOut_outcome
+# 2026-08-11. PRD §6.2's hul er altså reelt: en fornyelse med prisstigning kan
+# kun registreres som `fornyet`, hvor PRD'en siger arr_after = før.
+#
+# Konsekvensen for validering: der må IKKE være regler på ARR pr. udfaldstype.
+# En `fornyet` med højere arr_after end arr_before er lovlig og forekommer, og
+# en validering der "rettede" den ville skjule stigningen i stedet for at måle
+# den. Røgtestens tilfælde 1 fastholder netop det.
+UDFALD = {
+    "fornyet":         "Fornyet",
+    "nedgraderet":     "Nedgraderet",
+    "opsagt":          "Opsagt",
+    "allerede_opsagt": "Allerede opsagt",
+    "forskudt":        "Forskudt",
+    "tilbud_sendt":    "Tilbud sendt",
+}
+
+ARR_KILDER = {
+    ARR_KILDE_DELING:    "Skøn (lige deling)",
+    ARR_KILDE_BEKRAEFTET: "Bekræftet hos kunden",
+}
+
 # db.py forbinder med tds_version="7.0", og TDS 7.0 kender ikke `date` og
 # `datetime2` — de kom i 7.3. SQL Server sender dem derfor som STRENGE
 # ('2026-08-14' og '2026-08-14 15:04:05.1234567'), mens det gamle `datetime`
@@ -97,6 +137,111 @@ def _normaliser(raekke: dict) -> dict:
         if felt in raekke:
             raekke[felt] = _som_tidspunkt(raekke[felt])
     return raekke
+
+
+def _er_tal(vaerdi) -> bool:
+    """Er værdien et brugbart tal? Tom streng og None er IKKE — de betyder 'udfyldt ikke'."""
+    if vaerdi is None or (isinstance(vaerdi, str) and not vaerdi.strip()):
+        return False
+    try:
+        float(vaerdi)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def valider_registrering(samtale: dict, udfald: list) -> list[str]:
+    """Fejlbeskeder på dansk. Tom liste betyder: kan skrives.
+
+    Databasens fem CHECK-constraints er den EGENTLIGE regel, og de bliver
+    håndhævet uanset hvad der står her. Men en overtrådt constraint kommer
+    tilbage som en pymssql-fejl på engelsk med et constraint-navn i — og først
+    når `registrer_samtale` allerede er kaldt, dvs. efter opkaldet er slut.
+    Specialisten kan ikke ringe igen og spørge om det, hun manglede at skrive.
+    Derfor siges reglerne her, før noget sendes, i et sprog hun kan handle på.
+
+    Funktionen er IKKE en erstatning for constraints og må ikke blive det:
+    browseren kan omgås, og routeren kalder den her, netop fordi klientens
+    validering ikke er en sikkerhedsgrænse.
+    """
+    fejl = []
+
+    if not str(samtale.get("account") or "").strip():
+        fejl.append("Samtalen mangler en konto.")
+    try:
+        _db_org_id(samtale.get("org_id"))
+    except (TypeError, ValueError):
+        fejl.append("Samtalen mangler et gyldigt organisations-id.")
+    if not samtale.get("contacted_at"):
+        fejl.append("Angiv hvornår samtalen fandt sted.")
+    if samtale.get("channel") not in KANALER:
+        fejl.append("Vælg en kanal: " + ", ".join(KANALER.values()) + ".")
+    if not str(samtale.get("created_by") or "").strip():
+        fejl.append("Samtalen mangler en registrerende bruger.")
+
+    if not udfald:
+        fejl.append("Registrér mindst ét udfald — en samtale uden udfald er en tom række.")
+
+    sete = set()
+    for u in udfald:
+        navn = u.get("site") or INTET_SITE
+        hvor = f"«{navn}»"
+
+        resultat = u.get("contact_result")
+        if resultat not in KONTAKTRESULTATER:
+            fejl.append(f"{hvor}: vælg et kontaktresultat.")
+
+        # Biimplikationen fra CK_RetOut_outcome_kraever_kontakt, begge veje.
+        vejen_ud = u.get("outcome") or None
+        if resultat == KONTAKT_OPNAAET:
+            if not vejen_ud:
+                fejl.append(f"{hvor}: kontakt opnået kræver et udfald.")
+            elif vejen_ud not in UDFALD:
+                fejl.append(f"{hvor}: ukendt udfald «{vejen_ud}».")
+        elif vejen_ud:
+            fejl.append(f"{hvor}: der kan ikke registreres et udfald, "
+                        "når der ikke var kontakt.")
+
+        if vejen_ud in AABNE_UDFALD and not u.get("followup_date"):
+            fejl.append(f"{hvor}: «{UDFALD[vejen_ud]}» holder sagen åben og "
+                        "kræver en opfølgningsdato.")
+
+        kilde = u.get("arr_before_kilde") or None
+        if kilde is not None and kilde not in ARR_KILDER:
+            fejl.append(f"{hvor}: ukendt kilde til årsværdien før samtalen.")
+        # Et beløb uden kilde er værdiløst bagefter: §9's "kroner reddet" kan
+        # ikke skelne et bekræftet tal fra den lige deling, og så arver
+        # forudsigelsesraten en division, ingen kan se.
+        if _er_tal(u.get("arr_before_dkk")) and kilde is None:
+            fejl.append(f"{hvor}: angiv om årsværdien før samtalen er "
+                        "bekræftet eller et skøn.")
+
+        # arr_after_dkk beregnes af registrer_samtale KUN når både beløb og kurs
+        # er sat — ellers gemmes NULL uden en lyd, og kronerne er tabt for §9.
+        # Derfor spærres den halve udfyldning her frem for at lade den passere.
+        lokal, kurs = u.get("arr_after_local"), u.get("fx_rate")
+        valuta = str(u.get("arr_after_currency") or "").strip()
+        if _er_tal(lokal):
+            if not valuta:
+                fejl.append(f"{hvor}: årsværdi efter samtalen mangler en valuta.")
+            elif len(valuta) != 3 or not valuta.isalpha():
+                fejl.append(f"{hvor}: valutaen skal være en trebogstavskode, fx DKK.")
+            if not _er_tal(kurs):
+                fejl.append(f"{hvor}: årsværdi efter samtalen mangler en kurs — "
+                            "uden den bliver beløbet ikke gemt i kroner.")
+        elif _er_tal(kurs) or valuta:
+            fejl.append(f"{hvor}: der er angivet valuta eller kurs, "
+                        "men intet beløb efter samtalen.")
+
+        # To udfald på det samme abonnement i én samtale. ROW_NUMBER i
+        # db_seneste_udfald bryder uafgjort på outcome_id, så det ville ikke
+        # være tvetydigt — men det ville være noget, ingen mente at skrive.
+        if navn in sete:
+            fejl.append(f"{hvor}: det samme abonnement er registreret "
+                        "to gange på den samme samtale.")
+        sete.add(navn)
+
+    return fejl
 
 
 def registrer_samtale(samtale: dict, udfald: list) -> int | None:

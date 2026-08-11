@@ -1,10 +1,16 @@
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
+from log_setup import audit_log
 from nav_utils import register_nav_globals
-from .kunde import kunde_detalje
+from .kunde import kunde_detalje, ryd_cache
+from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
+                       ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
+                       UDFALD, registrer_samtale, valider_registrering)
 from .queries import db_monthly_active_counts
 from .risiko import abonnementer_i_risiko
 
@@ -137,6 +143,155 @@ async def retention_kunde(request: Request, account: str, org_id: str,
     # abonnement. Derfor slås kunden ikke op her: findes hun ikke, viser siden
     # sin egen tomme tilstand frem for en 404.
     _kraev_adgang(user, RES_KUNDE)
+    # Vokabularet kommer FRA outcomes.py og ikke fra skabelonen. Værdierne skal
+    # matche databasens CHECK-constraints præcis, og en formular der tilbyder et
+    # valg databasen afviser, fejler først efter opkaldet er slut.
     return templates.TemplateResponse(request, "retention_kunde.html",
                                       {"user": user, "account": account,
-                                       "org_id": org_id})
+                                       "org_id": org_id,
+                                       "kanaler": KANALER,
+                                       "kontaktresultater": KONTAKTRESULTATER,
+                                       # LISTE af par, ikke en dict: Jinja2's
+                                       # `tojson` har sort_keys=True som standard,
+                                       # så en dict ville komme ud alfabetisk i
+                                       # JS'en — «Allerede opsagt» først i
+                                       # dropdownen frem for «Fornyet». Kanal og
+                                       # kontaktresultat rammes ikke, fordi de
+                                       # renderes med et {% for %} i skabelonen.
+                                       "udfaldstyper": list(UDFALD.items()),
+                                       "arr_kilder": ARR_KILDER,
+                                       # Formularen skal vide hvilke udfald der
+                                       # kræver en opfølgningsdato, og hvad de to
+                                       # ARR-kilder heder. Sendes med frem for at
+                                       # blive gentaget i JS, hvor de kunne drive.
+                                       "aabne_udfald": list(AABNE_UDFALD),
+                                       "kontakt_opnaaet": KONTAKT_OPNAAET,
+                                       "arr_kilde_deling": ARR_KILDE_DELING,
+                                       "arr_kilde_bekraeftet": ARR_KILDE_BEKRAEFTET})
+
+
+def _tal(vaerdi):
+    """Tom → None, ellers float. Kaster 400 på noget, der ikke er et tal."""
+    if vaerdi is None or (isinstance(vaerdi, str) and not vaerdi.strip()):
+        return None
+    try:
+        return float(vaerdi)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"«{vaerdi}» er ikke et tal")
+
+
+def _dato(vaerdi):
+    """'2026-09-01' → date. Tom → None.
+
+    Konverteres HER og ikke i outcomes.py, fordi det er HTTP-kanten der leverer
+    strenge. Databasekolonnen er `date`, og pymssql binder en streng uden at
+    klage — men så ville en tastefejl som '2026-9-1' først dukke op som en
+    uklar serverfejl.
+    """
+    if not vaerdi:
+        return None
+    try:
+        return dt.date.fromisoformat(str(vaerdi)[:10])
+    except ValueError:
+        raise HTTPException(400, f"«{vaerdi}» er ikke en dato (ÅÅÅÅ-MM-DD)")
+
+
+def _tidspunkt(vaerdi):
+    """'2026-08-11T14:30' → datetime. Tom → None (valideringen fanger det)."""
+    if not vaerdi:
+        return None
+    try:
+        return dt.datetime.fromisoformat(str(vaerdi)[:26])
+    except ValueError:
+        raise HTTPException(400, f"«{vaerdi}» er ikke et tidspunkt")
+
+
+def _kraev_kunde_i_raekkevidde(account: str, org_id: str, teams) -> None:
+    """Skrivesiden skal have samme dataafgrænsning som læsesiden.
+
+    Uden dette kunne en team-begrænset bruger POSTe et udfald på en kunde, hun
+    ikke må se — læsesiden filtrerer på teams, men en POST rammer databasen
+    direkte.
+
+    ÆRLIGT FORBEHOLD: risikobilledet kan ikke skelne "uden for dine teams" fra
+    "ikke længere kunde". En team-begrænset bruger kan derfor ikke registrere på
+    en netop opsagt kunde, selv om PRD §7.4 ellers tillader det. Det er valgt som
+    den forsigtige fejl — den nægter at skrive frem for at skrive uden for
+    grænsen. I dag er `allowed_data_teams` None for Sales Operations, så den
+    rammer ingen; bliver en bruger begrænset, skal reglen tages op igen.
+    """
+    if teams is None:
+        return
+    if kunde_detalje(account, org_id, teams=teams)["ingen_aktive"]:
+        raise HTTPException(403, "Kunden ligger uden for din dataadgang")
+
+
+@router.post("/retention/kunde/{account}/{org_id}/samtale")
+async def post_registrer_samtale(account: str, org_id: str, request: Request,
+                                 user=Depends(get_current_user)):
+    """Registrér én samtale og de udfald den gav (PRD §7.4, §5.1, §5.2).
+
+    Den ENESTE rute i modulet der skriver til produktion. Derfor:
+    valideringen kaldes server-side, selv om formularen validerer i forvejen —
+    browseren er ikke en sikkerhedsgrænse — og registreringen auditeres som de
+    øvrige skrivninger i hubben.
+
+    `account` og `org_id` tages fra STIEN og ikke fra body'en. Ligger de to
+    steder, kan de være uenige, og så ville et udfald kunne skrives på en anden
+    kunde end den, adgangen blev tjekket for.
+    """
+    _, teams = _resolve_filters(user, RES_KUNDE)
+    _kraev_kunde_i_raekkevidde(account, org_id, teams)
+
+    body = await request.json()
+
+    samtale = {
+        "account":      account,
+        "org_id":       org_id,
+        "contacted_at": _tidspunkt(body.get("contacted_at")),
+        "channel":      body.get("channel"),
+        "summary":      (str(body.get("summary") or "").strip() or None),
+        "created_by":   user["name"],
+    }
+
+    udfald = []
+    for u in body.get("udfald") or []:
+        udfald.append({
+            "site":               (str(u.get("site") or "").strip() or None),
+            "contact_result":     u.get("contact_result"),
+            "outcome":            (u.get("outcome") or None),
+            "arr_before_dkk":     _tal(u.get("arr_before_dkk")),
+            "arr_before_kilde":   (u.get("arr_before_kilde") or None),
+            "arr_after_local":    _tal(u.get("arr_after_local")),
+            "arr_after_currency": (str(u.get("arr_after_currency") or "").strip().upper() or None),
+            "fx_rate":            _tal(u.get("fx_rate")),
+            "renewal_date":       _dato(u.get("renewal_date")),
+            "expiry_date":        _dato(u.get("expiry_date")),
+            "followup_date":      _dato(u.get("followup_date")),
+            "note":               (str(u.get("note") or "").strip()[:4000] or None),
+        })
+
+    fejl = valider_registrering(samtale, udfald)
+    if fejl:
+        # 422 og ikke 400: body'en var velformet JSON, men indholdet holder ikke.
+        # Fejlene sendes som en LISTE, så formularen kan vise dem alle på én
+        # gang — ikke én ad gangen, hvor specialisten skal gætte resten.
+        raise HTTPException(422, fejl)
+
+    conversation_id = registrer_samtale(samtale, udfald)
+    if conversation_id is None:
+        # registrer_samtale har rullet tilbage og logget undtagelsen. Intet er
+        # skrevet — det er vigtigt at sige, så samtalen bliver registreret igen
+        # frem for at blive betragtet som gemt.
+        raise HTTPException(500, "Registreringen kunne ikke gemmes. "
+                                 "Intet blev skrevet — prøv igen.")
+
+    # Uden dette viser siden de gamle tal i op til CACHE_SEKUNDER, og
+    # specialisten tror registreringen ikke gik igennem.
+    ryd_cache()
+
+    audit_log("retention_samtale_registreret", user=user, request=request,
+              account=account, org_id=org_id,
+              conversation_id=conversation_id, udfald=len(udfald))
+
+    return {"ok": True, "conversation_id": conversation_id, "udfald": len(udfald)}
