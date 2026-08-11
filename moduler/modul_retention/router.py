@@ -7,7 +7,8 @@ from fastapi.templating import Jinja2Templates
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from log_setup import audit_log
 from nav_utils import register_nav_globals
-from .kunde import kunde_detalje, ryd_cache
+from .cache import ryd_cache
+from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
                        UDFALD, registrer_samtale, valider_registrering)
@@ -286,8 +287,9 @@ async def post_registrer_samtale(account: str, org_id: str, request: Request,
         raise HTTPException(500, "Registreringen kunne ikke gemmes. "
                                  "Intet blev skrevet — prøv igen.")
 
-    # Uden dette viser siden de gamle tal i op til CACHE_SEKUNDER, og
-    # specialisten tror registreringen ikke gik igennem.
+    # Uden dette viser siden de gamle tal i op til cache.CACHE_SEKUNDER, og
+    # specialisten tror registreringen ikke gik igennem. Ét kald rydder BEGGE
+    # siders data, fordi der kun er én cache — se cache.py.
     ryd_cache()
 
     audit_log("retention_samtale_registreret", user=user, request=request,

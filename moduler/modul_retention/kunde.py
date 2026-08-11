@@ -8,65 +8,23 @@ Siden skal kunne åbnes for ENHVER kunde, ikke kun dem på risikolisten (PRD
 §7.4). Ellers kan der ikke registreres et udfald på et sundt abonnement, og så
 måler §9 kun de sager vi allerede havde mistanke til.
 
-HVORFOR EN CACHE HER OG IKKE I risiko.py: `abonnementer_i_risiko()` tager 3,6
-sekunder selv med varm fil, fordi `forbrug_pr_abonnement()` aggregerer 182.000
-rækker ved hvert kald. Arbejdsgangen i PRD §8 åbner én kunde ad gangen, så det
-ville være 3,6 sekunder pr. opslag. Cachen ligger i DETTE modul, fordi
-acceptkriteriet for hele modellen hænger på risiko.py — en optimering dér ville
-kræve, at samtlige zonetal blev bevist igen.
+CACHEN LIGGER I cache.py, ikke her. `abonnementer_i_risiko()` tager 3,6 sekunder
+selv med varm fil, og arbejdsgangen i PRD §8 åbner én kunde ad gangen. Da §7.3's
+prioriteringsside kom til, fik den brug for samme beregning — og to caches over
+samme tal kan komme i utakt, så de to sider ville kunne vise forskellige zoner
+for samme kunde. Se cache.py for hvorfor den heller ikke ligger i risiko.py.
 """
 import logging
-import time
 
+from . import cache
 from .outcomes import INTET_SITE, db_historik, db_seneste_udfald
-from .risiko import abonnementer_i_risiko
-from .usage import forbrug_pr_abonnement, serie_og_dage
+from .usage import serie_og_dage
 from .zones import foregaaende_maaneder, zone_alvor
 
 logger = logging.getLogger(__name__)
 
-# Hvor længe et beregnet risikobillede genbruges. Signalet er MÅNEDLIGT (PRD
-# §3), så selv en time ville være fagligt forsvarligt; ti minutter er valgt for
-# at en ny usage-eksport eller en ARR-rettelse slår igennem inden for en pause,
-# uden at en specialist venter 3,6 sekunder pr. kunde.
-CACHE_SEKUNDER = 600
-
 # Antal måneder i trendgrafen på detaljesiden. PRD §7.4: "usage-trend 12 mdr".
 TREND_MAANEDER = 12
-
-_cache: dict[tuple, tuple[float, dict]] = {}
-
-
-def _cachet(noegle: tuple, beregn):
-    """Genbrug et resultat i CACHE_SEKUNDER. Ingen baggrundstråd, ingen TTL-ryd.
-
-    Ordboken vokser med én post pr. unik team-afgrænsning, og dem er der en
-    håndfuld af — en oprydning ville koste mere kompleksitet end den sparer.
-    """
-    nu = time.monotonic()
-    ramt = _cache.get(noegle)
-    if ramt is not None and nu - ramt[0] < CACHE_SEKUNDER:
-        return ramt[1]
-    vaerdi = beregn()
-    _cache[noegle] = (nu, vaerdi)
-    return vaerdi
-
-
-def ryd_cache() -> None:
-    """Tøm cachen. Kaldes efter en registrering, så siden ikke viser gamle tal."""
-    _cache.clear()
-
-
-def _risiko(teams, abo_maaned):
-    # teams er en liste og kan ikke være nøgle. Sorteret tuple, så to kald med
-    # samme teams i forskellig rækkefølge rammer samme post.
-    noegle = ("risiko", abo_maaned, tuple(sorted(teams)) if teams else None)
-    return _cachet(noegle, lambda: abonnementer_i_risiko(teams=teams,
-                                                         abo_maaned=abo_maaned))
-
-
-def _forbrug():
-    return _cachet(("forbrug",), forbrug_pr_abonnement)
 
 
 def _trend_maaneder(reference: str | None) -> list[str]:
@@ -99,7 +57,7 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
     aktive abonnementer i måneden. Historikken hentes ALLIGEVEL: en kunde der
     lige er opsagt, er præcis den man har brug for at kunne slå op.
     """
-    data = _risiko(teams, abo_maaned)
+    data = cache.risiko(teams, abo_maaned)
     rows = [r for r in data["rows"]
             if r["account"] == account and r["org_id"] == org_id]
 
@@ -111,7 +69,7 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
     forbrug = None
     if rows and reference:
         try:
-            forbrug = _forbrug()
+            forbrug = cache.forbrug()
         except Exception:
             # Zonerne i rows er allerede beregnet; kun grafen mangler. Siden må
             # ikke gå ned, fordi en CSV-fil er væk — men den skal sige det.
