@@ -33,9 +33,10 @@ er derimod et komplet faktum om en afsluttet måned og rådner ikke. Se zones.py
 
 BÅDE sidevisninger og aktive dage bæres videre, og begge bruges. Sidevisninger
 afgør zonen; aktive dage afgør om der var en vane at miste (zones.er_vanebruger).
-Målt 2026-08-10: blandt de 1.842 stoppede abonnementer er medianen 4,0
-sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. To faste
-besøg om måneden er en vane, og volumen alene kan ikke skelne den fra støj.
+Genmålt 2026-08-11: blandt de 2.064 stoppede abonnementer er medianen 4,0
+sidevisninger pr. abonnement-måned over hele vinduet, nul-måneder talt med, men
+69,7% har over 20 aktive dage i de 12 måneder før referencen. To faste besøg om
+måneden er en vane, og volumen alene kan ikke skelne den fra støj.
 
 Nøgle-kæden til retention er indirekte:
     Snowplow access_agreements[].account_number = Zuora account_number
@@ -416,9 +417,10 @@ def forbrug_pr_abonnement() -> dict:
     `dage_pr_abonnement`/`dage_pr_kunde` bærer `aktive_dage` og er grundlaget for
     zones.er_vanebruger. Kolonnen har ligget i eksporten hele tiden og blev
     kasseret her indtil 2026-08-10, hvor målingen viste hvorfor den er
-    nødvendig: blandt de 1.842 stoppede abonnementer er medianen 4,0
-    sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. To
-    faste besøg om måneden er en vane, og sidevisnings-volumen kan ikke se det.
+    nødvendig: blandt de 2.064 stoppede abonnementer er medianen 4,0
+    sidevisninger pr. abonnement-måned med nul-måneder talt med, men 69,7% har
+    over 20 aktive dage i de 12 måneder før referencen. To faste besøg om
+    måneden er en vane, og sidevisnings-volumen kan ikke se det.
 
     ADVARSEL om dagene: de lægges sammen som sidevisningerne, så en dag kan
     tælles to gange — to Zuora-konti på samme site, eller for `dage_pr_kunde`

@@ -53,9 +53,11 @@ FALD_GRAENSE = 0.50
 
 # PRD §3: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
 # 0. Vægt 1,00" mod "Aldrig i brug — højst 1 aktiv dag i 12 måneder. Vægt 0,50".
-# Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og målingen 2026-08-10
-# viser hvorfor: blandt de 1.842 stoppede abonnementer er medianen 4,0
-# sidevisninger pr. måned, men 69,3% har over 20 aktive dage på et år. Ørsted
+# Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og genmålingen 2026-08-11
+# viser hvorfor: blandt de 2.064 stoppede abonnementer er medianen 4,0
+# sidevisninger pr. abonnement-måned — målt over ALLE måneder i vinduet, også
+# dem uden læsning; kun over måneder med læsning er den 9,0 — men 69,7% har
+# over 20 aktive dage i de 12 måneder før referencen, median 37 dage. Ørsted
 # læste AgriWatch på 56 forskellige dage med et snit på 1,7 sidevisninger — en
 # vane, som volumen alene ville have kaldt støj.
 VANEBRUGER_DAGE = 20
