@@ -21,7 +21,7 @@ import time
 from .outcomes import INTET_SITE, db_historik, db_seneste_udfald
 from .risiko import abonnementer_i_risiko
 from .usage import forbrug_pr_abonnement, serie_og_dage
-from .zones import foregaaende_maaneder
+from .zones import foregaaende_maaneder, zone_alvor
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,14 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
 
     # Rækkefølge: højeste score først, som på risikolisten. Abonnementer uden
     # score (ukendt ARR) sidst — de er uopgjorte, ikke risikofrie.
-    abonnementer.sort(key=lambda a: (a["score"] is None, -(a["score"] or 0)))
+    #
+    # Zonens alvor bryder uafgjort. Uden den afgjorde Pythons stabile sort
+    # resten ud fra rækkernes tilfældige rækkefølge fra risikolaget, og hos
+    # Jyske Bank lå AgriWatch ("tavs længere") derfor over AMWatch ("stoppet")
+    # — begge scorer 0,50, fordi tre zoner deler den vægt. Se zones.zone_alvor.
+    abonnementer.sort(key=lambda a: (a["score"] is None,
+                                     -(a["score"] or 0),
+                                     zone_alvor(a["zone"])))
 
     foerste = rows[0] if rows else None
     arr_total = sum(a["arr_dkk"] for a in abonnementer if a["arr_dkk"] is not None)

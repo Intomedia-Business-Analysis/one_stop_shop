@@ -324,3 +324,27 @@ def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
         return ZONE_VAEGT["aldrig_i_brug"]
     return ZONE_VAEGT.get(zone, 0.0)
 
+
+def zone_alvor(zone: str) -> int:
+    """Zonens alvor som sorteringsnøgle: lavere tal er værre. ZONE_ORDER's index.
+
+    Findes fordi vægten IKKE kan bruges til at bryde uafgjort. Tre zoner deler
+    0,50 (`laenge_tavs`, `aldrig_i_brug`, og `stoppet` uden vane), og en
+    sortering på score alene lader så Pythons stabile sort afgøre resten ud fra
+    den rækkefølge rækkerne tilfældigvis kom i. Målt hos Jyske Bank: AgriWatch
+    ("tavs længere") lå over AMWatch ("stoppet"), begge 0,50 — og "stoppet" er
+    den eneste tilstand hvor noget er sket for nylig og et opkald kan nå at
+    virke. Den blev begravet.
+
+    Rangordenen er ZONE_ORDER selv, som allerede står værst-først. Den må ikke
+    kopieres til en ny liste: to kopier af samme rangorden bliver uenige.
+
+    Ukendt zone lægger sig SIDST, samme princip som zone_vaegt's 0,0 — en ny
+    zone må aldrig kunne skubbe kunder op på listen ved et uheld, kun ned. En
+    ValueError her ville vælte hele siden på en zone, ingen havde forudset.
+    """
+    try:
+        return ZONE_ORDER.index(zone)
+    except ValueError:
+        return len(ZONE_ORDER)
+
