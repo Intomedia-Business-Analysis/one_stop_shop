@@ -23,7 +23,7 @@ fælde, der venter på den næste, der lægger noget i den.
 import logging
 import time
 
-from .queries import db_org_navne
+from .queries import db_acv_ejere, db_org_navne
 from .risiko import abonnementer_i_risiko
 from .usage import forbrug_pr_abonnement
 
@@ -76,6 +76,23 @@ def risiko(teams, abo_maaned):
 def forbrug():
     """Forbrug pr. abonnement pr. måned, cachet. 182.000 rækker aggregeret."""
     return cachet(("forbrug",), forbrug_pr_abonnement)
+
+
+def ejere(teams):
+    """{(account, org_id): {...}} — ejer og ARR pr. kunde, cachet.
+
+    KUN `teams`, ingen owner_name. `_resolve_filters` returnerer altid None for
+    den: retention er lukket for alt under Sales Operations (besluttet
+    2026-08-10), og specialisten skal se hele firmaets churn-billede. En
+    parameter, der aldrig varierer, ser ud til at gøre noget den ikke gør — og
+    routerens egen docstring advarer mod netop den slags gren.
+
+    0,3 sekunder pr. kald ifølge queries.db_acv_ejere. Det er ingenting alene,
+    men når risikobilledet først er cachet, er det den dyreste del af et varmt
+    sideopslag.
+    """
+    noegle = ("ejere", tuple(sorted(teams)) if teams else None)
+    return cachet(noegle, lambda: db_acv_ejere(None, teams))
 
 
 def navne():

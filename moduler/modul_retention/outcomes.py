@@ -29,6 +29,13 @@ INTET_SITE = "(intet site)"
 # databasen håndhæver i CK_RetOut_followup_paa_aabne.
 AABNE_UDFALD = ("forskudt", "tilbud_sendt")
 
+# De to andre grupper PRD §6.4 behandler ens. Grupperne står som konstanter og
+# ikke som strenge nede i logikken, af samme grund som AABNE_UDFALD: skal en
+# gruppe udvides, sker det ét sted, og læseren kan se HVORFOR to udfald deler
+# regel.
+LUKKEDE_UDFALD = ("opsagt", "allerede_opsagt")   # abonnementet findes ikke mere
+FORTSAT_KUNDE = ("fornyet", "nedgraderet")       # stadig kunde, ny frist
+
 # Hvor `arr_before_dkk` kom fra. ARR pr. abonnement er kundens ARR divideret
 # med antal sites (queries.py: "lige deling er et VALG, ikke en måling"), fordi
 # ACV's og retentions site-vokabularer ikke kan brolægges endnu. Registreres et
@@ -53,10 +60,15 @@ KANALER = {"telefon": "Telefon", "mail": "Mail", "moede": "Møde"}
 # være NULL. Begge retninger håndhæves, så et udfald kan ikke smugles ind på en
 # samtale hvor der ikke var nogen i røret.
 KONTAKT_OPNAAET = "kontakt_opnaaet"
+# De to andre er navngivet af samme grund som KONTAKT_OPNAAET: de bruges i
+# logikken i tilbage_paa_listen, og en streng skrevet i hånden to steder bliver
+# uenig med sig selv før eller siden.
+INGEN_KONTAKT = "ingen_kontakt"
+IKKE_KONTAKTBAR = "ikke_kontaktbar"
 KONTAKTRESULTATER = {
-    KONTAKT_OPNAAET:   "Kontakt opnået",
-    "ingen_kontakt":   "Ingen kontakt",
-    "ikke_kontaktbar": "Ikke kontaktbar",
+    KONTAKT_OPNAAET: "Kontakt opnået",
+    INGEN_KONTAKT:   "Ingen kontakt",
+    IKKE_KONTAKTBAR: "Ikke kontaktbar",
 }
 
 # SEKS udfald. `opgraderet` findes IKKE — verificeret mod CK_RetOut_outcome
@@ -81,11 +93,36 @@ ARR_KILDER = {
     ARR_KILDE_BEKRAEFTET: "Bekræftet hos kunden",
 }
 
+# PRD §6.4's to poler. Begge er DATOER og ikke None, fordi reglen er total —
+# der findes altid et svar. None ville læses som "ingen udsættelse", altså det
+# stik modsatte af ALDRIG, og en opsagt kunde ville stå på opkaldslisten.
+#
+# date.max/min frem for årstal skrevet i hånden: så kan der ikke opstå en dato,
+# der ved et uheld ligger uden for polerne.
+ALDRIG = dt.date.max    # abonnementet kommer ikke tilbage
+STRAKS = dt.date.min    # ingen udsættelse — vis rækken nu
+
+# Dage hvor ingen tager telefonen, ud over lørdag og søndag. TOM MED VILJE:
+# der findes ingen helligdagskalender i huset (søgt 2026-08-11 — det eneste er
+# ugegrænse-aritmetik i modul_rotation og modul_perf). Kassen står her, så den
+# dag der kommer en kalender, er det en DATAændring og ikke en kodeændring;
+# naeste_hverdag springer allerede over det, der ligger i den.
+#
+# Konsekvensen indtil da: "næste hverdag" kan lande på en helligdag. Lille fejl,
+# men den rammer de samme uger hvert år.
+HELLIGDAGE: frozenset = frozenset()
+
+# PRD §6.4's frister i dage. Tallene står her frem for inde i regnestykkerne,
+# så de kan læses uden at læse logikken.
+FORNYET_DAGE_FOER = 45      # fornyelsesdato MINUS dette
+FORNYET_UDEN_DATO = 180     # ingen fornyelsesdato kendt
+IKKE_KONTAKTBAR_DAGE = 90
+
 # db.py forbinder med tds_version="7.0", og TDS 7.0 kender ikke `date` og
 # `datetime2` — de kom i 7.3. SQL Server sender dem derfor som STRENGE
 # ('2026-08-14' og '2026-08-14 15:04:05.1234567'), mens det gamle `datetime`
 # kommer tilbage som et rigtigt Python-objekt. Uden normalisering her sprang
-# db_opfoelgninger på `str <= date`, og §7.3 kan ikke markere en overskredet
+# opfoelgninger på `str <= date`, og §7.3 kan ikke markere en overskredet
 # opfølgning uden at kunne regne på datoen. Rettes ved kanten, én gang, i
 # stedet for i hver enkelt kalder.
 _DATO_FELTER = ("renewal_date", "expiry_date", "followup_date")
@@ -148,6 +185,92 @@ def _er_tal(vaerdi) -> bool:
         return True
     except (TypeError, ValueError):
         return False
+
+
+def naeste_hverdag(dag: dt.date) -> dt.date:
+    """Den første hverdag EFTER `dag`. Weekend og HELLIGDAGE springes over.
+
+    En løkke og ikke et regnestykke, fordi antallet af dage der skal springes
+    ikke er kendt på forhånd: fra en torsdag er det én dag, fra en fredag tre.
+    `weekday()` giver 0 for mandag, så 5 og 6 er lørdag og søndag.
+    """
+    naeste = dag + dt.timedelta(days=1)
+    while naeste.weekday() >= 5 or naeste in HELLIGDAGE:
+        naeste += dt.timedelta(days=1)
+    return naeste
+
+
+def tilbage_paa_listen(raekke: dict) -> dt.date:
+    """Hvornår abonnementet igen må stå som ny risiko. PRD §6.4.
+
+    Ind: én række som db_seneste_udfald leverer den. Ud: ALTID en dato — ALDRIG
+    når abonnementet ikke skal tilbage, STRAKS når der intet er at udsætte på.
+    Kalderen har derfor én sammenligning og ingen særtilfælde:
+    `tilbage_paa_listen(u) > i_dag` betyder "udelad".
+
+    INGEN `i_dag`-PARAMETER, og det er med vilje. Alle frister regnes fra
+    rækkens egen `created_at`, aldrig fra kaldstidspunktet: regnes de fra i dag,
+    skubbes datoen længere ud ved hvert sideopslag, og kunden kommer aldrig
+    tilbage — uden at noget fejler. Uden adgang til "i dag" kan funktionen ikke
+    lave den fejl. Samme princip som §6.3's frosne kurs og §10 regel 4:
+    historikken må ikke ændre sig, fordi man ser på den igen.
+
+    `contacted_at` ville være marginalt mere korrekt end `created_at` — "da
+    opkaldet skete" mod "da det blev tastet ind" — men den ligger på
+    RetentionConversations og koster et join. Forskellen er under et døgn på en
+    frist der måles i måneder.
+
+    RÆKKEFØLGEN AF TJEK er her for læserens skyld, ikke for rigtighedens — i
+    modsætning til zones.bestem_zone, hvor den bærer den.
+    CK_RetOut_outcome_kraever_kontakt er en biimplikation, så "kontakt opnået"
+    og "har et udfald" følges altid, og de to grene kan ikke overlappe.
+
+    UKENDTE VÆRDIER giver STRAKS og ikke ALDRIG. Fejlen skal pege mod at vise
+    for meget frem for for lidt, samme valg som zone_vaegt's `vanebruger=True`.
+    ALDRIG ville lade en kunde forsvinde lydløst; STRAKS lader den dukke op for
+    tidligt, og det bliver set.
+    """
+    grundlag = raekke.get("created_at")
+    # created_at er en datetime (se _TIDSPUNKT_FELTER), mens resten af regningen
+    # er ren date. De to typer kan ikke sammenlignes. Ordnes ÉN gang her frem
+    # for i hver enkelt gren.
+    if isinstance(grundlag, dt.datetime):
+        grundlag = grundlag.date()
+    if grundlag is None:
+        # Kan ikke opstå gennem registrer_samtale — kolonnen har en default —
+        # men en række skrevet ad anden vej har ingen frist vi kan regne.
+        logger.warning("tilbage_paa_listen: række uden created_at (outcome_id "
+                       "%s), vises straks", raekke.get("outcome_id"))
+        return STRAKS
+
+    resultat = raekke.get("contact_result")
+    if resultat != KONTAKT_OPNAAET:
+        # Ingen kontakt opnået ⇒ outcome er NULL (biimplikationen), så udfaldets
+        # regler kan ikke bruges her.
+        if resultat == IKKE_KONTAKTBAR:
+            return grundlag + dt.timedelta(days=IKKE_KONTAKTBAR_DAGE)
+        if resultat != INGEN_KONTAKT:
+            logger.warning("tilbage_paa_listen: ukendt kontaktresultat %r",
+                           resultat)
+        return naeste_hverdag(grundlag)
+
+    udfald = raekke.get("outcome")
+    if udfald in LUKKEDE_UDFALD:
+        return ALDRIG
+    if udfald in AABNE_UDFALD:
+        # followup_date er påkrævet på et åbent udfald, håndhævet af
+        # CK_RetOut_followup_paa_aabne — så `or STRAKS` er reelt uopnåelig.
+        # Den står der alligevel, fordi alternativet er en TypeError på en
+        # side, hvis eneste opgave er at vise, hvem der skal ringes til.
+        return raekke.get("followup_date") or STRAKS
+    if udfald in FORTSAT_KUNDE:
+        fornyelse = raekke.get("renewal_date")
+        if fornyelse:
+            return fornyelse - dt.timedelta(days=FORNYET_DAGE_FOER)
+        return grundlag + dt.timedelta(days=FORNYET_UDEN_DATO)
+
+    logger.warning("tilbage_paa_listen: ukendt udfald %r, vises straks", udfald)
+    return STRAKS
 
 
 def valider_registrering(samtale: dict, udfald: list) -> list[str]:
@@ -435,19 +558,83 @@ def db_historik(account: str, org_id: int) -> list:
     return list(samtaler.values())
 
 
-def db_opfoelgninger(til_og_med) -> list:
-    """Åbne sager med opfølgning senest `til_og_med` (en date).
+def opfoelgninger(seneste: dict, til_og_med) -> list:
+    """Åbne sager med opfølgning senest `til_og_med`. PRD §7.3, liste 1.
+
+    INTET `db_`-PRÆFIKS, og det er ikke kosmetik: funktionen rører ikke
+    databasen længere, og præfikset betyder konsekvent det modsatte i dette
+    modul (db_seneste_udfald, db_historik). `seneste` er db_seneste_udfald()'s
+    ordbog, og den kommer UDEFRA.
+
+    Hvorfor den kommer udefra: prioriteringen har brug for præcis det samme
+    opslag tre gange — til denne liste, til PRD §8's loft (som tæller ALLE åbne
+    sager, ikke kun dagens), og til §4's filter 3 og 4. Tre kald mod samme
+    tabel er tre chancer for, at de tre tal bliver uenige om noget, der ændrer
+    sig, mens siden bygges.
+
+    Bivirkningen er, at den nu kan bevises på håndlavede rækker uden
+    forbindelse — det var den ikke før.
 
     PRD §4: listens længde er 10 kunder MINUS dagens opfølgninger, så det her
     tal styrer hvor mange nye navne specialisten får. `<=` og ikke `=`, fordi
     en opfølgning der blev overset i går ikke må forsvinde i morgen.
 
-    Kun det SENESTE udfald pr. abonnement tæller. Et abonnement der først blev
-    'tilbud_sendt' og siden 'fornyet' har stadig den gamle followup_date
-    liggende på den gamle række, og den skal ikke kalde nogen til handling.
+    Kun det SENESTE udfald pr. abonnement tæller, og det er `seneste`s eget
+    grain. Et abonnement der først blev 'tilbud_sendt' og siden 'fornyet' har
+    stadig den gamle followup_date liggende på den gamle række, og den skal
+    ikke kalde nogen til handling.
+
+    `til_og_med` skal være en `date`. `followup_date` er en `date` efter
+    _normaliser, og en `datetime` her rejser TypeError — første gang der FINDES
+    en opfølgning, altså i produktion og aldrig under udvikling.
     """
-    seneste = db_seneste_udfald()
     return [r for r in seneste.values()
             if r["outcome"] in AABNE_UDFALD
             and r["followup_date"] is not None
             and r["followup_date"] <= til_og_med]
+
+
+def db_maanedens_udfald(maaned: str) -> list:
+    """Alle udfald registreret i `maaned` ('2026-08'), med samtalens dato.
+
+    Grundlaget for PRD §9's tre tal. Hentes UAFGRÆNSET — afgrænsningen på ejer
+    og team sker i Python, se prioritering.maanedens_kpier. Grunden er den
+    samme som i queries.abonnementer_med_ejer: ACV's ejer-opslag er en query
+    for sig med sine egne fælder, og den hører ikke i skrivesiden. Rækkerne er
+    desuden få — en håndfuld om dagen — så der er intet at spare ved at
+    filtrere i SQL.
+
+    MÅNEDEN GÅR PÅ `contacted_at`, ikke på `created_at`. Et opkald taget 31.
+    juli og tastet ind 1. august hører i juli. Det er en ANDEN beslutning end i
+    tilbage_paa_listen, hvor `created_at` er den rigtige: en udsættelse har brug
+    for en stabil egenskab ved rækken, mens en månedsopgørelse har brug for
+    datoen, hvor forretningshændelsen skete. Joinet til RetentionConversations
+    skal der være alligevel for at kunne tælle samtaler.
+
+    `conversation_id` bæres med, fordi §9's "antal samtaler" er DISTINKTE
+    samtaler og ikke udfald: én samtale kan dække syv abonnementer, og det er
+    stadig ét opkald.
+    """
+    aar, md = int(maaned[:4]), int(maaned[5:7])
+    fra = dt.date(aar, md, 1)
+    # Første i næste måned. December ruller til januar året efter.
+    til = dt.date(aar + (md == 12), md % 12 + 1, 1)
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """SELECT o.account, o.org_id, o.conversation_id, o.outcome,
+                      o.contact_result, o.arr_before_dkk, o.arr_before_kilde,
+                      o.arr_after_dkk, c.contacted_at
+               FROM dbo.RetentionOutcomes o
+               JOIN dbo.RetentionConversations c
+                    ON c.conversation_id = o.conversation_id
+               WHERE c.contacted_at >= %s AND c.contacted_at < %s;""",
+            (fra, til),
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [_normaliser(r) for r in rows]
+    except Exception:
+        logger.exception("db_maanedens_udfald(%s) fejlede", maaned)
+        return []

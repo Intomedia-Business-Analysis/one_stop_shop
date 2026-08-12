@@ -147,7 +147,7 @@ def main() -> int:
 
         print("--- 3: datoer er datoer, ikke strenge ---")
         # TDS 7.0 kender ikke date/datetime2 og sender dem som tekst. Uden
-        # normaliseringen i outcomes.py sprang db_opfoelgninger på
+        # normaliseringen i outcomes.py sprang opfoelgninger på
         # 'str <= date', og §7.3 kunne ikke afgøre om en aftale var overskredet.
         if a:
             tjek("renewal_date er en date", type(a["renewal_date"]) is dt.date,
@@ -160,8 +160,12 @@ def main() -> int:
                  repr(b["followup_date"]))
 
         print("--- 4: opfølgninger ---")
-        tjek("followup 14/8 kalder ikke i dag", len(outcomes.db_opfoelgninger(I_DAG)) == 0)
-        frem = outcomes.db_opfoelgninger(dt.date(2026, 8, 14))
+        # `seneste` er hentet ovenfor. Opfølgningerne læses nu af den SAMME
+        # ordbog i stedet for at hente sin egen — det er hele pointen med at
+        # opfoelgninger() tager den ind: ét opslag, ingen utakt.
+        tjek("followup 14/8 kalder ikke i dag",
+             len(outcomes.opfoelgninger(seneste, I_DAG)) == 0)
+        frem = outcomes.opfoelgninger(seneste, dt.date(2026, 8, 14))
         tjek("den dukker op på datoen", len(frem) == 1 and frem[0]["site"] == SITE_B)
 
         print("--- 5: NULL site bliver sentinel ---")
@@ -183,7 +187,7 @@ def main() -> int:
         print("--- 6: seneste udfald vinder og lukker den gamle aftale ---")
         # SITE_B står som 'tilbud_sendt' med followup 14/8. Fornyes den, må den
         # gamle followup_date IKKE længere kalde nogen til handling. Det er hele
-        # grunden til at db_opfoelgninger filtrerer på SENESTE udfald og ikke
+        # grunden til at opfoelgninger filtrerer på SENESTE udfald og ikke
         # bare på alle rækker med en dato.
         outcomes.registrer_samtale(
             {"account": ACCOUNT, "org_id": ORG_ID,
@@ -198,8 +202,10 @@ def main() -> int:
              seneste.get((ACCOUNT, ORG_ID_STR, SITE_B), {}).get("outcome") == "fornyet")
         tjek("fire udfald i alt (2 + sentinel + nyt), intet opdateret",
              antal("RetentionOutcomes") == 4, "faktisk=" + str(antal("RetentionOutcomes")))
+        # `seneste` er genhentet lige ovenfor, EFTER fornyelsen. Det er dét, der
+        # gør kontrollen skarp: filteret læser den friske ordbog, ikke en gammel.
         tjek("den gamle followup 14/8 kalder ikke længere",
-             len(outcomes.db_opfoelgninger(dt.date(2026, 8, 14))) == 0)
+             len(outcomes.opfoelgninger(seneste, dt.date(2026, 8, 14))) == 0)
 
         print("--- 6b: historik grupperet paa samtalen ---")
         # PRD §7.4. Kunden har nu to samtaler: den foerste med TO udfald, den

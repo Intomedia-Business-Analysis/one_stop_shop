@@ -507,6 +507,56 @@ def db_acv_ejere(owner_name: str | None = None,
         return {}
 
 
+def db_org_navne() -> dict:
+    """{(account, org_id): org_name} — kundenavn uden hensyn til aktivitet.
+
+    Findes fordi dbo.RetentionOutcomes ikke har en org_name-kolonne, og fordi
+    navnet ikke kan tages fra risikolaget: det viser kun abonnementer der er
+    AKTIVE i måneden, mens en kunde man har lovet at ringe tilbage til ofte er
+    en, hvis abonnement er ophørt. Målt 2026-08-11: viewet har 15.269 kunder,
+    risikolaget 11.621 for juli — 3.648 kunder ville stå uden navn.
+
+    MAX(org_name) og ikke ROW_NUMBER på måneden: målt 2026-08-11 har 0 af
+    15.269 kunder mere end ét org_name, så navnet er funktionelt afhængigt af
+    (account, org_id). Holder den antagelse op, er det HER det skal rettes — en
+    aggregering skjuler et navneskift i stedet for at vælge imellem.
+
+    PRD §10, regel 6: FirstDayOfMonth-filteret er påkrævet, viewet projicerer
+    til 2030-12. Uden det læses fremtidige rækker.
+
+    ÉN pass over viewet. En CTE-kæde der scannede dbo.retention tre gange
+    timede forbindelsen ud — aggreger i SQL, sammenlign i Python."""
+
+    # Lokal import, samme grund som i db_acv_ejere: usage.py trækker pandas ind
+    # ved import, og DB-laget skal kunne importeres uden. Nøglerne SKAL gå
+    # gennem samme funktion som resten af pakken, ellers rammer '1' aldrig 1.
+    from .usage import customer_key
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """SELECT account, org_id, MAX(org_name) AS org_name
+               FROM dbo.retention
+               WHERE FirstDayOfMonth <= EOMONTH(GETDATE())
+               GROUP BY account, org_id;"""
+        )
+        rows = cur.fetchall()
+        conn.close()
+        # Tomme navne filtreres IKKE væk, de tælles. Kalderen skal kunne skelne
+        # "kunden findes ikke" fra "kunden har intet navn", og logningen er den
+        # eneste måde at opdage, hvis hullet vokser.
+        uden_navn = sum(1 for r in rows if not r["org_name"])
+        if uden_navn:
+            logger.warning("db_org_navne: %s af %s kunder uden org_name",
+                           uden_navn, len(rows))
+        return {customer_key(r["account"], r["org_id"]): r["org_name"]
+                for r in rows}
+    except Exception:
+        logger.exception("db_org_navne fejlede")
+        return {}
+
+
 def abonnementer_med_ejer(maaned: str,
                           owner_name: str | None = None,
                           teams: list | None = None) -> list:
