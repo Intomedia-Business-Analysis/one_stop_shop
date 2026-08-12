@@ -12,8 +12,10 @@ from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
                        UDFALD, registrer_samtale, valider_registrering)
+from .prioritering import prioriteringsdata
 from .queries import db_monthly_active_counts
 from .risiko import abonnementer_i_risiko
+from .zones import ZONE_LABELS
 
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)
@@ -35,6 +37,8 @@ EKSKLUDEREDE_ROLLER = ["marketing", "management"]
 # — og menu og endpoint bruger så garanteret samme nøgle.
 RES_OVERBLIK = "retention-overview"
 RES_RISIKO = "retention-risk"
+# Modulets INDGANG (PRD §8), og derfor øverst i nav_utils' items-liste.
+RES_PRIORITERING = "retention-prioritering"
 # Kunde-detaljen står IKKE i nav_utils.CATEGORIES: den er en gennemklikning,
 # ikke et sted man går hen — PRD §7.4 nås fra risikolisten og senere fra
 # prioriteringssiden. Id'et findes alligevel, så adgangen kan styres på samme
@@ -77,6 +81,45 @@ def _resolve_filters(user: dict, resource_id: str) -> tuple[str | None, list | N
     """
     _kraev_adgang(user, resource_id)
     return None, allowed_data_teams(user)
+
+
+@router.get("/retention/prioritering_data")
+def get_prioriteringsdata(user=Depends(get_current_user)):
+    """Dagens to lister og månedens tre tal (PRD §7.3).
+
+    KLOKKEN LÆSES ÉN GANG, her. `prioriteringsdata` har med vilje ingen default
+    på `i_dag`: kaldes `date.today()` to gange under samme sideopslag, kan de to
+    kald ligge på hver sin side af midnat, og siden ville beregne opfølgninger
+    mod i dag og KPI'er mod i morgen. Ét argument gør fejlen umulig.
+
+    `abo_maaned` sendes bevidst IKKE videre, samme regel som risikolisten:
+    produktionsvisningen er altid indeværende måned, og parameteren findes kun
+    til kontrolkørsler.
+
+    Siden er en SKAL plus dette kald og ikke en server-renderet side. Et koldt
+    kald tager 7,5 sekunder, fordi forbruget aggregeres fra grunden (varmt: 0,08
+    s), og de sekunder ville ellers være en hvid skærm uden forklaring. Samme
+    mønster som modulets tre andre sider.
+    """
+    _, teams = _resolve_filters(user, RES_PRIORITERING)
+    return prioriteringsdata(dt.date.today(), teams=teams)
+
+
+@router.get("/retention/prioritering", response_class=HTMLResponse)
+async def retention_prioritering(request: Request, user=Depends(get_current_user)):
+    # Samme adgangsvagt som modulets øvrige sider: dataene er beskyttet af
+    # _resolve_filters, men skallen skal heller ikke kunne åbnes uden adgang.
+    _kraev_adgang(user, RES_PRIORITERING)
+    # Zonernes navne kommer FRA zones.py, ikke fra skabelonen — samme regel som
+    # vokabularet på kunde-detaljen. Skrives de af i JS'en, kan de drive fra
+    # modellen, og en pille ville påstå en zone der ikke findes.
+    #
+    # De fire ÅRSAGSNØGLER oversættes derimod i skabelonen. Det er med vilje:
+    # nøglen er kontrakten, den danske sætning er til mennesker, og
+    # afkort_nye_risici siger selv at teksten hører her.
+    return templates.TemplateResponse(request, "retention_prioritering.html",
+                                      {"user": user,
+                                       "zone_labels": ZONE_LABELS})
 
 
 @router.get("/retention/monthly_active_counts")

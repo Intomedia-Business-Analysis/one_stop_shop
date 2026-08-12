@@ -90,7 +90,7 @@ CATEGORIES = [
     {
         "id": "retention",
         "title": "Retention",
-        "description": "Aktive abonnementer over tid og churn-risiko pr. abonnement",
+        "description": "Dagens opkaldsliste, aktive abonnementer over tid og churn-risiko pr. abonnement",
         "icon": "settings",
         "color": "amber",
         # sales_operations SKAL matche MIN_ROLLE i modul_retention/router.py.
@@ -106,6 +106,11 @@ CATEGORIES = [
         "min_role": "sales_operations",
         "subcategories": [],
         "items": [
+            # ØVERST med vilje: PRD §8 gør Prioritering til modulets indgang —
+            # arbejdsgangen begynder her og går derfra til kunde-detaljen.
+            # Rækkefølgen i listen ER den viste rækkefølge, så lå den nederst,
+            # ville arbejdsgangen være forkert fra første klik.
+            {"id": "retention-prioritering", "title": "Prioritering",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/prioritering"},
             {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
             {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
         ],
