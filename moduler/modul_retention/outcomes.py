@@ -102,15 +102,79 @@ ARR_KILDER = {
 ALDRIG = dt.date.max    # abonnementet kommer ikke tilbage
 STRAKS = dt.date.min    # ingen udsættelse — vis rækken nu
 
-# Dage hvor ingen tager telefonen, ud over lørdag og søndag. TOM MED VILJE:
-# der findes ingen helligdagskalender i huset (søgt 2026-08-11 — det eneste er
-# ugegrænse-aritmetik i modul_rotation og modul_perf). Kassen står her, så den
-# dag der kommer en kalender, er det en DATAændring og ikke en kodeændring;
-# naeste_hverdag springer allerede over det, der ligger i den.
+def _paaskedag(aar: int) -> dt.date:
+    """Påskedag i `aar`. Meeus/Jones/Butcher, gregoriansk.
+
+    REGNET og ikke slået op i en tabel. Der findes ingen helligdagskalender i
+    huset (søgt 2026-08-11 — det eneste er ugegrænse-aritmetik i modul_rotation
+    og modul_perf), og en håndskrevet liste over påskedatoer udløber i tavshed:
+    den dag listen slutter, holder helligdagene op med at virke, uden at noget
+    fejler. Algoritmen gælder for alle årstal i den gregorianske kalender.
+
+    Syv af de danske helligdage hænger på denne ene dato, så den er hele
+    grundlaget for kalenderen nedenfor.
+    """
+    a = aar % 19
+    b, c = divmod(aar, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    m = (32 + 2 * e + 2 * i - h - k) % 7
+    n = (a + 11 * h + 22 * m) // 451
+    maaned, dag = divmod(h + m - 7 * n + 114, 31)
+    return dt.date(aar, maaned, dag + 1)
+
+
+def danske_helligdage(aar: int) -> frozenset:
+    """Dage i `aar` hvor ingen tager telefonen. Se HELLIGDAGE.
+
+    STORE BEDEDAG ER MED TIL OG MED 2023. Den blev afskaffet som helligdag ved
+    lov fra 2024, og en kalender der stadig holdt den lukket ville give en
+    opfølgning et døgns forsinkelse hver forår. Grænsen står her frem for i en
+    kommentar, fordi tilbageblik-kørsler (kalibrering.py) godt kan ramme 2023.
+
+    JULEAFTENSDAG OG NYTÅRSAFTENSDAG er formelt ikke helligdage, men er lukkede
+    i praksis. De er med, fordi funktionens spørgsmål er "tager nogen telefonen",
+    ikke "hvad siger ferieloven".
+
+    GRUNDLOVSDAG er bevidst IKKE med: den er en halv eller hel fridag afhængigt
+    af arbejdsplads, og vi ved ikke hvad der gælder her. Skal den med, er det
+    linjen `dt.date(aar, 6, 5)`.
+    """
+    paaske = _paaskedag(aar)
+    dage = {
+        dt.date(aar, 1, 1),                        # nytårsdag
+        paaske - dt.timedelta(days=3),             # skærtorsdag
+        paaske - dt.timedelta(days=2),             # langfredag
+        paaske,                                    # påskedag
+        paaske + dt.timedelta(days=1),             # 2. påskedag
+        paaske + dt.timedelta(days=39),            # Kristi himmelfartsdag
+        paaske + dt.timedelta(days=49),            # pinsedag
+        paaske + dt.timedelta(days=50),            # 2. pinsedag
+        dt.date(aar, 12, 24),                      # juleaftensdag
+        dt.date(aar, 12, 25),                      # juledag
+        dt.date(aar, 12, 26),                      # 2. juledag
+        dt.date(aar, 12, 31),                      # nytårsaftensdag
+    }
+    if aar <= 2023:
+        dage.add(paaske + dt.timedelta(days=26))   # store bededag
+    return frozenset(dage)
+
+
+# Dage hvor ingen tager telefonen, ud over lørdag og søndag. naeste_hverdag
+# springer over det, der ligger her.
 #
-# Konsekvensen indtil da: "næste hverdag" kan lande på en helligdag. Lille fejl,
-# men den rammer de samme uger hvert år.
-HELLIGDAGE: frozenset = frozenset()
+# ÅRSSPÆNDET er skrevet ud og ikke regnet fra `date.today()`. Et rullende vindue
+# ville blive frosset ved procesopstart, og en server der har kørt siden nytår
+# ville miste næste års helligdage uden at nogen kunne se det. Et fast spænd kan
+# derimod læses: slutter det, holder helligdagene op med at virke — så det er
+# sat langt nok ude, at det ikke sker i dette systems levetid.
+HELLIGDAGE_FOERSTE_AAR, HELLIGDAGE_SIDSTE_AAR = 2020, 2040
+HELLIGDAGE: frozenset = frozenset().union(
+    *(danske_helligdage(a)
+      for a in range(HELLIGDAGE_FOERSTE_AAR, HELLIGDAGE_SIDSTE_AAR + 1)))
 
 # PRD §6.4's frister i dage. Tallene står her frem for inde i regnestykkerne,
 # så de kan læses uden at læse logikken.

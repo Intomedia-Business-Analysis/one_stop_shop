@@ -113,12 +113,55 @@ tjek("kommer aldrig ud paa en weekend",
      all(o.naeste_hverdag(TORSDAG + dt.timedelta(days=i)).weekday() < 5
          for i in range(30)))
 
-# HELLIGDAGE er udvidelsespunktet og står tom i dag. Læg fredag ind og se mandag
-# komme ud — ellers ved ingen om krogen virker, den dag den bliver brugt.
+# Krogen selv: læg en vilkårlig fredag ind og se mandag komme ud.
+_rigtige_helligdage = o.HELLIGDAGE
 o.HELLIGDAGE = frozenset({FREDAG})
 tjek("helligdag springes over som en weekend", o.naeste_hverdag(TORSDAG), MANDAG)
 o.HELLIGDAGE = frozenset()
-tjek("tom kasse igen bagefter", o.naeste_hverdag(TORSDAG), FREDAG)
+tjek("tom kasse giver ren hverdagsregning", o.naeste_hverdag(TORSDAG), FREDAG)
+# Lægges den RIGTIGE kalender tilbage og ikke en tom mængde. Blev den stående
+# tom, ville resten af filen måle en anden konfiguration end produktionens.
+o.HELLIGDAGE = _rigtige_helligdage
+
+
+print("--- 1b: den danske helligdagskalender ---")
+# Påsken flytter sig, så syv af helligdagene kan ikke skrives i hånden. Ni
+# kendte påskedatoer holder algoritmen fast.
+for aar, forventet in [(2020, (4, 12)), (2023, (4, 9)), (2024, (3, 31)),
+                       (2025, (4, 20)), (2026, (4, 5)), (2027, (3, 28)),
+                       (2030, (4, 21))]:
+    # IKKE `p` som variabelnavn: modulet er importeret som `p` ovenfor, og en
+    # loekkevariabel paa modulniveau ville skygge det for resten af filen.
+    paaske = o._paaskedag(aar)
+    tjek(f"paaskedag {aar}", (paaske.month, paaske.day), forventet)
+
+h26 = o.danske_helligdage(2026)
+tjek("skaertorsdag 2026", dt.date(2026, 4, 2) in h26)
+tjek("langfredag 2026", dt.date(2026, 4, 3) in h26)
+tjek("2. paaskedag 2026", dt.date(2026, 4, 6) in h26)
+tjek("Kristi himmelfart 2026", dt.date(2026, 5, 14) in h26)
+tjek("2. pinsedag 2026", dt.date(2026, 5, 25) in h26)
+tjek("juleaftensdag med (lukket i praksis)", dt.date(2026, 12, 24) in h26)
+tjek("nytaarsaftensdag med", dt.date(2026, 12, 31) in h26)
+# Grundlovsdag er bevidst UDE: en halv eller hel fridag afhaengigt af
+# arbejdsplads, og vi ved ikke hvad der gaelder her.
+tjek("grundlovsdag er IKKE med", dt.date(2026, 6, 5) not in h26)
+# Afskaffet ved lov fra 2024. En kalender der stadig holdt den lukket, ville
+# forsinke en opfoelgning et doegn hvert foraar.
+tjek("store bededag med i 2023", dt.date(2023, 5, 5) in o.danske_helligdage(2023))
+tjek("store bededag UDE i 2024",
+     dt.date(2024, 4, 26) not in o.danske_helligdage(2024))
+
+# Og saa det der faktisk betyder noget: springer fristerne over dem?
+tjek("23/12 -> 28/12, fem dage sprunget",
+     o.naeste_hverdag(dt.date(2026, 12, 23)), dt.date(2026, 12, 28))
+tjek("30/12 -> 4/1 over aarsskiftet",
+     o.naeste_hverdag(dt.date(2026, 12, 30)), dt.date(2027, 1, 4))
+tjek("1/4 -> 7/4 over hele paasken",
+     o.naeste_hverdag(dt.date(2026, 4, 1)), dt.date(2026, 4, 7))
+tjek("kalenderen daekker hele spaendet",
+     (min(o.HELLIGDAGE).year, max(o.HELLIGDAGE).year),
+     (o.HELLIGDAGE_FOERSTE_AAR, o.HELLIGDAGE_SIDSTE_AAR))
 
 
 print("--- 2: tilbage_paa_listen (PRD 6.4) ---")

@@ -317,12 +317,17 @@ def maanedens_kpier(raekker: list, tilladte: set | None) -> dict:
     som 0 kr. reddet. To tal frem for et gennemsnit, så siden kan sige "12
     fornyelser, heraf 3 uden beløb" i stedet for at påstå et tal.
 
-    KENDT UNDERVURDERING, PRD §6.2: `opgraderet` findes ikke i
-    CK_RetOut_outcome, så en fornyelse med prisstigning registreres som
-    `fornyet`. "Kroner reddet" er derfor systematisk for lav, indtil databasen
-    eller PRD'en retter det. Det er ikke en fejl i denne funktion, og den må
-    ikke "rettes" her — en korrektion ville skjule stigningen frem for at måle
-    den.
+    KENDT BLINDHED, PRD §6.2 — og det er IKKE en undervurdering af beløbet:
+    `opgraderet` findes ikke i CK_RetOut_outcome, så en fornyelse med
+    prisstigning registreres som `fornyet`. Men `arr_after_dkk` er den NYE pris,
+    så stigningen tælles fuldt med i "kroner reddet". Det der mangler, er evnen
+    til at SKELNE en opgradering fra en flad fornyelse — §9 kan derfor ikke
+    rapportere vækst fra opgraderinger for sig.
+
+    Formuleringen er rettet 2026-08-12: docstringen sagde tidligere at tallet var
+    "systematisk for lav", hvilket modsagde dens egen næste sætning om at
+    stigningen bliver målt. Den ENESTE grund til at beløbet er for lavt er
+    `reddet_uden_beloeb` — en fornyelse uden beløb tæller som 0 kr.
     """
     if tilladte is not None:
         raekker = [r for r in raekker if kunde_noegle(r) in tilladte]
