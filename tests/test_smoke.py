@@ -401,6 +401,26 @@ def test_advertising_budget_split_watch_monitor():
     assert rows[1]["won"] == 20000 and rows[1]["budget"] == 80000 and rows[1]["pct"] == 25.0
 
 
+def test_forecast_marketwire_afgraenses_paa_account_ikke_deal_type():
+    # MarketWire-deals har aldrig deal_type 'Abonnement' og har ikke [sites] sat
+    # — afgrænses de på deal_type, giver historik/realiseret/pipeline 0 kr.
+    from moduler.modul_forcast.queries import deal_scope
+
+    clause, params = deal_scope("marketwire")
+    assert "[account] = %s" in clause
+    assert "deal_type" not in clause
+    assert params == ["marketwire"]
+
+
+def test_forecast_oevrige_brands_afgraenses_paa_deal_type():
+    from moduler.modul_forcast.queries import deal_scope
+
+    for brand in ("watch_dk", "monitor", None):
+        clause, params = deal_scope(brand)
+        assert "[deal_type] IN ('Abonnement', 'Subscription')" in clause
+        assert params == []
+
+
 def test_forecast_nav_saelger_ser_forecast_men_ikke_budget(make_user):
     from nav_utils import CATEGORIES, filter_categories
     cats = filter_categories(CATEGORIES, make_user(role="salesperson", teams=["Team Watch DK"]))
