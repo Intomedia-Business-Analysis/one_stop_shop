@@ -88,6 +88,34 @@ CATEGORIES = [
         ],
     },
     {
+        "id": "retention",
+        "title": "Retention",
+        "description": "Dagens opkaldsliste, aktive abonnementer over tid og churn-risiko pr. abonnement",
+        "icon": "settings",
+        "color": "amber",
+        # sales_operations SKAL matche MIN_ROLLE i modul_retention/router.py.
+        # Hævet fra salesperson 2026-08-10: retention-specialisten er en Sales
+        # Operations-bruger, og modulet viser hele firmaets churn-billede, så
+        # sælgere og sales managers har ingen adgang længere. Sættes den lavere
+        # her end i routeren, får sælgere et menupunkt der svarer 403.
+        #
+        # exclude_roles står KUN på de to items, ikke her: filter_categories
+        # sender ikke exclude_roles med på kategori-tjekket (kun på items), så
+        # nøglen ville blive tavst ignoreret på dette niveau. Det virker
+        # alligevel, fordi en kategori uden synlige items droppes helt.
+        "min_role": "sales_operations",
+        "subcategories": [],
+        "items": [
+            # ØVERST med vilje: PRD §8 gør Prioritering til modulets indgang —
+            # arbejdsgangen begynder her og går derfra til kunde-detaljen.
+            # Rækkefølgen i listen ER den viste rækkefølge, så lå den nederst,
+            # ville arbejdsgangen være forkert fra første klik.
+            {"id": "retention-prioritering", "title": "Prioritering",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/prioritering"},
+            {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
+        ],
+    },
+    {
         "id": "rapportering",
         "title": "Rapportering",
         "description": "ARR-/salgsrapportering og afstemning",
