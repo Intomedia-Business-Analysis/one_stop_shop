@@ -180,10 +180,31 @@ def db_monthly_active_counts(owner_name: str | None = None,
     stedet HVER gang der opstår et hul. Den sidste måned i dataen udelades —
     ellers ville alle nulevende abonnementer se ud som om de churnede.
 
-    Målt 2026-08-10: churn ligger på 0,4-1,8% gennem hele historikken. Juni 2026
-    er undtagelsen med 2,20%, måneden efter at porteføljen sprang fra 12.035 til
-    15.486 abonnementer. Grafen får derfor en lodret klippe i maj 2026, som SKAL
-    forklares på siden — se PRD §11 pkt. 7.
+    TÆRSKLEN ER TO MÅNEDER, jf. PRD §2 besluttet 2026-08-17. Et hul på PRÆCIS én
+    måned er en pause og tælles ikke. Målt: 162 af 8.565 hændelser var én-måneds
+    huller, altså 1,9%, og de klumpede i april (36) og januar (22) frem for at
+    ligge jævnt. Det er synkronisering og fakturering, ikke kundeadfærd. Totalen
+    er 8.403 efter ændringen, og kun april 2026 flyttede sig synligt, fra 1,78%
+    til 1,53%.
+
+    DE TO DATEADD-TAL I `churn`-CTE'EN ER FORSKELLIGE MED VILJE. Det er den eneste
+    fælde i funktionen, og den ligner en tastefejl. `month, 2` i WHERE er
+    TÆRSKLEN, altså hvor stort hullet skal være. `month, 1` i GROUP BY er
+    REGISTRERINGSMÅNEDEN, altså at churn tilskrives den måned kunden forsvandt og
+    ikke den måned vi kan bekræfte det. Gøres de to ens, forsvinder enten
+    pause-reglen eller registreringsmåneden, og INGEN TEST FANGER DET:
+    churn-tallet indgår hverken i roegtest_outcomes eller roegtest_prioritering,
+    og læses kun af retention_overview.html.
+
+    FØLGE AF TÆRSKLEN: `h.naeste IS NULL` rammer også rækker i måneden før den
+    nyeste, og de kan endnu ikke skelnes fra pauser. Nyeste måneds churn er derfor
+    et MAKSIMUM, der revideres NEDAD ved næste eksport. PRD §7.1 kræver at søjlen
+    markeres foreløbig, ellers læses artefaktet som en churn-stigning.
+
+    Målt 2026-08-17: churn ligger på 0,4-1,8% gennem hele historikken, vist for 89
+    måneder fra 2019-04 og frem. Juni 2026 er undtagelsen med 2,18%, måneden efter
+    at porteføljen sprang fra 12.035 til 15.486 abonnementer. Grafen får derfor en
+    lodret klippe i maj 2026, som SKAL forklares på siden — se PRD §11 pkt. 7.
     """
     cte, params = _acv_owner_cte()
 
@@ -237,7 +258,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
                 CROSS JOIN sidste s
                 WHERE h.FirstDayOfMonth < s.max_maaned
                   AND (h.naeste IS NULL
-                       OR h.naeste > DATEADD(month, 1, h.FirstDayOfMonth))
+                       OR h.naeste > DATEADD(month, 2, h.FirstDayOfMonth))
                 GROUP BY DATEADD(month, 1, h.FirstDayOfMonth)
             ),
             aktive AS (

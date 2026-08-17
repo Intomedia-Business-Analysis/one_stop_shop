@@ -67,6 +67,26 @@
               tidlige år har en større ikke-tilskrevet andel, fordi kunder der siden
               er holdt op ikke har en nuværende ejer.
             </p>
+            <!-- Churn-definitionen hører PÅ siden og ikke kun i PRD'en: en
+                 læser, der selv tæller rækker, finder ellers en forskel han
+                 tror er en fejl. Og den stiplede ende SKAL forklares i ord,
+                 fordi retningen er kontraintuitiv: tallet kan kun falde, mens
+                 en stiplet stigning intuitivt læses som en advarsel. -->
+            <p style="font-size:11px;color:var(--ink-3);margin:6px 0 0;">
+              <strong>Sådan regnes churn:</strong> et abonnement tælles som churn,
+              når det mangler i <strong>mindst to måneder i træk</strong>, og det
+              tælles i den første måned det manglede. Er det væk i kun én måned og
+              tilbage igen, er det en pause og tælles ikke. Raten er churn i
+              måneden divideret med antal aktive abonnementer måneden før, og den
+              vises kun, når grundlaget er over 1.000 abonnementer.
+            </p>
+            <p style="font-size:11px;color:var(--ink-3);margin:6px 0 0;">
+              <strong>Den stiplede ende af churn-linjen er foreløbig.</strong> For
+              den nyeste måned kan vi endnu ikke se, om et manglende abonnement
+              kommer tilbage, så det tælles med indtil videre. Tallet kan derfor
+              <strong>kun falde</strong>, når næste måneds data kommer, aldrig
+              stige. En stigning i det sidste punkt er ikke et signal.
+            </p>
           </div>
           <div class="panel-body">
             <canvas id="retentionChart" height="90"></canvas>
@@ -123,6 +143,21 @@
   const unattributed = rows.map(r => r.active_count - r.attributed_count);
   const customers    = rows.map(r => r.customer_count);
   const churn        = rows.map(r => r.churn_pct);
+
+  // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. PRD §2 (besluttet
+  // 2026-08-17): et hul på én måned er en pause og tælles ikke som churn. Men et
+  // abonnement der sidst findes i måneden FØR den nyeste, har endnu ingen
+  // efterfølgende række, så det tælles som churn med det samme. Kommer det igen
+  // ved næste eksport, bliver hullet ét måned langt og hændelsen forsvinder.
+  //
+  // Derfor kan den nyeste søjle KUN FALDE, aldrig stige, og retningen er
+  // kontraintuitiv nok til at skulle skrives på siden.
+  //
+  // Måneden før er derimod ENDELIG: en genkomst dér ville allerede være synlig i
+  // den nyeste måned. Kun det sidste punkt skal altså markeres, ikke de to
+  // sidste. Se `churn`-CTE'ens `WHERE h.FirstDayOfMonth < s.max_maaned` i
+  // queries.db_monthly_active_counts.
+  const foreloebigIndex = churn.length - 1;
 
   // Split'et for seneste måned i panel-headeren — ellers forsvinder de ~16%
   // ikke-tilskrevne kunder tavst, og summen af sælger-visninger kan aldrig
@@ -189,9 +224,24 @@
           yAxisID: 'y2',
           borderColor: cssVar('--taupe', '#8A857C'),
           borderWidth: 1.5,
-          pointRadius: 0,
           tension: 0.15,
           fill: false,
+          // Kun det SIDSTE segment stiples, så resten af linjen fortsat læses
+          // som færdige tal. `p1DataIndex` er segmentets slutpunkt, og at
+          // returnere undefined betyder "brug datasættets egen streg".
+          segment: {
+            borderDash: (ctx) =>
+              ctx.p1DataIndex === foreloebigIndex ? [4, 3] : undefined,
+          },
+          // Et synligt punkt oven i stiplingen. Med 126 måneder på x-aksen er
+          // det sidste segment få pixels bredt, og stipling alene kan ikke ses.
+          // Punktet er det, der gør markeringen opdagelig, og det giver samtidig
+          // noget at pege på med musen.
+          pointRadius: (ctx) => (ctx.dataIndex === foreloebigIndex ? 3.5 : 0),
+          pointStyle: 'circle',
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: cssVar('--taupe', '#8A857C'),
+          pointBorderWidth: 1.5,
         },
       ],
     },
@@ -235,6 +285,17 @@
               items.filter(i => i.dataset.yAxisID !== 'y2'
                              && i.dataset.stack !== 'kunder')
                    .reduce((s, i) => s + i.parsed.y, 0)),
+            // Stiplingen siger "noget er anderledes ved dette punkt", ikke HVAD.
+            // Forbeholdet skal derfor stå i ord, dér hvor brugeren peger. To
+            // linjer, fordi én ville gøre tooltip'en bredere end grafen.
+            // Tom liste når punktet ikke er det foreløbige — Chart.js
+            // accepterer [] og tegner ingenting, hvor undefined ville kaste.
+            afterBody: (items) =>
+              items.some(i => i.dataIndex === foreloebigIndex
+                           && i.dataset.yAxisID === 'y2')
+                ? ['Churn-raten er foreløbig og kan kun falde:',
+                   'pauser er endnu ikke udelukket.']
+                : [],
           },
         },
       },
