@@ -28,6 +28,13 @@ GROUP_LABELS = {
     "watch_se":   "FinansWatch SE",
     "watch_de":   "FinanzBusiness",
     "marketwire": "Marketwire",
+    # Nordic Defence Watch har sin EGEN gruppe i constants.BRAND_GROUPS (bruges af
+    # perf-/forecast-dashboardet), men månedsrapporten skal indtil videre rapportere
+    # det under Watch DK, præcis som før gruppen fandtes (dengang faldt
+    # 'NordicDefenceWatch' igennem til Watch DK via 'watch'-nøgleordet i classify()).
+    # Skal NDW have sin egen række i rapporten, ændres labelet her — og så skal
+    # DISPLAY_ORDER, BRAND_GEO, BRAND_ACCOUNT og BUDGET_BRANDS udvides tilsvarende.
+    "nordic_defence": "Watch DK",
 }
 
 # Fast visningsrækkefølge. Marketwire vises altid (selv uden bevægelser).

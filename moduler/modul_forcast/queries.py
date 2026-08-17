@@ -11,9 +11,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Fælles brand-konstanter — én kilde til sandheden i constants.py.
-from constants import SUBSCRIPTION_BRANDS, BRAND_GROUPS  # noqa: E402,F401
+from constants import SUBSCRIPTION_BRANDS, BRAND_GROUPS, deal_value_sql  # noqa: E402,F401
 
 _SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
+
+# Deal-beløb i dashboardets regne-valuta (lokal for NO/SE, ellers DKK) — se
+# constants.deal_value_sql.
+_VAL = deal_value_sql()
 
 BRAND_LABELS: dict[str, str] = {
     "watch_dk":   "Watch DK",
@@ -265,10 +269,10 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     if level == "saelger":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -280,7 +284,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 UNION ALL
                 SELECT [owner_name] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -295,7 +299,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -307,7 +311,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 UNION ALL
                 SELECT [owner_name] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -324,10 +328,10 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     elif level == "team":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -338,7 +342,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 UNION ALL
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -352,7 +356,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
             cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -362,7 +366,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 UNION ALL
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -373,10 +377,10 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                   *scope_params, team, date_m2[0], date_m2[1]))
         else:
             # Alle teams: subscription-deals + advertising-deals (job/banner)
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [team] IS NOT NULL
@@ -390,7 +394,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 UNION ALL
                 SELECT [team] AS dimension_key,
                        YEAR([service_activation_date]) AS data_year,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [team] IS NOT NULL
@@ -407,7 +411,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         cur.execute(f"""
             SELECT [sites] AS dimension_key,
                    YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                   SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'won'
               AND [pipeline_name] <> 'Web sale'
@@ -420,7 +424,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
             UNION ALL
             SELECT [sites] AS dimension_key,
                    YEAR([service_activation_date]) AS data_year,
-                   SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS tilvækst
+                   SUM(CAST({_VAL} AS DECIMAL(18,2))) AS tilvækst
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'won'
               AND [pipeline_name] <> 'Web sale'
@@ -449,9 +453,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     if level == "saelger":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -464,7 +468,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         else:
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -478,9 +482,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     elif level == "team":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [pipeline_name] = %s
@@ -492,7 +496,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         elif team:
             cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   {scope_clause}
@@ -501,9 +505,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 GROUP BY [team]
             """, (*scope_params, team, date_cur[0], date_cur[1]))
         else:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'won'
                   AND [team] IS NOT NULL
@@ -519,7 +523,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     else:  # medie
         cur.execute(f"""
             SELECT [sites] AS dimension_key,
-                   SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS activation_amount
+                   SUM(CAST({_VAL} AS DECIMAL(18,2))) AS activation_amount
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'won'
               AND [pipeline_name] <> 'Web sale'
@@ -538,9 +542,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     if level == "saelger":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
                   AND [pipeline_name] = %s
@@ -554,7 +558,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         else:
             cur.execute(f"""
                 SELECT [owner_name] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
                   {scope_clause}
@@ -569,9 +573,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     elif level == "team":
         if team and team in ADVERTISING_TEAMS:
             adv_pipeline = ADVERTISING_TEAMS[team]
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
                   AND [pipeline_name] = %s
@@ -584,7 +588,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
         elif team:
             cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
                   {scope_clause}
@@ -594,9 +598,9 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
                 GROUP BY [team]
             """, (*scope_params, team, date_cur[0], date_cur[1]))
         else:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT [team] AS dimension_key,
-                       SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                       SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
                 FROM [dbo].[PipedriveDeals]
                 WHERE [status] = 'open'
                   AND [team] IS NOT NULL
@@ -613,7 +617,7 @@ def db_forecast_data(year: int, month: int, level: str, team: str | None, team_b
     else:  # medie
         cur.execute(f"""
             SELECT [sites] AS dimension_key,
-                   SUM(CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))) AS open_pipeline
+                   SUM(CAST({_VAL} AS DECIMAL(18,2))) AS open_pipeline
             FROM [dbo].[PipedriveDeals]
             WHERE [status] = 'open'
               AND [pipeline_name] <> 'Web sale'
@@ -829,8 +833,7 @@ def db_open_pipeline_deals(year: int, month: int, owner: str, team: str, team_br
     date_lo  = f"{year}-{month:02d}-01"
     date_hi  = f"{year}-{month:02d}-{last_day}"
 
-    val_expr = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
-                "ELSE [value_dkk] END, [value]) AS DECIMAL(18,2))")
+    val_expr = f"CAST({_VAL} AS DECIMAL(18,2))"
 
     conn = get_conn()
     cur = conn.cursor(as_dict=True)
