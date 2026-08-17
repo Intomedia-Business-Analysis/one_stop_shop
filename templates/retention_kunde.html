@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kunde — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+
+    /* Topkort: kundens samlede billede. Antal abonnementer står ved siden af
+       ARR, fordi det er dem samtalen skal dække — ét opkald, flere udfald. */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:24px; }
+    .kpi { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
+    .kpi .k-label { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+    .kpi .k-value { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
+    .kpi .k-note  { font-size:11px; color:var(--ink-4); line-height:1.5; }
+
+    /* Ét kort pr. abonnement. Farven følger VÆGTEN som på §7.2, ikke zonens
+       navn — tre zoner deler gul, fordi de har samme prioritet. */
+    .abo { border:1px solid var(--border); border-left:4px solid var(--ink-4); border-radius:var(--r);
+           padding:14px 16px; margin-bottom:12px; background:var(--surface); }
+    .abo.stoppet       { border-left-color:var(--danger); }
+    .abo.laenge_tavs   { border-left-color:var(--warn); }
+    .abo.aldrig_i_brug { border-left-color:var(--warn); }
+    .abo.faldende      { border-left-color:var(--warn); }
+    .abo.sund          { border-left-color:var(--win); }
+    .abo.ny            { border-left-color:var(--taupe); }
+    .abo.intet_signal  { border-left-color:var(--ink-4); }
+    .abo-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+    .abo-site { font-size:14px; font-weight:700; color:var(--ink); }
+    .abo-sub  { font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.6; }
+    .abo-arr  { font-size:16px; font-weight:700; color:var(--ink); white-space:nowrap; }
+    .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+             padding:2px 8px; border-radius:999px; background:var(--bg-2,#f0efec); color:var(--ink-2); }
+
+    /* Sparkline. Ingen akser: den skal læses som en form, ikke aflæses. Den
+       præcise værdi står i title på hver søjle. */
+    .spark { display:flex; align-items:flex-end; gap:2px; height:38px; margin-top:10px; }
+    .spark i { flex:1; background:var(--ink-4); border-radius:1px 1px 0 0; min-height:1px; display:block; }
+    .spark i.ref { background:var(--ink-2); }
+    .spark-x { display:flex; justify-content:space-between; font-size:10px; color:var(--ink-4); margin-top:3px; }
+
+    .hist { border-left:2px solid var(--border); padding-left:16px; margin-left:4px; }
+    .hist-item { margin-bottom:16px; }
+    .hist-head { font-size:12px; font-weight:600; color:var(--ink); }
+    .hist-meta { font-size:11px; color:var(--ink-3); margin-top:2px; }
+    .hist-udfald { font-size:11px; color:var(--ink-2); margin-top:6px; line-height:1.7; }
+
+    .fine  { font-size:11px; color:var(--ink-4); line-height:1.6; }
+    .tom   { font-size:12px; color:var(--ink-3); padding:8px 0; }
+    .advar { background:#fdf6e3; border:1px solid var(--warn); border-radius:var(--r); padding:10px 14px;
+             font-size:11px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
+
+    /* --- Registreringsformular (PRD §7.4) --- */
+    /* datetime-local står ikke i hub.css' .fld-liste, så den arver ikke selv. */
+    .fld input[type="datetime-local"] {
+      font-family:var(--font); font-size:12px; padding:8px 11px;
+      border:1px solid var(--border-strong); border-radius:var(--r-sm);
+      background:var(--bg); color:var(--ink); outline:none; width:100%;
+    }
+    .fld input[type="datetime-local"]:focus { border-color:var(--green); }
+
+    /* Ét felt pr. valgt abonnement. Kanten er kraftigere end abonnementskortets,
+       fordi den her indeholder noget der SKRIVES, ikke noget der læses. */
+    .reg-abo { border:1px solid var(--border-strong); border-radius:var(--r);
+               padding:14px 16px; margin-bottom:12px; background:var(--bg); }
+    .reg-abo-top { display:flex; justify-content:space-between; align-items:center;
+                   gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+    .reg-abo-navn { font-size:13px; font-weight:700; color:var(--ink); }
+
+    /* Afkrydsningslisten: hvilke abonnementer handlede samtalen om. */
+    .vaelg { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+             gap:8px 16px; margin-bottom:18px; }
+    .vaelg label { display:flex; align-items:flex-start; gap:8px; font-size:12px;
+                   color:var(--ink-2); cursor:pointer; line-height:1.5; font-weight:500;
+                   text-transform:none; letter-spacing:0; }
+    .vaelg input { margin-top:2px; flex:none; }
+    .vaelg .z { font-size:10px; color:var(--ink-4); }
+
+    /* ARR-kilden er ikke dekoration: den siger om beløbet er målt eller gættet,
+       og §9's "kroner reddet" arver forskellen. Derfor vises den, og derfor
+       skifter den synligt, når feltet redigeres. */
+    .kilde { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+             padding:2px 8px; border-radius:999px; white-space:nowrap; }
+    .kilde.lige_deling { background:#fdf6e3; color:var(--ink-2); border:1px solid var(--warn); }
+    .kilde.bekraeftet  { background:#eef7ee; color:var(--ink-2); border:1px solid var(--win); }
+
+    .fejl { background:#fdecea; border:1px solid var(--danger); border-radius:var(--r);
+            padding:10px 14px; font-size:11px; color:var(--ink-2); margin-bottom:16px; line-height:1.7; }
+    .fejl ul { margin:6px 0 0; padding-left:18px; }
+    .kvit { background:#eef7ee; border:1px solid var(--win); border-radius:var(--r);
+            padding:10px 14px; font-size:12px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
+    .reg-handling { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+    .kraev { color:var(--danger); }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention/risk_overview' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1400px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <a href="/retention/overview" class="bc-link">Retention</a>
+          <span class="bc-sep">/</span>
+          <a href="/retention/risk_overview" class="bc-link">Churn-risiko</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current" id="bc-kunde">Kunde</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1 id="titel">Indlæser…</h1>
+            <p id="undertitel"></p>
+          </div>
+        </div>
+
+        <div id="advarsler"></div>
+        <div class="kpis" id="kpis"></div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Abonnementer</h2>
+              <p id="abo-sub">Indlæser…</p>
+            </div>
+          </div>
+          <div class="panel-body" id="abonnementer"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Registrér samtale</h2>
+              <p>Hvad der FAKTISK skete. Uden det kan zonevægtene aldrig kalibreres (PRD §9).</p>
+            </div>
+            <button type="button" class="btn-primary" id="reg-aabn">Registrér samtale</button>
+          </div>
+          <div class="panel-body" id="reg-body" hidden>
+            <div id="reg-fejl"></div>
+
+            <div class="form-grid-3">
+              <div class="fld">
+                <label for="reg-tid">Tidspunkt</label>
+                <input type="datetime-local" id="reg-tid">
+              </div>
+              <div class="fld">
+                <label for="reg-kanal">Kanal</label>
+                <select id="reg-kanal">
+                  {% for vaerdi, label in kanaler.items() %}
+                  <option value="{{ vaerdi }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="fld">
+                <label for="reg-resultat">Kom du igennem?</label>
+                <select id="reg-resultat">
+                  {% for vaerdi, label in kontaktresultater.items() %}
+                  <option value="{{ vaerdi }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="fld" style="margin-bottom:18px;">
+              <label for="reg-resume">Resumé af samtalen</label>
+              <textarea id="reg-resume" rows="2"
+                        placeholder="Gælder hele samtalen. Noter pr. abonnement skrives nedenfor."></textarea>
+            </div>
+
+            <!-- Vises kun ved kontakt opnået: databasen kræver et udfald pr.
+                 abonnement, og forbyder et udfald når der ikke var kontakt
+                 (CK_RetOut_outcome_kraever_kontakt). -->
+            <div id="reg-med-kontakt">
+              <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);">
+                Hvilke abonnementer handlede samtalen om?
+              </label>
+              <div class="vaelg" id="reg-vaelg"></div>
+              <div id="reg-udfald"></div>
+            </div>
+
+            <!-- Vises kun uden kontakt: én række med sentinel-site og intet udfald. -->
+            <div id="reg-uden-kontakt" hidden>
+              <p class="fine" style="margin-top:0;">
+                Uden kontakt registreres samtalen på kunden og ikke på et abonnement.
+                Der gemmes derfor intet udfald — forsøget tæller, jf. PRD §8's grænse på
+                tre kontaktforsøg.
+              </p>
+              <div class="form-grid">
+                <div class="fld">
+                  <label for="reg-uk-note">Note</label>
+                  <input type="text" id="reg-uk-note" placeholder="Fx: lagde på, ringer igen torsdag">
+                </div>
+                <div class="fld">
+                  <label for="reg-uk-followup">Ring igen (valgfrit)</label>
+                  <input type="date" id="reg-uk-followup">
+                </div>
+              </div>
+            </div>
+
+            <div class="reg-handling">
+              <button type="button" class="btn-primary" id="reg-gem">Gem registrering</button>
+              <button type="button" class="btn-cancel" id="reg-annuller">Annullér</button>
+              <span class="fine" id="reg-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Tidligere samtaler</h2>
+              <p id="hist-sub"></p>
+            </div>
+          </div>
+          <div class="panel-body" id="historik"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  const ACCOUNT = {{ account | tojson }};
+  const ORG_ID  = {{ org_id | tojson }};
+
+  const nf0 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
+  const nfv = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const kr = v => v === null || v === undefined ? '—' : nf0.format(v) + ' kr.';
+  const dato = s => !s ? '—' : String(s).slice(0, 10);
+
+  const ZONE_TEKST = {
+    stoppet:       'Læste før, læser ikke længere',
+    laenge_tavs:   'Ingen aktivitet i lang tid',
+    aldrig_i_brug: 'Har aldrig taget produktet i brug',
+    faldende:      'Forbruget falder',
+    sund:          'Stabilt forbrug',
+    ny:            'For ny til at vurderes',
+    intet_signal:  'Vi kan ikke se forbruget — ikke det samme som risiko'
+  };
+
+  let d;
+  try {
+    const res = await fetch(`/retention/kunde_data/${encodeURIComponent(ACCOUNT)}/${encodeURIComponent(ORG_ID)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    d = await res.json();
+  } catch (e) {
+    document.getElementById('titel').textContent = 'Kunne ikke hente kunden';
+    document.getElementById('undertitel').textContent = String(e);
+    return;
+  }
+
+  const k = d.kunde;
+  const navn = k.org_name || `${ACCOUNT} / ${ORG_ID}`;
+  document.title = navn + ' — Intomedia Hub';
+  document.getElementById('bc-kunde').textContent = navn;
+  document.getElementById('titel').textContent = navn;
+  document.getElementById('undertitel').textContent =
+    [k.owner_name ? 'Ejer: ' + k.owner_name : 'Ingen ejer i ACV',
+     k.teams || 'Intet team'].join(' · ');
+
+  // Forbehold øverst, ikke nederst: de ændrer hvordan tallene skal læses.
+  const adv = [];
+  if (d.ingen_aktive) adv.push('Kunden har ingen aktive abonnementer i ' +
+    esc(d.meta.abo_maaned) + '. Historikken vises alligevel.');
+  if (k.mikrokunde) adv.push('Mikrokunde (under 5.000 kr./år). PRD §10 regel 2: ' +
+    'får aldrig et opkald — den automatiserede mail er sporet her.');
+  if (d.meta.usage_error) adv.push('Forbrugsdata kunne ikke læses: ' +
+    esc(d.meta.usage_error) + '. Zoner og grafer er derfor ikke retvisende.');
+  if (d.meta.reference_alder > 0) adv.push('Forbrugssignalet er ' +
+    d.meta.reference_alder + ' måned(er) gammelt (reference ' +
+    esc(d.meta.reference_maaned) + '). Eksporten er ikke kørt.');
+  if (!d.meta.thresholds_validated) adv.push('Zonetærsklerne er ikke kalibreret ' +
+    'på rigtige udfald endnu (PRD §9). Zonen er et kvalificeret gæt, ikke en måling.');
+  document.getElementById('advarsler').innerHTML =
+    adv.map(t => `<div class="advar">${t}</div>`).join('');
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi">
+      <div class="k-label">Årsværdi</div>
+      <div class="k-value">${kr(k.arr_dkk)}</div>
+      <div class="k-note">Kundens samlede ARR fra ACV</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Abonnementer</div>
+      <div class="k-value">${k.antal_abonnementer}</div>
+      <div class="k-note">aktive i ${esc(d.meta.abo_maaned)}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Samtaler registreret</div>
+      <div class="k-value">${d.historik.length}</div>
+      <div class="k-note">${d.historik.length ? 'seneste ' + dato(d.historik[0].contacted_at) : 'ingen endnu'}</div>
+    </div>`;
+
+  // --- abonnementer ---
+  const abos = d.abonnementer;
+  document.getElementById('abo-sub') .textContent = abos.length
+    ? `${abos.length} abonnement(er), højeste score først`
+    : 'Ingen aktive abonnementer';
+
+  const sparkline = (trend, ref) => {
+    if (!trend || !trend.length) return '';
+    const max = Math.max(...trend.map(t => t.sidevisninger), 1);
+    const bars = trend.map(t => {
+      const h = Math.round((t.sidevisninger / max) * 100);
+      const erRef = t.maaned === ref;
+      return `<i class="${erRef ? 'ref' : ''}" style="height:${Math.max(h, 2)}%"
+                 title="${esc(t.maaned)}: ${nf0.format(t.sidevisninger)} sidevisninger, ${t.dage} aktive dage"></i>`;
+    }).join('');
+    return `<div class="spark">${bars}</div>
+            <div class="spark-x"><span>${esc(trend[0].maaned)}</span><span>${esc(trend[trend.length - 1].maaned)}</span></div>`;
+  };
+
+  document.getElementById('abonnementer').innerHTML = abos.length ? abos.map(a => {
+    const u = a.seneste_udfald;
+    // aktive_dage_12m er rækkens EGET tal (vanebruger-vinduet, de 12 mdr FØR
+    // referencen). Grafen går til og med referencen, så en sum af søjlerne
+    // ville give et andet tal — vis aldrig det.
+    const dele = [
+      `Zone: ${esc(a.zone_label)} — ${ZONE_TEKST[a.zone] || ''}`,
+      `Vægt ${nfv.format(a.vaegt)}`,
+      a.aktive_dage_12m === null ? null : `${a.aktive_dage_12m} aktive dage (12 mdr.)`,
+      a.vanebruger ? 'Vanebruger' : null,
+      `Startet ${esc(a.foerste_maaned)}`,
+      a.fornyelsesdato ? `Fornyes ${dato(a.fornyelsesdato)}` : null
+    ].filter(Boolean);
+    return `
+      <div class="abo ${esc(a.zone)}">
+        <div class="abo-top">
+          <div>
+            <div class="abo-site">${esc(a.site)} <span class="zpill">${esc(a.zone_label)}</span></div>
+            <div class="abo-sub">${dele.map(esc).join(' · ')}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="abo-arr">${kr(a.arr_dkk)}</div>
+            <div class="fine">andel af kundens ARR</div>
+          </div>
+        </div>
+        ${sparkline(a.trend, d.meta.reference_maaned)}
+        ${u ? `<div class="hist-udfald">Seneste udfald: <strong>${esc(u.outcome || u.contact_result)}</strong>
+               ${u.followup_date ? ' · opfølgning ' + dato(u.followup_date) : ''}
+               ${u.note ? ' · ' + esc(u.note) : ''}</div>` : ''}
+      </div>`;
+  }).join('') : '<div class="tom">Ingen aktive abonnementer i denne måned.</div>';
+
+  // ARR pr. abonnement er kundens ARR delt med antal sites — et VALG, ikke en
+  // måling (queries.py). Det skal stå på siden, ellers læses beløbet som prisen
+  // på dét site, og et registreret udfald ville arve divisionen.
+  if (abos.length > 1) {
+    document.getElementById('abonnementer').insertAdjacentHTML('beforeend',
+      `<p class="fine">Årsværdien pr. abonnement er kundens samlede ARR fordelt ligeligt
+       på ${abos.length} sites. ACV kender ikke kronerne pr. site, så fordelingen er en
+       antagelse — ikke en måling. Bekræft beløbet hos kunden, før det registreres.</p>`);
+  }
+
+  // --- historik ---
+  document.getElementById('hist-sub').textContent = d.historik.length
+    ? `${d.historik.length} samtale(r), nyeste først` : '';
+  document.getElementById('historik').innerHTML = d.historik.length
+    ? `<div class="hist">` + d.historik.map(s => `
+        <div class="hist-item">
+          <div class="hist-head">${dato(s.contacted_at)} · ${esc(s.channel)}</div>
+          <div class="hist-meta">${esc(s.created_by)}${s.summary ? ' · ' + esc(s.summary) : ''}</div>
+          <div class="hist-udfald">${s.udfald.map(u =>
+            `<div>${esc(u.site)}: <strong>${esc(u.outcome || u.contact_result)}</strong>
+             ${u.arr_before_dkk !== null ? ' · før ' + kr(u.arr_before_dkk) : ''}
+             ${u.arr_after_dkk !== null ? ' → efter ' + kr(u.arr_after_dkk) : ''}
+             ${u.arr_before_kilde === 'lige_deling' ? ' <span class="fine">(ARR er et skøn)</span>' : ''}
+             ${u.followup_date ? ' · opfølgning ' + dato(u.followup_date) : ''}
+             ${u.note ? '<br><span class="fine">' + esc(u.note) + '</span>' : ''}</div>`
+          ).join('') || '<div class="fine">Ingen udfald registreret på samtalen.</div>'}</div>
+        </div>`).join('') + `</div>`
+    : '<div class="tom">Ingen samtaler registreret endnu.</div>';
+
+  // ================= registreringsformular (PRD §7.4) =================
+  // Vokabularet kommer fra outcomes.py via routeren. Det må IKKE gentages her:
+  // værdierne er databasens CHECK-constraints, og en option med en værdi
+  // databasen afviser fejler først når specialisten har lagt på.
+  const KONTAKTRESULTATER  = {{ kontaktresultater | tojson }};
+  const UDFALDSTYPER       = {{ udfaldstyper | tojson }};
+  const AABNE_UDFALD       = {{ aabne_udfald | tojson }};
+  const KONTAKT_OPNAAET    = {{ kontakt_opnaaet | tojson }};
+  const KILDE_DELING       = {{ arr_kilde_deling | tojson }};
+  const KILDE_BEKRAEFTET   = {{ arr_kilde_bekraeftet | tojson }};
+  const KILDE_LABEL        = {{ arr_kilder | tojson }};
+
+  const el = id => document.getElementById(id);
+
+  // Kvittering efter en gemt registrering. Siden genindlæses, fordi ALLE tal
+  // skal være friske — ARR, zoner, historik og KPI'erne — og ikke kun de blokke,
+  // der lige faldt mig ind at gentegne. Beskeden overlever reloadet her.
+  const kvit = sessionStorage.getItem('retention_kvit');
+  if (kvit) {
+    sessionStorage.removeItem('retention_kvit');
+    try {
+      const q = JSON.parse(kvit);
+      el('advarsler').insertAdjacentHTML('afterbegin',
+        `<div class="kvit">Samtalen er registreret (nr. ${esc(q.id)}) med
+         ${q.udfald} udfald. Tallene på siden er hentet igen.</div>`);
+    } catch (e) { /* en ulæselig kvittering må ikke spærre siden */ }
+  }
+
+  // Sentinel-valget. Har kunden ingen aktive abonnementer, kan der stadig
+  // registreres — en netop opsagt kunde er præcis den, man skal kunne skrive
+  // 'allerede_opsagt' på (PRD §7.4). Tom site → INTET_SITE serverside.
+  // Den lige deling er kundens ARR / antal sites og kommer ud som en rå float
+  // (121952.61538461539). Rundes til hele kroner, af to grunde: kortet ovenfor
+  // viser samme tal med nul decimaler, og en division med femten decimaler
+  // påstår en præcision, et SKØN ikke har. Bekræfter specialisten beløbet,
+  // skriver hun det rigtige tal, og kilden skifter til `bekraeftet`.
+  const heleKroner = v => (v === null || v === undefined) ? null : Math.round(v);
+
+  const valgbare = abos.length
+    ? abos.map(a => ({ site: a.site, navn: a.site, zone: a.zone_label,
+                       arr: heleKroner(a.arr_dkk) }))
+    : [{ site: '', navn: 'Kunden (intet specifikt abonnement)', zone: null,
+         arr: heleKroner(k.arr_dkk) }];
+
+  el('reg-vaelg').innerHTML = valgbare.map((v, i) => `
+    <label>
+      <input type="checkbox" data-i="${i}" ${valgbare.length === 1 ? 'checked' : ''}
+             aria-label="${esc(v.navn)}">
+      <span>${esc(v.navn)}${v.zone ? ` <span class="z">${esc(v.zone)}</span>` : ''}</span>
+    </label>`).join('');
+
+  // UDFALDSTYPER er en liste af [værdi, label]-par og ikke en dict, netop for at
+  // rækkefølgen holder — se kommentaren i router.py om Jinjas sort_keys.
+  const udfaldOptions = ['<option value="">— vælg udfald —</option>'].concat(
+    UDFALDSTYPER.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`)
+  ).join('');
+
+  // Et felt pr. valgt abonnement. Årsværdien er forudfyldt med den lige deling
+  // og MÆRKET som skøn; rører specialisten feltet, skifter mærket til bekræftet.
+  // Det er hele grunden til at arr_before_kilde findes: uden mærket kan §9 ikke
+  // skelne et målt beløb fra en division.
+  const blok = (v, i) => `
+    <div class="reg-abo" data-i="${i}" data-kilde="${v.arr === null || v.arr === undefined ? '' : KILDE_DELING}">
+      <div class="reg-abo-top">
+        <div class="reg-abo-navn">${esc(v.navn)}</div>
+        <span class="kilde ${v.arr === null || v.arr === undefined ? '' : KILDE_DELING}"
+              data-rolle="kilde-maerke">${v.arr === null || v.arr === undefined
+                ? 'Ingen årsværdi kendt' : esc(KILDE_LABEL[KILDE_DELING])}</span>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Udfald</label>
+          <select data-felt="outcome">${udfaldOptions}</select>
+        </div>
+        <div class="fld">
+          <label>Årsværdi før (kr.)</label>
+          <input type="number" step="0.01" data-felt="arr_before_dkk"
+                 value="${v.arr === null || v.arr === undefined ? '' : v.arr}">
+        </div>
+        <div class="fld">
+          <label data-rolle="followup-label">Opfølgning</label>
+          <input type="date" data-felt="followup_date">
+        </div>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Årsværdi efter (lokal valuta)</label>
+          <input type="number" step="0.01" data-felt="arr_after_local">
+        </div>
+        <div class="fld">
+          <label>Valuta</label>
+          <input type="text" maxlength="3" data-felt="arr_after_currency" placeholder="DKK">
+        </div>
+        <div class="fld">
+          <label>Kurs til DKK</label>
+          <input type="number" step="0.0001" data-felt="fx_rate" placeholder="1">
+        </div>
+      </div>
+      <div class="form-grid-3">
+        <div class="fld">
+          <label>Fornyelsesdato</label>
+          <input type="date" data-felt="renewal_date">
+        </div>
+        <div class="fld">
+          <label>Udløbsdato</label>
+          <input type="date" data-felt="expiry_date">
+        </div>
+        <div class="fld">
+          <label>Note</label>
+          <input type="text" data-felt="note">
+        </div>
+      </div>
+    </div>`;
+
+  const valgte = () => [...el('reg-vaelg').querySelectorAll('input:checked')]
+    .map(c => Number(c.dataset.i));
+
+  function tegnUdfaldsfelter() {
+    const beholdt = {};
+    el('reg-udfald').querySelectorAll('.reg-abo').forEach(b => {
+      beholdt[b.dataset.i] = { html: b.innerHTML, kilde: b.dataset.kilde };
+    });
+    el('reg-udfald').innerHTML = valgte().map(i => blok(valgbare[i], i)).join('');
+    // Genindsæt det, der allerede var skrevet: en afkrydsning må ikke nulstille
+    // felter, specialisten har udfyldt for de øvrige abonnementer.
+    el('reg-udfald').querySelectorAll('.reg-abo').forEach(b => {
+      const g = beholdt[b.dataset.i];
+      if (g) { b.innerHTML = g.html; b.dataset.kilde = g.kilde; }
+    });
+  }
+
+  el('reg-vaelg').addEventListener('change', tegnUdfaldsfelter);
+
+  // Kilde-mærket skifter i det øjeblik beløbet redigeres, og opfølgningsfeltet
+  // markeres som krævet, når udfaldet holder sagen åben
+  // (CK_RetOut_followup_paa_aabne).
+  el('reg-udfald').addEventListener('input', ev => {
+    const blk = ev.target.closest('.reg-abo');
+    if (!blk) return;
+    if (ev.target.dataset.felt === 'arr_before_dkk') {
+      blk.dataset.kilde = ev.target.value === '' ? '' : KILDE_BEKRAEFTET;
+      const maerke = blk.querySelector('[data-rolle="kilde-maerke"]');
+      maerke.className = 'kilde ' + blk.dataset.kilde;
+      maerke.textContent = blk.dataset.kilde
+        ? KILDE_LABEL[blk.dataset.kilde] : 'Ingen årsværdi angivet';
+    }
+    // Et beløb efter samtalen uden kurs bliver IKKE gemt i kroner — serveren
+    // afviser det. Valuta og kurs udfyldes derfor, når beløbet skrives, men
+    // aldrig på forhånd: en kurs uden et beløb er også en fejl.
+    if (ev.target.dataset.felt === 'arr_after_local' && ev.target.value !== '') {
+      const val = blk.querySelector('[data-felt="arr_after_currency"]');
+      const kur = blk.querySelector('[data-felt="fx_rate"]');
+      if (!val.value) val.value = 'DKK';
+      if (!kur.value) kur.value = '1';
+    }
+  });
+
+  el('reg-udfald').addEventListener('change', ev => {
+    if (ev.target.dataset.felt !== 'outcome') return;
+    const blk = ev.target.closest('.reg-abo');
+    const aaben = AABNE_UDFALD.includes(ev.target.value);
+    blk.querySelector('[data-rolle="followup-label"]').innerHTML =
+      'Opfølgning' + (aaben ? ' <span class="kraev">*</span>' : '');
+  });
+
+  function skiftKontaktform() {
+    const medKontakt = el('reg-resultat').value === KONTAKT_OPNAAET;
+    el('reg-med-kontakt').hidden  = !medKontakt;
+    el('reg-uden-kontakt').hidden = medKontakt;
+  }
+  el('reg-resultat').addEventListener('change', skiftKontaktform);
+
+  el('reg-aabn').addEventListener('click', () => {
+    el('reg-body').hidden = !el('reg-body').hidden;
+    if (el('reg-body').hidden) return;
+    const nu = new Date();
+    nu.setMinutes(nu.getMinutes() - nu.getTimezoneOffset());
+    el('reg-tid').value = nu.toISOString().slice(0, 16);
+    skiftKontaktform();
+    tegnUdfaldsfelter();
+    el('reg-body').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  el('reg-annuller').addEventListener('click', () => { el('reg-body').hidden = true; });
+
+  const visFejl = liste => {
+    el('reg-fejl').innerHTML = liste.length
+      ? `<div class="fejl"><strong>Registreringen blev ikke gemt:</strong>
+         <ul>${liste.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`
+      : '';
+    if (liste.length) el('reg-fejl').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  function byg() {
+    const resultat = el('reg-resultat').value;
+    const samtale = {
+      contacted_at: el('reg-tid').value,
+      channel:      el('reg-kanal').value,
+      summary:      el('reg-resume').value
+    };
+
+    if (resultat !== KONTAKT_OPNAAET) {
+      // Én række på kunden, intet site, intet udfald. Serveren oversætter tom
+      // site til sentinel — se outcomes.INTET_SITE.
+      return { ...samtale, udfald: [{
+        site: null, contact_result: resultat,
+        note: el('reg-uk-note').value,
+        followup_date: el('reg-uk-followup').value
+      }] };
+    }
+
+    const udfald = [...el('reg-udfald').querySelectorAll('.reg-abo')].map(blk => {
+      const f = navn => blk.querySelector(`[data-felt="${navn}"]`).value;
+      const beloeb = f('arr_before_dkk');
+      return {
+        site:               valgbare[Number(blk.dataset.i)].site,
+        contact_result:     resultat,
+        outcome:            f('outcome'),
+        arr_before_dkk:     beloeb,
+        // Kilden hører til beløbet. Er beløbet tomt, er der ingen kilde at
+        // angive, og serveren ville afvise en kilde uden et tal.
+        arr_before_kilde:   beloeb === '' ? '' : blk.dataset.kilde,
+        arr_after_local:    f('arr_after_local'),
+        arr_after_currency: f('arr_after_currency'),
+        fx_rate:            f('fx_rate'),
+        renewal_date:       f('renewal_date'),
+        expiry_date:        f('expiry_date'),
+        followup_date:      f('followup_date'),
+        note:               f('note')
+      };
+    });
+    return { ...samtale, udfald };
+  }
+
+  el('reg-gem').addEventListener('click', async () => {
+    const knap = el('reg-gem');
+    // Den lokale kontrol er en høflighed, ikke en grænse: serveren validerer
+    // igen, fordi browseren kan omgås.
+    if (el('reg-resultat').value === KONTAKT_OPNAAET && !valgte().length) {
+      visFejl(['Vælg mindst ét abonnement samtalen handlede om.']);
+      return;
+    }
+    visFejl([]);
+    knap.disabled = true;
+    el('reg-status').textContent = 'Gemmer…';
+    try {
+      const res = await fetch(
+        `/retention/kunde/${encodeURIComponent(ACCOUNT)}/${encodeURIComponent(ORG_ID)}/samtale`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(byg()) });
+      const svar = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 422 sender en LISTE af fejl, så alle vises på én gang. Andre fejl
+        // har en enkelt tekst.
+        const d = svar.detail;
+        visFejl(Array.isArray(d) ? d : [d || ('HTTP ' + res.status)]);
+        el('reg-status').textContent = '';
+        knap.disabled = false;
+        return;
+      }
+      sessionStorage.setItem('retention_kvit',
+        JSON.stringify({ id: svar.conversation_id, udfald: svar.udfald }));
+      location.reload();
+    } catch (e) {
+      visFejl(['Registreringen kunne ikke sendes: ' + String(e) +
+               '. Intet er gemt — prøv igen.']);
+      el('reg-status').textContent = '';
+      knap.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
