@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from constants import CANCELLATION_PIPELINES
+from constants import CANCELLATION_PIPELINES, deal_value_sql
 from db import get_conn
 from moduler.modul_perf.queries import _ADM_EXCLUDE
 import calendar
@@ -11,8 +11,9 @@ _CANCEL_PH = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
 # Belob i lokal valuta (NO/SE/DE i lokal, ellers DKK) — delt af modulets queries.
 # EUR medregnes i lokal valuta, fordi Watch DE-budgettet (BudgetsIntoMedia) er
 # indlaest i EUR — ellers maales DKK-salg mod EUR-budget (fx 784 % af budget).
-_VAL = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK','EUR') "
-        "THEN [value] ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+# eur_local knytter den EUR-undtagelse til watch_de-accounten, saa DK-teamenes
+# egne EUR-deals (Team Watch Int m.fl.) omregnes til DKK som de altid burde.
+_VAL = f"CAST({deal_value_sql(eur_local=True)} AS DECIMAL(18,2))"
 
 def db_brand_overblik(today: date, date_col: str = "won_time", ytd: bool = True,
                       years: list[int] | None = None):

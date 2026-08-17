@@ -12,6 +12,7 @@ import os
 from datetime import date
 from typing import Optional
 
+from constants import deal_value_sql
 from db import get_conn
 from moduler.modul_admin_nysalg.models import ExtractRow
 
@@ -850,8 +851,8 @@ def pipedrive_brand_rows(date_from: str | None, date_to: str | None,
         specs_list = PIPEDRIVE_ROWS
     else:
         specs_list = specs
-    # Lokal valuta for NOK/SEK (jf. perf-modulet), ellers DKK.
-    val = "CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END"
+    # Lokal valuta for NO/SE-organisationen (jf. perf-modulet), ellers DKK.
+    val = deal_value_sql()
     cancel_ph = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
     cancel_up = [p.upper() for p in CANCELLATION_PIPELINES]
 
@@ -1013,8 +1014,7 @@ def _dk_advertising_brand_rows(cur, date_from: str | None, date_to: str | None,
     comments = comments or {}
     # Watch DK-serien i dashboardet samler også Watch Int-sites under Watch DK.
     watch_sites = list(WATCH_DK_SITES) + list(WATCH_INT_SITES)
-    val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
-           "ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    val = f"CAST({deal_value_sql()} AS DECIMAL(18,2))"
 
     def _site_revenue(pipeline: str, sites: list[str]) -> float:
         ph = "(" + ",".join(["%s"] * len(sites)) + ")"
@@ -1107,8 +1107,7 @@ def _monitor_ad_revenue(cur, pipeline: str, date_from: str | None,
                               cast_to_date=True)
     where = ["[status] = 'won'", "[account] = 'jppol_advertising'",
              "LOWER([pipeline_name]) = %s", f"[sites] IN {ph}"] + dcl
-    val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
-           "ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    val = f"CAST({deal_value_sql()} AS DECIMAL(18,2))"
     ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
     # GROUP BY på en konstant er ikke lovligt i SQL Server — uden måneds-opdeling
     # grupperes der kun på site, og ym-feltet sættes til ''.
@@ -1244,7 +1243,7 @@ def pipedrive_brand_rows_by_month(months: list[str], comments: dict | None = Non
     # Hele kalendermåneder — spejler _month_bounds-grænserne i pr-måned-kaldene.
     q_from = _month_bounds(months[0])[0]
     q_to = _month_bounds(months[-1])[1]
-    val = "CASE WHEN [currency] IN ('NOK','SEK') THEN [value] ELSE [value_dkk] END"
+    val = deal_value_sql()
     ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
     cancel_ph = "(" + ",".join(["%s"] * len(CANCELLATION_PIPELINES)) + ")"
     cancel_up = [p.upper() for p in CANCELLATION_PIPELINES]
@@ -1378,8 +1377,7 @@ def _dk_advertising_by_month(cur, date_from: str | None, date_to: str | None,
                                                 WATCH_INT_SITES, _ADM_EXCLUDE)
     comments = comments or {}
     watch_sites = list(WATCH_DK_SITES) + list(WATCH_INT_SITES)
-    val = ("CAST(COALESCE(CASE WHEN [currency] IN ('NOK','SEK') THEN [value] "
-           "ELSE [value_dkk] END,[value]) AS DECIMAL(18,2))")
+    val = f"CAST({deal_value_sql()} AS DECIMAL(18,2))"
     ym_expr = "CONVERT(varchar(7), [service_activation_date], 126)"
 
     def _site_revenue(pipeline: str, sites: list[str]) -> dict:
