@@ -158,6 +158,10 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             "vanebruger":      vanebruger,
             "aktive_dage_12m": dage_12m,
             "arr_dkk":         arr,
+            # 'site' = abonnementets eget beløb fra ACV. 'lige_deling' = kundens
+            # ARR delt med antal sites, som er et VALG og ikke en måling. None =
+            # ukendt, og de tre skal kunne skelnes på skærmen.
+            "arr_kilde":       a.get("arr_kilde"),
             "kunde_arr_dkk":   kunde_arr,
             "sites_i_alt":     a["sites_i_alt"],
             # None og ikke 0 når ARR er ukendt: 0 betyder "ingen risiko", og de

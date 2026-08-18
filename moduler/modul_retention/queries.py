@@ -30,6 +30,60 @@ ACV_BRAND_TO_ACCOUNT: dict[str, str] = {
     "Watch SE": "watch_se",
 }
 
+# ACV's site-vokabular mod dbo.retentions. ACV gemmer sitet UDEN landekode
+# ('FinansWatch') og landet i brand ('Watch DK'), mens dbo.retention gemmer det
+# samlet ('FinansWatch DK'). Reglen er et suffiks pr. brand plus syv navngivne
+# undtagelser.
+#
+# Maalt 2026-08-18 mod juli 2026: alle 42 (brand, site)-par i ACV rammer et site
+# der findes i dbo.retention, og 15.039 af 15.203 abonnementer kan dermed faa
+# deres EGET beloeb i stedet for kundens ARR delt med antal sites.
+ACV_SITE_SUFFIKS: dict[str, str] = {
+    "Watch DK": " DK",
+    "Watch NO": " NO",
+    "Watch SE": " SE",
+    "Monitor":  "monitor",
+}
+
+# Undtagelserne er NAVNGIVNE og ikke regelbaserede med vilje. De tre
+# monitor-navne mangler et fuge-s ('Sundhed' -> 'Sundhedsmonitor'), som ingen
+# regel kan udlede uden at gaette, og en gaettet fuge-s-regel ville ramme forkert
+# paa det naeste nye site. De tre oevrige er helt egne navne.
+ACV_SITE_UNDTAGELSER: dict[tuple[str, str], str] = {
+    ("Watch DK", "WatchMedier"):   "Watch Medier DK",
+    ("Watch NO", "Shifter"):       "Shifter",
+    ("Monitor",  "Monitormedier"): "Monitormedier",
+    ("Monitor",  "Idræt"):         "Idrætsmonitor",
+    ("Monitor",  "Uddannelse"):    "Uddannelsesmonitor",
+    ("Monitor",  "Sundhed"):       "Sundhedsmonitor",
+    ("Finans",   "Finans"):        "FINANS DK",
+}
+
+
+def acv_site_til_retention(brand: str | None, site: str | None) -> str | None:
+    """ACV's (brand, site) oversat til dbo.retention.sites. None ved ukendt brand.
+
+    Kommer der et nyt brand i ACV, giver funktionen None frem for at gaette.
+    Abonnementet falder saa tilbage til den gamle ligedeling, og fejlen bliver
+    et beloeb der er lidt for groft i stedet for et beloeb paa det FORKERTE site.
+
+    KENDT FAELDE, verificeret 2026-08-18: parret ('Watch DK', 'Finans') findes
+    1.626 gange i PipeDrive_ACV, men NUL af dem er den nyeste raekke for sit
+    (org_id, site). Kalderen filtrerer paa rk = 1, saa parret rammer aldrig
+    funktionen i drift. Sker der en redigering, der loefter en af dem til nyeste,
+    mapper reglen den til 'Finans DK', som ikke findes i dbo.retention, og
+    beloebet falder tavst tilbage til ligedeling. Det er sikkert, men det er
+    tavst: rammer daekningen under 98,9%, er det her man skal se foerst.
+    """
+    if brand is None or site is None:
+        return None
+    egen = ACV_SITE_UNDTAGELSER.get((brand, site))
+    if egen:
+        return egen
+    suffiks = ACV_SITE_SUFFIKS.get(brand)
+    return site + suffiks if suffiks else None
+
+
 # Aktivt team-medlemskab — samme datovindue som get_led_teams i
 # modul_saelger_portfolio, så en risikoliste og en sælger-dropdown ikke kan
 # blive uenige om hvem der sidder i hvilket team.
@@ -578,6 +632,72 @@ def db_org_navne() -> dict:
         return {}
 
 
+def db_acv_beloeb_pr_site() -> dict:
+    """{(account, org_id, sites): beloeb} — ACV's kroner pr. ABONNEMENT.
+
+    Modstykket til db_acv_ejere, som er paa KUNDE-niveau. Denne har grainen
+    (account, org_id, site) og gjorde det muligt at holde op med at dele kundens
+    ARR ligeligt ud paa dens sites.
+
+    UFILTRERET MED VILJE: beloebet pr. site afhaenger ikke af hvem der ser paa
+    det, og afgraensningen sker i forvejen paa kundeniveau i
+    abonnementer_med_ejer. En WHERE her ville kunne komme i utakt med den.
+
+    Noeglen gaar gennem customer_key, praecis som db_acv_ejere og
+    db_abonnementer. org_id kommer tilbage som int, og de tre opslag SKAL bruge
+    samme funktion, ellers matcher 1 aldrig '1'.
+
+    Maalt 2026-08-18: 15.039 af 15.203 juli-abonnementer finder et beloeb her,
+    altsaa 98,9%, og de daekker alle 218.238.867 ACV-kroner. De 164 der ikke
+    goer, er Kom24 NO, Medier24 NO, marketwire og FinanzBusiness, hvis brands
+    ACV slet ikke har, plus fem kunder der mangler en raekke paa et site de har.
+    """
+    from .usage import customer_key
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+            WITH acv_ranked AS (
+                -- RANK og ikke ROW_NUMBER, samme grund som i _acv_owner_cte: 67
+                -- (org_id, site)-grupper har en tie paa updated_at, og
+                -- ROW_NUMBER dropper dem tavst.
+                SELECT org_id, brand, site, acv_value_dkk,
+                       RANK() OVER (
+                           PARTITION BY org_id, site ORDER BY updated_at DESC
+                       ) AS rk
+                FROM dbo.PipeDrive_ACV
+            )
+            SELECT org_id, brand, site, MAX(acv_value_dkk) AS arr
+            FROM acv_ranked
+            WHERE rk = 1
+            GROUP BY org_id, brand, site;
+        """)
+        raekker = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("db_acv_beloeb_pr_site fejlede")
+        return {}
+
+    ud: dict = {}
+    for r in raekker:
+        account = ACV_BRAND_TO_ACCOUNT.get(r["brand"])
+        site = acv_site_til_retention(r["brand"], r["site"])
+        # NUL ER UKENDT, IKKE NUL. Verificeret 2026-08-18: 7.766 af 20.642
+        # ACV-raekker har vaerdien 0, og de har ALLE mindst én deal bag sig (DNB
+        # Bank har 79 paa FinansWatch). Vaerdien er ogsaa 0 i lokal valuta, saa
+        # det er ikke en kursfejl: beloebet MANGLER.
+        #
+        # Springes de ikke over, faar 568 abonnementer score 0 i stedet for at
+        # staa som uopgjorte, og de forsvinder tavst fra prioriteringslisten,
+        # fordi score = ARR x vaegt. Samme regel som risiko.py's kommentar om
+        # score: 0 betyder "ingen risiko", None betyder "vi ved det ikke".
+        if account is None or site is None or not r["arr"]:
+            continue
+        kunde = customer_key(account, r["org_id"])
+        ud[(kunde[0], kunde[1], site)] = float(r["arr"])
+    return ud
+
 def abonnementer_med_ejer(maaned: str,
                           owner_name: str | None = None,
                           teams: list | None = None) -> list:
@@ -619,20 +739,51 @@ def abonnementer_med_ejer(maaned: str,
             "kunde_arr_dkk":  ejer.get("arr_dkk"),
             "acv_sites":      ejer.get("acv_sites"),
         })
+    # Antallet taelles EFTER filtreringen, saa ligedelingen (naar den bruges)
+    # summerer til kundens ARR inden for den visning brugeren faktisk ser.
+    #
+    # `har_eget` SKAL beregnes i den foerste loekke: reglen nedenfor er pr. KUNDE
+    # og ikke pr. site, og den kan derfor ikke afgoeres mens man gaar raekkerne
+    # igennem foerste gang.
+    beloeb = db_acv_beloeb_pr_site()
 
-    # Antallet tælles EFTER filtreringen, så fordelingen summerer til kundens
-    # ARR inden for den visning brugeren faktisk ser.
     antal: dict = {}
+    har_eget: dict = {}
     for r in resultat:
         antal[r["kunde"]] = antal.get(r["kunde"], 0) + 1
+        if (r["kunde"][0], r["kunde"][1], r["sites"]) in beloeb:
+            har_eget[r["kunde"]] = True
+
+    # TRE UDFALD, og det sidste er hele grunden til at reglen er pr. kunde.
+    # Maalt 2026-08-18 mod juli 2026:
+    #
+    #   1. Sitet har sin egen ACV-raekke              -> rigtigt beloeb.  15.039
+    #   2. Kunden har INGEN beloeb paa noget af sine  -> ligedeling.           2
+    #   3. Kunden har beloeb paa ANDRE sites, ikke her -> None.               34
+    #
+    # NUMMER 3 MAA IKKE LIGEDELES. Et ligedelt tal ved siden af rigtige beloeb
+    # paa samme kundeside modsiger dem: kunden ville se fem beloeb, hvor det
+    # femte er regnet paa en anden maade end de fire. None siger i stedet "vi ved
+    # det ikke", og maskineriet findes allerede: fold_risici taeller
+    # `abonnementer_med_arr` for sig, og prioriteringslisten viser tagget
+    # "scoren daekker 3 af 4", som fra nu af begynder at virke.
+    #
+    # Nummer 2 beholder ligedelingen, saa de kunder ikke stilles DAARLIGERE end
+    # i dag. Det er to abonnementer, og de har ingen rigtige beloeb at modsige.
     for r in resultat:
         r["sites_i_alt"] = antal[r["kunde"]]
-        # Lige deling er et VALG, ikke en måling: ACV kender kronerne pr.
-        # (org_id, site), men de to site-vokabularer kan ikke brolægges. Indtil
-        # broen findes, er lige deling den eneste fordeling der ikke opfinder en
-        # rangorden mellem kundens sites.
-        r["arr_pr_abonnement"] = (
-            r["kunde_arr_dkk"] / r["sites_i_alt"]
-            if r["kunde_arr_dkk"] is not None else None
-        )
+        eget = beloeb.get((r["kunde"][0], r["kunde"][1], r["sites"]))
+        if eget is not None:
+            r["arr_pr_abonnement"] = eget
+            r["arr_kilde"] = "site"
+        # `> 0` og ikke `is not None`: en total paa nul er summen af ukendte
+        # beloeb og ikke en maaling, jf. nul-reglen i db_acv_beloeb_pr_site. 2.311
+        # af 11.620 kunder har en samlet ACV paa nul, og at dele det ud ville
+        # give dem et beloeb der ser maalt ud og er nul.
+        elif not har_eget.get(r["kunde"]) and (r["kunde_arr_dkk"] or 0) > 0:
+            r["arr_pr_abonnement"] = r["kunde_arr_dkk"] / r["sites_i_alt"]
+            r["arr_kilde"] = "lige_deling"
+        else:
+            r["arr_pr_abonnement"] = None
+            r["arr_kilde"] = None
     return resultat
