@@ -15,7 +15,7 @@ folder risiko-rækker fra abonnementer_i_risiko. Det de deler er NØGLEN, ikke
 funktionen. Se kunde_noegle."""
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from . import cache
 from .outcomes import (
@@ -25,6 +25,7 @@ from .outcomes import (
     LUKKEDE_UDFALD,
     db_maanedens_udfald,
     db_seneste_udfald,
+    naeste_hverdag,
     opfoelgninger,
     tilbage_paa_listen,
 )
@@ -348,6 +349,30 @@ def maanedens_kpier(raekker: list, tilladte: set | None) -> dict:
     }
 
 
+def naeste_udtraek(i_dag: date) -> date:
+    """Datoen for det naeste forbrugsudtraek: den foerste HVERDAG i en maaned.
+
+    Kadencen er den foerste hverdag og ikke den 1., fordi den 1. kan falde paa en
+    loerdag eller en helligdag, og en frist der ikke kan efterleves er ingen
+    frist. naeste_hverdag() kender baade weekender og helligdage, saa kalenderen
+    staar ET sted (outcomes.HELLIGDAGE, 2020-2040).
+
+    Ligger denne maaneds frist forude, er det den. Er den passeret, er det naeste
+    maaneds. Dagen SELV taeller som forude: falder udtraekket i dag, er svaret i
+    dag, og siden skriver "i dag" frem for at pege paa naeste maaned.
+    """
+    def foerste_hverdag(aar: int, maaned: int) -> date:
+        # naeste_hverdag giver den foerste hverdag EFTER sin dato, saa der spoerges
+        # fra dagen FOER den 1. Rammer den 1. en hverdag, er svaret den 1.
+        return naeste_hverdag(date(aar, maaned, 1) - timedelta(days=1))
+
+    denne = foerste_hverdag(i_dag.year, i_dag.month)
+    if i_dag <= denne:
+        return denne
+    aar, maaned = ((i_dag.year + 1, 1) if i_dag.month == 12
+                   else (i_dag.year, i_dag.month + 1))
+    return foerste_hverdag(aar, maaned)
+
 def prioriteringsdata(i_dag: date, teams: list | None = None,
                       abo_maaned: str | None = None) -> dict:
     """Alt hvad prioriteringssiden skal vise. PRD §7.3.
@@ -406,9 +431,15 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
                 if (p["account"], p["org_id"]) not in paa_liste1]
 
     maaned = i_dag.strftime("%Y-%m")
+    udtraek = naeste_udtraek(i_dag)
     return {
         "maaned":           maaned,
-        "reference_maaned": risiko_data["meta"]["reference_maaned"],
+                # Loftet skal MED i svaret og ikke skrives af i skabelonen: staar 40 to
+        # steder, driver de fra hinanden, og kortet ville paastaa en graense der
+        # ikke gaelder.
+        "maks_aabne_sager":  MAKS_AABNE_SAGER,
+        "naeste_udtraek":    udtraek.isoformat(),
+        "dage_til_udtraek":  (udtraek - i_dag).days,"reference_maaned": risiko_data["meta"]["reference_maaned"],
         "kpier":            maanedens_kpier(db_maanedens_udfald(maaned),
                                             tilladte),
         "opfoelgninger":    liste1,
