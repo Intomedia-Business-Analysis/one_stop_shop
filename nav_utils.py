@@ -110,8 +110,8 @@ CATEGORIES = [
             # arbejdsgangen begynder her og går derfra til kunde-detaljen.
             # Rækkefølgen i listen ER den viste rækkefølge, så lå den nederst,
             # ville arbejdsgangen være forkert fra første klik.
-            {"id": "retention-prioritering", "title": "Prioritering",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/prioritering"},
-            {"id": "retention-overview", "title": "Aktive abonnementer",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            {"id": "retention-prioritering", "title": "Dagens opkald",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/prioritering"},
+            {"id": "retention-overview", "title": "Porteføljen",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
             {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
         ],
     },
