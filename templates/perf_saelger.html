@@ -433,13 +433,18 @@
                     <tr>
                       <th>Medie/Site</th>
                       <th>Virksomhed</th>
+                      <!-- Titel er nødvendig for at kunne skelne deals fra hinanden: en kunde
+                           kan have flere forudbookinger med samme beløb og samme dato, hvor
+                           kun titlen adskiller dem (fx BDO's 5 månedsbookinger à 0 kr.).
+                           Uden den ser de ud som duplikerede rækker. -->
+                      <th>Titel</th>
                       <th class="num">Beløb</th>
                       <th>Dato</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody id="deals-tbody">
-                    <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
+                    <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Indlæser…</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1095,7 +1100,7 @@ function renderMonthBars(d) {
 function renderDeals(d) {
   const tbody = document.getElementById('deals-tbody');
   if (!d.seneste_deals.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-4);font-style:italic">Ingen deals</td></tr>';
     return;
   }
   tbody.innerHTML = d.seneste_deals.map(deal => {
@@ -1110,6 +1115,8 @@ function renderDeals(d) {
     return `<tr>
       <td>${escHtml(deal.site)}</td>
       <td style="max-width:160px;white-space:normal">${escHtml(deal.org_name)}</td>
+      <td style="max-width:220px;white-space:normal;color:var(--ink-3)"
+          title="${escHtml(deal.title)}">${escHtml(deal.title)}</td>
       <td class="num" style="${valCls}">${sign}${fmtFull(Math.abs(deal.value))}</td>
       <td>${escHtml(deal.dato)}</td>
       <td><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;${badgeCls}">${badgeTxt}</span></td>
