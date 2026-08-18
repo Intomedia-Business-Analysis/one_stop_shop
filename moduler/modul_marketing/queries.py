@@ -455,3 +455,109 @@ def db_deals(
     except Exception:
         logger.exception("db_deals fejlede")
         raise
+
+
+# ── Excel-eksport ────────────────────────────────────────────────────────────
+# Loft på antal rækker: regnearket bygges client-side af SheetJS, så en
+# filterløs eksport af hele PipedriveDeals ville låse browseren. Rammes loftet,
+# får brugeren en advarsel om at indsnævre filtrene i stedet for et halvt
+# datasæt uden varsel.
+_EXPORT_ROW_CAP = 25000
+
+
+def db_export_deals(
+    accounts=None,
+    sites=None,
+    deal_sources=None,
+    owners=None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = _EXPORT_ROW_CAP,
+) -> dict:
+    """Rådata bag dashboardet til Excel-eksport — upagineret, alle statusser.
+
+    Til forskel fra db_deals() er der INGEN status='won'- eller value_dkk-krav:
+    hele won/open/lost-billedet fra 'Performance pr. Account' kommer med, så man
+    kan pivotere på account og status i Excel. Udelukkelserne (_ADM_EXCLUDE og
+    _WEB_SALE_EXCLUDE) er dashboardets egne, så en pivot på account/status
+    rammer de samme tal som tabellen på skærmen.
+
+    Returnerer {"rows": [...], "total": n, "truncated": bool}, hvor total er
+    ALLE matchende rækker og rows højst `limit` af dem.
+    """
+    limit = max(1, min(_EXPORT_ROW_CAP, int(limit or _EXPORT_ROW_CAP)))
+    where, params = _filter_clause(accounts, sites, deal_sources, owners, date_from, date_to)
+    sql = f"""
+        SELECT
+            d.pd_deal_id,
+            d.status,
+            d.account,
+            d.sites,
+            d.pipeline_name,
+            d.stage_name,
+            d.deal_source,
+            d.source_channel,
+            d.deal_type,
+            d.sales_type,
+            d.org_name,
+            d.person_name,
+            d.owner_name,
+            d.team,
+            d.title,
+            d.currency,
+            d.value,
+            d.value_dkk,
+            d.lost_reason_text,
+            CONVERT(NVARCHAR(10), d.add_time,                23) AS add_date,
+            CONVERT(NVARCHAR(10), d.won_time,                23) AS won_date,
+            CONVERT(NVARCHAR(10), d.lost_time,               23) AS lost_date,
+            CONVERT(NVARCHAR(10), d.expected_close_date,     23) AS expected_close_date,
+            CONVERT(NVARCHAR(10), d.service_activation_date, 23) AS service_activation_date,
+            COUNT(*) OVER() AS total_rows
+        FROM [dbo].[PipedriveDeals] d
+        WHERE 1=1
+          {_ADM_EXCLUDE}
+          {_WEB_SALE_EXCLUDE}
+          {where}
+        ORDER BY d.account ASC, d.status ASC, d.add_time DESC, d.pd_deal_id DESC
+        OFFSET 0 ROWS FETCH NEXT %s ROWS ONLY
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(sql, tuple(params) + (limit,))
+        rows = []
+        total = 0
+        for r in cur.fetchall():
+            total = int(r.get("total_rows") or 0)  # samme værdi i alle rækker
+            rows.append({
+                "deal_id":                 r.get("pd_deal_id"),
+                "status":                  r.get("status") or "",
+                "account":                 r.get("account") or "",
+                "sites":                   r.get("sites") or "",
+                "pipeline":                r.get("pipeline_name") or "",
+                "stage":                   r.get("stage_name") or "",
+                "deal_source":             r.get("deal_source") or "",
+                "source_channel":          r.get("source_channel") or "",
+                "deal_type":               r.get("deal_type") or "",
+                "sales_type":              r.get("sales_type") or "",
+                "org_name":                r.get("org_name") or "",
+                "person_name":             r.get("person_name") or "",
+                "owner_name":              r.get("owner_name") or "",
+                "team":                    r.get("team") or "",
+                "title":                   r.get("title") or "",
+                "currency":                r.get("currency") or "",
+                "value":                   float(r.get("value") or 0),
+                "value_dkk":               float(r.get("value_dkk") or 0),
+                "lost_reason":             r.get("lost_reason_text") or "",
+                "add_date":                r.get("add_date") or "",
+                "won_date":                r.get("won_date") or "",
+                "lost_date":               r.get("lost_date") or "",
+                "expected_close_date":     r.get("expected_close_date") or "",
+                "service_activation_date": r.get("service_activation_date") or "",
+            })
+        conn.close()
+        return {"rows": rows, "total": total, "truncated": total > len(rows)}
+    except Exception:
+        logger.exception("db_export_deals fejlede")
+        raise

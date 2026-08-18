@@ -143,6 +143,11 @@
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <button class="reset-btn" onclick="resetFilters()">Nulstil</button>
+            <button class="xls-btn" id="export-all-btn" onclick="exportAllDeals()"
+                    title="Hent alle deals bag dashboardet (won, open og lost på tværs af accounts) som Excel">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Excel
+            </button>
             <button class="refresh-btn" onclick="loadAll()">
               <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
               Opdater
@@ -327,7 +332,14 @@
         <span class="modal-title-badge" id="modal-status-badge">—</span>
         <span style="font-weight:400;font-size:11px;color:var(--ink-4)" id="modal-count"></span>
       </div>
-      <button class="modal-close" onclick="closeModal()" aria-label="Luk">✕</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="xls-btn" id="export-modal-btn" onclick="exportModalDeals()"
+                title="Hent de viste deals som Excel">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Excel
+        </button>
+        <button class="modal-close" onclick="closeModal()" aria-label="Luk">✕</button>
+      </div>
     </div>
     <div class="modal-body" id="modal-body">
       <div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>
@@ -335,6 +347,8 @@
   </div>
 </div>
 
+<script src="/static/hub-multiselect.js"></script>
+<script src="/static/export-utils.js"></script>
 <script>
 const state = {
   page:     1,
@@ -346,107 +360,8 @@ const state = {
 };
 let inflight = 0;  // bumpes pr. loadAll så vi kan ignorere forældede svar
 
-// --- Multi-select widget -----------------------------------------------------
-const MS = {}; // id -> { options:[], selected:Set, allLabel, onChange }
-
-function setupMultiSelect(wrapId, options, allLabel, onChange){
-  const wrap = document.getElementById(wrapId);
-  wrap.innerHTML = `
-    <button type="button" class="ms-trigger" data-allabel="${allLabel}"></button>
-    <div class="ms-panel">
-      <input type="text" class="ms-search" placeholder="Søg…">
-      <div class="ms-toolbar">
-        <button type="button" data-act="all">Vælg alle</button>
-        <button type="button" data-act="none">Ryd</button>
-      </div>
-      <div class="ms-list"></div>
-    </div>`;
-  MS[wrapId] = { options:[...options], selected:new Set(), allLabel, onChange };
-  renderMS(wrapId);
-
-  const trigger = wrap.querySelector('.ms-trigger');
-  const panel   = wrap.querySelector('.ms-panel');
-  const search  = wrap.querySelector('.ms-search');
-
-  trigger.addEventListener('click', e => {
-    e.stopPropagation();
-    document.querySelectorAll('.ms-panel.open').forEach(p => { if(p !== panel) p.classList.remove('open'); });
-    panel.classList.toggle('open');
-    if(panel.classList.contains('open')){
-      search.value = ''; filterMSList(wrapId, '');
-      setTimeout(()=>search.focus(), 0);
-    }
-  });
-  panel.addEventListener('click', e => e.stopPropagation());
-  search.addEventListener('input', () => filterMSList(wrapId, search.value));
-  wrap.querySelector('[data-act="all"]').addEventListener('click', () => {
-    const filt = (search.value || '').toLowerCase();
-    MS[wrapId].options.forEach(o => {
-      if(!filt || o.toLowerCase().includes(filt)) MS[wrapId].selected.add(o);
-    });
-    renderMS(wrapId); MS[wrapId].onChange();
-  });
-  wrap.querySelector('[data-act="none"]').addEventListener('click', () => {
-    MS[wrapId].selected.clear();
-    renderMS(wrapId); MS[wrapId].onChange();
-  });
-}
-
-function renderMS(wrapId){
-  const state = MS[wrapId];
-  const wrap = document.getElementById(wrapId);
-  const trigger = wrap.querySelector('.ms-trigger');
-  const list = wrap.querySelector('.ms-list');
-
-  const sel = state.selected;
-  if(sel.size === 0){
-    trigger.textContent = state.allLabel;
-    trigger.classList.remove('has-value');
-  }else if(sel.size === 1){
-    trigger.textContent = [...sel][0];
-    trigger.classList.add('has-value');
-  }else{
-    trigger.textContent = `${sel.size} valgt`;
-    trigger.classList.add('has-value');
-  }
-
-  if(!state.options.length){
-    list.innerHTML = '<div class="ms-empty">Ingen muligheder</div>';
-    return;
-  }
-  list.innerHTML = state.options.map(o => {
-    const checked = sel.has(o);
-    return `<label class="ms-opt${checked ? ' checked' : ''}" data-val="${escAttr(o)}">
-      <input type="checkbox" ${checked ? 'checked' : ''}>
-      <span>${escHtml(o)}</span>
-    </label>`;
-  }).join('');
-  list.querySelectorAll('.ms-opt').forEach(el => {
-    el.addEventListener('click', ev => {
-      ev.preventDefault();
-      const v = el.dataset.val;
-      if(sel.has(v)) sel.delete(v); else sel.add(v);
-      renderMS(wrapId); state.onChange();
-    });
-  });
-}
-
-function filterMSList(wrapId, q){
-  q = (q || '').toLowerCase();
-  const wrap = document.getElementById(wrapId);
-  wrap.querySelectorAll('.ms-opt').forEach(el => {
-    const v = el.dataset.val.toLowerCase();
-    el.classList.toggle('hidden', !!q && !v.includes(q));
-  });
-}
-
-function getSelected(wrapId){ return [...(MS[wrapId]?.selected || [])]; }
-function clearSelected(wrapId){ MS[wrapId]?.selected.clear(); renderMS(wrapId); }
-
-// Klik udenfor lukker alle paneler
-document.addEventListener('click', () => {
-  document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
-});
+// Multi-select-filtrene kommer fra /static/hub-multiselect.js — samme widget
+// som benchmark-dashboardet bruger.
 
 // --- Helpers -----------------------------------------------------------------
 function escHtml(s){return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -633,7 +548,10 @@ function renderByAccount(rows){
 
 const STATUS_LABEL = { won: 'Won', open: 'Open', lost: 'Lost' };
 
+let modalMeta = {account:'', status:''};
+
 async function openAccountDealsModal(account, status){
+  modalMeta = {account, status};
   const overlay = document.getElementById('modal-overlay');
   const badge   = document.getElementById('modal-status-badge');
   document.getElementById('modal-account').textContent = account;
@@ -877,6 +795,146 @@ function renderPagination(){
 ['filter-from','filter-to'].forEach(id => {
   document.getElementById(id).addEventListener('change', onFilterChange);
 });
+
+// ── Excel-eksport ───────────────────────────────────────────────────────────
+// To indgange:
+//   exportAllDeals()   — henter ALLE deals bag dashboardet fra serveren
+//                        (upagineret, won+open+lost) og bygger arket. Deals-
+//                        tabellen på skærmen viser kun vundne deals én side ad
+//                        gangen, så et rent client-side-export ville aflevere
+//                        en brøkdel af datasættet.
+//   exportModalDeals() — de rækker drill-down-modalen allerede har hentet.
+const KR_FMT  = '#,##0';
+const DKK_FMT = '#,##0.00';
+
+// Tekstlig gengivelse af de aktive filtre — ryger i arkets titelrække, så et
+// gemt regneark stadig kan forklare sig selv om et halvt år.
+function filterSummaryText(){
+  const f = getFilters();
+  const parts = [];
+  const named = {account:'Account', site:'Site', deal_source:'Deal Source', owner:'Sælger'};
+  Object.keys(named).forEach(k => {
+    const v = f[k] || [];
+    if(v.length) parts.push(named[k] + ': ' + v.join(', '));
+  });
+  if(f.date_from || f.date_to){
+    parts.push('Aktiveringsdato: ' + (f.date_from || '…') + ' → ' + (f.date_to || '…'));
+  }
+  return parts.length ? parts.join(' · ') : 'Alle deals (ingen filtre)';
+}
+
+const EXPORT_COLUMNS = [
+  { header: 'Deal ID',          key: 'deal_id',                 width: 10, align: 'left'  },
+  { header: 'Status',           key: 'status',                  width: 9,  align: 'left'  },
+  { header: 'Account',          key: 'account',                 width: 16, align: 'left'  },
+  { header: 'Site(s)',          key: 'sites',                   width: 26, align: 'left'  },
+  { header: 'Pipeline',         key: 'pipeline',                width: 18, align: 'left'  },
+  { header: 'Stage',            key: 'stage',                   width: 18, align: 'left'  },
+  { header: 'Deal Source',      key: 'deal_source',             width: 20, align: 'left'  },
+  { header: 'Source Channel',   key: 'source_channel',          width: 18, align: 'left'  },
+  { header: 'Deal Type',        key: 'deal_type',               width: 14, align: 'left'  },
+  { header: 'Sales Type',       key: 'sales_type',              width: 14, align: 'left'  },
+  { header: 'Kunde',            key: 'org_name',                width: 30, align: 'left'  },
+  { header: 'Kontaktperson',    key: 'person_name',             width: 22, align: 'left'  },
+  { header: 'Sælger',           key: 'owner_name',              width: 20, align: 'left'  },
+  { header: 'Team',             key: 'team',                    width: 20, align: 'left'  },
+  { header: 'Titel',            key: 'title',                   width: 40, align: 'left'  },
+  { header: 'Valuta',           key: 'currency',                width: 8,  align: 'left'  },
+  { header: 'Værdi (lokal)',    key: 'value',                   width: 14, align: 'right', numFmt: DKK_FMT },
+  { header: 'Værdi (DKK)',      key: 'value_dkk',               width: 14, align: 'right', numFmt: DKK_FMT },
+  { header: 'Oprettet',         key: 'add_date',                width: 12, align: 'left'  },
+  { header: 'Vundet',           key: 'won_date',                width: 12, align: 'left'  },
+  { header: 'Tabt',             key: 'lost_date',               width: 12, align: 'left'  },
+  { header: 'Expected close',   key: 'expected_close_date',     width: 13, align: 'left'  },
+  { header: 'Aktivering',       key: 'service_activation_date', width: 12, align: 'left'  },
+  { header: 'Tabt-årsag',       key: 'lost_reason',             width: 30, align: 'left'  },
+];
+
+async function exportAllDeals(){
+  const btn = document.getElementById('export-all-btn');
+  btn.disabled = true;
+  HubExport.toast('Henter alle deals…');
+  try{
+    const r = await fetch('/tools/marketing/export?' + buildParams());
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const rows = d.rows || [];
+    if(!rows.length){ HubExport.toast('Ingen deals matcher filtrene'); return; }
+    if(d.truncated){
+      HubExport.toast('Kun de første ' + rows.length.toLocaleString('da-DK') + ' af '
+        + (d.total || 0).toLocaleString('da-DK') + ' rækker — indsnævr filtrene');
+    }
+
+    // Opsummering pr. account+status, så arket kan læses uden at pivotere først.
+    const agg = new Map();
+    rows.forEach(row => {
+      const key = row.account + ' | ' + row.status;
+      const cur = agg.get(key) || {account:row.account, status:row.status, deals:0, value_dkk:0};
+      cur.deals     += 1;
+      cur.value_dkk += (row.value_dkk || 0);
+      agg.set(key, cur);
+    });
+    const summary = [...agg.values()].sort((a, b) =>
+      a.account.localeCompare(b.account, 'da') || a.status.localeCompare(b.status, 'da'));
+
+    await HubExport.download({
+      filename: 'deal-source-deals.xlsx',
+      sheets: [
+        {
+          name:  'Deals',
+          title: 'Deal Source — deals · ' + filterSummaryText(),
+          columns: EXPORT_COLUMNS,
+          rows,
+        },
+        {
+          name:  'Pr. account',
+          title: 'Deals og omsætning pr. account og status',
+          columns: [
+            { header: 'Account',     key: 'account',   width: 20, align: 'left'  },
+            { header: 'Status',      key: 'status',    width: 10, align: 'left'  },
+            { header: 'Deals',       key: 'deals',     width: 10, align: 'right', numFmt: '0' },
+            { header: 'Værdi (DKK)', key: 'value_dkk', width: 16, align: 'right', numFmt: KR_FMT },
+          ],
+          rows: summary,
+        },
+      ],
+    });
+  }catch(e){
+    console.error(e);
+    HubExport.toast('Eksport mislykkedes — prøv igen');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function exportModalDeals(){
+  if(!modalRows.length){ HubExport.toast('Ingen deals at eksportere'); return; }
+  const account = modalMeta.account, status = modalMeta.status;
+  HubExport.download({
+    filename: ('deal-source-' + account + '-' + status + '.xlsx').replace(/[^\w.\-]+/g, '-'),
+    sheets: [{
+      name:  account + ' ' + status,
+      title: account + ' — ' + (STATUS_LABEL[status] || status) + ' · ' + filterSummaryText(),
+      columns: [
+        { header: 'Deal ID',        key: 'deal_id',                 width: 10, align: 'left'  },
+        { header: 'Expected close', key: 'expected_close_date',     width: 13, align: 'left'  },
+        { header: 'Aktivering',     key: 'service_activation_date', width: 12, align: 'left'  },
+        { header: 'Kunde',          key: 'org_name',                width: 30, align: 'left'  },
+        { header: 'Titel',          key: 'title',                   width: 40, align: 'left'  },
+        { header: 'Pipeline',       key: 'pipeline',                width: 18, align: 'left'  },
+        { header: 'Account',        key: 'account',                 width: 16, align: 'left'  },
+        { header: 'Site(s)',        key: 'sites',                   width: 26, align: 'left'  },
+        { header: 'Deal Source',    key: 'deal_source',             width: 20, align: 'left'  },
+        { header: 'Deal Type',      key: 'deal_type',               width: 14, align: 'left'  },
+        { header: 'Sælger',         key: 'owner_name',              width: 20, align: 'left'  },
+        { header: 'Valuta',         key: 'currency',                width: 8,  align: 'left'  },
+        { header: 'Værdi (lokal)',  key: 'value',                   width: 14, align: 'right', numFmt: DKK_FMT },
+        { header: 'Værdi (DKK)',    key: 'value_dkk',               width: 14, align: 'right', numFmt: DKK_FMT },
+      ],
+      rows: modalRows,
+    }],
+  });
+}
 
 // Init
 loadFilterOptions().then(() => loadAll());

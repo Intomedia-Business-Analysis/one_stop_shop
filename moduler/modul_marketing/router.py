@@ -9,6 +9,7 @@ from moduler.modul_marketing.queries import (
     db_account_deals,
     db_by_account,
     db_deals,
+    db_export_deals,
     db_filter_options,
     db_summary,
 )
@@ -167,3 +168,35 @@ async def marketing_deals(
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
+
+
+@router.get("/export")
+async def marketing_export(
+    account: list[str] | None = Query(default=None),
+    site: list[str] | None = Query(default=None),
+    deal_source: list[str] | None = Query(default=None),
+    owner: list[str] | None = Query(default=None),
+    date_from: str | None = None,
+    date_to: str | None = None,
+    user=Depends(get_current_user),
+):
+    """Rådata til Excel-eksport — alle matchende deals, alle statusser.
+
+    Regnearket bygges client-side af HubExport (static/export-utils.js), så her
+    leveres kun JSON. Svaret er upagineret, men loftet i db_export_deals: er
+    total > antal rows, siger frontenden det højt i stedet for at aflevere et
+    afkortet ark i stilhed.
+    """
+    _require_access(user)
+    try:
+        return JSONResponse(db_export_deals(
+            accounts=account,
+            sites=site,
+            deal_sources=deal_source,
+            owners=owner,
+            date_from=_norm(date_from),
+            date_to=_norm(date_to),
+        ))
+    except Exception:
+        logger.exception("marketing_export fejlede")
+        raise HTTPException(500, "Data kunne ikke hentes")

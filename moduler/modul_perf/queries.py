@@ -12,7 +12,8 @@ load_dotenv()
 
 # Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
 from constants import (SUBSCRIPTION_BRANDS, BRAND_GROUPS, CANCELLATION_PIPELINES,  # noqa: E402,F401
-                      MONTH_NAMES_DA, deal_value_sql, local_currency_sql)
+                      MONTH_NAMES_DA, deal_value_sql, local_currency_sql,
+                      mirror_exclude_sql)
 
 BRANDS_PLACEHOLDER = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
@@ -55,6 +56,16 @@ _CONV_PH = "(" + ",".join(["%s"] * len(CONVERSION_PIPELINES_UPPER)) + ")"
 # Ekskluder administrative deals fra alle beregninger
 # Bruger dedikeret kolonne + titel-fallback
 _ADM_EXCLUDE = "AND (COALESCE([administrativ],'') <> 'ja') AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%' AND UPPER(LTRIM([title])) NOT LIKE 'ADM %' AND COALESCE([deal_type],'') <> 'Rapport' AND COALESCE([owner_name],'') <> 'System Admin'"
+
+# Spejlkopier fra kontomigreringen — se constants.mirror_exclude_sql().
+_MIRROR_EXCLUDE = mirror_exclude_sql()
+
+# STANDARDFILTERET på alle deal-queries i modulet. De to filtre er slået sammen
+# med vilje: hver query skal have BEGGE, og glemmer man spejl-filteret på én,
+# dobbelt-tælles banner/job-salget igen — præcis den fejl der blev fundet på
+# Lene Jægerums august 2025 (18 deals vist, 15 reelle, 78.008 kr. for meget).
+# Brug _ADM_EXCLUDE alene KUN hvis en query bevidst skal se spejlkopierne.
+_DEAL_EXCLUDE = _ADM_EXCLUDE + _MIRROR_EXCLUDE
 
 DEAL_TYPE_ALIASES: dict[str, list[str]] = {
     "Abonnement":   ["Abonnement", "Subscription"],
@@ -444,7 +455,7 @@ def db_manager_data(today: date, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
           {won_where}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
     """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
@@ -461,7 +472,7 @@ def db_manager_data(today: date, team: str | None = None,
               AND [{_col}] >= %s AND [{_col}] < %s
               {sites_filter}
               {won_where}
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
               {non_finans_exclude}
               {team_clause}
         """, (today.isoformat(), (today + timedelta(days=1)).isoformat()) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
@@ -476,7 +487,7 @@ def db_manager_data(today: date, team: str | None = None,
           AND {_p_sql}
           {sites_filter}
           {won_where}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
     """, tuple(_p_params) + tuple(SUBSCRIPTION_BRANDS) + won_wparams + team_params)
@@ -490,7 +501,7 @@ def db_manager_data(today: date, team: str | None = None,
           AND {_p_sql}
           {sites_filter}
           {cancel_where}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
     """, tuple(_p_params) + tuple(SUBSCRIPTION_BRANDS) + cancel_wparams + team_params)
@@ -510,7 +521,7 @@ def db_manager_data(today: date, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
         GROUP BY MONTH({d_col})
@@ -686,7 +697,7 @@ def db_manager_data(today: date, team: str | None = None,
           AND [pipeline_name]<>'Web Sale'
           AND {_p_sql}
           {sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
     """, won_cparams + cancel_cparams + tuple(_p_params) + tuple(SUBSCRIPTION_BRANDS) + team_params)
@@ -743,7 +754,7 @@ def db_manager_data(today: date, team: str | None = None,
             WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
               AND {_p_sql}
               AND [sites] IN {brands_ph}
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
               {non_finans_exclude}
               {team_clause}
             GROUP BY [owner_name]
@@ -922,11 +933,7 @@ def db_manager_data(today: date, team: str | None = None,
             WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
               AND {d_col} >= %s AND {d_col} < %s
               AND [team] = %s
-              AND COALESCE([administrativ],'') <> 'ja'
-              AND COALESCE([owner_name],'') <> 'System Admin'
-              AND UPPER(LTRIM([title])) NOT LIKE 'ADMINISTRATIV%'
-              AND UPPER(LTRIM([title])) NOT LIKE 'ADM %'
-              AND COALESCE([deal_type],'') <> 'Rapport'
+              {_DEAL_EXCLUDE}
             GROUP BY [owner_name] ORDER BY won DESC
         """, (week_start.isoformat(), week_end.isoformat(), team))
     else:
@@ -940,7 +947,7 @@ def db_manager_data(today: date, team: str | None = None,
             WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
               AND {d_col} >= %s AND {d_col} < %s
               AND [sites] IN {brands_ph}
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
             GROUP BY [owner_name] ORDER BY won DESC
         """, (week_start.isoformat(), week_end.isoformat()) + tuple(SUBSCRIPTION_BRANDS))
     week_saelger_rows = cur.fetchall()
@@ -1175,7 +1182,7 @@ def db_yoy_data(today: date, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           {psql}
           {sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
         GROUP BY YEAR({d_col})
@@ -1224,7 +1231,7 @@ def db_yoy_data(today: date, team: str | None = None,
         WHERE [status]='won' AND [pipeline_name]<>'Web Sale'
           AND {d_col} >= %s AND {d_col} < %s
           {sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
         GROUP BY YEAR({d_col}), MONTH({d_col})
@@ -1267,7 +1274,7 @@ def db_yoy_data(today: date, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           {psql}
           {sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {non_finans_exclude}
           {team_clause}
         GROUP BY COALESCE([owner_name], 'Ukendt'), YEAR({d_col})
@@ -1369,7 +1376,7 @@ def _advertising_budget_split(cur, owner_name: str, team: str, pipeline: str,
           AND [owner_name]=%s
           AND {p_dcol_clause}
           AND COALESCE([sites],'') NOT IN {monitor_ph}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
     """, (pipeline, team, owner_name) + p_dcol_params + tuple(MONITOR_SITES))
     watch_rev = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
@@ -1380,7 +1387,7 @@ def _advertising_budget_split(cur, owner_name: str, team: str, pipeline: str,
           AND [owner_name]=%s
           AND {p_dcol_clause}
           AND [sites] IN {monitor_ph}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
     """, (pipeline, team, owner_name) + p_dcol_params + tuple(MONITOR_SITES))
     monitor_rev = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
@@ -1429,7 +1436,7 @@ def _banner_brand_contribution(cur, owner_name: str, team: str,
               AND [owner_name]=%s
               AND {p_dcol_clause}
               AND [sites] IN {sites_ph}
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
         """, (team, owner_name) + p_dcol_params + tuple(sites))
         rev = float((cur.fetchone() or {}).get("revenue", 0) or 0)
 
@@ -1541,7 +1548,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_p_dcol_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
     """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     res           = cur.fetchone() or {}
@@ -1576,7 +1583,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {_pipe_clause}
         GROUP BY CAST({d_col} AS DATE)
     """, (week_start.isoformat(), week_end.isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + _pipe_params)
@@ -1596,7 +1603,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {_pipe_clause}
     """, (today.isoformat(), (today + timedelta(days=1)).isoformat(), owner_name) + tuple(SUBSCRIPTION_BRANDS) + _pipe_params)
     salg_dag = float((cur.fetchone() or {}).get("total", 0) or 0)
@@ -1610,7 +1617,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           AND {_VAL} > 0
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
     """, _p_close_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     pipe_row       = cur.fetchone() or {}
@@ -1625,7 +1632,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           AND {_VAL} > 0
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
         GROUP BY [pipeline_name]
         ORDER BY antal DESC
@@ -1643,7 +1650,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_ly_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
     """, _ly_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     ly_won = float((cur.fetchone() or {}).get("won", 0) or 0)
@@ -1660,7 +1667,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {d_col} >= %s AND {d_col} < %s
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
         GROUP BY MONTH({d_col})
         ORDER BY maaned
@@ -1680,6 +1687,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_p_dcol_clause}
           AND {_sites_filter}
           {team_clause}
+          {_DEAL_EXCLUDE}
         GROUP BY [owner_name]
     """, _p_dcol_params + tuple(SUBSCRIPTION_BRANDS) + team_params)
     leaderboard = sorted([
@@ -1704,7 +1712,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [owner_name] = %s
           AND {_sites_filter}
           AND {_p_dcol_clause}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
         ORDER BY {d_col} DESC
     """, (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + _p_dcol_params + team_params)
@@ -1737,7 +1745,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_p_dcol_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {budget_team_clause}
         GROUP BY [team]
     """, _p_dcol_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + budget_team_params)
@@ -1760,7 +1768,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_p_dcol_clause}
           AND [owner_name] = %s
           AND {_sites_filter}
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
         GROUP BY [pipeline_name]
         ORDER BY total DESC
@@ -1788,7 +1796,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND {_p_close_time_clause}
           AND [owner_name] = %s
           AND ({_sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
     """, tuple(CONVERSION_PIPELINES_UPPER) + _p_close_time_params + (owner_name,) + tuple(SUBSCRIPTION_BRANDS) + team_params)
     conv_row   = cur.fetchone() or {}
@@ -1810,7 +1818,7 @@ def db_saelger_data(today: date, owner_name: str, team: str | None = None,
           AND [close_time] >= %s AND [close_time] < %s
           AND [owner_name] = %s
           AND ({_sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
-          {_ADM_EXCLUDE}
+          {_DEAL_EXCLUDE}
           {team_clause}
         GROUP BY MONTH([close_time])
         ORDER BY maaned
@@ -1982,7 +1990,7 @@ def db_saelger_conversion_deals(owner_name: str, year: int | None = None,
               AND {period_clause}
               AND [owner_name] = %s
               AND ({sites_filter} OR UPPER([pipeline_name]) IN ('BANNER','JOB'))
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
               {team_clause}
             ORDER BY [close_time] DESC
         """, tuple(CONVERSION_PIPELINES_UPPER) + period_params + (owner_name,)
@@ -2047,6 +2055,7 @@ def db_manager_saelger_deals(owner_name: str, year: int, month: int,
               AND [owner_name] = %s
               AND [sites] IN {brands_ph}
               AND [{date_col}] >= %s AND [{date_col}] < %s
+              {_MIRROR_EXCLUDE}
               {site_clause}
               {pipeline_clause}
             ORDER BY [{date_col}] DESC
@@ -2176,7 +2185,7 @@ def db_manager_saelger_pipeline(owner_name: str, year: int | None = None,
               AND [owner_name] = %s
               AND ([sites] IN {brands_ph} OR [sites] IS NULL)
               AND {_VAL} > 0
-              {_ADM_EXCLUDE}
+              {_DEAL_EXCLUDE}
               {extra_sql}
             ORDER BY CASE WHEN [expected_close_date] IS NULL THEN 1 ELSE 0 END,
                      [expected_close_date] ASC

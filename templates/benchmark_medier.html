@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medie Benchmark — Intomedia Hub</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1500px;margin:0 auto}
+
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+.filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:14px}
+.filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);white-space:nowrap}
+.filter-date,.filter-num,.filter-sel{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;outline:none;transition:border-color .13s}
+.filter-date:focus,.filter-num:focus,.filter-sel:focus{border-color:var(--green)}
+.filter-num{width:80px;text-align:right}
+.filter-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
+.filter-check{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--ink-3);cursor:pointer;white-space:nowrap}
+.filter-check input{margin:0;cursor:pointer}
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:background .13s}
+.refresh-btn:hover{background:var(--green-mid)}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.reset-btn{padding:7px 14px;background:transparent;color:var(--ink-3);border:1px solid var(--border);border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer}
+.reset-btn:hover{border-color:var(--green);color:var(--green)}
+.reset-btn:disabled{opacity:.4;cursor:default;border-color:var(--border);color:var(--ink-4)}
+
+/* Multi-select dropdown — logikken ligger i /static/hub-multiselect.js */
+.ms-wrap{position:relative;display:inline-block}
+.ms-trigger{font-family:var(--font);font-size:12px;font-weight:600;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 28px 6px 10px;cursor:pointer;outline:none;transition:border-color .13s;min-width:150px;max-width:260px;text-align:left;position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-trigger:hover{border-color:var(--green)}
+.ms-trigger.has-value{border-color:var(--green);background:var(--green-light,#f0f8f4)}
+.ms-trigger::after{content:'▾';position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--ink-4)}
+.ms-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:250px;max-width:340px;display:none}
+.ms-panel.open{display:block}
+.ms-search{width:100%;box-sizing:border-box;padding:8px 10px;border:none;border-bottom:1px solid var(--border);font-family:var(--font);font-size:12px;outline:none;background:transparent;color:var(--ink)}
+.ms-toolbar{display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ink-4)}
+.ms-toolbar button{background:none;border:none;cursor:pointer;color:var(--green);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;font-family:var(--font);padding:0}
+.ms-toolbar button:hover{text-decoration:underline}
+.ms-list{max-height:260px;overflow-y:auto;padding:4px 0}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px;color:var(--ink)}
+.ms-opt:hover{background:var(--bg)}
+.ms-opt input{margin:0;cursor:pointer}
+.ms-opt.checked{background:var(--green-light,#f0f8f4);font-weight:600}
+.ms-opt.hidden{display:none}
+.ms-empty{padding:14px 12px;font-size:11px;color:var(--ink-4);text-align:center;font-style:italic}
+
+/* Serie-opsætning.
+   overflow:visible slår .dash-card's overflow:hidden fra på netop dette kort:
+   medie-dropdownen er position:absolute og blev ellers klippet ved kortets
+   kant, så man kun kunne se de første par sites. Kortet får IKKE en z-index —
+   det ville lave en stacking context og fange panelet bag filterbarerne. */
+.bm-series-card{overflow:visible}
+.bm-series-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);margin-bottom:8px}
+.bm-series-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.bm-series-idx{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);min-width:58px}
+.bm-series-hint{font-size:10px;color:var(--ink-4);font-style:italic;min-width:150px}
+.bm-series-hint.warn{color:#8A6D1F;font-style:normal;font-weight:600}
+.bm-series-del{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:16px;line-height:1;padding:2px 4px;margin-left:auto}
+.bm-series-del:hover{color:#B32E45}
+.bm-add-series-btn{padding:6px 12px;background:transparent;color:var(--green);border:1px dashed var(--border);border-radius:var(--r-sm);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer}
+.bm-add-series-btn:hover{border-color:var(--green)}
+.bm-add-series-btn:disabled{opacity:.4;cursor:default}
+
+.spin-wrap{text-align:center;padding:60px;color:var(--ink-4);font-size:12px}
+.spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+/* word-break:normal + hyphens:none: ellers brydes korte overskrifter midt i
+   ordet ("WO N", "LOS T") når kolonnen er smal. Wrap sker kun ved mellemrum. */
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:9px 10px;text-align:left;white-space:normal;word-break:normal;overflow-wrap:normal;hyphens:none}
+.v-table th.num{text-align:right}
+/* white-space SKAL stå her: hub.css' egen .v-table td sætter nowrap, og uden en
+   eksplicit værdi siver den ind og får lange celler (fx valuta-linjen) til at
+   flyde ud over kanten i en table-layout:fixed-tabel. */
+.v-table td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle;white-space:normal}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.v-table tbody tr.zebra{background:color-mix(in srgb, var(--bg) 55%, transparent)}
+.v-table th.grp{border-left:2px solid rgba(255,255,255,.35);text-align:center}
+.v-table td.grp{border-left:2px solid var(--border)}
+
+/* Fælles scroll-wrapper. Ligger UDEN om tabellen alene, så noter og
+   opsummeringer ved siden af ikke bliver trukket ud af syne med den. */
+.bm-table-wrap{width:100%;overflow-x:auto}
+
+/* Sammenligningen er transponeret: nøgletal som rækker, medier som kolonner.
+   Med 15 nøgletal og 2-4 medier giver det 3-5 kolonner i stedet for 15. */
+.bm-compare{table-layout:fixed}
+.bm-compare th.bm-metric,.bm-compare td.bm-metric{width:210px;text-align:left;white-space:normal}
+.bm-compare td.bm-metric{font-weight:700;color:var(--ink);background:var(--bg);font-size:11px}
+.bm-compare td.bm-metric small{display:block;font-weight:500;color:var(--ink-4);font-size:9px;margin-top:2px;line-height:1.4}
+.bm-compare th.bm-serie{text-align:right;font-size:10px}
+/* Nøgletals-rækker holdes på én linje (tal skal kunne læses lodret på tværs af
+   medier); kontekst-rækkerne (bm-soft: datoer, valuta) må gerne ombryde. */
+.bm-compare td.bm-val{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;color:var(--ink);white-space:nowrap}
+.bm-compare td.bm-val.bm-soft{font-weight:500;font-size:11px;color:var(--ink-3);white-space:normal;line-height:1.5}
+.bm-compare tbody tr.bm-sep td{border-top:2px solid var(--border)}
+.bm-compare tbody tr:hover td:not(.bm-metric){background:color-mix(in srgb, var(--bg) 60%, transparent)}
+
+/* Drill-down: fast layout + ellipsis, så 11 kolonner altid kan være der uden
+   vandret scroll. Fulde værdier ligger i title-attributten. */
+.bm-deals{table-layout:fixed;font-size:11px}
+.bm-deals td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:7px 8px}
+.bm-deals th{padding:8px}
+/* Kunde/kontakt og Titel må ombryde: trial-titler er e-mailadresser uden
+   mellemrum, og klippet med ellipsis var de ulæselige uden at hovere.
+   overflow-wrap:anywhere fordi en e-mail ikke har noget naturligt brudpunkt. */
+.bm-deals td.bm-wrap{white-space:normal;overflow-wrap:anywhere;text-overflow:clip}
+.bm-deals td .bm-sub{display:block;font-size:9px;color:var(--ink-4);font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.bm-deals td.bm-strong{font-weight:700;color:var(--ink)}
+.bm-status{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.bm-status.won{background:#E6F4EC;color:#1F8A5B}
+.bm-status.open{background:#FDF6E6;color:#8A6D1F}
+.bm-status.lost{background:#FBE9EC;color:#B32E45}
+
+.bm-footnote{font-size:10px;color:var(--ink-4);line-height:1.7;margin-top:14px}
+
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:1px}
+
+/* Serie-kort */
+.bm-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:20px}
+.bm-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden}
+.bm-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.bm-card-name{font-size:12px;font-weight:800;color:var(--ink);margin-bottom:2px;overflow-wrap:anywhere}
+.bm-card-meta{font-size:10px;color:var(--ink-4);margin-bottom:14px}
+.bm-test-note{font-size:9px;color:var(--ink-3);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 8px;margin-top:10px;line-height:1.6}
+.bm-before-note{font-size:9px;font-weight:700;color:#8A6D1F;background:#FDF6E6;border:1px solid #E8D9AE;border-radius:var(--r-sm);padding:5px 8px;margin:-8px 0 14px;line-height:1.5}
+.bm-card-big{font-size:34px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1}
+.bm-card-big-sub{font-size:10px;color:var(--ink-4);margin-top:4px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+.bm-card-index{display:inline-block;margin-top:10px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+.bm-card-index.bm-up{background:#E6F4EC;color:#1F8A5B}
+.bm-card-index.bm-down{background:#FBE9EC;color:#B32E45}
+.bm-card-index.bm-flat{background:var(--bg);color:var(--ink-3)}
+.bm-card-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.bm-stat-label{font-size:10px;color:var(--ink-4);text-transform:uppercase;letter-spacing:1px;font-weight:700}
+.bm-stat-value{font-size:13px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* Kurve */
+.bm-legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+.bm-legend-item{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--ink-2)}
+.bm-legend-swatch{width:14px;height:3px;border-radius:2px}
+/* Grafen skal ALTID kunne ses i sin helhed uden at scrolle. Derfor ingen
+   min-width og ingen overflow her: SVG'en skalerer med kortets bredde, og
+   viewBox'ens 1000x360 giver højden via sit eget sideforhold.
+   NB: klasserne er bm-præfikset, fordi hub.css allerede har en .chart-box med
+   height:260px — den klippede grafen og gav en lodret scrollbar. */
+.bm-chart-box{width:100%}
+.bm-chart-svg{display:block;width:100%;height:auto}
+.bm-chart-svg .grid{stroke:var(--border);stroke-width:1}
+.bm-chart-svg .axis{stroke:var(--ink-4);stroke-width:1}
+.bm-chart-svg .tick{font-size:9px;fill:var(--ink-4);font-family:var(--font)}
+.bm-chart-svg .marker{stroke:#8A6D1F;stroke-width:1.5;stroke-dasharray:4 3}
+.bm-chart-svg .marker-lbl{font-size:9px;fill:#8A6D1F;font-weight:700;font-family:var(--font)}
+
+.cell-link{color:var(--ink-3);cursor:pointer;text-decoration:underline dotted;text-decoration-color:var(--ink-4);text-underline-offset:2px}
+.cell-link:hover{color:var(--green);text-decoration-color:var(--green)}
+
+.bm-notice{padding:12px 16px;border-radius:var(--r-sm);font-size:11px;line-height:1.6;margin-bottom:16px}
+.bm-notice.info{background:var(--bg);border:1px solid var(--border);color:var(--ink-3)}
+.bm-notice.warn{background:#FDF6E6;border:1px solid #E8D9AE;color:#7A5F1A}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:48px 24px;overflow-y:auto}
+.modal-box{background:var(--surface);border-radius:var(--r);width:min(1500px,96vw);box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 96px)}
+.modal-header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.modal-title{font-size:15px;font-weight:800;color:var(--ink);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink-4);font-size:22px;line-height:1;padding:4px}
+.modal-close:hover{color:var(--ink)}
+.modal-body{padding:20px 24px;overflow:auto;flex:1 1 auto}
+
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/tools/benchmark/medier' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+      <div class="tb-right">
+        <a href="/category/kpi-dashboards" class="tb-btn">← KPI'er og Dashboards</a>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="tool-wrap">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/category/kpi-dashboards" class="bc-link">KPI'er og Dashboards</a><span class="bc-sep">/</span>
+          <span>Medie Benchmark</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h1 class="page-title" style="margin-bottom:4px">Medie Benchmark</h1>
+            <p class="page-sub">Sammenlign to eller flere medier fra hver deres launchdato — dag 1 er mediets egen start, ikke en fælles kalenderdato.</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <button class="reset-btn" onclick="resetAll()">Nulstil</button>
+            <button class="xls-btn" id="export-btn" onclick="exportBenchmark()" disabled
+                    title="Hent sammenligningen og de underliggende deals som Excel">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Excel
+            </button>
+            <button class="refresh-btn" onclick="loadCompare()">
+              <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
+              Opdater
+            </button>
+          </div>
+        </div>
+
+        <!-- 1) Medier og launchdatoer -->
+        <div class="dash-card bm-series-card">
+          <div class="dash-card-title">
+            <span>Medier og launchdatoer</span>
+            <span style="font-weight:400;font-size:9px;color:var(--ink-4)">Startdatoen foreslås ud fra første deal i data — overskriv den med den officielle launchdato</span>
+          </div>
+          <div id="series-list"></div>
+          <button class="bm-add-series-btn" id="bm-add-series-btn" onclick="addSeries()">+ Tilføj medie</button>
+        </div>
+
+        <!-- 2) Fælles filtre -->
+        <div class="filter-bar">
+          <span class="filter-label">Datogrundlag</span>
+          <select class="filter-sel" id="f-date-basis" style="min-width:210px"></select>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Pipeline</span>
+          <div class="ms-wrap" id="ms-pipeline"></div>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Status</span>
+          <div class="ms-wrap" id="ms-status"></div>
+        </div>
+        <div class="filter-bar">
+          <span class="filter-label">Interval</span>
+          <select class="filter-sel" id="f-bucket" style="min-width:150px"></select>
+          <div class="filter-sep"></div>
+          <span class="filter-label">Sammenlign første</span>
+          <input class="filter-num" type="number" id="f-window" min="1" step="1" placeholder="auto">
+          <span class="filter-label" style="text-transform:none;letter-spacing:0;font-weight:600">dage</span>
+          <button class="reset-btn" id="f-window-auto" onclick="setAutoWindow()" title="Sæt vinduet til det yngste medies alder, så alle medier har data i hele perioden">Auto</button>
+          <div class="filter-sep"></div>
+          <label class="filter-check" title="Frasorterer administrative deals og rapport-deals — samme filter som Deal Source-dashboardet">
+            <input type="checkbox" id="f-adm" checked> Ekskludér administrative deals
+          </label>
+          <div class="filter-sep"></div>
+          <label class="filter-check" title="Frasorterer QA-/udviklingsdeals, hvor kontaktpersonens navn begynder med 'test' (fx 'Test Test', 'Daniel test Testesen'). De er næsten alle tabte og trækker win rate ned. Rigtige efternavne som Eftestøl og Bentestuen bevares.">
+            <input type="checkbox" id="f-test" checked> Ekskludér testdeals
+          </label>
+          <div class="filter-sep"></div>
+          <label class="filter-check" title="Vis hele historikken pr. medie i kurven. Tabellerne følger stadig sammenligningsvinduet.">
+            <input type="checkbox" id="f-full"> Kurve: vis hele historikken
+          </label>
+        </div>
+
+        <div id="setup-hint" class="bm-notice info">
+          Vælg mindst to medier ovenfor og tryk <strong>Opdater</strong>. Eksempel: <em>DetailWatch DK</em> med startdato
+          2022-03-08 mod <em>NordicDefenceWatch</em> med 2026-08-11, pipeline <em>Company Trial</em>, datogrundlag <em>Oprettet (add_time)</em>.
+        </div>
+
+        <div id="loading-state" class="spin-wrap hidden">
+          <div class="spinner"></div>
+          <div>Beregner…</div>
+        </div>
+        <div id="error-state" class="bm-notice warn hidden"></div>
+
+        <div id="results" class="hidden">
+          <div id="window-note" class="bm-notice info"></div>
+
+          <!-- 3) Kort pr. medie -->
+          <div class="bm-cards" id="bm-cards"></div>
+
+          <!-- 4) Sammenligningstabel -->
+          <div class="dash-card">
+            <div class="dash-card-title">
+              <span>Sammenligning</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)" id="compare-sub"></span>
+            </div>
+            <div class="bm-table-wrap">
+              <table class="v-table bm-compare">
+                <thead id="compare-thead"></thead>
+                <tbody id="compare-tbody"></tbody>
+              </table>
+            </div>
+            <p class="bm-footnote">
+              Alle tal kan klikkes — så ser du de deals de dækker.
+              <strong>Won</strong> er vundne salg <em>uden</em> Web Sale;
+              <strong>Won Web Sale</strong> er self-service-køb fra hjemmesiden, som oprettes og
+              vindes automatisk uden sælger. Win rate regnes uden Web Sale, da webkøb altid er vundne.
+              Deal Source-dashboardet udelader Web Sale-pipelinen helt — derfor kan dens Won-tal
+              være lavere end summen her.<br>
+              <strong>Alle beløb er DKK.</strong> Deals i SEK, NOK, EUR og USD omregnes pr. deal med
+              kursen på salgsdatoen, så et svensk og et dansk medie kan sammenlignes direkte.
+              Valuta-kolonnen viser det lokale beløb, så tallet kan afstemmes.
+            </p>
+          </div>
+
+          <!-- 5) Kurve -->
+          <div class="dash-card">
+            <div class="dash-card-title">
+              <span>Kumulative deals siden launch</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)" id="chart-sub"></span>
+            </div>
+            <div class="bm-legend" id="bm-legend"></div>
+            <div class="bm-chart-box"><svg class="bm-chart-svg" id="bm-chart-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid meet"></svg></div>
+          </div>
+
+          <!-- 6) Periodetabel -->
+          <div class="dash-card">
+            <div class="dash-card-title">
+              <span>Periodetabel</span>
+              <span style="font-weight:400;font-size:9px;color:var(--ink-4)" id="period-sub"></span>
+            </div>
+            <div class="bm-table-wrap">
+              <table class="v-table">
+                <thead id="period-thead"></thead>
+                <tbody id="period-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Drill-down modal -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span id="modal-title-text">—</span>
+        <span style="font-weight:400;font-size:11px;color:var(--ink-4)" id="modal-count"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="xls-btn" onclick="exportModalDeals()" title="Hent de viste deals som Excel">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Excel
+        </button>
+        <button class="modal-close" onclick="closeModal()" aria-label="Luk">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/hub-multiselect.js"></script>
+<script src="/static/export-utils.js"></script>
+<script>
+const SERIES_MAX = {{ series_max }};
+
+// Kurvefarver. Rækkefølgen er fast, så en serie beholder sin farve mellem
+// opdateringer — swatchen i serie-opsætningen bruger de samme værdier.
+const SERIES_COLORS = ['#1F8A5B', '#2E5FA3', '#8A6D1F', '#B32E45'];
+
+// Serie-opsætningen. `sites` holdes i multi-select-widget'en (ms-series-N), så
+// her ligger kun det der ikke bor i widget'en.
+let seriesRows = [];   // [{uid, start, label, hint}]
+let nextUid    = 1;
+let lastResult = null; // seneste /compare-svar — grundlag for eksport
+let inflight   = 0;    // bumpes pr. loadCompare så forældede svar kasseres
+
+// --- Helpers -----------------------------------------------------------------
+function escHtml(s){
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtInt(v){ return Math.round(v || 0).toLocaleString('da-DK'); }
+function fmtKr(v){ return Math.round(v || 0).toLocaleString('da-DK') + ' kr.'; }
+
+// ISO-dato + n dage -> ISO-dato. UTC-baseret, så sommertid ikke flytter datoen.
+function addDays(iso, n){
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// --- Serie-opsætning ---------------------------------------------------------
+let allSites = [];
+
+function seriesWrapId(uid){ return 'ms-series-' + uid; }
+
+function addSeries(sites = [], start = '', label = ''){
+  if(seriesRows.length >= SERIES_MAX) return;
+  // startIsAuto: datoen er sat af systemet og må overskrives når mediet skiftes.
+  // Skriver brugeren selv i feltet, sættes den til false og datoen står fast.
+  const row = {uid: nextUid++, start, label, hint: '', startIsAuto: !start};
+  seriesRows.push(row);
+  renderSeriesRows();
+  if(sites.length){
+    setSelected(seriesWrapId(row.uid), sites);
+    suggestStart(row.uid);
+  }
+}
+
+function removeSeries(uid){
+  seriesRows = seriesRows.filter(r => r.uid !== uid);
+  delete MS[seriesWrapId(uid)];
+  renderSeriesRows();
+}
+
+// Tegner ALLE serie-rækker forfra. Multi-select-widget'erne bor i den DOM-node
+// vi overskriver, så markeringen læses ud først og lægges tilbage bagefter —
+// ellers ville det at tilføje eller fjerne én serie nulstille de øvrige.
+function renderSeriesRows(){
+  const keep = new Map(seriesRows
+    .filter(r => MS[seriesWrapId(r.uid)])
+    .map(r => [r.uid, getSelected(seriesWrapId(r.uid))]));
+
+  document.getElementById('series-list').innerHTML = seriesRows.map((r, i) => `
+    <div class="bm-series-row">
+      <div class="bm-series-swatch" style="background:${SERIES_COLORS[i % SERIES_COLORS.length]}"></div>
+      <span class="bm-series-idx">Medie ${i + 1}</span>
+      <div class="ms-wrap" id="${seriesWrapId(r.uid)}"></div>
+      <span class="filter-label">Startdato</span>
+      <input class="filter-date" type="date" value="${escHtml(r.start)}"
+             oninput="onStartInput(${r.uid}, this.value)">
+      <span class="filter-label">Navn</span>
+      <input class="filter-sel" type="text" style="width:150px" placeholder="(auto)"
+             value="${escHtml(r.label)}" oninput="onLabelInput(${r.uid}, this.value)">
+      <span class="bm-series-hint${/^\d/.test(r.hint) ? '' : (r.hint ? ' warn' : '')}">${escHtml(r.hint)}</span>
+      <button class="bm-series-del" onclick="removeSeries(${r.uid})" title="Fjern medie" aria-label="Fjern medie">✕</button>
+    </div>`).join('');
+
+  seriesRows.forEach(r => {
+    const wrapId = seriesWrapId(r.uid);
+    setupMultiSelect(wrapId, allSites, 'Vælg medie…', () => onSeriesSitesChange(r.uid));
+    setSelected(wrapId, keep.get(r.uid) || []);
+  });
+  document.getElementById('bm-add-series-btn').disabled = seriesRows.length >= SERIES_MAX;
+}
+
+function seriesByUid(uid){ return seriesRows.find(r => r.uid === uid); }
+function onLabelInput(uid, v){ const r = seriesByUid(uid); if(r) r.label = v; }
+
+// Skriver brugeren i datofeltet, holder vi op med at overskrive det. Tømmes
+// feltet igen, går det tilbage til at følge forslaget.
+function onStartInput(uid, v){
+  const r = seriesByUid(uid);
+  if(!r) return;
+  r.start = v;
+  r.startIsAuto = !v;
+}
+
+async function onSeriesSitesChange(uid){
+  await suggestStart(uid);
+}
+
+// Foreslå launchdatoen ud fra første deal i data.
+//
+// Datoen opdateres når mediet skiftes — ellers ville serie 2 stå med serie 1's
+// dato, hvis man valgte forkert medie først og rettede bagefter. En dato
+// brugeren SELV har skrevet bevares dog, for forslaget er kun et startpunkt:
+// den officielle launch kan afvige (DetailWatch DK har Company Trial-deals
+// ~10 mdr. før 8. marts 2022).
+async function suggestStart(uid){
+  const row = seriesByUid(uid);
+  if(!row) return;
+  const sites = getSelected(seriesWrapId(uid));
+  if(!sites.length){
+    // Fravælges mediet, skal en AUTO-udfyldt dato også væk — den stammede fra
+    // det medie der lige blev fjernet, og en serie med dato men uden medie
+    // blokerer ellers hele sammenligningen. En dato brugeren selv har skrevet
+    // bliver stående.
+    if(row.startIsAuto && row.start){
+      row.start = '';
+      const input = document.querySelector(`#${seriesWrapId(uid)}`)
+        ?.closest('.bm-series-row')?.querySelector('input[type="date"]');
+      if(input) input.value = '';
+    }
+    row.hint = '';
+    refreshHint(uid);
+    return;
+  }
+
+  const p = new URLSearchParams();
+  sites.forEach(s => p.append('site', s));
+  p.set('date_basis', document.getElementById('f-date-basis').value);
+  getSelected('ms-pipeline').forEach(v => p.append('pipeline', v));
+  getSelected('ms-status').forEach(v => p.append('status', v));
+  p.set('exclude_adm',  document.getElementById('f-adm').checked);
+  p.set('exclude_test', document.getElementById('f-test').checked);
+
+  row.hint = 'henter…';
+  refreshHint(uid);
+  try{
+    const r = await fetch('/tools/benchmark/first-activity?' + p);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if(!d.deals){
+      row.hint = 'ingen deals med de valgte filtre';
+    }else{
+      row.hint = `${fmtInt(d.deals)} deals · første ${d.first_date}`;
+      if(row.startIsAuto){
+        row.start = d.first_date;
+        const input = document.querySelector(`#${seriesWrapId(uid)}`)
+          ?.closest('.bm-series-row')?.querySelector('input[type="date"]');
+        if(input) input.value = d.first_date;
+      }else if(row.start && row.start !== d.first_date){
+        // Sig det tydeligt, når den manuelle dato afviger fra data — ellers
+        // ser en glemt dato fra et tidligere medie ud som om den er bevidst.
+        row.hint += ` · din dato: ${row.start}`;
+      }
+    }
+  }catch(e){
+    console.error(e);
+    row.hint = 'kunne ikke hente forslag';
+  }
+  refreshHint(uid);
+}
+
+// Opdaterer kun hint-teksten, så vi ikke river multi-select-widget'erne ned.
+function refreshHint(uid){
+  const row = seriesByUid(uid);
+  const el = document.querySelector(`#${seriesWrapId(uid)}`)
+    ?.closest('.bm-series-row')?.querySelector('.bm-series-hint');
+  if(!el || !row) return;
+  el.textContent = row.hint;
+  el.classList.toggle('warn', !!row.hint && !/^\d/.test(row.hint));
+}
+
+// --- Init --------------------------------------------------------------------
+async function loadFilterOptions(){
+  const r = await fetch('/tools/benchmark/filters');
+  const d = await r.json();
+  allSites = d.sites || [];
+
+  const basisSel = document.getElementById('f-date-basis');
+  basisSel.innerHTML = (d.date_basis || []).map(o =>
+    `<option value="${escHtml(o.value)}">${escHtml(o.label)}</option>`).join('');
+  const bucketSel = document.getElementById('f-bucket');
+  bucketSel.innerHTML = (d.buckets || []).map(o =>
+    `<option value="${escHtml(o.value)}"${o.value === 'week' ? ' selected' : ''}>${escHtml(o.label)}</option>`).join('');
+
+  setupMultiSelect('ms-pipeline', d.pipelines || [], 'Alle pipelines', onSharedFilterChange);
+  setupMultiSelect('ms-status',   d.statuses  || [], 'Alle statusser',  onSharedFilterChange);
+
+  // To tomme serier — sammenligning kræver mindst to.
+  addSeries();
+  addSeries();
+}
+
+// Ændres et fælles filter, er de gamle dato-forslag ikke længere retvisende.
+function onSharedFilterChange(){
+  seriesRows.forEach(r => suggestStart(r.uid));
+}
+['f-date-basis', 'f-adm', 'f-test'].forEach(id => {
+  document.getElementById(id).addEventListener('change', onSharedFilterChange);
+});
+
+function resetAll(){
+  seriesRows = [];
+  renderSeriesRows();
+  clearSelected('ms-pipeline');
+  clearSelected('ms-status');
+  document.getElementById('f-date-basis').selectedIndex = 0;
+  document.getElementById('f-bucket').value = 'week';
+  document.getElementById('f-window').value = '';
+  document.getElementById('f-adm').checked  = true;
+  document.getElementById('f-test').checked = true;
+  document.getElementById('f-full').checked = false;
+  addSeries();
+  addSeries();
+  lastResult = null;
+  document.getElementById('export-btn').disabled = true;
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('error-state').classList.add('hidden');
+  document.getElementById('setup-hint').classList.remove('hidden');
+}
+
+function setAutoWindow(){
+  document.getElementById('f-window').value = '';
+  loadCompare();
+}
+
+// --- Hent sammenligningen ----------------------------------------------------
+function buildCompareParams(){
+  const p = new URLSearchParams();
+  // Halvt udfyldte serier navngives, så fejlbeskeden kan handles på. En HELT
+  // tom serie ignoreres stille — den er blot en ubrugt række.
+  const missing = [];
+  seriesRows.forEach((r, i) => {
+    const sites = getSelected(seriesWrapId(r.uid));
+    if(!sites.length || !r.start){
+      if(sites.length || r.start){
+        missing.push(`medie ${i + 1}` + (sites.length ? ' (mangler startdato)' : ' (mangler medie)'));
+      }
+      return;
+    }
+    p.append('s_sites', sites.join(','));
+    p.append('s_start', r.start);
+    p.append('s_label', r.label || '');
+  });
+  p.set('date_basis', document.getElementById('f-date-basis').value);
+  p.set('bucket',     document.getElementById('f-bucket').value);
+  getSelected('ms-pipeline').forEach(v => p.append('pipeline', v));
+  getSelected('ms-status').forEach(v => p.append('status', v));
+  p.set('exclude_adm',  document.getElementById('f-adm').checked);
+  p.set('exclude_test', document.getElementById('f-test').checked);
+  p.set('full_history', document.getElementById('f-full').checked);
+  const w = parseInt(document.getElementById('f-window').value, 10);
+  if(Number.isFinite(w) && w > 0) p.set('window_days', w);
+  return {params: p, count: p.getAll('s_sites').length, missing};
+}
+
+async function loadCompare(){
+  const {params, count, missing} = buildCompareParams();
+  const err = document.getElementById('error-state');
+  if(count < 1){
+    showError('Vælg mindst ét medie og en startdato.');
+    return;
+  }
+  if(missing.length){
+    showError(`Ufuldstændig opsætning: ${missing.join(', ')}. Udfyld eller fjern rækken.`);
+    return;
+  }
+  err.classList.add('hidden');
+  document.getElementById('setup-hint').classList.add('hidden');
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('loading-state').classList.remove('hidden');
+
+  const myReq = ++inflight;
+  try{
+    const r = await fetch('/tools/benchmark/compare?' + params);
+    if(myReq !== inflight) return;   // forældet svar — kassér
+    if(!r.ok){
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.detail || ('HTTP ' + r.status));
+    }
+    const d = await r.json();
+    if(myReq !== inflight) return;
+    lastResult = d;
+    render(d);
+    document.getElementById('loading-state').classList.add('hidden');
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('export-btn').disabled = false;
+  }catch(e){
+    if(myReq !== inflight) return;
+    console.error(e);
+    document.getElementById('loading-state').classList.add('hidden');
+    showError(e.message || 'Data kunne ikke hentes');
+  }
+}
+
+function showError(msg){
+  const err = document.getElementById('error-state');
+  err.textContent = msg;
+  err.classList.remove('hidden');
+}
+
+// --- Rendering ---------------------------------------------------------------
+// Buckets fra serveren er sparse (kun ikke-tomme intervaller). Her fyldes
+// hullerne, så alle serier har lige mange datapunkter og kan lægges oven på
+// hinanden i kurven.
+function densify(s){
+  const byIdx = new Map(s.buckets.map(b => [b.i, b]));
+  const out = [];
+  let cum = 0;
+  for(let i = 0; i < s.n_buckets; i++){
+    const b = byIdx.get(i) || {deals:0, won:0, open:0, lost:0, won_value:0};
+    cum += b.deals;
+    out.push({i, deals:b.deals, won:b.won, open:b.open, lost:b.lost,
+              won_value:b.won_value, cum});
+  }
+  return out;
+}
+
+function render(d){
+  const dense = d.series.map(densify);
+  renderWindowNote(d);
+  renderCards(d);
+  renderCompareTable(d);
+  renderChart(d, dense);
+  renderPeriodTable(d, dense);
+}
+
+function renderWindowNote(d){
+  const el = document.getElementById('window-note');
+  const youngest = d.series.reduce((a, b) => a.days_available <= b.days_available ? a : b);
+  const auto = d.window_is_auto
+    ? `Vinduet er sat automatisk til <strong>${fmtInt(d.window_days)} dage</strong> — det er så længe «${escHtml(youngest.label)}» har eksisteret, og altså den længste periode hvor <em>alle</em> medier har data.`
+    : `Vinduet er sat manuelt til <strong>${fmtInt(d.window_days)} dage</strong>.`;
+  const over = d.series.filter(s => s.days_available < d.window_days);
+  const warn = over.length
+    ? ` <strong style="color:#8A6D1F">Bemærk:</strong> ${over.map(s => `«${escHtml(s.label)}» har kun ${fmtInt(s.days_available)} dages data`).join(', ')} — de sidste intervaller er derfor tomme og ikke sammenlignelige.`
+    : '';
+  el.innerHTML = `${auto} Målt på <strong>${escHtml(d.date_basis_label)}</strong>`
+    + (d.pipelines.length ? ` · pipeline: <strong>${escHtml(d.pipelines.join(', '))}</strong>` : ' · alle pipelines')
+    + (d.statuses.length ? ` · status: <strong>${escHtml(d.statuses.join(', '))}</strong>` : '')
+    + `. Data pr. ${escHtml(d.today)}.${warn}`;
+}
+
+// Deals før dag 1 er bevidst udenfor sammenligningen, men de skal kunne ses:
+// ellers ligner totalen en fejl, når man holder den op mod Deal Source, der
+// ikke har nogen relativ tidsakse.
+function beforeStartNote(s){
+  const b = s.before_start || {};
+  if(!b.deals) return '';
+  return `<div class="bm-before-note" data-series-label="${escHtml(s.label)}"
+    title="Deals oprettet før mediets dag 1. De er ikke med i tallene nedenfor — sæt startdatoen tidligere, hvis de skal tælle.">
+    ${fmtInt(b.deals)} deal${b.deals === 1 ? '' : 's'} ligger FØR dag 1
+    (${escHtml(b.first_date)}${b.last_date && b.last_date !== b.first_date ? '–' + escHtml(b.last_date) : ''})
+    og tælles ikke med</div>`;
+}
+
+// Alle beløb er DKK. Sælger mediet i fremmed valuta, siges det højt sammen med
+// det lokale beløb — ellers kan man ikke se på tallet at der ER omregnet, og
+// ikke afstemme mod fx en svensk rapport.
+function currencyNote(s){
+  const cur = (s.currencies || []).filter(c => c.deals);
+  if(!cur.length) return '';
+  const foreign = cur.filter(c => c.currency !== 'DKK');
+  if(!foreign.length){
+    return `<div style="font-size:9px;color:var(--ink-4);margin-top:10px">Alle beløb i DKK</div>`;
+  }
+  const parts = foreign.map(c =>
+    `${fmtInt(c.value_local)} ${escHtml(c.currency)} → ${fmtKr(c.value_dkk)}`);
+  // Fordelingen dækker ALLE vundne deals, altså både Won og Won Web Sale — det
+  // står i labelen, så summen ikke ser ud til at være i strid med kortets
+  // Omsætning (won), der er uden Web Sale.
+  return `<div style="font-size:9px;color:#4E7CB8;margin-top:10px;line-height:1.6"
+    title="Omregnet pr. deal med kursen på salgsdatoen (PipedriveDeals.fx_rate)">
+    Omregnet til DKK (alle vundne, inkl. Web Sale): ${parts.join(' · ')}</div>`;
+}
+
+// Hvad testfilteret fjernede — og hvad det gjorde ved win rate. Et filter der
+// arbejder i det skjulte er værre end ingen: der ER grænsetilfælde ('Julie
+// Tester' har 3 vundne deals), så tallet skal kunne klikkes og efterses.
+function testNote(s, idx, d){
+  const t = s.test_deals || {};
+  if(!t.deals) return '';
+  const wr = s.totals.win_rate;
+  // Win rate hvis testdealene HAVDE været med — viser hvad filteret er værd.
+  const won = s.totals.won + t.won;
+  const closed = won + s.totals.lost + t.lost;
+  const wrMed = closed ? Math.round(won / closed * 1000) / 10 : null;
+  const effekt = (d.exclude_test && wr !== null && wrMed !== null && wrMed !== wr)
+    ? ` Win rate ville være ${wrMed}% med dem.` : '';
+  const verb = d.exclude_test ? 'frasorteret' : 'IKKE frasorteret (filter slået fra)';
+  return `<div class="bm-test-note">
+    <span class="cell-link" style="color:inherit" data-test-series="${idx}"
+      title="Klik for at se de frasorterede deals">${fmtInt(t.deals)} testdeal${t.deals === 1 ? '' : 's'}</span>
+    ${verb} (${fmtInt(t.won)} won, ${fmtInt(t.lost)} lost, ${fmtInt(t.open)} open).${effekt}</div>`;
+}
+
+function renderCards(d){
+  const base = d.series[0]?.totals.deals || 0;
+  document.getElementById('bm-cards').innerHTML = d.series.map((s, i) => {
+    const color = SERIES_COLORS[i % SERIES_COLORS.length];
+    const t = s.totals;
+    let idxHtml = '';
+    if(i > 0 && base > 0){
+      const pct = Math.round(t.deals / base * 100);
+      const cls = pct > 100 ? 'bm-up' : (pct < 100 ? 'bm-down' : 'bm-flat');
+      const arrow = pct > 100 ? '▲' : (pct < 100 ? '▼' : '=');
+      idxHtml = `<span class="bm-card-index ${cls}">${arrow} ${pct}% af ${escHtml(d.series[0].label)}</span>`;
+    }else if(i === 0){
+      idxHtml = '<span class="bm-card-index flat">Referencemedie</span>';
+    }
+    return `
+    <div class="bm-card">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${color}"></div>
+      <div class="bm-card-name">${escHtml(s.label)}</div>
+      <div class="bm-card-meta">Dag 1 = ${escHtml(s.start_date)} · ${fmtInt(s.days_available)} dages historik</div>
+      ${beforeStartNote(s)}
+      <div class="bm-card-big">${fmtInt(t.deals)}</div>
+      <div class="bm-card-big-sub">Deals i de første ${fmtInt(d.window_days)} dage</div>
+      ${idxHtml}
+      <div class="bm-card-stats">
+        <div><div class="bm-stat-label">Won</div><div class="bm-stat-value" style="color:#1F8A5B">${fmtInt(t.won)}</div></div>
+        <div title="Self-service-køb fra hjemmesiden — uden sælger">
+          <div class="bm-stat-label">Won Web Sale</div>
+          <div class="bm-stat-value" style="color:#4E7CB8">${fmtInt(t.won_web_sale)}</div>
+        </div>
+        <div><div class="bm-stat-label">Open</div><div class="bm-stat-value" style="color:#8A6D1F">${fmtInt(t.open)}</div></div>
+        <div><div class="bm-stat-label">Lost</div><div class="bm-stat-value" style="color:#B32E45">${fmtInt(t.lost)}</div></div>
+        <div><div class="bm-stat-label">Win rate</div><div class="bm-stat-value">${t.win_rate === null ? '—' : t.win_rate + '%'}</div></div>
+        <div><div class="bm-stat-label">Unikke kunder</div><div class="bm-stat-value">${fmtInt(t.orgs)}</div></div>
+        <div><div class="bm-stat-label">Omsætning (won, DKK)</div><div class="bm-stat-value">${fmtKr(t.won_value)}</div></div>
+        <div><div class="bm-stat-label">Omsætning Web Sale (DKK)</div><div class="bm-stat-value" style="color:#4E7CB8">${fmtKr(t.won_web_sale_value)}</div></div>
+      </div>
+      ${currencyNote(s)}
+      ${testNote(s, i, d)}
+    </div>`;
+  }).join('');
+
+  // Klik på «N testdeals» viser præcis de deals filteret fjernede.
+  document.querySelectorAll('#bm-cards [data-test-series]').forEach(el => {
+    el.addEventListener('click', () =>
+      openDealsModal(parseInt(el.dataset.testSeries, 10), null, null, 'only'));
+  });
+}
+
+// Kort version af valutafordelingen til tabelcellen — fx "SEK 12 · DKK 3".
+function currencyCell(s){
+  const cur = (s.currencies || []).filter(c => c.deals);
+  if(!cur.length) return '—';
+  return cur.map(c => {
+    const local = c.currency === 'DKK' ? '' :
+      ` (${fmtInt(c.value_local)} ${c.currency})`;
+    return `${escHtml(c.currency)} ${fmtInt(c.deals)}${escHtml(local)}`;
+  }).join(' · ');
+}
+
+// Sammenligningen er transponeret: ét nøgletal pr. RÆKKE, ét medie pr. kolonne.
+// Med medierne som rækker blev der 15 kolonner, og overskrifterne ("Deals i alt
+// siden start") blev bredere end tallene under dem. Nu er der 3-5 kolonner
+// uanset hvor mange medier man vælger, og nøgletallene kan hedde noget
+// læsbart, fordi de har en hel række til rådighed.
+//
+// cell(s, i) returnerer indholdet af én celle. `soft: true` dæmper rækken —
+// brugt til kontekst-rækker (datoer, historik) der ikke er nøgletal.
+const COMPARE_ROWS = [
+  {label: 'Dag 1 (startdato)', soft: true, cell: s => escHtml(s.start_date)},
+  {label: 'Til og med',        soft: true, cell: s => escHtml(s.window_end)},
+  {label: 'Deals i vinduet', sep: true,
+   cell: (s, i) => linkVal(fmtInt(s.totals.deals), i, null, null, 'Se alle deals i vinduet')},
+  {label: 'Indeks', note: 'medie 1 = 100',
+   cell: (s, i, d) => {
+     const base = d.series[0].totals.deals || 0;
+     if(i === 0) return '<span style="color:var(--ink-4);font-weight:500">100 (basis)</span>';
+     if(!base)   return '—';
+     const pct = Math.round(s.totals.deals / base * 100);
+     const col = pct > 100 ? '#1F8A5B' : (pct < 100 ? '#B32E45' : 'var(--ink-3)');
+     return `<span style="color:${col}">${fmtInt(pct)}</span>`;
+   }},
+  {label: 'Won', note: 'uden Web Sale', sep: true, color: '#1F8A5B',
+   cell: (s, i) => linkVal(fmtInt(s.totals.won), i, 'won', 'exclude', 'Se de vundne salg', '#1F8A5B')},
+  {label: 'Won Web Sale', note: 'self-service fra hjemmesiden', color: '#4E7CB8',
+   cell: (s, i) => linkVal(fmtInt(s.totals.won_web_sale), i, 'won', 'only', 'Se webkøbene', '#4E7CB8')},
+  {label: 'Open', color: '#8A6D1F',
+   cell: (s, i) => linkVal(fmtInt(s.totals.open), i, 'open', null, 'Se de åbne deals', '#8A6D1F')},
+  {label: 'Lost', color: '#B32E45',
+   cell: (s, i) => linkVal(fmtInt(s.totals.lost), i, 'lost', null, 'Se de tabte deals', '#B32E45')},
+  {label: 'Win rate', note: 'won ÷ (won + lost), uden Web Sale',
+   cell: s => s.totals.win_rate === null ? '—' : s.totals.win_rate + '%'},
+  {label: 'Omsætning (won)', note: 'DKK, uden Web Sale', sep: true,
+   cell: s => fmtKr(s.totals.won_value)},
+  {label: 'Omsætning Web Sale', note: 'DKK', color: '#4E7CB8',
+   cell: s => `<span style="color:#4E7CB8">${fmtKr(s.totals.won_web_sale_value)}</span>`},
+  {label: 'Valuta', note: 'lokalt beløb før omregning', soft: true,
+   cell: s => currencyCell(s)},
+  {label: 'Unikke kunder', sep: true, cell: s => fmtInt(s.totals.orgs)},
+  {label: 'Deals i alt siden start', note: 'hele levetiden, ikke kun vinduet', soft: true,
+   cell: s => fmtInt(s.totals.deals_all)},
+  {label: 'Dages historik', soft: true, cell: s => fmtInt(s.days_available)},
+];
+
+// Klikbart tal. Nuller gøres ikke klikbare — der er ingenting at vise.
+function linkVal(text, seriesIdx, status, webSale, tip, color){
+  if(text === '0') return `<span style="color:${color || 'var(--ink-4)'};font-weight:500">0</span>`;
+  const st = color ? ` style="color:${color}"` : '';
+  return `<span class="cell-link"${st} data-series="${seriesIdx}"`
+    + (status ? ` data-status="${status}"` : '')
+    + (webSale ? ` data-web="${webSale}"` : '')
+    + ` title="${escHtml(tip)}">${text}</span>`;
+}
+
+function renderCompareTable(d){
+  document.getElementById('compare-sub').textContent =
+    `Første ${fmtInt(d.window_days)} dage efter hvert medies startdato`;
+
+  document.getElementById('compare-thead').innerHTML = `
+    <tr>
+      <th class="bm-metric">Nøgletal</th>
+      ${d.series.map((s, i) => `
+        <th class="bm-serie">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:2px;
+            background:${SERIES_COLORS[i % SERIES_COLORS.length]};margin-right:6px"></span>
+          ${escHtml(s.label)}
+        </th>`).join('')}
+    </tr>`;
+
+  document.getElementById('compare-tbody').innerHTML = COMPARE_ROWS.map(row => `
+    <tr${row.sep ? ' class="bm-sep"' : ''}>
+      <td class="bm-metric">${escHtml(row.label)}${row.note ? `<small>${escHtml(row.note)}</small>` : ''}</td>
+      ${d.series.map((s, i) =>
+        `<td class="bm-val${row.soft ? ' bm-soft' : ''}">${row.cell(s, i, d)}</td>`).join('')}
+    </tr>`).join('');
+
+  // Event delegation — undgår onclick-attributter med citater i medienavne
+  document.querySelectorAll('#compare-tbody .cell-link').forEach(el => {
+    el.addEventListener('click', () => openDealsModal(
+      parseInt(el.dataset.series, 10), el.dataset.status || null, el.dataset.web || null));
+  });
+}
+
+// Hånd-tegnet SVG-kurve. Hubben har ingen chart-lib, og linjediagrammet her er
+// simpelt nok at gøre selv — samme tilgang som de øvrige dashboards.
+function renderChart(d, dense){
+  const W = 1000, H = 360;
+  const PAD = {t: 16, r: 18, b: 44, l: 62};
+  const maxBuckets = Math.max(...dense.map(s => s.length), 1);
+  const maxCum     = Math.max(...dense.map(s => s.length ? s[s.length - 1].cum : 0), 1);
+
+  const x = i => PAD.l + (maxBuckets === 1 ? 0 : (i / (maxBuckets - 1)) * (W - PAD.l - PAD.r));
+  const y = v => H - PAD.b - (v / maxCum) * (H - PAD.t - PAD.b);
+
+  // Y-gitter: 5 pæne trin
+  const step = niceStep(maxCum / 5);
+  const yTicks = [];
+  for(let v = 0; v <= maxCum + 0.001; v += step) yTicks.push(v);
+
+  // X-mærker: højst 12, altid første og sidste
+  const xEvery = Math.max(1, Math.ceil(maxBuckets / 12));
+  const parts = [];
+
+  yTicks.forEach(v => {
+    parts.push(`<line class="grid" x1="${PAD.l}" y1="${y(v).toFixed(1)}" x2="${W - PAD.r}" y2="${y(v).toFixed(1)}"/>`);
+    parts.push(`<text class="tick" x="${PAD.l - 8}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmtInt(v)}</text>`);
+  });
+  parts.push(`<line class="axis" x1="${PAD.l}" y1="${H - PAD.b}" x2="${W - PAD.r}" y2="${H - PAD.b}"/>`);
+  parts.push(`<line class="axis" x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${H - PAD.b}"/>`);
+  for(let i = 0; i < maxBuckets; i += xEvery){
+    parts.push(`<text class="tick" x="${x(i).toFixed(1)}" y="${H - PAD.b + 16}" text-anchor="middle">${i + 1}</text>`);
+  }
+  parts.push(`<text class="tick" x="${(PAD.l + (W - PAD.r)) / 2}" y="${H - 8}" text-anchor="middle" style="font-size:10px;font-weight:700">${escHtml(d.bucket_label)} siden launch</text>`);
+
+  // Markør ved sammenligningsvinduets slutning — kun relevant når kurven viser
+  // mere end vinduet (full_history), ellers er den identisk med højre kant.
+  if(d.full_history){
+    const windowBuckets = Math.ceil(d.window_days / d.bucket_days);
+    if(windowBuckets < maxBuckets){
+      const mx = x(windowBuckets - 1);
+      parts.push(`<line class="marker" x1="${mx.toFixed(1)}" y1="${PAD.t}" x2="${mx.toFixed(1)}" y2="${H - PAD.b}"/>`);
+      parts.push(`<text class="marker-lbl" x="${(mx + 5).toFixed(1)}" y="${PAD.t + 11}">sammenligningsvindue</text>`);
+    }
+  }
+
+  dense.forEach((s, si) => {
+    if(!s.length) return;
+    const color = SERIES_COLORS[si % SERIES_COLORS.length];
+    const pts = s.map(b => `${x(b.i).toFixed(1)},${y(b.cum).toFixed(1)}`).join(' ');
+    parts.push(`<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`);
+    // Punkter kun når de kan ses — 400 cirkler pr. serie er bare støj.
+    if(s.length <= 60){
+      const label = d.series[si].label;
+      s.forEach(b => {
+        parts.push(`<circle cx="${x(b.i).toFixed(1)}" cy="${y(b.cum).toFixed(1)}" r="3" fill="${color}">`
+          + `<title>${escHtml(label)} — ${escHtml(d.bucket_label)} ${b.i + 1}: ${fmtInt(b.deals)} nye, ${fmtInt(b.cum)} i alt</title></circle>`);
+      });
+    }
+  });
+
+  document.getElementById('bm-chart-svg').innerHTML = parts.join('');
+  document.getElementById('bm-legend').innerHTML = d.series.map((s, i) => `
+    <div class="bm-legend-item">
+      <div class="bm-legend-swatch" style="background:${SERIES_COLORS[i % SERIES_COLORS.length]}"></div>
+      ${escHtml(s.label)} <span style="color:var(--ink-4);font-weight:400">(dag 1 = ${escHtml(s.start_date)})</span>
+    </div>`).join('');
+  document.getElementById('chart-sub').textContent = d.full_history
+    ? 'Hele historikken pr. medie'
+    : `Kun sammenligningsvinduet (${fmtInt(d.window_days)} dage)`;
+}
+
+// Runde gitterspring: 1, 2, 5, 10, 20, 50, …
+function niceStep(raw){
+  if(!(raw > 0)) return 1;
+  const mag  = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return Math.max(1, mult * mag);
+}
+
+// «Dato tabellen»: én række pr. relativt interval, med hvert medies faktiske
+// datospænd og deals side om side. Det er tabellen man kopierer til et regneark.
+function renderPeriodTable(d, dense){
+  const n = Math.max(...dense.map(s => s.length), 0);
+  document.getElementById('period-sub').textContent =
+    `${fmtInt(n)} intervaller à ${fmtInt(d.bucket_days)} dag${d.bucket_days === 1 ? '' : 'e'}`
+    + ` · «Deals» er nye i intervallet, «Kumuleret» er totalen til og med det`;
+
+  document.getElementById('period-thead').innerHTML = `
+    <tr>
+      <th rowspan="2">${escHtml(d.bucket_label)}</th>
+      <th rowspan="2" class="num">Dage siden launch</th>
+      ${d.series.map(s => `<th colspan="3" class="grp">${escHtml(s.label)}</th>`).join('')}
+    </tr>
+    <tr>
+      ${d.series.map(() => `
+        <th class="grp">Datoer</th>
+        <th class="num">Deals</th>
+        <th class="num">Kumuleret</th>`).join('')}
+    </tr>`;
+
+  if(!n){
+    document.getElementById('period-tbody').innerHTML =
+      `<tr><td class="empty" colspan="${2 + d.series.length * 3}">Ingen data</td></tr>`;
+    return;
+  }
+
+  const rows = [];
+  for(let i = 0; i < n; i++){
+    const dayFrom = i * d.bucket_days + 1;
+    const dayTo   = (i + 1) * d.bucket_days;
+    const cells = d.series.map((s, si) => {
+      const b = dense[si][i];
+      // Ud over mediets levetid: markér tomt frem for at vise et misvisende 0.
+      if(dayFrom > s.chart_days){
+        return `<td class="grp" style="color:var(--ink-4)">—</td>`
+             + `<td class="num" style="color:var(--ink-4)">—</td>`
+             + `<td class="num" style="color:var(--ink-4)">—</td>`;
+      }
+      // Sidste interval er næsten altid kun delvist dækket (vinduet eller
+      // mediets alder slutter midt i det). Slutdatoen klippes, og antallet af
+      // dage skrives ud — ellers ser «46 deals på én dag» ud som en fejl,
+      // når det i virkeligheden er et 7-dages-interval der kun har 1 dag data.
+      const from    = addDays(s.start_date, dayFrom - 1);
+      const lastDay = Math.min(dayTo, s.chart_days);
+      const to      = addDays(s.start_date, lastDay - 1);
+      const days    = lastDay - dayFrom + 1;
+      const partial = days < d.bucket_days;
+      const range   = (from === to) ? from : `${from} → ${to}`;
+      const note    = partial
+        ? `<span style="color:#8A6D1F;font-weight:600"> (kun ${days} af ${d.bucket_days} dage)</span>`
+        : '';
+      return `<td class="grp" style="color:var(--ink-4);font-size:11px;white-space:normal">${escHtml(range)}${note}</td>`
+           + `<td class="num"${partial ? ' style="color:#8A6D1F"' : ''}>${fmtInt(b ? b.deals : 0)}</td>`
+           + `<td class="num" style="font-weight:800">${fmtInt(b ? b.cum : 0)}</td>`;
+    }).join('');
+    rows.push(`<tr${i % 2 ? ' class="zebra"' : ''}>
+      <td style="font-weight:700;color:var(--ink)">${escHtml(d.bucket_label)} ${i + 1}</td>
+      <td class="num" style="color:var(--ink-4)">${dayFrom}–${dayTo}</td>
+      ${cells}
+    </tr>`);
+  }
+  document.getElementById('period-tbody').innerHTML = rows.join('');
+}
+
+// --- Drill-down modal --------------------------------------------------------
+let modalRows = [];
+let modalLabel = '';
+
+// status/webSale afgrænser til præcis det tal der blev klikket på. Er de null,
+// hentes hele vinduet (som når man klikker 'Deals i vinduet').
+function seriesDealParams(idx, status = null, webSale = null, testMode = null){
+  const s = lastResult.series[idx];
+  const p = new URLSearchParams();
+  s.sites.forEach(v => p.append('site', v));
+  p.set('start_date',  s.start_date);
+  p.set('window_days', lastResult.window_days);
+  p.set('date_basis',  lastResult.date_basis);
+  lastResult.pipelines.forEach(v => p.append('pipeline', v));
+  if(status) p.append('status', status);
+  else lastResult.statuses.forEach(v => p.append('status', v));
+  if(webSale) p.set('web_sale', webSale);
+  p.set('exclude_adm', lastResult.exclude_adm);
+  // 'only' henter netop de QA-deals filteret fjernede; ellers arves filteret.
+  p.set('test_persons', testMode || (lastResult.exclude_test ? 'exclude' : ''));
+  return p;
+}
+
+const MODAL_SCOPE_LABEL = {won: 'vundne', open: 'åbne', lost: 'tabte'};
+
+async function openDealsModal(idx, status = null, webSale = null, testMode = null){
+  if(!lastResult) return;
+  const s = lastResult.series[idx];
+  modalLabel = s.label + (status ? ' ' + status : '') + (webSale === 'only' ? ' web-sale' : '')
+             + (testMode === 'only' ? ' testdeals' : '');
+  if(testMode === 'only'){
+    document.getElementById('modal-title-text').textContent =
+      `${s.label} — frasorterede testdeals, dag 1–${lastResult.window_days}`;
+    document.getElementById('modal-count').textContent = '';
+    document.getElementById('modal-body').innerHTML =
+      '<div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>';
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    try{
+      const r = await fetch('/tools/benchmark/deals?' + seriesDealParams(idx, null, null, 'only'));
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      modalRows = d.rows || [];
+      renderModalDeals(d);
+    }catch(e){
+      console.error(e);
+      modalRows = [];
+      document.getElementById('modal-body').innerHTML =
+        '<div style="color:#B32E45;text-align:center;padding:30px">Fejl ved hentning af deals</div>';
+    }
+    return;
+  }
+  const scope = status
+    ? ` · kun ${MODAL_SCOPE_LABEL[status] || status}`
+      + (webSale === 'only' ? ' Web Sale-køb' : webSale === 'exclude' ? ' (uden Web Sale)' : '')
+    : '';
+  document.getElementById('modal-title-text').textContent =
+    `${s.label} — dag 1–${lastResult.window_days} (${s.start_date} → ${s.window_end})${scope}`;
+  document.getElementById('modal-count').textContent = '';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="spin-wrap"><div class="spinner"></div><div>Henter…</div></div>';
+  document.getElementById('modal-overlay').classList.remove('hidden');
+
+  try{
+    const r = await fetch('/tools/benchmark/deals?' + seriesDealParams(idx, status, webSale, testMode));
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    modalRows = d.rows || [];
+    renderModalDeals(d);
+  }catch(e){
+    console.error(e);
+    modalRows = [];
+    document.getElementById('modal-body').innerHTML =
+      '<div style="color:#B32E45;text-align:center;padding:30px">Fejl ved hentning af deals</div>';
+  }
+}
+
+// Fordeling pr. pipeline og dag øverst i modalen. Det er den der forklarer
+// spring i kurven: 46 deals på én dag ser voldsomt ud, indtil man ser at 30 af
+// dem er nyhedsbrevs-tilmeldinger oprettet i én bunke.
+function pipelineBreakdown(rows){
+  if(rows.length < 2) return '';
+  const byPipeline = new Map();
+  const byDay = new Map();
+  rows.forEach(r => {
+    const p = r.pipeline || '(ingen)';
+    byPipeline.set(p, (byPipeline.get(p) || 0) + 1);
+    byDay.set(r.day, (byDay.get(r.day) || 0) + 1);
+  });
+  const pipes = [...byPipeline.entries()].sort((a, b) => b[1] - a[1]);
+  const days  = [...byDay.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const chip = (label, n) =>
+    `<span style="display:inline-block;background:var(--bg);border:1px solid var(--border);
+      border-radius:999px;padding:3px 10px;font-size:10px;font-weight:700;color:var(--ink-2)">
+      ${escHtml(label)} <span style="color:var(--green)">${fmtInt(n)}</span></span>`;
+  return `<div style="margin-bottom:16px;padding:12px 14px;background:var(--bg);
+    border:1px solid var(--border);border-radius:var(--r-sm)">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;
+      color:var(--ink-4);margin-bottom:8px">Fordeling pr. pipeline</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      ${pipes.map(([p, n]) => chip(p, n)).join('')}
+    </div>
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;
+      color:var(--ink-4);margin-bottom:8px">Travleste dage</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${days.map(([day, n]) => chip('Dag ' + day, n)).join('')}
+    </div>
+  </div>`;
+}
+
+function renderModalDeals(d){
+  const rows = d.rows || [];
+  document.getElementById('modal-count').textContent =
+    `${fmtInt(d.total)} deal${d.total === 1 ? '' : 's'}` + (d.truncated ? ` (viser ${fmtInt(rows.length)})` : '');
+  if(!rows.length){
+    document.getElementById('modal-body').innerHTML =
+      '<div style="text-align:center;padding:30px;color:var(--ink-4);font-style:italic">Ingen deals</div>';
+    return;
+  }
+
+  // table-layout:fixed + colgroup: kolonnerne kan ikke vokse forbi kanten, så
+  // tabellen scroller ikke vandret. Lange værdier klippes med ellipsis og
+  // ligger fuldt ud i title-attributten.
+  //
+  // Kunde+kontaktperson og de to beløb er slået sammen til to-linjede celler.
+  // Det sparer fire kolonner uden at fjerne information — og [sites] er droppet,
+  // fordi drill-downen altid er ét medie, så kolonnen gentog samme værdi.
+  const cols = [
+    {w: '5%',  h: 'Dag',    cls: 'num'},
+    {w: '9%',  h: 'Dato'},
+    {w: '7%',  h: 'Status'},
+    {w: '19%', h: 'Kunde / kontakt'},
+    {w: '19%', h: 'Titel'},
+    {w: '10%', h: 'Pipeline'},
+    {w: '7%',  h: 'Stage'},
+    {w: '9%',  h: 'Account'},
+    {w: '8%',  h: 'Kilde'},
+    {w: '9%',  h: 'Sælger'},
+    {w: '9%',  h: 'Værdi', cls: 'num'},
+  ];
+
+  const cell = (v, extra = '') =>
+    `<td${extra} title="${escHtml(v)}">${escHtml(v)}</td>`;
+
+  document.getElementById('modal-body').innerHTML = `
+    ${pipelineBreakdown(rows)}
+    <div class="bm-table-wrap">
+      <table class="v-table bm-deals">
+        <colgroup>${cols.map(c => `<col style="width:${c.w}">`).join('')}</colgroup>
+        <thead><tr>${cols.map(c =>
+          `<th${c.cls ? ` class="${c.cls}"` : ''}>${escHtml(c.h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => {
+          const st = (r.status || '').toLowerCase();
+          const kunde = r.org_name || '—';
+          const kontakt = r.person_name || '';
+          const lokal = (r.currency && r.currency !== 'DKK' && r.value)
+            ? fmtInt(r.value) + ' ' + r.currency : '';
+          return `<tr>
+            <td class="num">${fmtInt(r.day)}</td>
+            ${cell(r.basis_date || '—')}
+            <td><span class="bm-status ${st}">${escHtml(r.status || '—')}</span></td>
+            <td class="bm-strong bm-wrap" title="${escHtml(kunde + (kontakt ? ' · ' + kontakt : ''))}">
+              ${escHtml(kunde)}${kontakt ? `<span class="bm-sub">${escHtml(kontakt)}</span>` : ''}
+            </td>
+            ${cell(r.title || '—', ' class="bm-wrap"')}
+            ${cell(r.pipeline || '—')}
+            ${cell(r.stage || '—')}
+            ${cell(r.account || '—')}
+            ${cell(r.deal_source || '—')}
+            ${cell(r.owner_name || '—')}
+            <td class="num" title="${escHtml(lokal || '')}">
+              ${r.value_dkk ? fmtKr(r.value_dkk) : '—'}
+              ${lokal ? `<span class="bm-sub">${escHtml(lokal)}</span>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function closeModal(e){
+  // Kaldt fra ✕-knappen (uden event) eller fra overlay-klik. Modal-box stopper
+  // propagation, så klik inde i boksen lukker ikke.
+  if(!e || e.target === document.getElementById('modal-overlay')){
+    document.getElementById('modal-overlay').classList.add('hidden');
+  }
+}
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') document.getElementById('modal-overlay').classList.add('hidden');
+});
+
+// --- Excel-eksport -----------------------------------------------------------
+const KR_FMT  = '#,##0';
+const DKK_FMT = '#,##0.00';
+
+const DEAL_COLUMNS = [
+  { header: 'Medie',        key: 'series',                  width: 22, align: 'left'  },
+  { header: 'Dag',          key: 'day',                     width: 7,  align: 'right', numFmt: '0' },
+  { header: 'Dato',         key: 'basis_date',              width: 12, align: 'left'  },
+  { header: 'Deal ID',      key: 'deal_id',                 width: 10, align: 'left'  },
+  { header: 'Status',       key: 'status',                  width: 9,  align: 'left'  },
+  { header: 'Kunde',        key: 'org_name',                width: 30, align: 'left'  },
+  { header: 'Kontaktperson',key: 'person_name',             width: 24, align: 'left'  },
+  { header: 'Titel',        key: 'title',                   width: 40, align: 'left'  },
+  { header: 'Pipeline',     key: 'pipeline',                width: 18, align: 'left'  },
+  { header: 'Stage',        key: 'stage',                    width: 18, align: 'left' },
+  { header: 'Account',      key: 'account',                 width: 16, align: 'left'  },
+  { header: 'Site(s)',      key: 'sites',                   width: 26, align: 'left'  },
+  { header: 'Deal Source',  key: 'deal_source',             width: 20, align: 'left'  },
+  { header: 'Deal Type',    key: 'deal_type',               width: 14, align: 'left'  },
+  { header: 'Sælger',       key: 'owner_name',              width: 20, align: 'left'  },
+  { header: 'Team',         key: 'team',                    width: 20, align: 'left'  },
+  { header: 'Valuta',       key: 'currency',                width: 8,  align: 'left'  },
+  { header: 'Værdi (lokal)',key: 'value',                   width: 14, align: 'right', numFmt: DKK_FMT },
+  { header: 'Værdi (DKK)',  key: 'value_dkk',               width: 14, align: 'right', numFmt: DKK_FMT },
+  { header: 'Oprettet',     key: 'add_date',                width: 12, align: 'left'  },
+  { header: 'Vundet',       key: 'won_date',                width: 12, align: 'left'  },
+  { header: 'Aktivering',   key: 'service_activation_date', width: 12, align: 'left'  },
+];
+
+// Arket får tre faner: Sammenligning (totalerne), Periodetabel (dato tabellen)
+// og Deals (rådata for alle serier, hentet på ny så eksporten ikke afhænger af
+// om man har åbnet drill-down-modalen).
+async function exportBenchmark(){
+  if(!lastResult) return;
+  const d = lastResult;
+  const btn = document.getElementById('export-btn');
+  btn.disabled = true;
+  HubExport.toast('Henter deals…');
+  try{
+    const dense = d.series.map(densify);
+    const scope = [
+      `Datogrundlag: ${d.date_basis_label}`,
+      `Vindue: første ${d.window_days} dage`,
+      `Interval: ${d.bucket_label}`,
+      d.pipelines.length ? `Pipeline: ${d.pipelines.join(', ')}` : 'Alle pipelines',
+      d.statuses.length ? `Status: ${d.statuses.join(', ')}` : 'Alle statusser',
+      d.exclude_adm ? 'Uden administrative deals' : 'Inkl. administrative deals',
+      `Data pr. ${d.today}`,
+    ].join(' · ');
+
+    const compareRows = d.series.map((s, i) => {
+      const base = d.series[0].totals.deals || 0;
+      return {
+        medie:      s.label,
+        sites:      s.sites.join(', '),
+        start:      s.start_date,
+        slut:       s.window_end,
+        deals:      s.totals.deals,
+        indeks:     (base > 0) ? Math.round(s.totals.deals / base * 100) : null,
+        won:        s.totals.won,
+        won_web:    s.totals.won_web_sale,
+        open:       s.totals.open,
+        lost:       s.totals.lost,
+        win_rate:   s.totals.win_rate,
+        omsaetning: s.totals.won_value,
+        oms_web:    s.totals.won_web_sale_value,
+        kunder:     s.totals.orgs,
+        deals_all:  s.totals.deals_all,
+        dage:       s.days_available,
+      };
+    });
+
+    const n = Math.max(...dense.map(s => s.length), 0);
+    const periodRows = [];
+    for(let i = 0; i < n; i++){
+      const row = {
+        interval: `${d.bucket_label} ${i + 1}`,
+        dage:     `${i * d.bucket_days + 1}–${(i + 1) * d.bucket_days}`,
+      };
+      d.series.forEach((s, si) => {
+        const b = dense[si][i];
+        const inRange = (i * d.bucket_days + 1) <= s.chart_days;
+        row['from_' + si] = inRange ? addDays(s.start_date, i * d.bucket_days) : '';
+        row['d_' + si]    = inRange ? (b ? b.deals : 0) : '';
+        row['c_' + si]    = inRange ? (b ? b.cum : 0) : '';
+      });
+      periodRows.push(row);
+    }
+    const periodColumns = [
+      { header: d.bucket_label,       key: 'interval', width: 16, align: 'left'  },
+      { header: 'Dage siden launch',  key: 'dage',     width: 16, align: 'left'  },
+    ];
+    d.series.forEach((s, si) => {
+      periodColumns.push({ header: s.label + ' — fra dato', key: 'from_' + si, width: 16, align: 'left' });
+      periodColumns.push({ header: s.label + ' — deals',    key: 'd_' + si,    width: 12, align: 'right', numFmt: '0' });
+      periodColumns.push({ header: s.label + ' — kumuleret',key: 'c_' + si,    width: 14, align: 'right', numFmt: '0' });
+    });
+
+    // Rådata for alle serier. Fejler én serie, tages de øvrige med alligevel —
+    // en delvis eksport er mere brugbar end ingen, og fanen viser hvad der er med.
+    const dealRows = [];
+    let dealErrors = 0;
+    for(let i = 0; i < d.series.length; i++){
+      try{
+        const r = await fetch('/tools/benchmark/deals?' + seriesDealParams(i));
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        const body = await r.json();
+        (body.rows || []).forEach(row => dealRows.push({...row, series: d.series[i].label}));
+      }catch(e){
+        console.error('deals-hentning fejlede for serie', i, e);
+        dealErrors++;
+      }
+    }
+    if(dealErrors) HubExport.toast(`${dealErrors} medie(r) mangler rådata i arket`);
+
+    await HubExport.download({
+      filename: 'medie-benchmark.xlsx',
+      sheets: [
+        {
+          name:  'Sammenligning',
+          title: 'Medie Benchmark — ' + scope,
+          columns: [
+            { header: 'Medie',                 key: 'medie',      width: 24, align: 'left'  },
+            { header: 'Site(s)',               key: 'sites',      width: 30, align: 'left'  },
+            { header: 'Startdato (dag 1)',     key: 'start',      width: 15, align: 'left'  },
+            { header: 'Til og med',            key: 'slut',       width: 13, align: 'left'  },
+            { header: 'Deals i vinduet',       key: 'deals',      width: 15, align: 'right', numFmt: '0' },
+            { header: 'Indeks (medie 1 = 100)',key: 'indeks',     width: 20, align: 'right', numFmt: '0' },
+            { header: 'Won (uden Web Sale)',   key: 'won',        width: 20, align: 'right', numFmt: '0' },
+            { header: 'Won Web Sale',          key: 'won_web',    width: 15, align: 'right', numFmt: '0' },
+            { header: 'Open',                  key: 'open',       width: 9,  align: 'right', numFmt: '0' },
+            { header: 'Lost',                  key: 'lost',       width: 9,  align: 'right', numFmt: '0' },
+            { header: 'Win rate (%) u. Web Sale', key: 'win_rate', width: 22, align: 'right', numFmt: '0.0' },
+            { header: 'Omsætning won (DKK)',   key: 'omsaetning', width: 20, align: 'right', numFmt: KR_FMT },
+            { header: 'Omsætning Web Sale (DKK)', key: 'oms_web', width: 22, align: 'right', numFmt: KR_FMT },
+            { header: 'Unikke kunder',         key: 'kunder',     width: 14, align: 'right', numFmt: '0' },
+            { header: 'Deals i alt siden start',key: 'deals_all', width: 20, align: 'right', numFmt: '0' },
+            { header: 'Dages historik',        key: 'dage',       width: 14, align: 'right', numFmt: '0' },
+          ],
+          rows: compareRows,
+        },
+        {
+          name:  'Periodetabel',
+          title: 'Deals pr. ' + d.bucket_label.toLowerCase() + ' siden launch — ' + scope,
+          columns: periodColumns,
+          rows: periodRows,
+        },
+        {
+          name:  'Deals',
+          title: 'Underliggende deals i sammenligningsvinduet — ' + scope,
+          columns: DEAL_COLUMNS,
+          rows: dealRows,
+        },
+      ],
+    });
+  }catch(e){
+    console.error(e);
+    HubExport.toast('Eksport mislykkedes — prøv igen');
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function exportModalDeals(){
+  if(!modalRows.length){ HubExport.toast('Ingen deals at eksportere'); return; }
+  HubExport.download({
+    filename: ('medie-benchmark-' + modalLabel + '.xlsx').replace(/[^\w.\-]+/g, '-'),
+    sheets: [{
+      name:  modalLabel,
+      title: modalLabel + ' — deals i sammenligningsvinduet',
+      columns: DEAL_COLUMNS.filter(c => c.key !== 'series'),
+      rows: modalRows,
+    }],
+  });
+}
+
+// Init
+loadFilterOptions();
+</script>
+</body>
+</html>

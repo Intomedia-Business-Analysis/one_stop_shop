@@ -42,6 +42,7 @@ from moduler.modul_portfolio_alignment.router import router as portfolio_alignme
 from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_retention.router import router as retention_router
 from moduler.modul_marketing.router import router as marketing_router
+from moduler.modul_benchmark.router import router as benchmark_router
 from moduler.modul_saelger_portfolio.router import router as saelger_portfolio_router
 from moduler.modul_klippekort.router import router as klippekort_router
 from moduler.modul_admin_nysalg.router import router as admin_nysalg_router
@@ -155,6 +156,7 @@ app.include_router(portfolio_alignment_router)
 app.include_router(rotation_router)
 app.include_router(retention_router)
 app.include_router(marketing_router)
+app.include_router(benchmark_router)
 app.include_router(saelger_portfolio_router)
 app.include_router(klippekort_router)
 app.include_router(admin_nysalg_router)
