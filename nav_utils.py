@@ -20,6 +20,10 @@ CATEGORIES = [
             {"id": "kpi-saelger-portfolio", "title": "Sælger Portefølje",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "salesperson",    "exclude_roles": ["sales_operations", "management"], "url": "/tools/saelger-portfolio/"},
             {"id": "kpi-manager",       "title": "Manager Dashboard",       "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_manager",  "url": "/tools/performance/manager"},
             {"id": "kpi-afdelingsleder","title": "Afdelingsleder Dashboard", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations","url": "/tools/performance/afdelingsleder"},
+            # min_role SKAL matche MIN_ROLLE i modul_benchmark/router.py:
+            # sættes den lavere her, får fx en sales manager et menupunkt der
+            # svarer 403. management (rang 5) dækker ledelse + admin.
+            {"id": "benchmark-medier", "title": "Medie Benchmark",           "type": "dashboard", "subcategory": None, "brand": None, "min_role": "management",     "url": "/tools/benchmark/medier"},
         ],
     },
     {
