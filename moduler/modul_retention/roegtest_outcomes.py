@@ -100,7 +100,7 @@ def main() -> int:
              "created_by": BRUGER},
             [
                 # Fornyet MED prisstigning: 60.000 SEK * 0,72 = 43.200 DKK mod
-                # 40.000 før. Bevidst, fordi PRD-hullet i §6.2 betyder at en
+                # 40.000 før. Bevidst, fordi hullet i udfaldsmodellen betyder at en
                 # stigning kun kan registreres som 'fornyet'. Testen fastholder
                 # at koden ikke spærrer for det — den må ikke "rette" tallet.
                 {"site": SITE_A, "contact_result": "kontakt_opnaaet",
@@ -136,7 +136,7 @@ def main() -> int:
             tjek("fx_rate gemt uændret", float(a["fx_rate"]) == 0.72)
             tjek("conversation_id peger tilbage", a["conversation_id"] == cid)
             # Uden denne kolonne kan et bekræftet beløb ikke skelnes fra den
-            # lige deling, når §9's forudsigelsesrate skal beregnes.
+            # lige deling, når Målingsidens forudsigelsesrate skal beregnes.
             tjek("arr_before_kilde gemt som bekraeftet",
                  a["arr_before_kilde"] == outcomes.ARR_KILDE_BEKRAEFTET,
                  repr(a["arr_before_kilde"]))
@@ -148,7 +148,8 @@ def main() -> int:
         print("--- 3: datoer er datoer, ikke strenge ---")
         # TDS 7.0 kender ikke date/datetime2 og sender dem som tekst. Uden
         # normaliseringen i outcomes.py sprang opfoelgninger på
-        # 'str <= date', og §7.3 kunne ikke afgøre om en aftale var overskredet.
+        # 'str <= date', og Dagens opkald kunne ikke afgøre om en aftale
+        # var overskredet.
         if a:
             tjek("renewal_date er en date", type(a["renewal_date"]) is dt.date,
                  repr(a["renewal_date"]))
@@ -208,7 +209,7 @@ def main() -> int:
              len(outcomes.opfoelgninger(seneste, dt.date(2026, 8, 14))) == 0)
 
         print("--- 6b: historik grupperet paa samtalen ---")
-        # PRD §7.4. Kunden har nu to samtaler: den foerste med TO udfald, den
+        # Kundeside. Kunden har nu to samtaler: den foerste med TO udfald, den
         # anden med ET. Grupperingen er hele pointen — fem loesrevne raekker
         # ville laeses som fem opkald.
         # Str ind, samme resultat: db_historik konverterer selv til INT.
@@ -232,12 +233,12 @@ def main() -> int:
              outcomes.db_historik("findes-ikke", 999) == [])
 
         print("--- 7: atomicitet ---")
-        # Andet udfald har et outcome der ikke findes ('opgraderet' — PRD §6.2's
-        # hul). Samtalen og det FØRSTE udfald skal forsvinde med det.
-        # Rollback'en inde i registrer_samtale rammer den delte transaktion, så
-        # alt ovenstående ryger også. Det er forventet, og er samtidig beviset
-        # på at rollback'en er ægte. Logger'en printer en traceback her — den
-        # hører til testen.
+        # Andet udfald har et outcome der ikke findes ('opgraderet' — Hvad
+        # Specialisten kan registreres hul). Samtalen og det FØRSTE udfald skal
+        # forsvinde med det. Rollback'en inde i registrer_samtale rammer den
+        # delte transaktion, så alt ovenstående ryger også. Det er forventet,
+        # og er samtidig beviset på at rollback'en er ægte. Logger'en printer
+        # en traceback her — den hører til testen.
         foer = antal("RetentionConversations")
         cid3 = outcomes.registrer_samtale(
             {"account": ACCOUNT, "org_id": ORG_ID,

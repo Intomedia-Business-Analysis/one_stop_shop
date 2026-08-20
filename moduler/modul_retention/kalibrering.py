@@ -1,9 +1,11 @@
-"""Kalibrering af zonevægtene mod FAKTISK churn. PRD §12's vigtigste punkt.
+"""Kalibrering af zonevægtene mod FAKTISK churn. Modulets vigtigste
+ubesvarede spørgsmål.
 
     .venv/Scripts/python.exe moduler/modul_retention/kalibrering.py
 
-Spørgsmålet er ikke "hvem er i risiko" men "forudsiger zonen noget". Metoden er
-PRD §12's: `dbo.retention` ved hvem der forsvandt, måned for måned. For hver
+Spørgsmålet er ikke "hvem er i risiko" men "forudsiger zonen noget". Metoden
+bygger paa det eneste vi har: `dbo.retention` ved hvem der forsvandt, måned
+for måned. For hver
 referencemåned R sammenlignes zonefordelingen for de abonnementer, der var væk H
 måneder senere, med fordelingen for dem der stadig var der. Overlapper de to
 helt, forudsiger zonen ingenting, og de syv vægte er postulater.
@@ -29,7 +31,7 @@ FIRE TING DER SKAL VÆRE RIGTIGE, ellers måler filen sig selv:
    måneder. Vinduet koster måneder: H=6 kræver at R+6 er en hel måned, så den
    horisont har færrest referencer bag sig. Antallet står i tabellen.
 
-3. FORSVUNDET ER IKKE OPSAGT. PRD §11, punkt 7: mellem april og maj 2026 blev
+3. FORSVUNDET ER IKKE OPSAGT. Mellem april og maj 2026 blev
    1.769 abonnementer GENSKABT efter at have været væk. Et abonnement kan altså
    forsvinde og komme tilbage. Kohorten afgøres derfor på tilstanden i R+H — er
    den tilbage dér, tælles den som blevet — og filen tæller særskilt, hvor mange
@@ -75,7 +77,7 @@ def beskaer(serie: dict, reference: str) -> dict:
 
 
 def abo_noegle(r: dict) -> tuple:
-    """Abonnementets grain, PRD §2: (account, org_id, sites).
+    """Abonnementets grain, Definitioner: (account, org_id, sites).
 
     GENNEM `customer_key`, ikke råt fra rækken. `db_abonnementer` er en SQL-query
     og leverer `org_id` som INT (982), mens hvert forbrugsopslag i usage.py er
@@ -223,7 +225,7 @@ def skriv_horisont(horisont: int, maalinger: list) -> None:
         print(f"  {ZONE_LABELS[z].ljust(14)} {b:>9,} {a_b:>6.1f}% "
               f"{f:>7,} {a_f:>6.1f}% {lift:>6.2f} {_andel(f, b + f):>10.2f}%")
 
-    # PRD §9's forudsigelsesrate, med og uden datahullet. Se punkt 4.
+    # Målingsidens forudsigelsesrate, med og uden datahullet. Se punkt 4.
     risiko = [z for z in ZONE_ORDER if ZONE_VAEGT.get(z, 0) > 0]
     for navn, zoner in (("MED intet_signal ", risiko),
                         ("UDEN intet_signal", [z for z in risiko
@@ -256,10 +258,10 @@ def skriv_horisont(horisont: int, maalinger: list) -> None:
 def skriv_vaegtvektor(horisont: int, maalinger: list) -> None:
     """Churn-rate pr. zone som vægtvektor, holdt op mod dagens skøn.
 
-    Rå churn-rate og ikke en model: vægten i PRD §4 ganges på ARR, så det den
-    skal udtrykke er "hvor sandsynligt er det, at dette abonnement forsvinder".
-    Normaliseret så den højeste zone er 1,00, fordi ZONE_VAEGT er skaleret sådan
-    — ellers kan de to kolonner ikke sammenlignes.
+    Rå churn-rate og ikke en model: vægten i Prioriteringsmodellen ganges på
+    ARR, så det den skal udtrykke er "hvor sandsynligt er det, at dette
+    abonnement forsvinder". Normaliseret så den højeste zone er 1,00, fordi
+    ZONE_VAEGT er skaleret sådan — ellers kan de to kolonner ikke sammenlignes.
     """
     s = laeg_sammen(maalinger)
     rater = {}
@@ -341,7 +343,7 @@ def main() -> int:
           "\n  pakke. Foerst RetentionOutcomes kan skelne de tre, og den er tom"
           "\n  indtil specialisten registrerer den foerste samtale.")
     print("\n  Maj 2026 er en kendt artefakt: 1.769 abonnementer blev genskabt"
-          "\n  mellem april og maj (PRD §11 punkt 7), og abonnementstallet"
+          "\n  mellem april og maj, og abonnementstallet"
           "\n  springer fra ca. 12.000 til ca. 15.500. Referencemaaneder paa hver"
           "\n  side af springet er ikke sammenlignelige.")
     return 0

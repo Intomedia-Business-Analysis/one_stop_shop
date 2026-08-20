@@ -1,4 +1,4 @@
-"""Røgtest af §7.3's datalag (prioritering.py) UDEN database.
+"""Røgtest af Dagens opkalds side datalag (prioritering.py) UDEN database.
 
     .venv/Scripts/python.exe moduler/modul_retention/roegtest_prioritering.py
 
@@ -82,11 +82,12 @@ def udfald(account="watch", org_id=2084, site="amwatch.dk",
 
 def abo(account="watch", org_id="2084", site="amwatch.dk", zone="stoppet",
         score=1000.0, arr=1000.0, kunde_arr=50000.0, navn="Test A/S",
-        mikro=False):
+        mikro=False, opsagt=None):
     """Én række som abonnementer_i_risiko ville levere den. org_id som STRENG."""
     return {"account": account, "org_id": org_id, "site": site, "zone": zone,
             "score": score, "arr_dkk": arr, "kunde_arr_dkk": kunde_arr,
-            "org_name": navn, "mikrokunde": mikro}
+            "org_name": navn, "mikrokunde": mikro,
+            "opsagt_dato": opsagt}
 
 
 def kpi_raekke(cid, account="watch", org_id=2084, vejen_ud="fornyet",
@@ -164,7 +165,7 @@ tjek("kalenderen daekker hele spaendet",
      (o.HELLIGDAGE_FOERSTE_AAR, o.HELLIGDAGE_SIDSTE_AAR))
 
 
-print("--- 2: tilbage_paa_listen (PRD 6.4) ---")
+print("--- 2: tilbage_paa_listen (Fristmodellen) ---")
 tjek("ingen_kontakt -> naeste hverdag",
      o.tilbage_paa_listen(udfald(resultat=o.INGEN_KONTAKT, vejen_ud=None,
                                  created=dt.datetime(2026, 8, 6, 14, 30))),
@@ -200,8 +201,9 @@ tjek("fornyet uden dato -> 180 dage fra created_at",
 tjek("nedgraderet foelger fornyet",
      o.tilbage_paa_listen(udfald(vejen_ud="nedgraderet")),
      dt.date(2026, 8, 10) + dt.timedelta(days=o.FORNYET_UDEN_DATO))
-# PRD 6.2's hul: 'opgraderet' findes ikke i CK_RetOut_outcome. Kommer den nogen
-# sinde ind ad en anden vej, skal kunden VISES, ikke forsvinde lydloest.
+# Hvad Specialisten kan registreres hul: 'opgraderet' findes ikke i
+# CK_RetOut_outcome. Kommer den nogen sinde ind ad en anden vej, skal kunden
+# VISES, ikke forsvinde lydloest.
 tjek("ukendt udfald -> STRAKS",
      o.tilbage_paa_listen(udfald(vejen_ud="opgraderet")), o.STRAKS)
 tjek("created_at mangler -> STRAKS",
@@ -312,7 +314,7 @@ except TypeError:
     tjek("datetime som i_dag rejser TypeError", True)
 
 
-print("--- 7: fold_risici, filtrene fra PRD 4 ---")
+print("--- 7: fold_risici, filtrene fra Prioriteringsmodellen ---")
 tjek("sund frasorteres", len(p.fold_risici([abo(zone="sund")], {}, I_DAG)), 0)
 tjek("mikrokunde frasorteres", len(p.fold_risici([abo(mikro=True)], {}, I_DAG)), 0)
 tjek("uden udfald er abonnementet med", len(p.fold_risici([abo()], {}, I_DAG)), 1)
@@ -325,6 +327,28 @@ tjek("udloebet udsaettelse er med igen",
                        {("watch", "2084", "amwatch.dk"):
                         udfald(created=dt.datetime(2025, 1, 1, 9, 0))},
                        I_DAG)), 1)
+
+
+tjek("norsk abonnement frasorteres",
+     len(p.fold_risici([abo(account="watch_no")], {}, I_DAG)), 0)
+tjek("dansk abonnement er med",
+     len(p.fold_risici([abo(account="watch_medier")], {}, I_DAG)), 1)
+tjek("opsagt abonnement frasorteres",
+     len(p.fold_risici([abo(opsagt="2026-10-31")], {}, I_DAG)), 0)
+# En kunde med ét opsagt og ét levende abonnement skal BLIVE paa listen, men
+# posten maa kun indeholde det levende. Ellers taeller det opsagte med i
+# "scoren daekker X af Y", og tallet bliver forkert.
+blandet = p.fold_risici([abo(site="amwatch.dk", opsagt="2026-10-31"),
+                         abo(site="finanswatch.dk")], {}, I_DAG)
+tjek("kunde med ét opsagt og ét levende bliver paa listen", len(blandet), 1)
+tjek("kun det levende abonnement er i posten",
+     blandet[0]["antal_abonnementer"], 1)
+tjek("og det er det rigtige", blandet[0]["abonnementer"][0]["site"],
+     "finanswatch.dk")
+# En dato i FORTIDEN frasorteres ogsaa. Aftalen er slut, saa der er ikke
+# engang et varsel at ringe indenfor.
+tjek("opsagt med dato i fortiden frasorteres ogsaa",
+     len(p.fold_risici([abo(opsagt="2024-01-31")], {}, I_DAG)), 0)
 
 
 print("--- 8: site-sentinelen ---")
@@ -409,7 +433,7 @@ tjek("ingen opfoelgninger -> ti poster", len(r["poster"]), p.LISTE_LAENGDE)
 tjek("ingen aarsag naar listen er fuld", r["aarsag"], None)
 tjek("plads rapporteret", r["plads"], p.LISTE_LAENGDE)
 # Baeres ALTID med, ikke kun naar loftet binder: findes tallet kun i det oejeblik
-# vaeggen rammes, kan PRD 9 aldrig se om det rigtige loft var 25 eller 90.
+# vaeggen rammes, kan Målingside aldrig se om det rigtige loft var 25 eller 90.
 tjek("aabne sager baeres med selv om loftet ikke binder", r["aabne_sager"], 3)
 
 tjek("seks opfoelgninger -> fire nye",
@@ -423,7 +447,7 @@ tjek("loftet binder VED graensen, ikke over den", r["aarsag"], "loft")
 tjek("loftet giver ingen poster", len(r["poster"]), 0)
 tjek("under graensen binder ikke",
      p.afkort_nye_risici(mange, 0, p.MAKS_AABNE_SAGER - 1)["aarsag"], None)
-# Loftet gaar FORUD for pladsregnestykket: det er en haard port (PRD 8).
+# Loftet gaar FORUD for pladsregnestykket: det er en haard port (Arbejdsgang).
 tjek("loftet vinder over opfoelgninger_fylder",
      p.afkort_nye_risici(mange, 12, p.MAKS_AABNE_SAGER)["aarsag"], "loft")
 

@@ -104,6 +104,19 @@ _AKTIVT_MEDLEMSKAB = """
 # pipelines, ville de kroner ellers dukke op som én kunde i toppen af listen.
 _KUN_B2B = " AND ISNULL(r.org_name, '') NOT LIKE 'Web Sale%' "
 
+# Opsigelser bor i TRE pipelines. 'Opsigelser' er marketwires egen, og
+# dbo.retention-viewet kender kun de to foerste, saa marketwires opsigelser har
+# aldrig lukket et abonnement: 9 staar aktive med et ophoer op til tre aar
+# tilbage, det aeldste fra 2023-03-04.
+OPSIGELSE_PIPELINES = ("Cancellation", "Cancellations", "Opsigelser")
+
+# Livstegn: en deal der viser at aftalen fortsaetter. Fornyelse og Upsale SKAL
+# vaere med. Refinitiv Limited opsagde i februar 2023 og har fornyet tre gange
+# siden, senest i denne maaned - uden de to pipelines ville de se opsagte ud og
+# blive skrabet af listerne som en tabt kunde.
+LIVSTEGN_PIPELINES = ("Customer", "Newbizz", "Company Trial",
+                      "Fornyelse", "Upsale")
+
 
 def _acv_owner_cte() -> tuple[str, tuple]:
     """CTE-kæde der giver ÉN ejer pr. (account, org_id) ud fra dbo.PipeDrive_ACV.
@@ -223,7 +236,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
 
     Returnerer pr. måned: `active_count` (abonnementer), `attributed_count`
     (abonnementer med en ACV-ejer), `customer_count` (distinkte (account,
-    org_id)), `churned_count` og `churn_pct`. PRD §7.1 kræver de to sidste
+    org_id)), `churned_count` og `churn_pct`. Porteføljen kræver de to sidste
     kolonner, og kunde-linjen findes for at gøre forskellen på 15.205 og 11.621
     synlig i stedet for forvirrende.
 
@@ -234,7 +247,8 @@ def db_monthly_active_counts(owner_name: str | None = None,
     stedet HVER gang der opstår et hul. Den sidste måned i dataen udelades —
     ellers ville alle nulevende abonnementer se ud som om de churnede.
 
-    TÆRSKLEN ER TO MÅNEDER, jf. PRD §2 besluttet 2026-08-17. Et hul på PRÆCIS én
+    TÆRSKLEN ER TO MÅNEDER, jf. Definitioner, besluttet 2026-08-17. Et hul
+    på PRÆCIS én
     måned er en pause og tælles ikke. Målt: 162 af 8.565 hændelser var én-måneds
     huller, altså 1,9%, og de klumpede i april (36) og januar (22) frem for at
     ligge jævnt. Det er synkronisering og fakturering, ikke kundeadfærd. Totalen
@@ -252,13 +266,13 @@ def db_monthly_active_counts(owner_name: str | None = None,
 
     FØLGE AF TÆRSKLEN: `h.naeste IS NULL` rammer også rækker i måneden før den
     nyeste, og de kan endnu ikke skelnes fra pauser. Nyeste måneds churn er derfor
-    et MAKSIMUM, der revideres NEDAD ved næste eksport. PRD §7.1 kræver at søjlen
+    et MAKSIMUM, der revideres NEDAD ved næste eksport. Porteføljen kræver at søjlen
     markeres foreløbig, ellers læses artefaktet som en churn-stigning.
 
     Målt 2026-08-17: churn ligger på 0,4-1,8% gennem hele historikken, vist for 89
     måneder fra 2019-04 og frem. Juni 2026 er undtagelsen med 2,18%, måneden efter
     at porteføljen sprang fra 12.035 til 15.486 abonnementer. Grafen får derfor en
-    lodret klippe i maj 2026, som SKAL forklares på siden — se PRD §11 pkt. 7.
+    lodret klippe i maj 2026, som SKAL forklares på siden.
     """
     cte, params = _acv_owner_cte()
 
@@ -456,7 +470,7 @@ def db_customers_at_risk_base(owner_name: str | None = None,
 def db_abonnementer(maaned: str) -> list:
     """Abonnementerne i én måned, med abonnementets første måned som alder.
 
-    Grain er `(account, org_id, sites)` = PRD §3's måleenhed. `maaned` er
+    Grain er `(account, org_id, sites)` = Zonemodellens måleenhed. `maaned` er
     'YYYY-MM' og skal være den sidste HELE måned — samme reference som
     zones.bestem_zone regner i.
 
@@ -596,8 +610,8 @@ def db_org_navne() -> dict:
     (account, org_id). Holder den antagelse op, er det HER det skal rettes — en
     aggregering skjuler et navneskift i stedet for at vælge imellem.
 
-    PRD §10, regel 6: FirstDayOfMonth-filteret er påkrævet, viewet projicerer
-    til 2030-12. Uden det læses fremtidige rækker.
+    Regler og Guardrails, regel 6: FirstDayOfMonth-filteret er påkrævet, viewet
+    projicerer til 2030-12. Uden det læses fremtidige rækker.
 
     ÉN pass over viewet. En CTE-kæde der scannede dbo.retention tre gange
     timede forbindelsen ud — aggreger i SQL, sammenlign i Python."""
@@ -697,6 +711,105 @@ def db_acv_beloeb_pr_site() -> dict:
         kunde = customer_key(account, r["org_id"])
         ud[(kunde[0], kunde[1], site)] = float(r["arr"])
     return ud
+
+
+def db_opsigelser() -> dict:
+    """{(account, org_id, sites): 'YYYY-MM-DD'} - datoen for en GAELDENDE opsigelse.
+
+    Et abonnement er opsagt, naar der findes en vundet opsigelse dateret EFTER
+    det seneste livstegn paa aftalen. Retningen ER reglen: ligger opsigelsen
+    FOER livstegnet, er kunden kommet tilbage efter at have sagt op.
+
+    HVORFOR IKKE BARE "har en opsigelse": 4.430 af de 15.189 aktive
+    abonnementer (39 mio. kr.) har en opsigelse et sted i historikken. 107 af
+    dem har opsigelse og ny aftale paa SAMME dato. Det er genforhandlinger:
+    abonnementet loeber uaendret videre, men opsigelsen bliver staaende i
+    historikken. 3.858 er kunder der er holdt op og kommet tilbage aar senere.
+    Uden datosammenligningen ville en fjerdedel af portefoeljen forsvinde tavst.
+
+    DATOEN ER service_activation_date, ikke won_time. won_time er hvornaar
+    opsigelsen blev REGISTRERET, sad er hvornaar abonnementet OPHOERER. Maalt
+    paa 12.755 vundne opsigelser ligger sad EFTER won_time i 69% af dem, typisk
+    32 til 200 dage, altsaa varslet: Oersteds Klimamonitor blev opsagt
+    2026-08-10 med ophoer 2027-08-20. Reserven COALESCE(..., won_time,
+    add_time) daekker 262 raekker med standardvaerdien 2019-01-01 plus 5 helt
+    uden dato. Det er samme kolonne og samme reserveregel som
+    dbo.retention-viewet selv bruger, saa modulet og portefoeljetallet ikke kan
+    blive uenige om hvornaar et abonnement holdt op.
+
+    AABNE DEALS TAELLER SOM LIVSTEGN, men kun vundne som opsigelse. En aaben
+    fornyelse siger at aftalen loeber videre; en aaben opsigelse er ikke en
+    opsigelse endnu.
+
+    UFILTRERET MED VILJE, praecis som db_acv_beloeb_pr_site: opslaget kender
+    ingen maaned og indeholder derfor ogsaa abonnementer der ophoerte for aar
+    siden og laenge er ude af dbo.retention. Maalt 2026-08-19: 5.787 opslag, og
+    280 af dem rammer et af maanedens 15.189 abonnementer, fordelt paa 9
+    forfaldne (alle marketwire), 62 opsagt i denne maaned og 209 i opsigelse.
+
+    Noeglen gaar gennem customer_key som de tre andre opslag, og `sites`
+    beholdes RAA: marketwire har NULL, som bliver None i Python og matcher
+    db_abonnementer's egen noegle.
+    """
+    from .usage import customer_key
+
+    ph_liv = ",".join(["%s"] * len(LIVSTEGN_PIPELINES))
+    ph_ops = ",".join(["%s"] * len(OPSIGELSE_PIPELINES))
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            WITH deals AS (
+                SELECT account, org_id, sites, pipeline_name, status,
+                       COALESCE(
+                           CASE WHEN service_activation_date = '2019-01-01'
+                                THEN NULL
+                                ELSE CAST(service_activation_date AS datetime)
+                           END,
+                           won_time, add_time) AS dato
+                FROM dbo.PipedriveDeals
+                WHERE status IN ('won', 'open')
+                  AND org_id IS NOT NULL
+            ),
+            livstegn AS (
+                SELECT account, org_id, sites, MAX(dato) AS livsdato
+                FROM deals
+                WHERE pipeline_name IN ({ph_liv})
+                GROUP BY account, org_id, sites
+            ),
+            opsigelse AS (
+                SELECT account, org_id, sites, MAX(dato) AS opsigelsesdato
+                FROM deals
+                WHERE status = 'won'
+                  AND pipeline_name IN ({ph_ops})
+                GROUP BY account, org_id, sites
+            )
+            SELECT o.account, o.org_id, o.sites,
+                   CONVERT(char(10), o.opsigelsesdato, 23) AS opsigelsesdato
+            FROM opsigelse o
+            JOIN livstegn l
+              ON l.account = o.account AND l.org_id = o.org_id
+             -- ISNULL paa BEGGE sider: marketwires sites er NULL, og NULL = NULL
+             -- er falsk i SQL. Uden den ville de 9 forfaldne aldrig kobles.
+             AND ISNULL(l.sites, '') = ISNULL(o.sites, '')
+            WHERE o.opsigelsesdato > l.livsdato;
+        """, LIVSTEGN_PIPELINES + OPSIGELSE_PIPELINES)
+        raekker = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("db_opsigelser fejlede")
+        return {}
+
+    ud: dict = {}
+    for r in raekker:
+        kunde = customer_key(r["account"], r["org_id"])
+        # CONVERT i SQL'en gav en streng med vilje. TDS 7.0 leverer date og
+        # datetime2 som str alligevel, og resten af modulet sammenligner datoer
+        # som tekst, saa 'YYYY-MM-DD' kan bruges direkte.
+        ud[(kunde[0], kunde[1], r["sites"])] = r["opsigelsesdato"]
+    return ud
+
 
 def abonnementer_med_ejer(maaned: str,
                           owner_name: str | None = None,

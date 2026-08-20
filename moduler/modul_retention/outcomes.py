@@ -1,7 +1,7 @@
-"""Skrivesiden: registrerede samtaler og udfald (PRD §5.1, §5.2, §6).
+"""Skrivesiden: registrerede samtaler og udfald.
 
 Læsesiden (risiko.py) siger hvem der BØR ringes til. Den her siger hvad der
-FAKTISK skete. Uden den kan §9's forudsigelsesrate aldrig beregnes, og så
+FAKTISK skete. Uden den kan Målingsidens forudsigelsesrate aldrig beregnes, og så
 forbliver alle syv zonevægte skøn.
 
 TO TABELLER, ÉN TRANSAKTION: en samtale uden udfald er en tom række, og et
@@ -9,8 +9,9 @@ udfald uden samtale er umuligt (fremmednøglen er NOT NULL). Derfor skriver
 registrer_samtale() begge dele under ét — går udfaldet galt, forsvinder
 samtalen med det.
 
-INTET OPDATERES. PRD §10 pkt. 5: der indsættes altid en ny række. Ringer man
-igen om samme abonnement, er det et nyt udfald, ikke en rettelse af det gamle.
+INTET OPDATERES, jf. Regler og Guardrails punkt 5: der indsættes altid en ny
+række. Ringer man igen om samme abonnement, er det et nyt udfald og ikke en
+rettelse af det gamle.
 Det er derfor "seneste udfald" er et opslag og ikke bare en kolonne.
 """
 import datetime as dt
@@ -25,11 +26,11 @@ logger = logging.getLogger(__name__)
 # igen — NULL = NULL er ukendt, ikke sandt.
 INTET_SITE = "(intet site)"
 
-# Udfald der holder sagen åben. PRD §6.2: de kræver followup_date, hvilket
-# databasen håndhæver i CK_RetOut_followup_paa_aabne.
+# Udfald der holder sagen åben. Hvad Specialisten kan registrere: de kræver
+# followup_date, hvilket databasen håndhæver i CK_RetOut_followup_paa_aabne.
 AABNE_UDFALD = ("forskudt", "tilbud_sendt")
 
-# De to andre grupper PRD §6.4 behandler ens. Grupperne står som konstanter og
+# De to andre grupper Fristmodellen behandler ens. Grupperne står som konstanter og
 # ikke som strenge nede i logikken, af samme grund som AABNE_UDFALD: skal en
 # gruppe udvides, sker det ét sted, og læseren kan se HVORFOR to udfald deler
 # regel.
@@ -39,7 +40,7 @@ FORTSAT_KUNDE = ("fornyet", "nedgraderet")       # stadig kunde, ny frist
 # Hvor `arr_before_dkk` kom fra. ARR pr. abonnement er kundens ARR divideret
 # med antal sites (queries.py: "lige deling er et VALG, ikke en måling"), fordi
 # ACV's og retentions site-vokabularer ikke kan brolægges endnu. Registreres et
-# udfald på det tal, arver §9's "kroner reddet" divisionen — og et gæt kan
+# udfald på det tal, arver Målingsidens "kroner reddet" divisionen — og et gæt kan
 # ikke skelnes fra et målt beløb i en decimal-kolonne bagefter.
 #
 # Specialisten har den rigtige pris foran sig under opkaldet. Formularen
@@ -72,8 +73,9 @@ KONTAKTRESULTATER = {
 }
 
 # SEKS udfald. `opgraderet` findes IKKE — verificeret mod CK_RetOut_outcome
-# 2026-08-11. PRD §6.2's hul er altså reelt: en fornyelse med prisstigning kan
-# kun registreres som `fornyet`, hvor PRD'en siger arr_after = før.
+# 2026-08-11. Hvad Specialisten kan registreres hul er altså reelt: en
+# fornyelse med prisstigning kan
+# kun registreres som `fornyet`, hvor specifikationen siger arr_after = før.
 #
 # Konsekvensen for validering: der må IKKE være regler på ARR pr. udfaldstype.
 # En `fornyet` med højere arr_after end arr_before er lovlig og forekommer, og
@@ -93,7 +95,7 @@ ARR_KILDER = {
     ARR_KILDE_BEKRAEFTET: "Bekræftet hos kunden",
 }
 
-# PRD §6.4's to poler. Begge er DATOER og ikke None, fordi reglen er total —
+# Fristmodellens to poler. Begge er DATOER og ikke None, fordi reglen er total —
 # der findes altid et svar. None ville læses som "ingen udsættelse", altså det
 # stik modsatte af ALDRIG, og en opsagt kunde ville stå på opkaldslisten.
 #
@@ -176,7 +178,7 @@ HELLIGDAGE: frozenset = frozenset().union(
     *(danske_helligdage(a)
       for a in range(HELLIGDAGE_FOERSTE_AAR, HELLIGDAGE_SIDSTE_AAR + 1)))
 
-# PRD §6.4's frister i dage. Tallene står her frem for inde i regnestykkerne,
+# Fristmodellens frister i dage. Tallene står her frem for inde i regnestykkerne,
 # så de kan læses uden at læse logikken.
 FORNYET_DAGE_FOER = 45      # fornyelsesdato MINUS dette
 FORNYET_UDEN_DATO = 180     # ingen fornyelsesdato kendt
@@ -186,7 +188,7 @@ IKKE_KONTAKTBAR_DAGE = 90
 # `datetime2` — de kom i 7.3. SQL Server sender dem derfor som STRENGE
 # ('2026-08-14' og '2026-08-14 15:04:05.1234567'), mens det gamle `datetime`
 # kommer tilbage som et rigtigt Python-objekt. Uden normalisering her sprang
-# opfoelgninger på `str <= date`, og §7.3 kan ikke markere en overskredet
+# opfoelgninger på `str <= date`, og Dagens opkald kan ikke markere en overskredet
 # opfølgning uden at kunne regne på datoen. Rettes ved kanten, én gang, i
 # stedet for i hver enkelt kalder.
 _DATO_FELTER = ("renewal_date", "expiry_date", "followup_date")
@@ -265,7 +267,7 @@ def naeste_hverdag(dag: dt.date) -> dt.date:
 
 
 def tilbage_paa_listen(raekke: dict) -> dt.date:
-    """Hvornår abonnementet igen må stå som ny risiko. PRD §6.4.
+    """Hvornår abonnementet igen må stå som ny risiko. Fristmodellen.
 
     Ind: én række som db_seneste_udfald leverer den. Ud: ALTID en dato — ALDRIG
     når abonnementet ikke skal tilbage, STRAKS når der intet er at udsætte på.
@@ -273,11 +275,12 @@ def tilbage_paa_listen(raekke: dict) -> dt.date:
     `tilbage_paa_listen(u) > i_dag` betyder "udelad".
 
     INGEN `i_dag`-PARAMETER, og det er med vilje. Alle frister regnes fra
-    rækkens egen `created_at`, aldrig fra kaldstidspunktet: regnes de fra i dag,
-    skubbes datoen længere ud ved hvert sideopslag, og kunden kommer aldrig
-    tilbage — uden at noget fejler. Uden adgang til "i dag" kan funktionen ikke
-    lave den fejl. Samme princip som §6.3's frosne kurs og §10 regel 4:
-    historikken må ikke ændre sig, fordi man ser på den igen.
+    rækkens egen `created_at`, aldrig fra kaldstidspunktet: regnes de fra i
+    dag, skubbes datoen længere ud ved hvert sideopslag, og kunden kommer
+    aldrig tilbage — uden at noget fejler. Uden adgang til "i dag" kan
+    funktionen ikke lave den fejl. Samme princip som De to tabellers frosne
+    kurs og Regler og Guardrails regel 4: historikken må ikke ændre sig, fordi
+    man ser på den igen.
 
     `contacted_at` ville være marginalt mere korrekt end `created_at` — "da
     opkaldet skete" mod "da det blev tastet ind" — men den ligger på
@@ -396,7 +399,8 @@ def valider_registrering(samtale: dict, udfald: list) -> list[str]:
         kilde = u.get("arr_before_kilde") or None
         if kilde is not None and kilde not in ARR_KILDER:
             fejl.append(f"{hvor}: ukendt kilde til årsværdien før samtalen.")
-        # Et beløb uden kilde er værdiløst bagefter: §9's "kroner reddet" kan
+        # Et beløb uden kilde er værdiløst bagefter: "kroner reddet" på
+        # Målingsiden kan
         # ikke skelne et bekræftet tal fra den lige deling, og så arver
         # forudsigelsesraten en division, ingen kan se.
         if _er_tal(u.get("arr_before_dkk")) and kilde is None:
@@ -404,7 +408,8 @@ def valider_registrering(samtale: dict, udfald: list) -> list[str]:
                         "bekræftet eller et skøn.")
 
         # arr_after_dkk beregnes af registrer_samtale KUN når både beløb og kurs
-        # er sat — ellers gemmes NULL uden en lyd, og kronerne er tabt for §9.
+        # er sat, ellers gemmes NULL uden en lyd, og kronerne er tabt for
+        # Målingsiden.
         # Derfor spærres den halve udfyldning her frem for at lade den passere.
         lokal, kurs = u.get("arr_after_local"), u.get("fx_rate")
         valuta = str(u.get("arr_after_currency") or "").strip()
@@ -436,7 +441,7 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
 
     `samtale` skal have account, org_id, contacted_at, channel, created_by og
     valgfrit summary. Hvert element i `udfald` skal have site og
-    contact_result, og derudover de felter PRD §5.1 tillader.
+    contact_result, og derudover de felter De to tabeller tillader.
 
     Returnerer None hvis noget gik galt — og rulles der tilbage, er INTET
     skrevet. En delvist registreret samtale ville være værre end ingen:
@@ -462,7 +467,7 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
         conversation_id = cur.fetchone()[0]
 
         for u in udfald:
-            # arr_after_dkk beregnes HER og gemmes som tal. PRD §6.3: kursen
+            # arr_after_dkk beregnes HER og gemmes som tal. De to tabeller: kursen
             # fryses, ellers ændrer historiske "kroner reddet" sig hver gang
             # valutaen bevæger sig. Derfor ikke en computed column.
             lokal, kurs = u.get("arr_after_local"), u.get("fx_rate")
@@ -512,8 +517,8 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
 def db_seneste_udfald() -> dict:
     """Seneste udfald pr. abonnement: {(account, org_id, site): række}.
 
-    Det er opslaget §7.3 hviler på — et abonnement ryddes af listen af sit
-    seneste udfald, ikke af data (PRD §6.4). Hentes ufiltreret og filtreres i
+    Det er opslaget Dagens opkald hviler på — et abonnement ryddes af listen af sit
+    seneste udfald, ikke af data (Fristmodellen). Hentes ufiltreret og filtreres i
     Python, fordi prioriteringslisten alligevel har alle abonnementer i hånden.
 
     NØGLENS org_id ER EN STRENG, også selv om kolonnen er INT: risikolaget
@@ -555,7 +560,7 @@ def db_seneste_udfald() -> dict:
 def db_historik(account: str, org_id: int) -> list:
     """Alle samtaler for én kunde, nyeste først, hver med sine udfald.
 
-    PRD §7.4: "Tidligere udfald og samtaler, nyeste først". Grupperet på
+    Kundeside: "Tidligere udfald og samtaler, nyeste først". Grupperet på
     SAMTALEN og ikke på udfaldet, fordi ét opkald kan have dækket fem
     abonnementer — fem løsrevne rækker ville læses som fem opkald.
 
@@ -623,7 +628,7 @@ def db_historik(account: str, org_id: int) -> list:
 
 
 def opfoelgninger(seneste: dict, til_og_med) -> list:
-    """Åbne sager med opfølgning senest `til_og_med`. PRD §7.3, liste 1.
+    """Åbne sager med opfølgning senest `til_og_med`. Dagens opkald, liste 1.
 
     INTET `db_`-PRÆFIKS, og det er ikke kosmetik: funktionen rører ikke
     databasen længere, og præfikset betyder konsekvent det modsatte i dette
@@ -631,16 +636,17 @@ def opfoelgninger(seneste: dict, til_og_med) -> list:
     ordbog, og den kommer UDEFRA.
 
     Hvorfor den kommer udefra: prioriteringen har brug for præcis det samme
-    opslag tre gange — til denne liste, til PRD §8's loft (som tæller ALLE åbne
-    sager, ikke kun dagens), og til §4's filter 3 og 4. Tre kald mod samme
-    tabel er tre chancer for, at de tre tal bliver uenige om noget, der ændrer
-    sig, mens siden bygges.
+    opslag tre gange — til denne liste, til Arbejdsgangens loft (som tæller
+    ALLE åbne sager, ikke kun dagens), og til Prioriteringsmodellens filter 3
+    og 4. Tre kald mod samme tabel er tre chancer for, at de tre tal bliver
+    uenige om noget, der ændrer sig, mens siden bygges.
 
     Bivirkningen er, at den nu kan bevises på håndlavede rækker uden
     forbindelse — det var den ikke før.
 
-    PRD §4: listens længde er 10 kunder MINUS dagens opfølgninger, så det her
-    tal styrer hvor mange nye navne specialisten får. `<=` og ikke `=`, fordi
+    Prioriteringsmodellen: listens længde er 10 kunder MINUS dagens
+    opfølgninger, så det her tal styrer hvor mange nye navne specialisten
+    får. `<=` og ikke `=`, fordi
     en opfølgning der blev overset i går ikke må forsvinde i morgen.
 
     Kun det SENESTE udfald pr. abonnement tæller, og det er `seneste`s eget
@@ -661,7 +667,7 @@ def opfoelgninger(seneste: dict, til_og_med) -> list:
 def db_maanedens_udfald(maaned: str) -> list:
     """Alle udfald registreret i `maaned` ('2026-08'), med samtalens dato.
 
-    Grundlaget for PRD §9's tre tal. Hentes UAFGRÆNSET — afgrænsningen på ejer
+    Grundlaget for Målingsidens tre tal. Hentes UAFGRÆNSET — afgrænsningen på ejer
     og team sker i Python, se prioritering.maanedens_kpier. Grunden er den
     samme som i queries.abonnementer_med_ejer: ACV's ejer-opslag er en query
     for sig med sine egne fælder, og den hører ikke i skrivesiden. Rækkerne er
@@ -675,7 +681,7 @@ def db_maanedens_udfald(maaned: str) -> list:
     datoen, hvor forretningshændelsen skete. Joinet til RetentionConversations
     skal der være alligevel for at kunne tælle samtaler.
 
-    `conversation_id` bæres med, fordi §9's "antal samtaler" er DISTINKTE
+    `conversation_id` bæres med, fordi Målingsidens "antal samtaler" er DISTINKTE
     samtaler og ikke udfald: én samtale kan dække syv abonnementer, og det er
     stadig ét opkald.
     """

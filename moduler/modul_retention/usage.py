@@ -23,7 +23,7 @@ som tekst uden at fejle. SQL'en ligger i
 `Desktop\\DataBase Views DataGrip\\usage_trend.txt` med sin egen dokumentation.
 
 SIGNALET ER MÅNEDLIGT, IKKE DAGSBASERET. Recency-modellen — dage siden sidste
-aktivitet — er fjernet 2026-08-10 sammen med risk.py, jf. PRD §3. Begrundelsen
+aktivitet — er fjernet 2026-08-10 sammen med risk.py, jf. Zonemodellen. Begrundelsen
 skal stå her, så den ikke bliver genopfundet: fordi tærsklen var 14 dage, kunne
 zonen "sund" ikke eksistere når filen var ældre end 14 dage. Målt 2026-08-04 var
 77% af kunderne ved 14 dages filalder flyttet til en værre zone udelukkende pga.
@@ -376,7 +376,7 @@ def serie_og_dage(forbrug: dict, kunde: tuple, site: str) -> tuple[dict, dict]:
     Dagene slås op på SAMME niveau som sidevisningerne — ellers ville en pakke
     få vanebruger-testen på ét site og zonen på syv.
 
-    Ligger her og ikke i risiko.py, fordi kunde-detaljesiden (PRD §7.4) skal
+    Ligger her og ikke i risiko.py, fordi kunde-detaljesiden (Kundeside) skal
     tegne præcis den serie, zonen blev beregnet på. To kopier af valget ville
     kunne drive fra hinanden, og så ville grafen modsige zonen ved siden af.
     """

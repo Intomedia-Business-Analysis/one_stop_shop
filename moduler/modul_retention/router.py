@@ -37,10 +37,10 @@ EKSKLUDEREDE_ROLLER = ["marketing", "management"]
 # — og menu og endpoint bruger så garanteret samme nøgle.
 RES_OVERBLIK = "retention-overview"
 RES_RISIKO = "retention-risk"
-# Modulets INDGANG (PRD §8), og derfor øverst i nav_utils' items-liste.
+# Modulets INDGANG (Arbejdsgang), og derfor øverst i nav_utils' items-liste.
 RES_PRIORITERING = "retention-prioritering"
 # Kunde-detaljen står IKKE i nav_utils.CATEGORIES: den er en gennemklikning,
-# ikke et sted man går hen — PRD §7.4 nås fra risikolisten og senere fra
+# ikke et sted man går hen — Kundeside nås fra risikolisten og senere fra
 # prioriteringssiden. Id'et findes alligevel, så adgangen kan styres på samme
 # måde som siderne, hvis nogen får brug for det.
 RES_KUNDE = "retention-kunde"
@@ -85,7 +85,7 @@ def _resolve_filters(user: dict, resource_id: str) -> tuple[str | None, list | N
 
 @router.get("/retention/prioritering_data")
 def get_prioriteringsdata(user=Depends(get_current_user)):
-    """Dagens to lister og månedens tre tal (PRD §7.3).
+    """Dagens to lister og månedens tre tal (Dagens opkald).
 
     KLOKKEN LÆSES ÉN GANG, her. `prioriteringsdata` har med vilje ingen default
     på `i_dag`: kaldes `date.today()` to gange under samme sideopslag, kan de to
@@ -132,10 +132,11 @@ def get_monthly_active_counts(user=Depends(get_current_user)):
 def get_abonnementer_i_risiko(user=Depends(get_current_user)):
     """Risikolisten pr. ABONNEMENT. Samme rolle-filtrering som trendlinjen.
 
-    Skiftet fra recency-modellen (risk.customers_at_risk) 2026-08-10, jf. PRD §3
-    hvor 14/30-dages-tærsklerne udfases: signalet rådnede med filens alder, og
-    grainen var kunden, hvilket er den forkerte måleenhed (PRD §2 og §7.2).
-    Ruten beholder sit navn, så eksisterende links og bogmærker virker.
+    Skiftet fra recency-modellen (risk.customers_at_risk) 2026-08-10, jf.
+    Zonemodellen hvor 14/30-dages-tærsklerne udfases: signalet rådnede med
+    filens alder, og grainen var kunden, hvilket er den forkerte måleenhed
+    (Definitioner og Churn-risiko). Ruten beholder sit navn, så eksisterende
+    links og bogmærker virker.
 
     `owner_name` er altid None nu, hvor modulet kræver Sales Operations: ingen
     tilbageværende rolle skal se sin egen bog. Den gamle advarsel om at
@@ -169,7 +170,7 @@ async def retention_risk_overview(request: Request, user=Depends(get_current_use
 
 @router.get("/retention/kunde_data/{account}/{org_id}")
 def get_kunde_detalje(account: str, org_id: str, user=Depends(get_current_user)):
-    """Alt om én kunde (PRD §7.4).
+    """Alt om én kunde (Kundeside).
 
     `org_id` tages som STRENG og ikke int: risikolaget bærer det som tekst, og
     en int i stien ville give en nøgle der aldrig matcher. outcomes.py
@@ -183,7 +184,7 @@ def get_kunde_detalje(account: str, org_id: str, user=Depends(get_current_user))
 async def retention_kunde(request: Request, account: str, org_id: str,
                           user=Depends(get_current_user)):
     # Siden skal kunne åbnes for ENHVER kunde, ikke kun dem på risikolisten
-    # (PRD §7.4) — ellers kan et udfald ikke registreres på et sundt
+    # (Kundeside) — ellers kan et udfald ikke registreres på et sundt
     # abonnement. Derfor slås kunden ikke op her: findes hun ikke, viser siden
     # sin egen tomme tilstand frem for en 404.
     _kraev_adgang(user, RES_KUNDE)
@@ -259,7 +260,7 @@ def _kraev_kunde_i_raekkevidde(account: str, org_id: str, teams) -> None:
 
     ÆRLIGT FORBEHOLD: risikobilledet kan ikke skelne "uden for dine teams" fra
     "ikke længere kunde". En team-begrænset bruger kan derfor ikke registrere på
-    en netop opsagt kunde, selv om PRD §7.4 ellers tillader det. Det er valgt som
+    en netop opsagt kunde, selv om Kundeside ellers tillader det. Det er valgt som
     den forsigtige fejl — den nægter at skrive frem for at skrive uden for
     grænsen. I dag er `allowed_data_teams` None for Sales Operations, så den
     rammer ingen; bliver en bruger begrænset, skal reglen tages op igen.
@@ -273,7 +274,7 @@ def _kraev_kunde_i_raekkevidde(account: str, org_id: str, teams) -> None:
 @router.post("/retention/kunde/{account}/{org_id}/samtale")
 async def post_registrer_samtale(account: str, org_id: str, request: Request,
                                  user=Depends(get_current_user)):
-    """Registrér én samtale og de udfald den gav (PRD §7.4, §5.1, §5.2).
+    """Registrér én samtale og de udfald den gav (Kundeside).
 
     Den ENESTE rute i modulet der skriver til produktion. Derfor:
     valideringen kaldes server-side, selv om formularen validerer i forvejen —

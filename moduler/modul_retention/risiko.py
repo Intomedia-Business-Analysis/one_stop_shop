@@ -1,20 +1,21 @@
 """Churn-risiko pr. abonnement: zone, vægt og score.
 
-Erstatter recency-modellen i risk.py, jf. PRD §3 hvor 14/30-dages-modellen
+Erstatter recency-modellen i risk.py, jf. Zonemodellen hvor 14/30-dages-modellen
 udfases. Ligger som eget modul, fordi begge modeller skal kunne køre side om
 side indtil siden er lagt om — de har hver sit ZONE_ORDER og ZONE_LABELS, og et
 alias-import ville skjule hvilken model man læser.
 
-Måleenheden er abonnementet (account, org_id, site), jf. PRD §2, og tabellen på
-§7.2-siden er derfor pr. abonnement. Foldningen til én række pr. kunde hører til
-PRD §4 og prioriteringssiden — man kan ikke ringe til et abonnement, men man kan
-godt se på et.
+Måleenheden er abonnementet (account, org_id, site), jf. Definitioner, og
+tabellen på Churn-risiko er derfor pr. abonnement. Foldningen til én række pr.
+kunde hører til Prioriteringsmodellen og Dagens opkald: man kan ikke ringe til
+et abonnement, men man kan godt se på et.
 
 TO FORSKELLIGE MÅNEDER, og forvekslingen er den farligste fejl i filen:
 
     abo_maaned  INDEVÆRENDE måned. Hvilke abonnementer der er aktive lige nu
-                (PRD §4, filter 1). Et abonnement der churnede den 1. skal ikke
-                på listen — der er ingen at ringe til.
+                (Prioriteringsmodellen, filter 1). Et abonnement der
+                churnede den 1. skal ikke på listen, der er ingen at ringe
+                til.
     reference   Sidste HELE måned. Hvilken måned zonen beregnes i. Indeværende
                 måned er levende og ville få enhver kunde til at se ud som et
                 frit fald.
@@ -26,7 +27,7 @@ zones.bestem_zone, før den forbrugsbaserede datering — se kommentaren dér.""
 import logging
 from datetime import date
 
-from .queries import abonnementer_med_ejer
+from .queries import abonnementer_med_ejer, db_opsigelser
 from .usage import (
     _account_to_customer_map,
     forbrug_pr_abonnement,
@@ -48,16 +49,17 @@ from .zones import (
 
 logger = logging.getLogger(__name__)
 
-# PRD §2 og §10, regel 2: kunder under denne grænse får aldrig et opkald.
-# Grænsen ligger på KUNDEN, ikke på abonnementet — en kunde med fem sites à
-# 2.000 kr. er ikke en mikrokunde. De vises alligevel på §7.2, men markeret, så
-# zonekortenes tal summerer til den virkelige portefølje.
+# Definitioner og Regler og Guardrails, regel 2: kunder under denne grænse får
+# aldrig et opkald. Grænsen ligger på KUNDEN, ikke på abonnementet — en kunde
+# med fem sites à 2.000 kr. er ikke en mikrokunde. De vises alligevel på
+# Churn-risiko, men markeret, så zonekortenes tal summerer til den virkelige
+# portefølje.
 MIKROKUNDE_ARR = 5000.0
 
-# PRD §4. Faktoren kræver en fornyelsesdato, som ikke findes i nogen kilde vi
-# har adgang til (PRD §11, punkt 1 og 8). Indtil da er den 1,0 for alle, og
-# score er reelt ARR × risikovægt. Konstanten står her frem for at være udeladt,
-# så det fremgår at den mangler og ikke er glemt.
+# Prioriteringsmodellen. Faktoren kræver en fornyelsesdato, som ikke findes i
+# nogen kilde vi har adgang til. Indtil da er den 1,0 for alle, og score er
+# reelt ARR × risikovægt. Konstanten står her frem for at være udeladt, så det
+# fremgår at den mangler og ikke er glemt.
 TIMINGFAKTOR = 1.0
 
 
@@ -104,6 +106,27 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     abonnementer = abonnementer_med_ejer(abo_maaned, owner_name=owner_name,
                                          teams=teams)
 
+    # OPSAGT ER IKKE EN RISIKO, DET ER ET FAKTUM. Et abonnement med en gaeldende
+    # opsigelse kan ikke reddes af det opkald listen rangerer efter, saa det maa
+    # ikke konkurrere med de oevrige om pladserne. Raekken fjernes dog IKKE:
+    # kundesiden skal kunne vise "opsagt, ophoerer 31-10-2026", og zonekortene
+    # skal fortsat summere til den virkelige portefoelje.
+    #
+    # Maalt 2026-08-19 paa 15.191 abonnementer: 280 har en gaeldende opsigelse,
+    # fordelt paa 9 forfaldne (alle marketwire, aeldste 2023-03-04), 62 ophoert
+    # i denne maaned og 209 i opsigelse. 198 af dem havde en score, som nu
+    # bliver nul, og arr_i_risiko falder 1.826.871 kr. De resterende 82 havde
+    # allerede vaegt nul, heraf 77 i zonen "sund".
+    #
+    # DE STOERSTE ER NETOP "sund". Energinet EnergiWatch DK til 260.356 kr.
+    # ophoerer 29-09-2026 og laeser normalt indtil da. Forbrug forudsiger ikke
+    # opsigelse, og derfor kan zonemodellen alene ikke finde disse opkald.
+    opsigelser = db_opsigelser()
+    # Datoen holdes som TEKST i opslagets eget format ('YYYY-MM-DD'), saa
+    # sammenligningen nedenfor er en strengsammenligning. Samme valg som resten
+    # af modulet, hvor maaneder ogsaa sammenlignes som tekst.
+    i_dag = date.today().isoformat()
+
     rows = []
     for a in abonnementer:
         kunde = (a["account"], a["org_id"])
@@ -114,7 +137,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             dage_serie, vanebruger, dage_12m = {}, True, None
         else:
             # Pakke- kontra site-niveau afgøres ét sted, usage.serie_og_dage,
-            # så kunde-detaljesiden (PRD §7.4) tegner præcis den serie zonen
+            # så kunde-detaljesiden (Kundeside) tegner præcis den serie zonen
             # blev beregnet på.
             serie, dage_serie = serie_og_dage(forbrug, kunde, site)
             zone = bestem_zone(serie, reference, a["foerste_maaned"], site,
@@ -133,6 +156,13 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         # Én gang, ikke to: vægten afhænger nu af vanebruger, og to kald med
         # forskellige argumenter ville give en score der ikke matcher kolonnen.
         vaegt = zone_vaegt(zone, vanebruger)
+        # Ophoersdatoen kan ligge i fremtiden (varslet loeber) eller i fortiden
+        # (aftalen er slut). Begge skal ud af scoren, og vaegten saettes derfor
+        # FOER score regnes nedenfor. Nul og ikke None: beloebet er kendt, det er
+        # risikoen der er nul.
+        opsagt_dato = opsigelser.get((a["account"], a["org_id"], a["sites"]))
+        if opsagt_dato:
+            vaegt = 0.0
 
         arr = (float(a["arr_pr_abonnement"])
                if a["arr_pr_abonnement"] is not None else None)
@@ -151,7 +181,12 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             "zone":            zone,
             "zone_label":      ZONE_LABELS[zone],
             "vaegt":           vaegt,
-            # PRD §3's skel mellem "stoppet vanebruger" og en onboarding-sag.
+            # Datoen med i raekken, saa UI'et kan skrive den. `opsagt` er sandt
+            # naar aftalen allerede er slut, og falsk mens varslet loeber. Den
+            # forskel afgoer om der er noget at ringe om.
+            "opsagt_dato":     opsagt_dato,
+            "opsagt":          bool(opsagt_dato) and opsagt_dato <= i_dag,
+            # Zonemodellens skel mellem "stoppet vanebruger" og en onboarding-sag.
             # Dagene med i rækken, så tabellen kan vise "56 aktive dage" ved
             # siden af zonen — det er den oplysning der afgør om opkaldet er
             # værd at tage.
@@ -173,9 +208,10 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             "pv_snit_3":       snit,
         })
 
-    # PRD §4: score faldende, tie-breaker ARR faldende. Første element i nøglen
-    # er et sandhedsværdi-flag, fordi None ikke kan negeres — abonnementer uden
-    # ARR skal ligge sidst, og de er ikke risikofrie, de er uopgjorte.
+    # Prioriteringsmodellen: score faldende, tie-breaker ARR faldende. Første
+    # element i nøglen er et sandhedsværdi-flag, fordi None ikke kan negeres —
+    # abonnementer uden ARR skal ligge sidst, og de er ikke risikofrie, de er
+    # uopgjorte.
     rows.sort(key=lambda r: (r["score"] is None,
                              -(r["score"] or 0),
                              -(r["kunde_arr_dkk"] or 0)))
@@ -190,7 +226,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
              for z in ZONE_ORDER}
     # Kunder pr. zone som MÆNGDER: samme kunde kan ligge i tre zoner med tre
     # sites. Summen af zonernes kundetal er derfor større end meta["kunder"], og
-    # det er ikke en fejl — det er præcis den forskel PRD §7.2 vil vise, hvor
+    # det er ikke en fejl — det er præcis den forskel Churn-risiko vil vise, hvor
     # abonnementer er "hvad der står på spil" og kunder er kapaciteten.
     kunder_pr_zone: dict = {}
     for r in rows:
@@ -218,7 +254,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     arr_total = sum(r["arr_dkk"] for r in rows if r["arr_dkk"] is not None)
     # "ARR i risiko" er kroner i zoner med vægt over nul. Sund og ny bidrager
     # altså ikke, mens intet_signal gør — et datahul på en stor kunde er ikke
-    # risikofrit, det er uoplyst (PRD §3).
+    # risikofrit, det er uoplyst (Zonemodellen).
     arr_i_risiko = sum(r["arr_dkk"] for r in rows
                        if r["arr_dkk"] is not None and r["vaegt"] > 0)
 
@@ -244,9 +280,17 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                                    if r["zone"] == "stoppet" and not r["vanebruger"]),
         "mikrokunder":      sum(1 for r in rows if r["mikrokunde"]),
         "usage_export_date": usage_meta.get("export_date"),
+        # Tre tal og ikke ét: "i opsigelse" er stadig et opkald vaerd, "opsagte"
+        # er en konstatering, og "forfaldne" er datahygiejne - de burde vaere
+        # lukket i dbo.retention, og alle nu er marketwires 'Opsigelser'.
+        "opsagte":          sum(1 for r in rows if r["opsagt"]),
+        "i_opsigelse":      sum(1 for r in rows
+                                if r["opsagt_dato"] and not r["opsagt"]),
+        "opsagte_forfaldne": sum(1 for r in rows if r["opsagt_dato"]
+                                 and r["opsagt_dato"] < abo_maaned + "-01"),
         "usage_filename":    usage_meta.get("filename"),
         "usage_error":       usage_error,
-        # Tærsklerne i zones.py er gæt, ikke måleresultater. PRD §9:
+        # Tærsklerne i zones.py er gæt, ikke måleresultater. Målingside:
         # forudsigelsesraten kalibrerer dem efter 6 måneders udfaldsdata. Så
         # længe dette er False, skal siden sige det.
         "thresholds_validated": False,

@@ -175,7 +175,7 @@
   const customers    = rows.map(r => r.customer_count);
   const churn        = rows.map(r => r.churn_pct);
 
-  // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. PRD §2 (besluttet
+  // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. Definitioner (besluttet
   // 2026-08-17): et hul på én måned er en pause og tælles ikke som churn. Men et
   // abonnement der sidst findes i måneden FØR den nyeste, har endnu ingen
   // efterfølgende række, så det tælles som churn med det samme. Kommer det igen

@@ -1,6 +1,6 @@
 """Zoner: hvor et abonnement står i sit forbrugsforløb.
 
-Måleenheden er abonnementet `(account, org_id, site)`, jf. PRD §3. Zonen
+Måleenheden er abonnementet `(account, org_id, site)`, jf. Zonemodellen. Zonen
 beregnes på et MÅNEDLIGT signal og ikke på dage siden sidste aktivitet — et
 dagsbaseret signal rådner med filens alder, mens "læste i juli" er et komplet
 faktum om en afsluttet måned.
@@ -51,7 +51,7 @@ STOPPET_VINDUE = 3
 # Hvor stort et fald der skal til for zonen "faldende". 0,50 = halveret.
 FALD_GRAENSE = 0.50
 
-# PRD §3: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
+# Zonemodellen: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
 # 0. Vægt 1,00" mod "Aldrig i brug — højst 1 aktiv dag i 12 måneder. Vægt 0,50".
 # Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og genmålingen 2026-08-11
 # viser hvorfor: blandt de 2.064 stoppede abonnementer er medianen 4,0
@@ -72,11 +72,11 @@ ZONE_ORDER = ["stoppet", "laenge_tavs", "aldrig_i_brug", "faldende",
 #
 # `laenge_tavs` sat til 0,50 den 2026-08-10, samme som `aldrig_i_brug`: begge er
 # "signalet er væk for længe siden, lav redningssandsynlighed". Valgt frem for
-# 0,70 fordi 0,70 ville være det eneste tal i vektoren uden dækning i PRD §3 —
+# 0,70 fordi 0,70 ville være det eneste tal i vektoren uden dækning i Zonemodellen —
 # de øvrige fem kommer derfra. Zonerne vises fortsat hver for sig, de har blot
 # samme prioritet, og ZONE_ORDER bryder uafgjort i sorteringen. Alle vægte er
 # provisoriske indtil forudsigelsesraten kan kalibrere dem på rigtige udfald
-# (PRD §9).
+# (Målingside).
 #
 # Tabellen er de NOMINELLE vægte. Den faktiske vægt for et abonnement kommer fra
 # zone_vaegt(), som sænker "stoppet" til aldrig_i_brug-niveau når der ikke var en
@@ -227,7 +227,7 @@ def foerste_kendte_maaned(forbrug: dict, foerste_maaned: str) -> str:
 
 
 def er_vanebruger(dage: dict, reference: str) -> bool:
-    """Havde abonnementet en vane at miste? PRD §3's tærskel.
+    """Havde abonnementet en vane at miste? Zonemodellens tærskel.
 
     `dage` er {måned: aktive dage} for abonnementet. For pakkeabonnementer skal
     kalderen sende KUNDENS dage, præcis samme regel som for sidevisningerne —
@@ -303,9 +303,9 @@ def bestem_zone(forbrug: dict,
 
 
 def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
-    """Risikovægten til score = ARR × vægt × timingfaktor (PRD §4).
+    """Risikovægten til score = ARR × vægt × timingfaktor (Prioriteringsmodellen).
 
-    `vanebruger` modulerer KUN "stoppet", jf. PRD §3: en stoppet vanebruger er
+    `vanebruger` modulerer KUN "stoppet", jf. Zonemodellen: en stoppet vanebruger er
     1,00 og kræver et opkald i dag, mens et abonnement uden vane at miste er en
     onboarding-sag og deler vægt med "aldrig i brug". De øvrige zoner er
     upåvirkede — "faldende" er 97,7% vanebrugere og ligger allerede under 0,50,

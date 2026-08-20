@@ -1,11 +1,11 @@
-"""Prioritering: specialistens startside (PRD §7.3).
+"""Prioritering: specialistens startside (Dagens opkald).
 
 To lister i fast rækkefølge — først de aftaler der er lovet i dag, derefter nye
 risici. Rækkefølgen er ikke til diskussion: et brudt løfte til en kunde, der
 allerede overvejede at gå, er værre end en overset risiko.
 
 FOLDNINGEN HØRER HER, ikke i risiko.py. Risikolaget måler abonnementer, fordi
-det er dér signalet findes (PRD §3: en kunde med syv sites kan være stoppet på
+det er dér signalet findes (Zonemodellen: en kunde med syv sites kan være stoppet på
 ét og aktiv på seks). Prioriteringen tæller opkald, og man kan ikke ringe til
 et abonnement. Blandes de to enheder i samme modul, begynder tallene at betyde
 noget forskelligt fra linje til linje.
@@ -34,28 +34,42 @@ from .zones import zone_alvor
 
 logger = logging.getLogger(__name__)
 
-# PRD §8's loft: hvor mange sager der må ligge åbne samtidig. Tælles PR KUNDE,
+# Arbejdsgangens loft: hvor mange sager der må ligge åbne samtidig. Tælles PR KUNDE,
 # ikke pr. abonnement — folder man ikke først, tæller Novo Nordisk som fire
 # sager, og loftet binder cirka en tredjedel for tidligt (målt 2026-08-11:
 # 7.044 kandidat-abonnementer fordelt på 5.320 kunder, faktor 1,32).
 #
 # UKALIBRERET, og det er vigtigere end tallet. 40 er læst ud af en ødelagt
-# tabelrække i PRD §8 og kan ikke efterprøves, før der findes rigtige udfald.
-# Tallet indebærer en påstand: ved §4's 10 kunder om dagen svarer 40 åbne sager
-# til en gennemsnitlig sagslevetid på fire hverdage, og da §8 giver en sag op
-# til 3 forsøg over 10 hverdage, kræver det at mindst to ud af tre samtaler
-# lukker ved første kontakt. Holder det ikke, binder loftet permanent, og siden
-# holder op med at vise nye risici. Kalibreres af §9's andel lukket på første
-# kontakt — indtil da skal hver gang loftet binder logges, ellers opdager
-# ingen det.
+# tabelrække i Arbejdsgang og kan ikke efterprøves, før der findes rigtige
+# udfald. Tallet indebærer en påstand: ved Prioriteringsmodellens 10 kunder om
+# dagen svarer 40 åbne sager til en gennemsnitlig sagslevetid på fire hverdage,
+# og da Arbejdsgang giver en sag op til 3 forsøg over 10 hverdage, kræver det
+# at mindst to ud af tre samtaler lukker ved første kontakt. Holder det ikke,
+# binder loftet permanent, og siden holder op med at vise nye risici.
+# Kalibreres af Målingsidens andel lukket på første kontakt — indtil da skal
+# hver gang loftet binder logges, ellers opdager ingen det.
 MAKS_AABNE_SAGER = 40
 
-# PRD §4: listen er ti KUNDER lang, minus dagens opfølgninger. Ti rækker skal
-# være ti opkald.
+# Prioriteringsmodellen: listen er ti KUNDER lang, minus dagens opfølgninger.
+# Ti rækker skal være ti opkald.
 LISTE_LAENGDE = 10
 
+# Retention-teamet er dansk (aftalt 2026-08-20), saa norske, svenske og tyske
+# abonnementer hoerer ikke paa opkaldslisten: der er ingen der ringer til dem.
+#
+# EXCLUDE og ikke include, med vilje. En include-liste ville tavst droppe en NY
+# dansk account, og et tabt dansk opkald kan ingen se. Med en exclude-liste
+# dukker en ny udenlandsk account op som stoej, og stoej kan man se og rette.
+# Samme princip som zone_vaegt's default: fejlen skal pege mod at vise for meget.
+#
+# Maalt 2026-08-20: 2.173 af 15.199 abonnementer til 26,4 mio. kr. Den rangerede
+# liste falder fra 5.237 til 4.463 kunder, og Sparebank 1 Soer-Norge forsvinder
+# fra top 10, hvor de laa nummer seks med 118.808.
+UDENLANDSKE_ACCOUNTS = {"watch_no", "watch_se", "watch_de"}
+
+
 def kunde_noegle(raekke: dict) -> tuple:
-    """`(account, org_id)` med org_id som STRENG. PRD §10, regel 7.
+    """`(account, org_id)` med org_id som STRENG. Regler og Guardrails, regel 7.
 
     Delegerer til usage.customer_key, som er pakkens kanoniske nøglefunktion —
     den siger om sig selv "Brug ALTID denne". Den str()'er OG strip()'er begge
@@ -77,7 +91,7 @@ def fold_opfoelgninger(raekker: list, i_dag: date, navne: dict) -> list:
 
     `raekker` er outcomes.opfoelgninger's output — én pr. ABONNEMENT.
     `navne` er {(account, org_id): org_name}; se HVORFOR nedenfor.
-    Ud: én post pr. kunde, altså ét opkald (PRD §4).
+    Ud: én post pr. kunde, altså ét opkald (Prioriteringsmodellen).
 
     `i_dag` skal være en `date`, ikke en `datetime`. `followup_date` er en
     rigtig `date` (outcomes._normaliser), og de to typer kan ikke sammenlignes
@@ -87,7 +101,7 @@ def fold_opfoelgninger(raekker: list, i_dag: date, navne: dict) -> list:
     SORTERINGEN er ældste opfølgning først. Har en kunde både en overskreden og
     en dagsaktuel aftale, bedømmes rækken på den overskredne: det er det brudte
     løfte der skal ringes op, og det lægger sig dermed øverst af sig selv.
-    `overskredet` er en visningsmarkering (PRD §7.3), ikke et filter —
+    `overskredet` er en visningsmarkering (Dagens opkald), ikke et filter —
     outcomes.opfoelgninger har allerede taget alt til og med i dag.
 
     HVORFOR NAVNET KOMMER UDEFRA: dbo.RetentionOutcomes har ingen org_name-
@@ -131,7 +145,7 @@ def fold_opfoelgninger(raekker: list, i_dag: date, navne: dict) -> list:
 
 
 def antal_aabne_sager(seneste: dict) -> int:
-    """Antal KUNDER med et uindfriet løfte. PRD §8's "bunke".
+    """Antal KUNDER med et uindfriet løfte. Arbejdsgangens "bunke".
 
     Tælles pr. kunde og ikke pr. abonnement, fordi loftet er et loft over
     OPKALD. Uden foldningen tæller Novo Nordisk som fire sager, og loftet binder
@@ -149,7 +163,7 @@ def antal_aabne_sager(seneste: dict) -> int:
 
 
 def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
-    """Nye risici foldet til én post pr. kunde, vigtigste først. PRD §4 og §7.3.
+    """Nye risici foldet til én post pr. kunde, vigtigste først.
 
     Ind: `abonnementer_i_risiko()`s rækker — én pr. ABONNEMENT — og
     `db_seneste_udfald()`s ordbog. Ud: én post pr. kunde, altså ét opkald.
@@ -159,11 +173,11 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
     Afkortningen ligger i afkort_nye_risici, fordi den er ukalibreret og skal
     kunne læses og ændres uden at man rører rangeringen.
 
-    §4's FEM FILTRE er tre tjek her. Filter 1 (ikke aktivt i indeværende måned)
-    er allerede klaret af risikolaget, som kun returnerer månedens
-    abonnementer. Filter 3 og 4 er blevet den SAMME sammenligning:
+    Prioriteringsmodellens FEM FILTRE er tre tjek her. Filter 1 (ikke aktivt i
+    indeværende måned) er allerede klaret af risikolaget, som kun returnerer
+    månedens abonnementer. Filter 3 og 4 er blevet den SAMME sammenligning:
     tilbage_paa_listen svarer altid, så "åben opfølgning i fremtiden" og
-    "uudløbet udsættelse" er ét udtryk. Se PRD §6.4.
+    "uudløbet udsættelse" er ét udtryk. Se Fristmodellen.
 
     NØGLEN TIL `seneste` ER IKKE kunde_noegle. Den er tre led og bruger
     site-sentinelen: `dbo.retention.sites` er NULL for marketwires rækker, og en
@@ -175,8 +189,32 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
     """
     pr_kunde: dict = {}
     for r in raekker:
-        # PRD §4, filter 5 og 2.
+        # KUN LISTE 2. Liste 1 (aftaler du har lovet) filtreres IKKE: et lovet
+        # opkald er en forpligtelse uanset land, og at skjule det ville tabe
+        # arbejde. Filteret staar foerst, fordi det er en AFGRAENSNING af hvad
+        # listen daekker, og ikke et af Prioriteringsmodellens risikofiltre.
+        if r["account"] in UDENLANDSKE_ACCOUNTS:
+            continue
+        # Prioriteringsmodellen, filter 5 og 2.
         if r["zone"] == "sund" or r["mikrokunde"]:
+            continue
+        # OPSAGTE HOERER IKKE PAA OPKALDSLISTEN. Et abonnement med en gaeldende
+        # opsigelse er ikke en risiko, det er et faktum, og et opkald der
+        # rangerer efter risiko kan ikke redde det. Det staar i stedet paa
+        # kundesiden med sin ophoersdato, hvor varslet er den oplysning der
+        # betyder noget.
+        #
+        # FILTERET ER NOEDVENDIGT SELV OM SCOREN ALLEREDE ER NUL (risiko.py
+        # nulstiller vaegten): en kunde med ét opsagt og ét levende abonnement
+        # skal fortsat paa listen, men KUN med det levende. Ellers taelles det
+        # opsagte med i "scoren daekker X af Y" og staar i den udfoldede raekke.
+        #
+        # Maalt 2026-08-19: Deloitte laa nummer to med 163.300. Syv af deres
+        # abonnementer er opsagt med ophoer fra 13-09 til 03-11-2026, og de faldt
+        # derfor til 123.700 og plads fire. De BLIVER paa listen med de tre der
+        # stadig loeber, og det er netop derfor filteret er pr. abonnement og
+        # ikke pr. kunde.
+        if r["opsagt_dato"]:
             continue
         # Filter 3 og 4. Findes der intet udfald, er der intet at udsætte på.
         u = seneste.get((r["account"], r["org_id"], r["site"] or INTET_SITE))
@@ -214,13 +252,13 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
         p["antal_abonnementer"] = len(p["abonnementer"])
         p["abonnementer_med_arr"] = sum(1 for a in p["abonnementer"]
                                         if a["arr_dkk"] is not None)
-        # Samme rækkefølge som §7.4's detaljeside, så den udfoldede række og
+        # Samme rækkefølge som Kundesidens detaljeside, så den udfoldede række og
         # kundesiden ikke viser kundens abonnementer i to forskellige ordner.
         p["abonnementer"].sort(key=lambda a: (a["score"] is None,
                                               -(a["score"] or 0),
                                               zone_alvor(a["zone"])))
 
-    # PRD §4: score faldende, derefter zonens alvor, derefter kundens ARR
+    # Prioriteringsmodellen: score faldende, derefter zonens alvor, derefter kundens ARR
     # faldende. Nøglen er KORTERE end kunde.py:146, hvor `score is None` skal
     # forrest — her er scoren en SUM og bliver aldrig None. En kunde uden kendt
     # ARR summerer til 0,0 og lander i bunden af sig selv.
@@ -266,12 +304,12 @@ def afkort_nye_risici(poster: list, antal_opfoelgninger: int,
 
     `aabne_sager` returneres ALTID, ikke kun når loftet binder. Det er tallet,
     der skal kalibrere MAKS_AABNE_SAGER: findes det kun i det øjeblik væggen
-    rammes, får §9's måling et binært signal — bandt / bandt ikke — og man kan
+    rammes, får målingen et binært signal, bandt eller bandt ikke, og man kan
     aldrig se, om det rigtige loft var 25 eller 90. Lå tallet typisk på 12, er
     40 dekoration; lå det på 38 hver dag, kvæler loftet arbejdet, uden at nogen
     har besluttet det. Siden viser det som en stille tæller ved de tre KPI'er.
 
-    RÆKKEFØLGEN er §8's: loftet er en HÅRD port og går forud for
+    RÆKKEFØLGEN er Arbejdsgangens: loftet er en HÅRD port og går forud for
     pladsregnestykket — "over det lukkes nye risici, indtil bunken er nede".
     """
     if afgraensning_tom:
@@ -299,7 +337,7 @@ def afkort_nye_risici(poster: list, antal_opfoelgninger: int,
 
 
 def maanedens_kpier(raekker: list, tilladte: set | None) -> dict:
-    """PRD §9's tre tal for måneden. Ren funktion over db_maanedens_udfald.
+    """Målingsidens tre tal for måneden. Ren funktion over db_maanedens_udfald.
 
     `tilladte` er de kunde-nøgler, brugeren må se — eller `None` for ingen
     afgrænsning. Det er SAMME afgrænsning som listerne nedenunder på siden,
@@ -318,12 +356,13 @@ def maanedens_kpier(raekker: list, tilladte: set | None) -> dict:
     som 0 kr. reddet. To tal frem for et gennemsnit, så siden kan sige "12
     fornyelser, heraf 3 uden beløb" i stedet for at påstå et tal.
 
-    KENDT BLINDHED, PRD §6.2 — og det er IKKE en undervurdering af beløbet:
-    `opgraderet` findes ikke i CK_RetOut_outcome, så en fornyelse med
-    prisstigning registreres som `fornyet`. Men `arr_after_dkk` er den NYE pris,
-    så stigningen tælles fuldt med i "kroner reddet". Det der mangler, er evnen
-    til at SKELNE en opgradering fra en flad fornyelse — §9 kan derfor ikke
-    rapportere vækst fra opgraderinger for sig.
+    KENDT BLINDHED, Hvad Specialisten kan registrere — og det er IKKE en
+    undervurdering af beløbet: `opgraderet` findes ikke i CK_RetOut_outcome, så
+    en fornyelse med prisstigning registreres som `fornyet`. Men
+    `arr_after_dkk` er den NYE pris, så stigningen tælles fuldt med i "kroner
+    reddet". Det der mangler, er evnen til at SKELNE en opgradering fra en flad
+    fornyelse — Målingside kan derfor ikke rapportere vækst fra opgraderinger
+    for sig.
 
     Formuleringen er rettet 2026-08-12: docstringen sagde tidligere at tallet var
     "systematisk for lav", hvilket modsagde dens egen næste sætning om at
@@ -375,7 +414,7 @@ def naeste_udtraek(i_dag: date) -> date:
 
 def prioriteringsdata(i_dag: date, teams: list | None = None,
                       abo_maaned: str | None = None) -> dict:
-    """Alt hvad prioriteringssiden skal vise. PRD §7.3.
+    """Alt hvad prioriteringssiden skal vise. Dagens opkald.
 
     `i_dag` er KRÆVET og har ingen default. Klokken læses ÉN gang, i ruten:
     kaldes `date.today()` to gange under samme sideopslag, kan de to kald ligge
@@ -394,16 +433,17 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
     kontrolkørsel, som i risiko.abonnementer_i_risiko. Ruten sender den aldrig.
 
     `db_seneste_udfald()` kaldes ÉN gang og afgrænses ÉN gang. Tre ting læser
-    den — liste 1, loftets tæller, og §4's filter 3 og 4. Afgrænses den her frem
-    for i hver af de tre, kan afgrænsningen ikke glemmes i én af dem, og de tre
-    tal kan ikke blive uenige om noget, der ændrer sig mens siden bygges.
+    den — liste 1, loftets tæller, og Prioriteringsmodellens filter 3 og 4.
+    Afgrænses den her frem for i hver af de tre, kan afgrænsningen ikke glemmes
+    i én af dem, og de tre tal kan ikke blive uenige om noget, der ændrer sig
+    mens siden bygges.
 
     TO MÅNEDER, og det er ikke en fejl: `maaned` er indeværende og gælder
-    KPI'erne (§7.3: "tre tal for indeværende måned"), mens `reference_maaned` er
-    sidste HELE måned og gælder zonerne (§3). Begge sendes med, fordi siden SKAL
-    skrive dem. Gør den ikke det, spørger nogen hver måned, hvorfor "kroner
-    reddet" er lille, mens risikolisten er lang — og tror, at det ene modsiger
-    det andet.
+    KPI'erne (Dagens opkald: "tre tal for indeværende måned"), mens
+    `reference_maaned` er sidste HELE måned og gælder zonerne (Zonemodellen).
+    Begge sendes med, fordi siden SKAL skrive dem. Gør den ikke det, spørger
+    nogen hver måned, hvorfor "kroner reddet" er lille, mens risikolisten er
+    lang — og tror, at det ene modsiger det andet.
     """
     risiko_data = cache.risiko(teams, abo_maaned)
     navne = cache.navne()
@@ -420,12 +460,12 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
 
     liste1 = fold_opfoelgninger(opfoelgninger(seneste, i_dag), i_dag, navne)
 
-    # En kunde på liste 1 udelukkes HELT fra liste 2. §4's filter 3 fjerner kun
-    # abonnementer med opfølgning i FREMTIDEN, mens liste 1 viser alt til og med
-    # i dag — så en opfølgning der forfalder netop i dag er i ingen af dem, og
-    # kunden ville stå på begge lister. Så ville "ti minus opfølgninger" tælle
-    # hende to gange: ti rækker, otte opkald. Specialisten ringer én gang og
-    # taler om hele kunden.
+    # En kunde på liste 1 udelukkes HELT fra liste 2. Prioriteringsmodellens
+    # filter 3 fjerner kun abonnementer med opfølgning i FREMTIDEN, mens liste
+    # 1 viser alt til og med i dag — så en opfølgning der forfalder netop i dag
+    # er i ingen af dem, og kunden ville stå på begge lister. Så ville "ti
+    # minus opfølgninger" tælle hende to gange: ti rækker, otte opkald.
+    # Specialisten ringer én gang og taler om hele kunden.
     paa_liste1 = {(p["account"], p["org_id"]) for p in liste1}
     rangeret = [p for p in fold_risici(risiko_data["rows"], seneste, i_dag)
                 if (p["account"], p["org_id"]) not in paa_liste1]
@@ -448,7 +488,7 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
             # Sat men tom = afgrænsningen matchede ingen kunder. Se
             # afkort_nye_risici for hvorfor det ikke må ligne en tom bunke.
             afgraensning_tom=tilladte is not None and not tilladte),
-        # Bæres med, så siden kan vise forbeholdet fra §7.2: mangler
+        # Bæres med, så siden kan vise forbeholdet fra Churn-risiko: mangler
         # forbrugsfilen, står ALLE abonnementer som "intet signal", og en liste
         # der ser tom for risiko ud er den farligste visning siden kan lave.
         "meta":             risiko_data["meta"],
