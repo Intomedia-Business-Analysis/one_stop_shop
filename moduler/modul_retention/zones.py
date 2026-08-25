@@ -65,7 +65,7 @@ VANEBRUGER_VINDUE = 12
 
 # Visningsrækkefølge: værst først, datahuller sidst.
 ZONE_ORDER = ["stoppet", "laenge_tavs", "aldrig_i_brug", "faldende",
-              "sund", "ny", "intet_signal"]
+              "sund", "ny", "uden_aktiv_konto", "intet_signal"]
 
 # Vægten i score = ARR × vægt × timingfaktor. Kun "stoppet" er 1,00, fordi det er
 # den eneste tilstand hvor noget er sket for nylig og et opkald kan nå at virke.
@@ -89,6 +89,13 @@ ZONE_VAEGT = {
     "intet_signal":  0.15,
     "sund":          0.00,
     "ny":            0.00,
+    # Nul og ikke 0,15 som intet_signal, fordi det ikke er et datahul: vi VED
+    # hvem kunden er, og Zuora siger at kontoen er ophoert. Maalt 24-08-2026 paa
+    # de 1.253 ramte abonnementer: 47 af dem har overhovedet et ARR-beloeb i
+    # ACV, mod 87,1 % af de oevrige, og hele gruppen udgoer 336.511 kr. af 202
+    # mio. Det stoerste enkelte er 38.143 kr. Der er ingen portefoelje at
+    # forsvare, og et opkald om churn er det forkerte opkald.
+    "uden_aktiv_konto": 0.00,
 }
 
 ZONE_LABELS = {
@@ -98,6 +105,7 @@ ZONE_LABELS = {
     "faldende":      "Faldende",
     "sund":          "Sund",
     "ny":            "Ny",
+    "uden_aktiv_konto": "Ingen aktiv konto",
     "intet_signal":  "Intet signal",
 }
 
@@ -246,7 +254,8 @@ def bestem_zone(forbrug: dict,
                 reference: str,
                 foerste_maaned: str,
                 site: Optional[str],
-                har_zuora_kobling: bool = True) -> str:
+                har_zuora_kobling: bool = True,
+                har_aktiv_konto: bool = True) -> str:
     """Zonen for ét abonnement i én referencemåned.
 
     `forbrug` er {måned: sidevisninger} for dette abonnement — kun måneder med
@@ -257,12 +266,36 @@ def bestem_zone(forbrug: dict,
     `reference` skal være den sidste HELE måned. Indeværende måned er levende og
     ville få enhver kunde til at se ud som et frit fald.
 
+    `har_aktiv_konto` er falsk naar kunden KUN kan kobles gennem ophoerte
+    Zuora-konti. Default sand, saa en kalder uden den oplysning ikke faar en
+    zone skjult; samme princip som zone_vaegt's `vanebruger`.
+
     Rækkefølgen af tjek er betydningsbærende og må ikke ombyttes:
     et nyt abonnement kan ikke være "stoppet", og et utrackbart kan ikke være
     "aldrig i brug".
     """
     if not er_trackbare(site, har_zuora_kobling):
         return "intet_signal"
+
+    # Pipedrive siger aktiv, Zuora har ingen aktiv konto, OG der er ikke laest
+    # en enkelt gang i vinduet. To grunde til at tjekket staar praecis her:
+    #
+    # EFTER er_trackbare, fordi et utrackbart site ikke kan bevise noget om
+    # forbrug. De 37 ramte raekker der ligger paa shifter, kom24, medier24 og
+    # marketwire skal blive i intet_signal.
+    #
+    # FOER de forbrugsbaserede tjek, og gated paa at forbruget er tomt. Uden
+    # gaten ville de 195 der FAKTISK laeser miste deres zone, og laesningen er
+    # det staerkeste bevis vi har: laeser de, er det konto-statussen der er
+    # foraeldet, ikke kunden der er vaek. Med gaten flytter kun de tavse.
+    #
+    # HVORFOR ikke lade dem staa som aldrig_i_brug: maalt 24-08-2026 var 690 af
+    # zonens 1.422 abonnementer i denne gruppe. Zonen maalte altsaa knap
+    # halvvejs "kontoen er ophoert" i stedet for "kunden laeser ikke", og den
+    # ville derfor maale kunstigt staerkt naar vaegtene proeves efter paa
+    # rigtige opsigelser.
+    if not har_aktiv_konto and not any(v > 0 for v in forbrug.values()):
+        return "uden_aktiv_konto"
 
     # Abonnementet fandtes IKKE i referencemåneden. Så kan referencens forbrug
     # umuligt være dets, og enhver sammenligning beskriver kunden frem for denne
@@ -323,6 +356,47 @@ def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
     if zone == "stoppet" and not vanebruger:
         return ZONE_VAEGT["aldrig_i_brug"]
     return ZONE_VAEGT.get(zone, 0.0)
+
+
+# Tre overgrupper over de otte zoner. Otte tilstande er for mange at handle
+# paa: FT loeste samme problem ved at folde syv clustre til tre overskrifter.
+#
+# GRUPPEN UDLEDES AF VAEGTEN og staar bevidst IKKE som en liste af zonenavne.
+# En liste mere ville vaere den tredje kopi af samme rangorden (ZONE_ORDER og
+# ZONE_VAEGT er de to foerste), og tre kopier bliver uenige. Faar en zone en ny
+# vaegt, flytter den gruppe af sig selv.
+GRUPPE_ORDER = ["ring_nu", "foelg_op", "ingen_handling"]
+GRUPPE_LABELS = {
+    "ring_nu":        "Ring nu",
+    "foelg_op":       "Følg op",
+    "ingen_handling": "Ingen handling",
+}
+# Gruppen ER vaegtbaandet, og teksten siger det, saa ingen kan tro at
+# overskriften er en selvstaendig vurdering oven i modellen.
+GRUPPE_HINT = {
+    "ring_nu":        "risikovægt 1,00 · noget er sket for nylig",
+    "foelg_op":       "risikovægt 0,15 til 0,50",
+    "ingen_handling": "risikovægt 0,00",
+}
+
+
+def zone_gruppe(zone: str) -> str:
+    """Zonens overgruppe, udledt af den NOMINELLE vaegt.
+
+    Nominel og ikke faktisk: kortet beskriver zonen, raekken beskriver
+    abonnementet. En "stoppet" uden vane vejer 0,50 paa raekken, men zonen
+    staar fortsat under Ring nu.
+
+    Ukendt zone lander i ingen_handling, samme princip som zone_vaegt's 0,0 og
+    zone_alvor's sidsteplads: en ny zone maa aldrig kunne skubbe kunder op paa
+    listen ved et uheld, kun ned.
+    """
+    v = ZONE_VAEGT.get(zone, 0.0)
+    if v >= 1.00:
+        return "ring_nu"
+    if v > 0:
+        return "foelg_op"
+    return "ingen_handling"
 
 
 def zone_alvor(zone: str) -> int:

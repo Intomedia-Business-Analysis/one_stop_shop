@@ -56,8 +56,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from moduler.modul_retention.queries import db_abonnementer          # noqa: E402
 from moduler.modul_retention.usage import (                          # noqa: E402
-    _account_to_customer_map, customer_key, forbrug_pr_abonnement,
-    serie_og_dage)
+    customer_key, forbrug_pr_abonnement, serie_og_dage)
 from moduler.modul_retention.zones import (                          # noqa: E402
     NY_MAANEDER, STOPPET_VINDUE, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
     ZONE_VAEGT, bestem_zone, er_vanebruger, forskyd_maaned, kanonisk_site,
@@ -115,15 +114,24 @@ def hent_maaneder(maaneder: list) -> dict:
 
 
 def zone_for(r: dict, kunde: tuple, reference: str, forbrug: dict,
-             med_zuora: set) -> tuple:
-    """(zone, vægt, hul-årsag) for ét abonnement i én referencemåned."""
+             med_zuora: set, uden_aktiv_konto: set = frozenset()) -> tuple:
+    """(zone, vægt, hul-årsag) for ét abonnement i én referencemåned.
+
+    `uden_aktiv_konto` maa KUN sendes med naar referencen er en LEVENDE maaned.
+    Saettet bygges paa konto_status, som beskriver tilstanden i dag, saa paa en
+    bagdateret kohorte er det et input dateret EFTER udfaldet. Default er
+    derfor et tomt saet, og kohortemaaling.py sender det ikke med. Se regel 5 i
+    kohortemaaling.py, hvor flaget i stedet maales for sig selv og staar
+    maerket som laekket.
+    """
     site = kanonisk_site(r["sites"])
     serie, dage = serie_og_dage(forbrug, kunde, site)
     # BESKÆRINGEN. Uden de to linjer måler filen sig selv.
     serie, dage = beskaer(serie, reference), beskaer(dage, reference)
 
     har_zuora = kunde in med_zuora
-    zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora)
+    zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora,
+                       kunde not in uden_aktiv_konto)
     # Vægten afhænger af vanen for "stoppet", præcis som i risiko.py — ellers
     # ville den målte vektor sammenlignes med en vægt, ingen række havde.
     vaegt = zone_vaegt(zone, er_vanebruger(dage, reference))
@@ -131,7 +139,7 @@ def zone_for(r: dict, kunde: tuple, reference: str, forbrug: dict,
 
 
 def maal(reference: str, horisont: int, pr_maaned: dict, forbrug: dict,
-         med_zuora: set) -> dict:
+         med_zuora: set, uden_aktiv_konto: set = frozenset()) -> dict:
     """Zonefordeling for dem der var VÆK i R+H mod dem der stadig var der."""
     slut = forskyd_maaned(reference, -horisont)
     mellem = [forskyd_maaned(reference, -n) for n in range(1, horisont)]
@@ -290,7 +298,14 @@ def main() -> int:
     print("--- forbrugsdata ---")
     forbrug = forbrug_pr_abonnement()
     vindue = sorted(forbrug["maaneder"])
-    med_zuora = set(_account_to_customer_map().values())
+    # Navnet er historisk: saettet er nu koblingsbare kunder fra dm_kobling
+    # plus ACV_snapshot. Snapshot-halvdelen kender kun de AKTIVE konti, saa den
+    # er dateret efter udfaldet og maa skaeres ud naar zonerne maales paa en
+    # historisk maaned. forbrug["uden_aktiv_konto"] er den gruppe.
+    med_zuora = forbrug["koblingsbare"]
+    # Tomt saet: denne fil maaler bagdaterede referencer, og konto_status er
+    # dateret efter udfaldet. Se zone_for's docstring.
+    uden_aktiv_konto = frozenset()
     print(f"  vindue: {vindue[0]} .. {vindue[-1]}  ({len(vindue)} maaneder)")
 
     # R+H skal være en HEL måned. Indeværende måned er ufuldstændig, og et
@@ -326,7 +341,8 @@ def main() -> int:
     pr_maaned = hent_maaneder(alle)
 
     for h in HORISONTER:
-        maalinger = [maal(r, h, pr_maaned, forbrug, med_zuora)
+        maalinger = [maal(r, h, pr_maaned, forbrug, med_zuora,
+                          uden_aktiv_konto)
                      for r in pr_horisont[h]
                      if forskyd_maaned(r, -h) in pr_maaned]
         if not maalinger:

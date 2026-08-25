@@ -27,9 +27,9 @@ zones.bestem_zone, før den forbrugsbaserede datering — se kommentaren dér.""
 import logging
 from datetime import date
 
+from .kontrakt import dage_til, fornyelsesdatoer
 from .queries import abonnementer_med_ejer, db_opsigelser
 from .usage import (
-    _account_to_customer_map,
     forbrug_pr_abonnement,
     latest_complete_month,
     serie_og_dage,
@@ -37,6 +37,9 @@ from .usage import (
 from .zones import (
     STOPPET_VINDUE,
     VANEBRUGER_VINDUE,
+    GRUPPE_HINT,
+    GRUPPE_LABELS,
+    GRUPPE_ORDER,
     ZONE_LABELS,
     ZONE_ORDER,
     bestem_zone,
@@ -44,6 +47,7 @@ from .zones import (
     foregaaende_maaneder,
     kanonisk_site,
     maaneders_alder,
+    zone_gruppe,
     zone_vaegt,
 )
 
@@ -56,10 +60,14 @@ logger = logging.getLogger(__name__)
 # portefølje.
 MIKROKUNDE_ARR = 5000.0
 
-# Prioriteringsmodellen. Faktoren kræver en fornyelsesdato, som ikke findes i
-# nogen kilde vi har adgang til. Indtil da er den 1,0 for alle, og score er
-# reelt ARR × risikovægt. Konstanten står her frem for at være udeladt, så det
-# fremgår at den mangler og ikke er glemt.
+# Prioriteringsmodellen. FORNYELSESDATOEN FINDES NU, se kontrakt.py, men
+# faktoren staar fortsat paa 1,0, og de tre grunde staar dér: den kan ikke
+# valideres bagud (Zuora saetter baade betalt_til og auto_fornyes ved ophoer),
+# monitor og marketwire har 0 % daekning, og en absolut dagsgraense giver en
+# saesonboelge fordi 64,5 % af kunderne med en dato fornyes inden 60 dage.
+# Datoen er derfor en kolonne og en tie-breaker, ikke en multiplikator.
+# Konstanten staar her frem for at vaere udeladt, saa det fremgaar at den
+# mangler og ikke er glemt.
 TIMINGFAKTOR = 1.0
 
 
@@ -84,16 +92,20 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     """
     forbrug: dict = {}
     med_zuora: set = set()
+    uden_aktiv_konto: set = set()
     reference: str | None = None
     usage_meta: dict = {}
     usage_error: str | None = None
     try:
         forbrug = forbrug_pr_abonnement()
         reference = latest_complete_month(forbrug["maaneder"])
-        # Samme opslag som forbrug_pr_abonnement bruger internt, men vi har brug
-        # for det HER: bestem_zone skal kunne skelne "kan ikke oversættes" fra
-        # "læser ikke", altså intet_signal fra aldrig_i_brug.
-        med_zuora = set(_account_to_customer_map().values())
+        # bestem_zone skal kunne skelne "kan ikke oversaettes" fra "laeser
+        # ikke", altsaa intet_signal fra aldrig_i_brug. Saettet tages FRA
+        # forbrug og ikke fra et nyt opslag, saa de to ikke kan drive fra
+        # hinanden. NAVNET er historisk: kilden er dm_kobling plus
+        # ACV_snapshot, ikke Zuora alene.
+        med_zuora = forbrug["koblingsbare"]
+        uden_aktiv_konto = forbrug["uden_aktiv_konto"]
         usage_meta = forbrug["meta"]
     except FileNotFoundError as e:
         usage_error = str(e)
@@ -121,6 +133,17 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     # DE STOERSTE ER NETOP "sund". Energinet EnergiWatch DK til 260.356 kr.
     # ophoerer 29-09-2026 og laeser normalt indtil da. Forbrug forudsiger ikke
     # opsigelse, og derfor kan zonemodellen alene ikke finde disse opkald.
+    # Eget try: mangler abonnementsfilen, skal siden stadig virke uden
+    # fornyelsesdatoer. En kontraktoplysning maa ikke kunne vaelte risikolisten.
+    fornyelser: dict = {}
+    kontrakt_meta: dict = {}
+    try:
+        _k = fornyelsesdatoer()
+        fornyelser = _k["pr_kunde"]
+        kontrakt_meta = _k["meta"]
+    except Exception as e:
+        logger.warning("Fornyelsesdatoer kunne ikke laeses: %s", e)
+
     opsigelser = db_opsigelser()
     # Datoen holdes som TEKST i opslagets eget format ('YYYY-MM-DD'), saa
     # sammenligningen nedenfor er en strengsammenligning. Samme valg som resten
@@ -141,7 +164,8 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             # blev beregnet på.
             serie, dage_serie = serie_og_dage(forbrug, kunde, site)
             zone = bestem_zone(serie, reference, a["foerste_maaned"], site,
-                               kunde in med_zuora)
+                               kunde in med_zuora,
+                               kunde not in uden_aktiv_konto)
             vanebruger = er_vanebruger(dage_serie, reference)
             dage_12m = sum(dage_serie.get(m, 0)
                            for m in foregaaende_maaneder(reference,
@@ -180,6 +204,12 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             "teams":           a["teams"],
             "zone":            zone,
             "zone_label":      ZONE_LABELS[zone],
+            # Kunden kan KUN kobles gennem ophoerte Zuora-konti: Pipedrive siger
+            # aktiv, Zuora siger ophoert. Zonen staar uroert indtil gruppen faar
+            # sin egen tilstand, men flaget skal med nu, saa zone-maalingen kan
+            # skaere gruppen ud af sit grundlag. Uden det maaler aldrig_i_brug
+            # "kontoen er ophoert" og ikke "kunden laeser ikke".
+            "uden_aktiv_konto": kunde in uden_aktiv_konto,
             "vaegt":           vaegt,
             # Datoen med i raekken, saa UI'et kan skrive den. `opsagt` er sandt
             # naar aftalen allerede er slut, og falsk mens varslet loeber. Den
@@ -203,17 +233,32 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             # to tilstande skal kunne skelnes i UI'et.
             "score":           (arr * vaegt * TIMINGFAKTOR
                                 if arr is not None else None),
+            # Naeste fornyelse er en KONTRAKTOPLYSNING og ikke et signal.
+            # Den ganges bevidst IKKE paa scoren: se kontrakt.py's tre grunde,
+            # hvoraf den vaegtigste er at monitor og marketwire faar 0 %
+            # daekning og derfor ville blive skubbet ned af en datagrund.
+            # Datoen ligger paa KUNDEN, saa alle kundens sites deler den.
+            "fornyelse_dato":  fornyelser.get(kunde),
+            "fornyelse_dage":  dage_til(fornyelser.get(kunde)),
             "mikrokunde":      kunde_arr is not None and kunde_arr < MIKROKUNDE_ARR,
             "pv_reference":    serie.get(reference, 0) if reference else None,
             "pv_snit_3":       snit,
         })
 
-    # Prioriteringsmodellen: score faldende, tie-breaker ARR faldende. Første
-    # element i nøglen er et sandhedsværdi-flag, fordi None ikke kan negeres —
-    # abonnementer uden ARR skal ligge sidst, og de er ikke risikofrie, de er
-    # uopgjorte.
+    # Prioriteringsmodellen: score faldende, saa naermeste fornyelse, saa ARR
+    # faldende. Første element i nøglen er et sandhedsværdi-flag, fordi None
+    # ikke kan negeres — abonnementer uden ARR skal ligge sidst, og de er ikke
+    # risikofrie, de er uopgjorte.
+    #
+    # FORNYELSEN ER EN TIE-BREAKER OG IKKE EN FAKTOR. Den flytter kun raekker
+    # der ellers stod lige, og dér gør den mest gavn: de 3.012 abonnementer
+    # uden ARR har alle score None og laa foer i vilkaarlig orden.
+    # Manglende dato sorteres SIDST og ikke foerst, saa en kunde uden
+    # kontraktoplysning ikke kan overhale en med.
     rows.sort(key=lambda r: (r["score"] is None,
                              -(r["score"] or 0),
+                             r["fornyelse_dage"] if r["fornyelse_dage"]
+                             is not None else 10**6,
                              -(r["kunde_arr_dkk"] or 0)))
 
     # zone_vaegt(z) uden andet argument giver zonens NOMINELLE vægt. Kortet viser
@@ -221,6 +266,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     # ikke var en vane at miste. Det er bevidst: kortet beskriver zonen, rækken
     # beskriver abonnementet.
     zones = {z: {"label": ZONE_LABELS[z], "vaegt": zone_vaegt(z),
+                 "gruppe": zone_gruppe(z),
                  "abonnementer": 0, "kunder": 0, "arr_dkk": 0.0,
                  "uden_arr": 0, "mikrokunder": 0}
              for z in ZONE_ORDER}
@@ -279,6 +325,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         "stoppet_uden_vane":   sum(1 for r in rows
                                    if r["zone"] == "stoppet" and not r["vanebruger"]),
         "mikrokunder":      sum(1 for r in rows if r["mikrokunde"]),
+        "uden_aktiv_konto": sum(1 for r in rows if r["uden_aktiv_konto"]),
         "usage_export_date": usage_meta.get("export_date"),
         # Tre tal og ikke ét: "i opsigelse" er stadig et opkald vaerd, "opsagte"
         # er en konstatering, og "forfaldne" er datahygiejne - de burde vaere
@@ -289,10 +336,23 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         "opsagte_forfaldne": sum(1 for r in rows if r["opsagt_dato"]
                                  and r["opsagt_dato"] < abo_maaned + "-01"),
         "usage_filename":    usage_meta.get("filename"),
+        "kontrakt_filename": kontrakt_meta.get("filename")
+                             or kontrakt_meta.get("kontrakt_filename"),
+        # Daekningen skal paa siden: 0 % for monitor og marketwire er den
+        # grund faktoren staar paa 1,0, og det skal kunne ses.
+        "med_fornyelse":     sum(1 for r in rows if r["fornyelse_dato"]),
+        "fornyelse_60_dage": sum(1 for r in rows
+                                 if r["fornyelse_dage"] is not None
+                                 and 0 <= r["fornyelse_dage"] <= 60),
         "usage_error":       usage_error,
         # Tærsklerne i zones.py er gæt, ikke måleresultater. Målingside:
         # forudsigelsesraten kalibrerer dem efter 6 måneders udfaldsdata. Så
         # længe dette er False, skal siden sige det.
         "thresholds_validated": False,
     }
-    return {"rows": rows, "zones": zones, "zone_order": ZONE_ORDER, "meta": meta}
+    # Grupperne sendes med som liste og ikke som tre dicts: skabelonen skal
+    # tegne dem i raekkefoelge, og en dict har ingen.
+    grupper = [{"id": g, "label": GRUPPE_LABELS[g], "hint": GRUPPE_HINT[g]}
+               for g in GRUPPE_ORDER]
+    return {"rows": rows, "zones": zones, "zone_order": ZONE_ORDER,
+            "gruppe_order": grupper, "meta": meta}
