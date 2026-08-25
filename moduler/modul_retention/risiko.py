@@ -124,11 +124,12 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     # kundesiden skal kunne vise "opsagt, ophoerer 31-10-2026", og zonekortene
     # skal fortsat summere til den virkelige portefoelje.
     #
-    # Maalt 2026-08-19 paa 15.191 abonnementer: 280 har en gaeldende opsigelse,
-    # fordelt paa 9 forfaldne (alle marketwire, aeldste 2023-03-04), 62 ophoert
-    # i denne maaned og 209 i opsigelse. 198 af dem havde en score, som nu
-    # bliver nul, og arr_i_risiko falder 1.826.871 kr. De resterende 82 havde
-    # allerede vaegt nul, heraf 77 i zonen "fast_laeser".
+    # Maalt 2026-08-25 paa 13.044 danske abonnementer (efter afgraensningen
+    # samme dag, queries.UDENLANDSKE_ACCOUNTS): 277 har en gaeldende opsigelse,
+    # fordelt paa 9 forfaldne (alle marketwire, aeldste 2023-03-04), 72 ophoert
+    # og 205 i opsigelse. 216 af dem havde en score, som nu bliver nul, og
+    # arr_i_risiko falder 3.491.113 kr. De resterende 61 havde allerede vaegt
+    # nul, heraf 77 i zonen "fast_laeser".
     #
     # DE STOERSTE ER NETOP "fast_laeser". Energinet EnergiWatch DK til 260.356 kr.
     # ophoerer 29-09-2026 og laeser normalt indtil da. Forbrug forudsiger ikke

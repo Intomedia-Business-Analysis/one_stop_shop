@@ -35,9 +35,13 @@ ACV_BRAND_TO_ACCOUNT: dict[str, str] = {
 # samlet ('FinansWatch DK'). Reglen er et suffiks pr. brand plus syv navngivne
 # undtagelser.
 #
-# Maalt 2026-08-18 mod juli 2026: alle 42 (brand, site)-par i ACV rammer et site
-# der findes i dbo.retention, og 15.039 af 15.203 abonnementer kan dermed faa
-# deres EGET beloeb i stedet for kundens ARR delt med antal sites.
+# Maalt 2026-08-18 mod juli 2026, FOER den danske afgraensning 25-08 (de
+# 15.203 var derfor UFILTRERET, alle lande med): alle 42 (brand, site)-par i
+# ACV rammer et site der findes i dbo.retention, og 15.039 af 15.203
+# abonnementer kan dermed faa deres EGET beloeb i stedet for kundens ARR delt
+# med antal sites. Selve funktionen er stadig ufiltreret med vilje (se dens
+# docstring), saa daekningsprocenten (98,9%) staar til troende, men totalen
+# 15.203 maa ikke sammenlignes med db_abonnementer's danske 13.044.
 ACV_SITE_SUFFIKS: dict[str, str] = {
     "Watch DK": " DK",
     "Watch NO": " NO",
@@ -130,10 +134,15 @@ _KUN_B2B = " AND ISNULL(r.org_name, '') NOT LIKE 'Web Sale%' "
 # watch_no 2.050, watch_se 119, watch_de 4. monitor og marketwire er DANSKE og
 # staar bevidst ikke paa listen.
 #
-# FOELGEVIRKNING SOM ENDNU IKKE ER RETTET: maalte tal i kommentarer og
-# docstrings andre steder i modulet (linje 130-140, 539-541, 604-610, 663-667,
-# 744-750, 874-893 i denne fil, samt zones.py:284 og prioritering.py:65-67) er
-# fra FOER dette filter og skal maales om.
+# FOELGEVIRKNING RETTET 2026-08-25: alle "Maalt <dato>"-tal i modulet der
+# refererede en FOER-filter population (db_acv_beloeb_pr_site x2, TRE UDFALD-
+# blokken i abonnementer_med_ejer, db_opsigelser, og risiko.py's opsigelses-
+# maaling) er enten genmaalt paa dagens 13.040 danske abonnementer, eller
+# maerket UFILTRERET med en advarsel om at de ikke maa sammenlignes med den
+# danske total. De linjenumre en tidligere session listede her (130-140 osv.)
+# havde allerede flyttet sig og pegede paa forkert indhold - soeg i stedet paa
+# "Maalt 20" for at finde daterede tal, hvis en fremtidig aendring skal
+# efterses igen.
 UDENLANDSKE_ACCOUNTS = ("watch_no", "watch_se", "watch_de")
 
 # Literaler i SQL'en og ikke %s, praecis som _KUN_B2B: fragmentet splejses ind
@@ -703,10 +712,14 @@ def db_acv_beloeb_pr_site() -> dict:
     db_abonnementer. org_id kommer tilbage som int, og de tre opslag SKAL bruge
     samme funktion, ellers matcher 1 aldrig '1'.
 
-    Maalt 2026-08-18: 15.039 af 15.203 juli-abonnementer finder et beloeb her,
+    Maalt 2026-08-18, FOER den danske afgraensning 25-08: 15.039 af 15.203
+    juli-abonnementer (UFILTRERET, alle lande med) finder et beloeb her,
     altsaa 98,9%, og de daekker alle 218.238.867 ACV-kroner. De 164 der ikke
     goer, er Kom24 NO, Medier24 NO, marketwire og FinanzBusiness, hvis brands
     ACV slet ikke har, plus fem kunder der mangler en raekke paa et site de har.
+    Funktionen selv er stadig ufiltreret (se ovenfor), saa daekningsprocenten
+    staar til troende, men 15.203 er IKKE det samme tal som db_abonnementer's
+    danske 13.044 (maalt 2026-08-25).
     """
     from .usage import customer_key
 
@@ -762,12 +775,15 @@ def db_opsigelser() -> dict:
     det seneste livstegn paa aftalen. Retningen ER reglen: ligger opsigelsen
     FOER livstegnet, er kunden kommet tilbage efter at have sagt op.
 
-    HVORFOR IKKE BARE "har en opsigelse": 4.430 af de 15.189 aktive
-    abonnementer (39 mio. kr.) har en opsigelse et sted i historikken. 107 af
-    dem har opsigelse og ny aftale paa SAMME dato. Det er genforhandlinger:
-    abonnementet loeber uaendret videre, men opsigelsen bliver staaende i
-    historikken. 3.858 er kunder der er holdt op og kommet tilbage aar senere.
-    Uden datosammenligningen ville en fjerdedel af portefoeljen forsvinde tavst.
+    HVORFOR IKKE BARE "har en opsigelse": maalt 2026-08-19, FOER den danske
+    afgraensning 25-08 (tallet skal genmaales paa dagens 13.044 abonnementer,
+    men princippet er upaavirket): 4.430 af dengang 15.189 aktive abonnementer
+    (39 mio. kr.) havde en opsigelse et sted i historikken. 107 af dem havde
+    opsigelse og ny aftale paa SAMME dato (genmaalt 2026-08-25: 83 par i dag).
+    Det er genforhandlinger: abonnementet loeber uaendret videre, men
+    opsigelsen bliver staaende i historikken. 3.858 var kunder der var holdt
+    op og kommet tilbage aar senere. Uden datosammenligningen ville en
+    fjerdedel af portefoeljen forsvinde tavst.
 
     DATOEN ER service_activation_date, ikke won_time. won_time er hvornaar
     opsigelsen blev REGISTRERET, sad er hvornaar abonnementet OPHOERER. Maalt
@@ -785,9 +801,12 @@ def db_opsigelser() -> dict:
 
     UFILTRERET MED VILJE, praecis som db_acv_beloeb_pr_site: opslaget kender
     ingen maaned og indeholder derfor ogsaa abonnementer der ophoerte for aar
-    siden og laenge er ude af dbo.retention. Maalt 2026-08-19: 5.787 opslag, og
-    280 af dem rammer et af maanedens 15.189 abonnementer, fordelt paa 9
-    forfaldne (alle marketwire), 62 opsagt i denne maaned og 209 i opsigelse.
+    siden og laenge er ude af dbo.retention, samt udenlandske accounts, som
+    IKKE er filtreret fra her (filteret ligger paa db_abonnementer, ikke her).
+    Maalt 2026-08-25 PAA DET DANSKE GRUNDLAG (13.044 abonnementer, efter
+    afgraensningen samme dag): 5.801 opslag i alt, og 277 af dem rammer et af
+    maanedens abonnementer, fordelt paa 9 forfaldne (alle marketwire), 72
+    ophoert og 205 i opsigelse.
 
     Noeglen gaar gennem customer_key som de tre andre opslag, og `sites`
     beholdes RAA: marketwire har NULL, som bliver None i Python og matcher
@@ -910,7 +929,8 @@ def abonnementer_med_ejer(maaned: str,
             har_eget[r["kunde"]] = True
 
     # TRE UDFALD, og det sidste er hele grunden til at reglen er pr. kunde.
-    # Maalt 2026-08-18 mod juli 2026:
+    # Maalt 2026-08-18 mod juli 2026, FOER den danske afgraensning 25-08 (alle
+    # lande med, samme forbehold som i db_acv_beloeb_pr_site's docstring):
     #
     #   1. Sitet har sin egen ACV-raekke              -> rigtigt beloeb.  15.039
     #   2. Kunden har INGEN beloeb paa noget af sine  -> ligedeling.           2
