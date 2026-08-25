@@ -105,8 +105,9 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
     #
     # Zonens alvor bryder uafgjort. Uden den afgjorde Pythons stabile sort
     # resten ud fra rækkernes tilfældige rækkefølge fra risikolaget, og hos
-    # Jyske Bank lå AgriWatch ("tavs længere") derfor over AMWatch ("stoppet")
-    # — begge scorer 0,50, fordi tre zoner deler den vægt. Se zones.zone_alvor.
+    # Jyske Bank lå AgriWatch ("tavs længere", i dag en del af "gaaet_i_staa")
+    # derfor over AMWatch ("stoppet", i dag også "gaaet_i_staa") — begge
+    # scorer 0,50, fordi to zoner deler den vægt. Se zones.zone_alvor.
     abonnementer.sort(key=lambda a: (a["score"] is None,
                                      -(a["score"] or 0),
                                      zone_alvor(a["zone"])))

@@ -181,7 +181,7 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
         # hertil er allerede danske. Se queries.py.
         #
         # Prioriteringsmodellen, filter 5 og 2.
-        if r["zone"] == "sund" or r["mikrokunde"]:
+        if r["zone"] == "fast_laeser" or r["mikrokunde"]:
             continue
         # OPSAGTE HOERER IKKE PAA OPKALDSLISTEN. Et abonnement med en gaeldende
         # opsigelse er ikke en risiko, det er et faktum, og et opkald der

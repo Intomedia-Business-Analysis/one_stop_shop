@@ -33,7 +33,7 @@ DE FEM REGLER DER GOER MAALINGEN AERLIG
 4. >>> EN LAEKKET GRUPPE SKAL UD AF BASISRATEN, IKKE KUN AF SIN ZONE. <<<
    Det er den fejl der oedelagde foerste udgave 21-08. Med den laekkede gruppe
    i naevneren var basisraten 8,84 til 10,52 % i stedet for 5,3 til 5,5 %, og
-   ALLE indeks var trykket ned med faktor 1,9: aldrig_i_brug maalte 1,45 i
+   ALLE indeks var trykket ned med faktor 1,9: aldrig_i_gang maalte 1,45 i
    stedet for 2,6.
 
    Her fjernes kunder der KUN kan kobles via ACV_snapshot. Snapshottet
@@ -70,12 +70,12 @@ DE FEM REGLER DER GOER MAALINGEN AERLIG
      - uden gruppen       ca. 5 til 6 %
    Adfaerdstabellerne (zoner, recency, artikelvisninger) maales mod den RENE.
    Blev gruppen staaende i naevneren, ville hvert adfaerdsindeks blive trykket
-   ned med samme faktor to, praecis som 21-08 hvor aldrig_i_brug maalte 1,45 i
+   ned med samme faktor to, praecis som 21-08 hvor aldrig_i_gang maalte 1,45 i
    stedet for 2,6.
 
    Gruppen forsvinder ikke: den staar i sin egen tabel mod hele populationens
    rate, maerket LAEKKET. Det tal er ikke en vaegt. Det er svaret paa hvor
-   meget af aldrig_i_brug's 2,5 der var ophoerte konti og ikke laeseadfaerd.
+   meget af aldrig_i_gang's 2,5 der var ophoerte konti og ikke laeseadfaerd.
 
    Og uanset hvad maa konto_status ALDRIG vaere INPUT til zonen paa en
    historisk maaned. Derfor kaldes bestem_zone her UDEN har_aktiv_konto, mens
@@ -366,10 +366,10 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
             continue
 
         taeld("zoner", z, opsagt)
-        # intet_signal har TO aarsager, og de opfoerte sig 60 gange forskelligt
+        # ingen_data har TO aarsager, og de opfoerte sig 60 gange forskelligt
         # i maalingen 21-08: utrackbart site 0,15, uden kobling 9,0. Splittet
         # er kontrollen for at den tilbagevaerende halvdel er ren.
-        if z == "intet_signal":
+        if z == "ingen_data":
             taeld("hul", "utrackbart site" if kunde in koblingsbare
                   else "uden kobling", opsagt)
         else:
@@ -491,7 +491,7 @@ def main() -> int:
              "basisrate"),
             ("ARTIKELVISNINGER i kohortemaaneden", "artikler", ARTIKEL_ORDER,
              "basisrate"),
-            ("intet_signal SPLITTET paa aarsag", "hul", HUL_ORDER,
+            ("ingen_data SPLITTET paa aarsag", "hul", HUL_ORDER,
              "basisrate"),
             ("KONTO-FLAGET, mod HELE populationen, kun diagnose", "flag",
              FLAG_ORDER, "basisrate_alle"),
@@ -507,7 +507,7 @@ def main() -> int:
     print()
     print("  KONTO-FLAGET er maerket LAEKKET med vilje: konto_status beskriver")
     print("  i dag og ikke kohortemaaneden. Tallet siger hvor meget af")
-    print("  aldrig_i_brug's 2,5 der var ophoerte konti, ikke laeseadfaerd.")
+    print("  aldrig_i_gang's 2,5 der var ophoerte konti, ikke laeseadfaerd.")
     return 0
 
 

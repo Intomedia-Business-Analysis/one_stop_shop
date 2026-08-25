@@ -35,7 +35,7 @@ from .usage import (
     serie_og_dage,
 )
 from .zones import (
-    STOPPET_VINDUE,
+    FALD_VINDUE,
     VANEBRUGER_VINDUE,
     GRUPPE_HINT,
     GRUPPE_LABELS,
@@ -86,7 +86,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     kontrolkørsel. Routeren sender den aldrig — produktionsvisningen skal altid
     være indeværende måned.
 
-    Mangler forbrugsfilen, får ALLE abonnementer zonen "intet_signal" og
+    Mangler forbrugsfilen, får ALLE abonnementer zonen "ingen_data" og
     meta["usage_error"] sættes — ikke en tom liste. En tom liste ville læses som
     "ingen risiko", hvilket er den farligste fejlvisning siden kan lave.
     """
@@ -128,9 +128,9 @@ def abonnementer_i_risiko(owner_name: str | None = None,
     # fordelt paa 9 forfaldne (alle marketwire, aeldste 2023-03-04), 62 ophoert
     # i denne maaned og 209 i opsigelse. 198 af dem havde en score, som nu
     # bliver nul, og arr_i_risiko falder 1.826.871 kr. De resterende 82 havde
-    # allerede vaegt nul, heraf 77 i zonen "sund".
+    # allerede vaegt nul, heraf 77 i zonen "fast_laeser".
     #
-    # DE STOERSTE ER NETOP "sund". Energinet EnergiWatch DK til 260.356 kr.
+    # DE STOERSTE ER NETOP "fast_laeser". Energinet EnergiWatch DK til 260.356 kr.
     # ophoerer 29-09-2026 og laeser normalt indtil da. Forbrug forudsiger ikke
     # opsigelse, og derfor kan zonemodellen alene ikke finde disse opkald.
     # Eget try: mangler abonnementsfilen, skal siden stadig virke uden
@@ -156,7 +156,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         site = kanonisk_site(a["sites"])
 
         if reference is None:
-            zone, serie, snit = "intet_signal", {}, None
+            zone, serie, snit = "ingen_data", {}, None
             dage_serie, vanebruger, dage_12m = {}, True, None
         else:
             # Pakke- kontra site-niveau afgøres ét sted, usage.serie_og_dage,
@@ -174,7 +174,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             # med i rækken, så tabellen kan vise HVORFOR noget er "faldende" i
             # stedet for blot at hævde det.
             tidligere = [serie.get(m, 0)
-                         for m in foregaaende_maaneder(reference, STOPPET_VINDUE)]
+                         for m in foregaaende_maaneder(reference, FALD_VINDUE)]
             snit = sum(tidligere) / len(tidligere)
 
         # Én gang, ikke to: vægten afhænger nu af vanebruger, og to kald med
@@ -262,7 +262,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                              -(r["kunde_arr_dkk"] or 0)))
 
     # zone_vaegt(z) uden andet argument giver zonens NOMINELLE vægt. Kortet viser
-    # altså 1,00 for "stoppet", mens de enkelte rækker kan have 0,50 hvis der
+    # altså 1,00 for "gaaet_i_staa", mens de enkelte rækker kan have 0,50 hvis der
     # ikke var en vane at miste. Det er bevidst: kortet beskriver zonen, rækken
     # beskriver abonnementet.
     zones = {z: {"label": ZONE_LABELS[z], "vaegt": zone_vaegt(z),
@@ -298,9 +298,9 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         ref_alder = maaneders_alder(reference, abo_maaned) - 1
 
     arr_total = sum(r["arr_dkk"] for r in rows if r["arr_dkk"] is not None)
-    # "ARR i risiko" er kroner i zoner med vægt over nul. Sund og ny bidrager
-    # altså ikke, mens intet_signal gør — et datahul på en stor kunde er ikke
-    # risikofrit, det er uoplyst (Zonemodellen).
+    # "ARR i risiko" er kroner i zoner med vægt over nul. Fast_laeser og
+    # nystartet bidrager altså ikke, mens ingen_data gør — et datahul på en
+    # stor kunde er ikke risikofrit, det er uoplyst (Zonemodellen).
     arr_i_risiko = sum(r["arr_dkk"] for r in rows
                        if r["arr_dkk"] is not None and r["vaegt"] > 0)
 
@@ -312,18 +312,18 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         "reference_alder":  ref_alder,
         "arr_total":        arr_total,
         "arr_i_risiko":     arr_i_risiko,
-        "med_signal":       sum(1 for r in rows if r["zone"] != "intet_signal"),
+        "med_signal":       sum(1 for r in rows if r["zone"] != "ingen_data"),
         "uden_arr":         sum(1 for r in rows if r["arr_dkk"] is None),
         "uden_ejer":        sum(1 for r in rows if not r["owner_name"]),
         "uden_team":        sum(1 for r in rows
                                 if r["owner_name"] and not r["teams"]),
-        # Hvor mange af de stoppede der havde en vane at miste. Tallet hører i
-        # forbeholdene: det er selve begrundelsen for at 565 af dem har halv
-        # vægt, og uden det ser vægtforskellen vilkårlig ud.
-        "stoppet_vanebrugere": sum(1 for r in rows
-                                   if r["zone"] == "stoppet" and r["vanebruger"]),
-        "stoppet_uden_vane":   sum(1 for r in rows
-                                   if r["zone"] == "stoppet" and not r["vanebruger"]),
+        # Hvor mange af de gaaet-i-staa der havde en vane at miste. Tallet
+        # hører i forbeholdene: det er selve begrundelsen for at 565 af dem
+        # har halv vægt, og uden det ser vægtforskellen vilkårlig ud.
+        "gaaet_i_staa_vanebrugere": sum(1 for r in rows
+                                        if r["zone"] == "gaaet_i_staa" and r["vanebruger"]),
+        "gaaet_i_staa_uden_vane":   sum(1 for r in rows
+                                        if r["zone"] == "gaaet_i_staa" and not r["vanebruger"]),
         "mikrokunder":      sum(1 for r in rows if r["mikrokunde"]),
         "uden_aktiv_konto": sum(1 for r in rows if r["uden_aktiv_konto"]),
         "usage_export_date": usage_meta.get("export_date"),

@@ -25,17 +25,16 @@
     .kpi .k-note  { font-size:11px; color:var(--ink-4); line-height:1.5; }
 
     /* Ét kort pr. abonnement. Farven følger VÆGTEN som på Churn-risiko, ikke zonens
-       navn — tre zoner deler gul, fordi de har samme prioritet. */
+       navn — to zoner deler gul, fordi de har samme prioritet. */
     .abo { border:1px solid var(--border); border-left:4px solid var(--ink-4); border-radius:var(--r);
            padding:14px 16px; margin-bottom:12px; background:var(--surface); }
-    .abo.stoppet       { border-left-color:var(--danger); }
-    .abo.laenge_tavs   { border-left-color:var(--warn); }
-    .abo.aldrig_i_brug { border-left-color:var(--warn); }
-    .abo.faldende      { border-left-color:var(--warn); }
-    .abo.sund          { border-left-color:var(--win); }
-    .abo.ny            { border-left-color:var(--taupe); }
-    .abo.uden_aktiv_konto { border-left-color:var(--ink-4); }
-    .abo.intet_signal  { border-left-color:var(--ink-4); }
+    .abo.gaaet_i_staa  { border-left-color:var(--danger); }
+    .abo.aldrig_i_gang { border-left-color:var(--warn); }
+    .abo.paa_vej_ned   { border-left-color:var(--warn); }
+    .abo.fast_laeser   { border-left-color:var(--win); }
+    .abo.nystartet     { border-left-color:var(--taupe); }
+    .abo.lukket_konto  { border-left-color:var(--ink-4); }
+    .abo.ingen_data    { border-left-color:var(--ink-4); }
     /* Opsagt overtrumfer zonefarven paa kortet. Zonen beskriver forbrug, men er
        aftalen opsagt, er forbruget ikke laengere det vigtigste man skal se. Kun
        venstrekanten skifter, saa kortet ikke skriger. */
@@ -56,18 +55,17 @@
     /* Pillen baerer ZONENS farve og ikke graa. Farve er den hurtigste laesning der
        findes, og en graa pille tvinger oejet til at laese ORDET foer det kan se hvor
        slemt det er. Samme farvepar som prioriteringslisten og churn-risiko bruger,
-       saa en zone ser ens ud overalt i modulet. Tre zoner deler gul, fordi de deler
+       saa en zone ser ens ud overalt i modulet. To zoner deler gul, fordi de deler
        vaegten 0,50 og dermed prioriteten. */
     .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
              padding:2px 8px; border-radius:999px; background:var(--taupe-light); color:var(--ink-2); }
-    .zpill.stoppet       { background:var(--danger-light); color:var(--danger); }
-    .zpill.laenge_tavs   { background:var(--warn-light);   color:var(--warn); }
-    .zpill.aldrig_i_brug { background:var(--warn-light);   color:var(--warn); }
-    .zpill.faldende      { background:var(--warn-light);   color:var(--warn); }
-    .zpill.sund          { background:var(--win-light);    color:var(--win); }
-    .zpill.ny            { background:var(--taupe-light);  color:var(--ink-2); }
-    .zpill.uden_aktiv_konto { background:var(--taupe-light);  color:var(--ink-2); }
-    .zpill.intet_signal  { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.gaaet_i_staa  { background:var(--danger-light); color:var(--danger); }
+    .zpill.aldrig_i_gang { background:var(--warn-light);   color:var(--warn); }
+    .zpill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .zpill.fast_laeser   { background:var(--win-light);    color:var(--win); }
+    .zpill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
 
     /* ── Forbrugsgrafen.
        Datateamet 2026-08-14: graferne manglede vaerdier paa begge akser. Foer
@@ -340,7 +338,7 @@
   //
   // Den staar som sin EGEN linje og ikke som en lille markering ved zonen: det
   // er den vigtigste enkeltoplysning foer et opkald, og zonen kan modsige den.
-  // Energinets EnergiWatch DK til 260.356 kr. staar i zonen "sund" og ophoerer
+  // Energinets EnergiWatch DK til 260.356 kr. staar i zonen "fast_laeser" og ophoerer
   // 29-09-2026, altsaa en kunde der laeser normalt og alligevel er gaaet.
   //
   // Tre tilstande, fordi de kraever tre forskellige handlinger: varslet loeber
@@ -419,14 +417,13 @@
                                  : 'ukendt: ACV har intet beløb på dette site';
 
   const ZONE_TEKST = {
-    stoppet:       'Læste før, læser ikke længere',
-    laenge_tavs:   'Ingen aktivitet i lang tid',
-    aldrig_i_brug: 'Har aldrig taget produktet i brug',
-    faldende:      'Forbruget falder',
-    sund:          'Stabilt forbrug',
-    ny:            'For ny til at vurderes',
-    uden_aktiv_konto: 'Ingen aktiv konto i Zuora, og intet forbrug. Aftalen ser ophørt ud',
-    intet_signal:  'Vi kan ikke se forbruget, og det er ikke det samme som risiko'
+    gaaet_i_staa:  'Læste før, er gået i stå',
+    aldrig_i_gang: 'Har aldrig taget produktet i brug',
+    paa_vej_ned:   'Forbruget falder',
+    fast_laeser:   'Stabilt forbrug',
+    nystartet:     'For ny til at vurderes',
+    lukket_konto:  'Ingen aktiv konto i Zuora, og intet forbrug. Aftalen ser ophørt ud',
+    ingen_data:    'Vi kan ikke se forbruget, og det er ikke det samme som risiko'
   };
 
   let d;

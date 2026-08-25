@@ -17,7 +17,7 @@ FIRE TING DER SKAL VÆRE RIGTIGE, ellers måler filen sig selv:
 
 1. INGEN FREMADKIGNING. `bestem_zone` er næsten rent bagudskuende, men to steder
    ser den på hele serien: `any(v > 0 for v in forbrug.values())` skiller
-   `laenge_tavs` fra `aldrig_i_brug`, og `foerste_kendte_maaned` tager `min` over
+   `gaaet_i_staa` fra `aldrig_i_gang`, og `foerste_kendte_maaned` tager `min` over
    alle måneder. I produktion er det harmløst, fordi der ikke FINDES måneder
    efter referencen. Her ville det lade zonen vide, hvad kunden gjorde bagefter.
    Serien beskæres derfor til måneder <= R, før den sendes ind. Det er også
@@ -37,12 +37,12 @@ FIRE TING DER SKAL VÆRE RIGTIGE, ellers måler filen sig selv:
    den tilbage dér, tælles den som blevet — og filen tæller særskilt, hvor mange
    der FLIMREDE undervejs. Er det tal stort, er rækkerne støj og ikke kontrakter.
 
-4. `intet_signal` ER IKKE EN FORUDSIGELSE. Zonen har vægt 0,15 og tæller derfor
+4. `ingen_data` ER IKKE EN FORUDSIGELSE. Zonen har vægt 0,15 og tæller derfor
    med i "i risiko", men den betyder "vi kan ikke se noget". Regnes den med, ser
    modellen skarp ud, fordi den flager alt den er blind for. Forudsigelsesraten
    vises derfor med OG uden, og zonen splittes på sin årsag: en række uden
    Zuora-kobling er en datamangel, et utrackbart site er et kildehul. Skiller
-   churn'en sig mellem de to, er "intet signal" et hygiejneproblem.
+   churn'en sig mellem de to, er "ingen data" et hygiejneproblem.
 
 Filen skriver ikke til databasen og har ingen bivirkninger.
 """
@@ -58,14 +58,15 @@ from moduler.modul_retention.queries import db_abonnementer          # noqa: E40
 from moduler.modul_retention.usage import (                          # noqa: E402
     customer_key, forbrug_pr_abonnement, serie_og_dage)
 from moduler.modul_retention.zones import (                          # noqa: E402
-    NY_MAANEDER, STOPPET_VINDUE, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
+    FALD_VINDUE, NY_MAANEDER, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
     ZONE_VAEGT, bestem_zone, er_vanebruger, forskyd_maaned, kanonisk_site,
     zone_vaegt)
 
 # Hvor meget historik en referencemåned skal have bag sig i forbrugsvinduet, før
 # zonen betyder noget. Uden dette ville de tidligste måneder få alt til at se
-# `ny` ud — ikke fordi abonnementerne er nye, men fordi serien er beskåret.
-MIN_HISTORIK = max(NY_MAANEDER, STOPPET_VINDUE) + 1
+# `nystartet` ud — ikke fordi abonnementerne er nye, men fordi serien er
+# beskåret.
+MIN_HISTORIK = max(NY_MAANEDER, FALD_VINDUE) + 1
 
 HORISONTER = (1, 3, 6)
 
@@ -137,7 +138,7 @@ def zone_for(r: dict, kunde: tuple, reference: str, forbrug: dict,
     har_zuora = kunde in med_zuora
     zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora,
                        kunde not in uden_aktiv_konto)
-    # Vægten afhænger af vanen for "stoppet", præcis som i risiko.py — ellers
+    # Vægten afhænger af vanen for "gaaet_i_staa", præcis som i risiko.py — ellers
     # ville den målte vektor sammenlignes med en vægt, ingen række havde.
     vaegt = zone_vaegt(zone, er_vanebruger(dage, reference))
     return zone, vaegt, hul_aarsag(site, har_zuora)
@@ -173,9 +174,9 @@ def maal(reference: str, horisont: int, pr_maaned: dict, forbrug: dict,
         else:
             forsvandt[zone] += 1
             forsvandt["_n"] += 1
-            if zone == "intet_signal":
+            if zone == "ingen_data":
                 huller["forsvandt"][aarsag] += 1
-        if noegle in i_slut and zone == "intet_signal":
+        if noegle in i_slut and zone == "ingen_data":
             huller["blev"][aarsag] += 1
 
     return {"reference": reference, "horisont": horisont, "slut": slut,
@@ -240,9 +241,9 @@ def skriv_horisont(horisont: int, maalinger: list) -> None:
 
     # Målingsidens forudsigelsesrate, med og uden datahullet. Se punkt 4.
     risiko = [z for z in ZONE_ORDER if ZONE_VAEGT.get(z, 0) > 0]
-    for navn, zoner in (("MED intet_signal ", risiko),
-                        ("UDEN intet_signal", [z for z in risiko
-                                               if z != "intet_signal"])):
+    for navn, zoner in (("MED ingen_data ", risiko),
+                        ("UDEN ingen_data", [z for z in risiko
+                                             if z != "ingen_data"])):
         r_f = _andel(sum(forsvandt[z] for z in zoner), n_f)
         r_b = _andel(sum(blev[z] for z in zoner), n_b)
         print(f"\n  forudsigelsesrate {navn}: {r_f:5.1f}% af de forsvundne"
@@ -316,7 +317,7 @@ def main() -> int:
     # R+H skal være en HEL måned. Indeværende måned er ufuldstændig, og et
     # abonnement der endnu ikke har fået sin række ville se ud som churn.
     sidste_hele = forskyd_maaned(date.today().strftime("%Y-%m"), 1)
-    # Referencen skal have historik BAG sig, ellers gør beskæringen alt "ny".
+    # Referencen skal have historik BAG sig, ellers gør beskæringen alt "nystartet".
     med_historik = [m for m in vindue if vindue.index(m) >= MIN_HISTORIK]
     print(f"  referencer med nok historik: {med_historik[0]} .. {med_historik[-1]}"
           f"  ({len(med_historik)})")

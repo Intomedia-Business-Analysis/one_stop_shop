@@ -31,7 +31,7 @@
        ud som en overskrift. Opsagt-rækken får derfor et loft. */
     .zones.enkelt { grid-template-columns:repeat(auto-fit,minmax(190px,240px)); justify-content:start; }
 
-    /* Tre overgrupper over zonerne. Otte kort i én række er en liste, ikke en
+    /* Tre overgrupper over zonerne. Syv kort i én række er en liste, ikke en
        prioritering: overskriften siger hvad man skal gøre, kortene hvor meget
        der står på spil. Gruppen kommer fra vægten (zones.zone_gruppe), så den
        ikke kan komme til at modsige kortets egen vægt-linje. */
@@ -42,18 +42,17 @@
     .ghead .ghint  { font-size:11px; color:var(--ink-4); margin-left:auto; }
     .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
              border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
-    /* Farven følger VÆGTEN, ikke zonens navn. Tre zoner deler gul, fordi de
+    /* Farven følger VÆGTEN, ikke zonens navn. To zoner deler gul, fordi de
        reelt har samme prioritet (0,40-0,50) — syv forskellige farver ville
        antyde en rangorden modellen ikke har. Vægten står på kortet, så
        grupperingen forklarer sig selv. */
-    .zcard.stoppet       { border-left-color:var(--danger); }
-    .zcard.laenge_tavs   { border-left-color:var(--warn); }
-    .zcard.aldrig_i_brug { border-left-color:var(--warn); }
-    .zcard.faldende      { border-left-color:var(--warn); }
-    .zcard.sund          { border-left-color:var(--win); }
-    .zcard.ny            { border-left-color:var(--taupe); }
-    .zcard.uden_aktiv_konto { border-left-color:var(--ink-4); }
-    .zcard.intet_signal  { border-left-color:var(--ink-4); }
+    .zcard.gaaet_i_staa  { border-left-color:var(--danger); }
+    .zcard.aldrig_i_gang { border-left-color:var(--warn); }
+    .zcard.paa_vej_ned   { border-left-color:var(--warn); }
+    .zcard.fast_laeser   { border-left-color:var(--win); }
+    .zcard.nystartet     { border-left-color:var(--taupe); }
+    .zcard.lukket_konto  { border-left-color:var(--ink-4); }
+    .zcard.ingen_data    { border-left-color:var(--ink-4); }
     /* Opsagt er IKKE en zone. Kortet staar sidst og laaner ikke en zonefarve:
        farven ville laeses som en risikograd, og der er ingen risiko tilbage naar
        aftalen er opsagt. Det er en kendsgerning, ikke et signal. */
@@ -73,14 +72,13 @@
        kan se på farven alene hvilket udvalg man kigger på. ✕ i labelen er den
        farveblinde-sikre markering af at et klik mere rydder filteret. */
     .zcard.valgt { border-color:var(--border-strong); }
-    .zcard.stoppet.valgt       { background:var(--danger-light); }
-    .zcard.laenge_tavs.valgt   { background:var(--warn-light); }
-    .zcard.aldrig_i_brug.valgt { background:var(--warn-light); }
-    .zcard.faldende.valgt      { background:var(--warn-light); }
-    .zcard.sund.valgt          { background:var(--win-light); }
-    .zcard.ny.valgt            { background:var(--taupe-light); }
-    .zcard.uden_aktiv_konto.valgt { background:var(--taupe-light); }
-    .zcard.intet_signal.valgt  { background:var(--taupe-light); }
+    .zcard.gaaet_i_staa.valgt  { background:var(--danger-light); }
+    .zcard.aldrig_i_gang.valgt { background:var(--warn-light); }
+    .zcard.paa_vej_ned.valgt   { background:var(--warn-light); }
+    .zcard.fast_laeser.valgt   { background:var(--win-light); }
+    .zcard.nystartet.valgt     { background:var(--taupe-light); }
+    .zcard.lukket_konto.valgt  { background:var(--taupe-light); }
+    .zcard.ingen_data.valgt    { background:var(--taupe-light); }
     .zcard.opsagt.valgt        { background:var(--taupe-light); }
     .zcard.valgt .zlabel::after { content:' ✕'; color:var(--ink-3); }
     .zcard .zhint { font-size:10px; color:var(--ink-4); margin-top:6px; }
@@ -130,14 +128,13 @@
     table.risk tbody tr:hover { background:var(--bg); }
 
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
-    .pill.stoppet       { background:var(--danger-light); color:var(--danger); }
-    .pill.laenge_tavs   { background:var(--warn-light);   color:var(--warn); }
-    .pill.aldrig_i_brug { background:var(--warn-light);   color:var(--warn); }
-    .pill.faldende      { background:var(--warn-light);   color:var(--warn); }
-    .pill.sund          { background:var(--win-light);    color:var(--win); }
-    .pill.ny            { background:var(--taupe-light);  color:var(--ink-2); }
-    .pill.uden_aktiv_konto { background:var(--taupe-light);  color:var(--ink-2); }
-    .pill.intet_signal  { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.gaaet_i_staa  { background:var(--danger-light); color:var(--danger); }
+    .pill.aldrig_i_gang { background:var(--warn-light);   color:var(--warn); }
+    .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
+    .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
     .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
            background:var(--taupe-light); color:var(--ink-2); margin-left:6px; }
     /* Halv vægt fordi der ikke var en vane at miste. Egen farve, fordi det er
@@ -280,7 +277,7 @@
   const n = [];
   if (meta.usage_error) {
     n.push('<div class="note danger"><strong>Der er intet forbrugssignal indlæst.</strong> '
-      + 'Alle abonnementer står derfor som “intet signal” — det betyder IKKE at ingen er i risiko. '
+      + 'Alle abonnementer står derfor som “ingen data” — det betyder IKKE at ingen er i risiko. '
       + esc(meta.usage_error).replace(/\n/g, '<br>') + '</div>');
   } else if (meta.reference_alder != null && meta.reference_alder > 0) {
     // Alderen måles i MÅNEDER, ikke dage. Et månedligt signal rådner ikke inden
@@ -306,7 +303,7 @@
   // Uden dette kort ville de forsvinde uden spor.
   //
   // Målt 2026-08-19: 280 abonnementer, hvoraf de tolv største næsten alle
-  // ligger i zonen "sund". Energinets EnergiWatch DK til 260.356 kr. ophører
+  // ligger i zonen "fast_laeser". Energinets EnergiWatch DK til 260.356 kr. ophører
   // 29-09-2026 og læser normalt indtil da, så den har aldrig kunnet ses på
   // denne side. Det er dem kortet gør synlige.
   const OPSAGT = '__opsagt';
@@ -520,7 +517,7 @@
       }
       // Den vigtigste enkeltoplysning på rækken: et stop uden forudgående vane
       // er en onboarding-sag, ikke et retention-opkald (Zonemodellen).
-      if (r.zone === 'stoppet' && !r.vanebruger) {
+      if (r.zone === 'gaaet_i_staa' && !r.vanebruger) {
         tags.push('<span class="tag ingenvane" title="Højst 20 aktive dage på et år '
           + '— der var ingen vane at miste, så vægten er halveret">ingen vane</span>');
       }
@@ -644,21 +641,21 @@
   }
   punkter.push('<strong>Forbrugssignal for ' + nf0.format(meta.med_signal) + ' af '
     + nf0.format(meta.abonnementer) + ' abonnementer.</strong> De øvrige står som '
-    + '“intet signal”: enten et site uden kilde, eller en kunde vi ikke kan '
+    + '“ingen data”: enten et site uden kilde, eller en kunde vi ikke kan '
     + 'oversætte til en organisation. '
     + 'Et datahul er ikke bevis på sundhed, og de har derfor vægt 0,15 — ikke 0.');
-  if (meta.stoppet_uden_vane) {
-    punkter.push(nf0.format(meta.stoppet_vanebrugere) + ' af de stoppede abonnementer '
+  if (meta.gaaet_i_staa_uden_vane) {
+    punkter.push(nf0.format(meta.gaaet_i_staa_vanebrugere) + ' af de gået-i-stå abonnementer '
       + 'var <strong>vanebrugere</strong> med over 20 aktive dage på et år og vejer fuldt. '
-      + 'De øvrige ' + nf0.format(meta.stoppet_uden_vane) + ' havde ingen vane at miste '
+      + 'De øvrige ' + nf0.format(meta.gaaet_i_staa_uden_vane) + ' havde ingen vane at miste '
       + 'og vejer halvt — de er onboarding-sager, ikke retention-opkald.');
   }
   if (meta.uden_aktiv_konto) {
-    const zonen = rows.filter(r => r.zone === 'uden_aktiv_konto').length;
+    const zonen = rows.filter(r => r.zone === 'lukket_konto').length;
     punkter.push('<strong>' + nf0.format(meta.uden_aktiv_konto) + ' abonnementer har '
       + 'ingen aktiv konto i Zuora.</strong> Pipedrive siger aktiv, Zuora siger ophørt. '
       + nf0.format(zonen) + ' af dem har heller ikke læst en enkelt gang og står som '
-      + '“ingen aktiv konto” med vægt 0 — de er datahygiejne, ikke opkald. '
+      + '“lukket konto” med vægt 0 — de er datahygiejne, ikke opkald. '
       + 'De øvrige ' + nf0.format(meta.uden_aktiv_konto - zonen) + ' <strong>beholder '
       + 'deres zone</strong>, fordi de faktisk læser, og læsningen er det stærkeste '
       + 'bevis vi har: så er det konto-statussen der er forældet, ikke kunden der er '
