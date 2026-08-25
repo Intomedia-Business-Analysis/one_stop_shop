@@ -130,7 +130,7 @@ body.embed .filter-bar { display:none; }
     <div class="hdr-divider"></div>
     <div class="title-block">
       <h1>Media Performance</h1>
-      <div class="sub">Indeværende måned</div>
+      <div class="sub" id="lblPeriode">Indeværende måned</div>
     </div>
     <div class="header-right">
       <div class="period"><div class="lbl">Status</div><div class="val" id="lblStatus">Henter data…</div></div>
@@ -405,7 +405,20 @@ function renderTable(d) {
   foot.style.display = '';
 }
 
+function updatePeriodLabel() {
+  const el = document.getElementById('lblPeriode');
+  if (!el) return;
+  const maaneder = [...selectedMonths].map(Number).sort((a, b) => a - b)
+                     .map(m => MONTHS_DA[m - 1]).join(', ');
+  const aar = [...selectedYears].map(Number).sort((a, b) => a - b).join(', ');
+  if      (!maaneder && !aar) el.textContent = 'Alle perioder';
+  else if (!maaneder)         el.textContent = 'Hele ' + aar;
+  else if (!aar)              el.textContent = maaneder + ' (alle år)';
+  else                        el.textContent = maaneder + ' ' + aar;
+}
+
 async function loadData() {
+  updatePeriodLabel();
   const params = new URLSearchParams();
   params.set('mode', selectedMode);
   if (selectedAccounts.size) params.set('accounts', [...selectedAccounts].join(','));
@@ -454,6 +467,18 @@ document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click'
   fill('brands',   selectedBrands);
   fill('years',    selectedYears);
   fill('months',   selectedMonths);
+
+  // Default naar intet er valgt i URL'en: indevaerende aar + maaned, saa
+  // tavlen viser den maaned vi staar i og ikke hele historikken summeret.
+  // Aaret SKAL med, ellers laegges fx juni fra alle aar sammen.
+  // URL'en vinder: en skaermkonfiguration med egne aar/maaneder er uroert,
+  // og vi tjekker begge parametre, saa "hele 2026" paa en skaerm ikke
+  // pludselig bliver skaaret ned til én maaned.
+  if (!q.has('years') && !q.has('months')) {
+    const nu = new Date();
+    selectedYears.add(String(nu.getFullYear()));
+    selectedMonths.add(String(nu.getMonth() + 1));
+  }
 
   // embed=1 → ren signage-visning uden interaktiv filter-bar.
   if (q.get('embed') === '1') document.body.classList.add('embed');
