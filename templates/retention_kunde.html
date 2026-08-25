@@ -34,6 +34,7 @@
     .abo.faldende      { border-left-color:var(--warn); }
     .abo.sund          { border-left-color:var(--win); }
     .abo.ny            { border-left-color:var(--taupe); }
+    .abo.uden_aktiv_konto { border-left-color:var(--ink-4); }
     .abo.intet_signal  { border-left-color:var(--ink-4); }
     /* Opsagt overtrumfer zonefarven paa kortet. Zonen beskriver forbrug, men er
        aftalen opsagt, er forbruget ikke laengere det vigtigste man skal se. Kun
@@ -65,6 +66,7 @@
     .zpill.faldende      { background:var(--warn-light);   color:var(--warn); }
     .zpill.sund          { background:var(--win-light);    color:var(--win); }
     .zpill.ny            { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.uden_aktiv_konto { background:var(--taupe-light);  color:var(--ink-2); }
     .zpill.intet_signal  { background:var(--taupe-light);  color:var(--ink-2); }
 
     /* ── Forbrugsgrafen.
@@ -423,6 +425,7 @@
     faldende:      'Forbruget falder',
     sund:          'Stabilt forbrug',
     ny:            'For ny til at vurderes',
+    uden_aktiv_konto: 'Ingen aktiv konto i Zuora, og intet forbrug. Aftalen ser ophørt ud',
     intet_signal:  'Vi kan ikke se forbruget, og det er ikke det samme som risiko'
   };
 
