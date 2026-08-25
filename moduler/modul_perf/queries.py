@@ -377,7 +377,7 @@ def db_manager_data(today: date, team: str | None = None,
             team_params = (team, team)
 
         if is_watch_int_team:
-            non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
+            non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
         elif is_watch_dk_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
         else:
@@ -733,7 +733,7 @@ def db_manager_data(today: date, team: str | None = None,
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADMINISTRATIV%'
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
-                {"AND COALESCE(d.[sites],'') NOT LIKE '%FINANS%'" if is_watch_int_team else ("AND COALESCE(d.[sites],'') <> 'FINANS DK'" if is_watch_dk_team else "")}
+                {"AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_int_team or is_watch_dk_team) else ""}
             WHERE t.name = %s
               AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
             GROUP BY u.name
@@ -1116,7 +1116,7 @@ def db_yoy_data(today: date, team: str | None = None,
             team_params = (team, team)
 
         if is_watch_int_team:
-            non_finans_exclude = "AND COALESCE([sites],'') NOT LIKE '%FINANS%'"
+            non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
         elif is_watch_dk_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
         else:
