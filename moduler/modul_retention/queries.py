@@ -104,6 +104,45 @@ _AKTIVT_MEDLEMSKAB = """
 # pipelines, ville de kroner ellers dukke op som én kunde i toppen af listen.
 _KUN_B2B = " AND ISNULL(r.org_name, '') NOT LIKE 'Web Sale%' "
 
+# Kun danske accounts. Retention-teamet er dansk (aftalt 2026-08-20, udvidet til
+# HELE modulet 2026-08-25).
+#
+# EXCLUDE og ikke include, med vilje. En include-liste ville tavst droppe en NY
+# dansk account, og en tabt dansk kunde kan ingen se. En ny udenlandsk account
+# dukker derimod op som stoej, og stoej kan man se og rette.
+#
+# AFGRAENSNINGEN ER REN GEOGRAFI. Alle 20 watch_medier-sites er danske (inkl.
+# FINANS DK), og der findes ikke ét .com-site i HELE dbo.retention. De
+# internationale udgaver bor kun i Snowplow, hvor zones.BRAND_FAMILIE folder
+# .com ned paa .dk, saa et account-filter kan ikke ramme den internationale
+# sektion.
+#
+# LISTE 1 RAMMES IKKE, og det er med vilje. Den bygger paa RetentionOutcomes og
+# db_org_navne, som ingen af dem gaar gennem dette filter. Et lovet opkald er en
+# forpligtelse uanset land. Se prioritering.py.
+#
+# HISTORIKKEN FILTRERES OGSAA (besluttet 2026-08-25). Overblikkets graf falder
+# derfor ca. 14 % i hele sin laengde. Konsistens vejer tungere end den absolutte
+# total: en graf paa 15.213 over en liste paa 13.040 faar nogen til at spoerge
+# hver maaned, hvor de 2.173 blev af.
+#
+# Maalt 2026-08-25: 15.213 -> 13.040 abonnementer, 218,5 -> 189,5 mio. kr.
+# watch_no 2.050, watch_se 119, watch_de 4. monitor og marketwire er DANSKE og
+# staar bevidst ikke paa listen.
+#
+# FOELGEVIRKNING SOM ENDNU IKKE ER RETTET: maalte tal i kommentarer og
+# docstrings andre steder i modulet (linje 130-140, 539-541, 604-610, 663-667,
+# 744-750, 874-893 i denne fil, samt zones.py:284 og prioritering.py:65-67) er
+# fra FOER dette filter og skal maales om.
+UDENLANDSKE_ACCOUNTS = ("watch_no", "watch_se", "watch_de")
+
+# Literaler i SQL'en og ikke %s, praecis som _KUN_B2B: fragmentet splejses ind
+# med f-string i tre queries med positionelle params, og en parameter her skulle
+# placeres det rigtige sted i hver af de tre tupler. Bygget af konstanten, saa de
+# to ikke kan drive fra hinanden.
+_KUN_DANSKE = (" AND r.account NOT IN ("
+               + ", ".join(f"'{a}'" for a in UDENLANDSKE_ACCOUNTS) + ") ")
+
 # Opsigelser bor i TRE pipelines. 'Opsigelser' er marketwires egen, og
 # dbo.retention-viewet kender kun de to foerste, saa marketwires opsigelser har
 # aldrig lukket et abonnement: 9 staar aktive med et ophoer op til tre aar
@@ -307,6 +346,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
                        ON k.account = r.account AND k.org_id = r.org_id
                 WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
                     {_KUN_B2B}
+                    {_KUN_DANSKE}
                     {clause}
             ),
             sidste AS (
@@ -427,6 +467,7 @@ def db_customers_at_risk_base(owner_name: str | None = None,
                 FROM dbo.retention r
                 WHERE r.FirstDayOfMonth = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
                   {_KUN_B2B}
+                  {_KUN_DANSKE}
                 GROUP BY r.account, r.org_id
             )
             SELECT a.account,
@@ -505,6 +546,7 @@ def db_abonnementer(maaned: str) -> list:
             FROM dbo.retention r
             WHERE r.FirstDayOfMonth <= %s
               {_KUN_B2B}
+              {_KUN_DANSKE}
         )
         SELECT account, org_id, sites,
                MAX(org_name) AS org_name,

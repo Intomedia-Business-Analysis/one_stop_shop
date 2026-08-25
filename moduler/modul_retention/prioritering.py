@@ -54,19 +54,6 @@ MAKS_AABNE_SAGER = 40
 # Ti rækker skal være ti opkald.
 LISTE_LAENGDE = 10
 
-# Retention-teamet er dansk (aftalt 2026-08-20), saa norske, svenske og tyske
-# abonnementer hoerer ikke paa opkaldslisten: der er ingen der ringer til dem.
-#
-# EXCLUDE og ikke include, med vilje. En include-liste ville tavst droppe en NY
-# dansk account, og et tabt dansk opkald kan ingen se. Med en exclude-liste
-# dukker en ny udenlandsk account op som stoej, og stoej kan man se og rette.
-# Samme princip som zone_vaegt's default: fejlen skal pege mod at vise for meget.
-#
-# Maalt 2026-08-20: 2.173 af 15.199 abonnementer til 26,4 mio. kr. Den rangerede
-# liste falder fra 5.237 til 4.463 kunder, og Sparebank 1 Soer-Norge forsvinder
-# fra top 10, hvor de laa nummer seks med 118.808.
-UDENLANDSKE_ACCOUNTS = {"watch_no", "watch_se", "watch_de"}
-
 
 def kunde_noegle(raekke: dict) -> tuple:
     """`(account, org_id)` med org_id som STRENG. Regler og Guardrails, regel 7.
@@ -189,12 +176,10 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
     """
     pr_kunde: dict = {}
     for r in raekker:
-        # KUN LISTE 2. Liste 1 (aftaler du har lovet) filtreres IKKE: et lovet
-        # opkald er en forpligtelse uanset land, og at skjule det ville tabe
-        # arbejde. Filteret staar foerst, fordi det er en AFGRAENSNING af hvad
-        # listen daekker, og ikke et af Prioriteringsmodellens risikofiltre.
-        if r["account"] in UDENLANDSKE_ACCOUNTS:
-            continue
+        # Landeafgraensningen laa her indtil 2026-08-25. Den ligger nu i
+        # queries._KUN_DANSKE og gaelder hele modulet, saa raekkerne der naar
+        # hertil er allerede danske. Se queries.py.
+        #
         # Prioriteringsmodellen, filter 5 og 2.
         if r["zone"] == "sund" or r["mikrokunde"]:
             continue

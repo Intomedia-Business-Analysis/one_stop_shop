@@ -28,7 +28,7 @@ import logging
 from datetime import date
 
 from .kontrakt import dage_til, fornyelsesdatoer
-from .queries import abonnementer_med_ejer, db_opsigelser
+from .queries import UDENLANDSKE_ACCOUNTS, abonnementer_med_ejer, db_opsigelser
 from .usage import (
     forbrug_pr_abonnement,
     latest_complete_month,
@@ -349,6 +349,11 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         # forudsigelsesraten kalibrerer dem efter 6 måneders udfaldsdata. Så
         # længe dette er False, skal siden sige det.
         "thresholds_validated": False,
+        # Fra data og ikke tastet ind i skabelonen, så en fremtidig ændring af
+        # UDENLANDSKE_ACCOUNTS ikke kræver at nogen husker at rette teksten to
+        # steder. Listen er altid tom i rækkerne (SQL-filteret i queries.py),
+        # dette er kun til forbeholdsteksten.
+        "udenlandske_udeladt": list(UDENLANDSKE_ACCOUNTS),
     }
     # Grupperne sendes med som liste og ikke som tre dicts: skabelonen skal
     # tegne dem i raekkefoelge, og en dict har ingen.

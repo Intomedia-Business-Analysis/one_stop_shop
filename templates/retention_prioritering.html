@@ -334,10 +334,14 @@
   //   opsagte    281 abonnementer med en registreret opsigelse (2026-08-20).
   //              De er et faktum og ikke en risiko, se risiko.py.
   //   udenlandske 2.173 abonnementer i watch_no, watch_se og watch_de. Teamet
-  //              er dansk, aftalt 2026-08-20. Se prioritering.UDENLANDSKE_ACCOUNTS.
+  //              er dansk, aftalt 2026-08-20. Filteret flyttede 2026-08-25 fra
+  //              prioritering.py til queries.UDENLANDSKE_ACCOUNTS/_KUN_DANSKE
+  //              og gaelder nu HELE modulet, ikke kun denne liste.
   //
-  // Liste 1 er UDEN de to sidste: et lovet opkald er en forpligtelse uanset
-  // land, og at skjule det ville tabe arbejde frem for at spare det.
+  // Liste 1 er FORTSAT UDEN de to sidste: den bygger paa RetentionOutcomes og
+  // db_org_navne, som ingen af dem gaar gennem SQL-filteret. Et lovet opkald
+  // er en forpligtelse uanset land, og at skjule det ville tabe arbejde frem
+  // for at spare det.
   el('maaneder').innerHTML =
     '<span>Listerne viser kun abonnementer der er aktive i <strong>'
     + esc(maanedDK(d.maaned)) + '</strong> (indeværende måned). '

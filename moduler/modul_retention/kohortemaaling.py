@@ -45,6 +45,21 @@ DE FEM REGLER DER GOER MAALINGEN AERLIG
    Kunder koblet via dm_kobling har ikke problemet: filen indeholder ogsaa de
    ophoerte konti, saa et fravaer siger intet om udfaldet.
 
+   >>> KONTROLGRUPPEN "UTRACKBART SITE" ER TABT FRA 2026-08-25. <<<
+   Shifter, Kom24 NO og Medier24 NO (zones.UNTRACKBARE_SITES) ligger
+   UDELUKKENDE under watch_no, som fra 2026-08-25 er ekskluderet af HELE
+   modul_retention (queries.UDENLANDSKE_ACCOUNTS, se queries.py). Kontrollen
+   kollapser derfor til marketwires 32 raekker (sites=None), for lidt til at
+   sige noget.
+
+   SIDSTE MAALING MED watch_no STADIG MED, koert 2026-08-25 lige foer
+   eksklusionen, gemt som kontrollens sidste ord:
+     2025-12: 0,00 (49)   2026-01: 0,00 (51)   2026-02: 0,00 (54)
+   Praecis nul i alle tre kohorter, som altid. Beviset staar hermed fast, men
+   kan ikke gentages paa dansk grundlag alene. Naeste kalibrering skal finde
+   en ny leakage-kontrolgruppe, eller acceptere at proeven ikke laengere kan
+   koeres, kun den gamle konklusion genbruges.
+
 5. uden_aktiv_konto ER OGSAA LAEKKET, OG BEHANDLES SOM SIN EGEN TABEL.
    Gruppen er de kunder der kun kan kobles gennem ophoerte konti. For en
    kohorte i december 2025 er det i vidt omfang PRAECIS DEM DER SAGDE OP i

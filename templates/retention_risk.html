@@ -635,6 +635,13 @@
     + nf0.format(meta.kunder) + ' kunder. Summen af zonekortenes kundetal er '
     + 'derfor større end ' + nf0.format(meta.kunder) + ' — samme kunde kan ligge i '
     + 'flere zoner med flere sites.');
+  if (meta.udenlandske_udeladt && meta.udenlandske_udeladt.length) {
+    punkter.push('<strong>Kun den danske portefølje.</strong> Retention-teamet er '
+      + 'dansk (aftalt 2026-08-20), så modulet viser hverken lister, historik '
+      + 'eller kundesider for ' + meta.udenlandske_udeladt.join(', ') + '. '
+      + 'Watch Medier (inkl. Finans DK og den internationale .com-sektion), '
+      + 'Monitor og Marketwire er upåvirkede.');
+  }
   punkter.push('<strong>Forbrugssignal for ' + nf0.format(meta.med_signal) + ' af '
     + nf0.format(meta.abonnementer) + ' abonnementer.</strong> De øvrige står som '
     + '“intet signal”: enten et site uden kilde, eller en kunde vi ikke kan '

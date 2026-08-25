@@ -38,6 +38,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from moduler.modul_retention import cache  # noqa: E402
 from moduler.modul_retention import outcomes as o  # noqa: E402
 from moduler.modul_retention import prioritering as p  # noqa: E402
+from moduler.modul_retention import queries as q  # noqa: E402
 from moduler.modul_retention.zones import ZONE_ORDER, zone_alvor  # noqa: E402
 
 I_DAG = dt.date(2026, 8, 11)
@@ -329,10 +330,14 @@ tjek("udloebet udsaettelse er med igen",
                        I_DAG)), 1)
 
 
-tjek("norsk abonnement frasorteres",
-     len(p.fold_risici([abo(account="watch_no")], {}, I_DAG)), 0)
-tjek("dansk abonnement er med",
-     len(p.fold_risici([abo(account="watch_medier")], {}, I_DAG)), 1)
+# Landeafgraensningen flyttede til SQL 2026-08-25 (queries._KUN_DANSKE), saa
+# fold_risici filtrerer ikke laengere paa account. En syntetisk watch_no-raekke
+# kan derfor ikke bevise noget her; garantien flytter med til fragmentet.
+tjek("de tre udenlandske accounts staar i SQL-filteret",
+     all(a in q._KUN_DANSKE for a in q.UDENLANDSKE_ACCOUNTS), True)
+tjek("de danske accounts staar IKKE i SQL-filteret",
+     any(a in q._KUN_DANSKE for a in ("watch_medier", "monitor", "marketwire")),
+     False)
 tjek("opsagt abonnement frasorteres",
      len(p.fold_risici([abo(opsagt="2026-10-31")], {}, I_DAG)), 0)
 # En kunde med ét opsagt og ét levende abonnement skal BLIVE paa listen, men

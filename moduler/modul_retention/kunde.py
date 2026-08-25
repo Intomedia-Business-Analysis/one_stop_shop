@@ -18,6 +18,7 @@ import logging
 
 from . import cache
 from .outcomes import INTET_SITE, db_historik, db_seneste_udfald
+from .queries import UDENLANDSKE_ACCOUNTS
 from .usage import serie_og_dage
 from .zones import foregaaende_maaneder, zone_alvor
 
@@ -126,6 +127,11 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
             "arr_aktive_abonnementer": arr_total,
             "antal_abonnementer": len(abonnementer),
             "mikrokunde": bool(foerste and foerste["mikrokunde"]),
+            # En bogmærket udenlandsk kunde skal have en TOM side (ingen_aktive)
+            # og ikke en 404, se router.py — men den tomme side skal sige
+            # HVORFOR, så det ikke ligner datatab. rows er allerede tom for
+            # disse, uanset flaget her, fordi db_abonnementer filtrerer dem fra.
+            "udenfor_afgraensning": account in UDENLANDSKE_ACCOUNTS,
         },
         "abonnementer": abonnementer,
         "historik":     historik,

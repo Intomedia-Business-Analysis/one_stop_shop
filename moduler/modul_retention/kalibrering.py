@@ -96,6 +96,11 @@ def hul_aarsag(site, har_zuora: bool) -> str:
 
     Rækkefølgen er ikke vilkårlig: mangler Zuora-koblingen, kan vi ikke engang
     slå kunden op, og så er sitets trackbarhed uden betydning.
+
+    FLAG 2026-08-25: "utrackbart site" bæres af Shifter/Kom24 NO/Medier24 NO,
+    som alle lå under watch_no. Kunder herfra findes ikke længere i
+    db_abonnementer efter queries._KUN_DANSKE, så bøtten skrumper til
+    marketwires rækker. Se samme note i kohortemaaling.py.
     """
     if not har_zuora:
         return "ingen Zuora-kobling"

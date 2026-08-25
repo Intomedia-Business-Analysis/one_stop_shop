@@ -126,6 +126,12 @@ PAKKE_SITES = {
 
 # Sites hvor vi ikke har nogen kilde. Et abonnement her får "intet_signal" og
 # ALDRIG "aldrig_i_brug" — et datahul er ikke bevis på at kunden er tavs.
+#
+# DE TRE NO-SITES ER UOPNÅELIGE FRA 2026-08-25. Shifter, Kom24 NO og Medier24 NO
+# lå udelukkende under watch_no, som queries._KUN_DANSKE nu udelukker af hele
+# modulet. De står med vilje: reglen beskriver Snowplows dækning, ikke modulets
+# geografiske afgrænsning, og skal ikke slettes bare fordi den ikke rammer noget
+# lige nu.
 UNTRACKBARE_SITES = {
     "shifter",      # norsk brand, ikke i erhvervsmedier-schemaet
     "kom24 no",

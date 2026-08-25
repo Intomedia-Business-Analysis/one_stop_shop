@@ -259,11 +259,13 @@ def _kraev_kunde_i_raekkevidde(account: str, org_id: str, teams) -> None:
     direkte.
 
     ÆRLIGT FORBEHOLD: risikobilledet kan ikke skelne "uden for dine teams" fra
-    "ikke længere kunde". En team-begrænset bruger kan derfor ikke registrere på
-    en netop opsagt kunde, selv om Kundeside ellers tillader det. Det er valgt som
-    den forsigtige fejl — den nægter at skrive frem for at skrive uden for
-    grænsen. I dag er `allowed_data_teams` None for Sales Operations, så den
-    rammer ingen; bliver en bruger begrænset, skal reglen tages op igen.
+    "ikke længere kunde" fra "uden for modulets geografiske afgrænsning"
+    (watch_no/se/de, se queries.UDENLANDSKE_ACCOUNTS). En team-begrænset bruger
+    kan derfor ikke registrere på en netop opsagt ELLER en udenlandsk kunde,
+    selv om Kundeside ellers tillader det. Det er valgt som den forsigtige fejl
+    — den nægter at skrive frem for at skrive uden for grænsen. I dag er
+    `allowed_data_teams` None for Sales Operations, så den rammer ingen; bliver
+    en bruger begrænset, skal reglen tages op igen.
     """
     if teams is None:
         return
