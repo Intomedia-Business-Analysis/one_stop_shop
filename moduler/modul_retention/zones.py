@@ -54,15 +54,20 @@ FALD_VINDUE = 3
 # Hvor stort et fald der skal til for zonen "paa_vej_ned". 0,50 = halveret.
 FALD_GRAENSE = 0.50
 
-# Zonemodellen: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
-# 0. Vægt 1,00" mod "Aldrig i brug — højst 1 aktiv dag i 12 måneder. Vægt 0,50".
-# Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og genmålingen 2026-08-11
-# viser hvorfor: blandt de 2.064 stoppede abonnementer er medianen 4,0
-# sidevisninger pr. abonnement-måned — målt over ALLE måneder i vinduet, også
-# dem uden læsning; kun over måneder med læsning er den 9,0 — men 69,7% har
-# over 20 aktive dage i de 12 måneder før referencen, median 37 dage. Ørsted
-# læste AgriWatch på 56 forskellige dage med et snit på 1,7 sidevisninger — en
-# vane, som volumen alene ville have kaldt støj.
+# Diskriminatoren for "vanebruger" er AKTIVE DAGE, ikke sidevisninger, og
+# genmålingen 2026-08-11 viser hvorfor: blandt de 2.064 stoppede abonnementer
+# er medianen 4,0 sidevisninger pr. abonnement-måned — målt over ALLE måneder
+# i vinduet, også dem uden læsning; kun over måneder med læsning er den 9,0 —
+# men 69,7% har over 20 aktive dage i de 12 måneder før referencen, median 37
+# dage. Ørsted læste AgriWatch på 56 forskellige dage med et snit på 1,7
+# sidevisninger — en vane, som volumen alene ville have kaldt støj.
+#
+# Vanen paavirkede tidligere ZONE_VAEGT (en gaaet_i_staa uden vane vejede
+# halvt). Det er FJERNET 25-08-2026, se zone_vaegt()'s docstring - maalt mod
+# rigtige opsigelser churnede gruppen UDEN vane lige saa stabilt. Konstanterne
+# og er_vanebruger() lever videre som maalt diagnose (kohortemaaling.py) og som
+# kontekst paa raekken (risiko.py's "vanebruger"/"aktive_dage_12m"), bare uden
+# at saette scoren.
 VANEBRUGER_DAGE = 20
 VANEBRUGER_VINDUE = 12
 
@@ -70,28 +75,42 @@ VANEBRUGER_VINDUE = 12
 #
 # SYV ZONER, IKKE OTTE. `stoppet` og `laenge_tavs` blev lagt sammen til
 # `gaaet_i_staa` ved Omdøbningen (2026-08-25): begge betød "signalet er væk,
-# lav redningssandsynlighed" og delte allerede vægt for den halvdel uden vane,
-# se zone_vaegt(). Navnene laaner FT Strategies' RFV-stil (konkrete nok til at
-# huskes), ikke deres akse — se plandokumentet for hvorfor.
-ZONE_ORDER = ["gaaet_i_staa", "aldrig_i_gang", "paa_vej_ned", "fast_laeser",
+# lav redningssandsynlighed" og delte allerede vægt for den halvdel uden vane
+# (dengang zone_vaegt()'s modifikator, siden fjernet, se ovenfor). Navnene
+# laaner FT Strategies' RFV-stil (konkrete nok til at huskes), ikke deres akse
+# — se plandokumentet for hvorfor.
+ZONE_ORDER = ["aldrig_i_gang", "gaaet_i_staa", "paa_vej_ned", "fast_laeser",
               "nystartet", "lukket_konto", "ingen_data"]
 
-# Vægten i score = ARR × vægt × timingfaktor. Kun "gaaet_i_staa" er 1,00, fordi
-# det er den eneste tilstand hvor noget er sket for nylig og et opkald kan nå
-# at virke.
+# Vægten i score = ARR × vægt × timingfaktor. MÅLT 25-08-2026 mod rigtige
+# opsigelser (kohortemaaling.py: won_time efter kohortemaaneden, tre kohorter
+# med udløbet 6-maaneders horisont, 2025-11 til 2026-01). Se skriv_vaegtvektor()
+# i den fil for beregningen.
 #
-# `aldrig_i_gang` er fortsat 0,50, samme begrundelse som før Omdøbningen:
-# "signalet er væk for længe siden, lav redningssandsynlighed". Valgt frem for
-# 0,70 fordi 0,70 ville være det eneste tal i vektoren uden dækning i Zonemodellen —
-# de øvrige fire kommer derfra. Alle vægte er provisoriske indtil
-# forudsigelsesraten kan kalibrere dem på rigtige udfald (Målingside).
+# `aldrig_i_gang` og `gaaet_i_staa` har BYTTET RANGORDEN siden Omdøbningen.
+# aldrig_i_gang målte konsekvent højest (indeks 1,62-1,82, snit 1,71, churn-rate
+# 9,77%) og er nu den værste zone, normaliseret til 1,00. gaaet_i_staa målte
+# lavere men stadig over 1,00 i alle tre kohorter (indeks 1,11-1,47, snit 1,33,
+# churn-rate 6,80%), normaliseret til 0,70 — OGSAA vanebruger-splittet der før
+# gav den 1,00/0,50 er fjernet, se zone_vaegt()'s docstring.
 #
-# Tabellen er de NOMINELLE vægte. Den faktiske vægt for et abonnement kommer fra
-# zone_vaegt(), som sænker "gaaet_i_staa" til aldrig_i_gang-niveau når der ikke
-# var en vane at miste.
+# `paa_vej_ned` BESTOD IKKE maalingens laeseregel (indeks 0,55 i den foerste af
+# tre kohorter, under 1,00) og staar derfor UAENDRET paa sin gamle 0,40 som et
+# ukalibreret skoen, ikke en maalt vaerdi. Samme status som foer 25-08-2026.
+#
+# `ingen_data` maalte hoejest af alle (indeks ca. 5,3, churn-rate 31%), men det
+# er LAEKAGE og ikke risiko: gruppen bestaar naesten kun af raekker uden Zuora-
+# kobling, som historisk maalte 7-9x mens den ægte kontrolgruppe ("utrackbart
+# site") maalte praecis 0,00 — se kohortemaaling.py regel 4. Kontrolgruppen er
+# tabt siden den danske afgraensning 25-08-2026, saa beviset kan ikke gentages,
+# men konklusionen bliver staaende: vaegten er 0,15 AF PRINCIP, ikke af maaling,
+# og er bevidst udelukket fra normaliseringen i skriv_vaegtvektor().
+#
+# Tabellen er de NOMINELLE vægte. Alle rækker af samme zone har nu samme
+# faktiske vægt (bortset fra opsigelsesfilteret, som nulstiller til 0).
 ZONE_VAEGT = {
-    "gaaet_i_staa":  1.00,
-    "aldrig_i_gang": 0.50,
+    "aldrig_i_gang": 1.00,
+    "gaaet_i_staa":  0.70,
     "paa_vej_ned":   0.40,
     "ingen_data":    0.15,
     "fast_laeser":   0.00,
@@ -351,26 +370,21 @@ def bestem_zone(forbrug: dict,
     return "aldrig_i_gang"
 
 
-def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
+def zone_vaegt(zone: str) -> float:
     """Risikovægten til score = ARR × vægt × timingfaktor (Prioriteringsmodellen).
 
-    `vanebruger` modulerer KUN "gaaet_i_staa", jf. Zonemodellen: en gaaet_i_staa
-    vanebruger er 1,00 og kræver et opkald i dag, mens et abonnement uden vane
-    at miste er en onboarding-sag og deler vægt med "aldrig i gang". De øvrige
-    zoner er upåvirkede — "paa_vej_ned" er 97,7% vanebrugere og ligger allerede
-    under 0,50, og "aldrig_i_gang" er 0,50 uanset.
-
-    Default True, så en kalder uden dage-data ikke får risiko skjult. Fejlen
-    peger dermed mod at vise for meget frem for for lidt.
-
-    Slår op i ZONE_VAEGT["aldrig_i_gang"] frem for at hardkode 0,50: ændres den
-    vægt, skal de to følges, fordi det er samme argument der bærer dem.
+    HAVDE et vanebruger-argument der halverede "gaaet_i_staa" for abonnementer
+    uden 20+ aktive dage i de foregående 12 måneder. Fjernet 25-08-2026: målt
+    mod rigtige opsigelser (kohortemaaling.py, tre udløbne kohorter) churner
+    gruppen UDEN vane lige så stabilt som gruppen MED vane, det modsatte af
+    modellens antagelse (indeks 1,25/1,19/1,47 mod 0,00/0,54/1,20 — sidstnævnte
+    for ustabilt og for lille, n=49-89, til at bære en vægtforskel). Se
+    er_vanebruger() og risiko.py's "vanebruger"/"aktive_dage_12m" felter, som
+    stadig beregnes og vises — kun vægten er upåvirket nu.
 
     Ukendt zone giver 0,0 og ikke en fejl: en ny zone må aldrig kunne skubbe
     kunder op på listen ved et uheld, kun ned.
     """
-    if zone == "gaaet_i_staa" and not vanebruger:
-        return ZONE_VAEGT["aldrig_i_gang"]
     return ZONE_VAEGT.get(zone, 0.0)
 
 
@@ -390,8 +404,8 @@ GRUPPE_LABELS = {
 # Gruppen ER vaegtbaandet, og teksten siger det, saa ingen kan tro at
 # overskriften er en selvstaendig vurdering oven i modellen.
 GRUPPE_HINT = {
-    "ring_nu":        "risikovægt 1,00 · en vane er gået tabt",
-    "foelg_op":       "risikovægt 0,15 til 0,50",
+    "ring_nu":        "risikovægt 1,00 · aldrig i gang målte højest af de rigtige zoner",
+    "foelg_op":       "risikovægt 0,15 til 0,70",
     "ingen_handling": "risikovægt 0,00",
 }
 
@@ -399,9 +413,9 @@ GRUPPE_HINT = {
 def zone_gruppe(zone: str) -> str:
     """Zonens overgruppe, udledt af den NOMINELLE vaegt.
 
-    Nominel og ikke faktisk: kortet beskriver zonen, raekken beskriver
-    abonnementet. En "gaaet_i_staa" uden vane vejer 0,50 paa raekken, men
-    zonen staar fortsat under Ring nu.
+    Nominel og faktisk falder nu sammen: siden vanebruger-modifikatoren blev
+    fjernet 25-08-2026 (se zone_vaegt()), har alle rækker af samme zone samme
+    vægt, bortset fra opsigelsesfilteret.
 
     Ukendt zone lander i ingen_handling, samme princip som zone_vaegt's 0,0 og
     zone_alvor's sidsteplads: en ny zone maa aldrig kunne skubbe kunder op paa

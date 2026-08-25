@@ -59,8 +59,7 @@ from moduler.modul_retention.usage import (                          # noqa: E40
     customer_key, forbrug_pr_abonnement, serie_og_dage)
 from moduler.modul_retention.zones import (                          # noqa: E402
     FALD_VINDUE, NY_MAANEDER, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
-    ZONE_VAEGT, bestem_zone, er_vanebruger, forskyd_maaned, kanonisk_site,
-    zone_vaegt)
+    ZONE_VAEGT, bestem_zone, forskyd_maaned, kanonisk_site, zone_vaegt)
 
 # Hvor meget historik en referencemåned skal have bag sig i forbrugsvinduet, før
 # zonen betyder noget. Uden dette ville de tidligste måneder få alt til at se
@@ -131,16 +130,14 @@ def zone_for(r: dict, kunde: tuple, reference: str, forbrug: dict,
     maerket som laekket.
     """
     site = kanonisk_site(r["sites"])
-    serie, dage = serie_og_dage(forbrug, kunde, site)
-    # BESKÆRINGEN. Uden de to linjer måler filen sig selv.
-    serie, dage = beskaer(serie, reference), beskaer(dage, reference)
+    serie, _dage = serie_og_dage(forbrug, kunde, site)
+    # BESKÆRINGEN. Uden denne linje måler filen sig selv.
+    serie = beskaer(serie, reference)
 
     har_zuora = kunde in med_zuora
     zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora,
                        kunde not in uden_aktiv_konto)
-    # Vægten afhænger af vanen for "gaaet_i_staa", præcis som i risiko.py — ellers
-    # ville den målte vektor sammenlignes med en vægt, ingen række havde.
-    vaegt = zone_vaegt(zone, er_vanebruger(dage, reference))
+    vaegt = zone_vaegt(zone)
     return zone, vaegt, hul_aarsag(site, har_zuora)
 
 

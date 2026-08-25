@@ -28,8 +28,8 @@
        navn — to zoner deler gul, fordi de har samme prioritet. */
     .abo { border:1px solid var(--border); border-left:4px solid var(--ink-4); border-radius:var(--r);
            padding:14px 16px; margin-bottom:12px; background:var(--surface); }
-    .abo.gaaet_i_staa  { border-left-color:var(--danger); }
-    .abo.aldrig_i_gang { border-left-color:var(--warn); }
+    .abo.aldrig_i_gang { border-left-color:var(--danger); }
+    .abo.gaaet_i_staa  { border-left-color:var(--warn); }
     .abo.paa_vej_ned   { border-left-color:var(--warn); }
     .abo.fast_laeser   { border-left-color:var(--win); }
     .abo.nystartet     { border-left-color:var(--taupe); }
@@ -55,12 +55,13 @@
     /* Pillen baerer ZONENS farve og ikke graa. Farve er den hurtigste laesning der
        findes, og en graa pille tvinger oejet til at laese ORDET foer det kan se hvor
        slemt det er. Samme farvepar som prioriteringslisten og churn-risiko bruger,
-       saa en zone ser ens ud overalt i modulet. To zoner deler gul, fordi de deler
-       vaegten 0,50 og dermed prioriteten. */
+       saa en zone ser ens ud overalt i modulet. gaaet_i_staa og paa_vej_ned deler
+       gul, fordi de begge ligger i "Foelg op" (vaegt 0,40-0,70), ikke fordi de deler
+       en vaegt. */
     .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
              padding:2px 8px; border-radius:999px; background:var(--taupe-light); color:var(--ink-2); }
-    .zpill.gaaet_i_staa  { background:var(--danger-light); color:var(--danger); }
-    .zpill.aldrig_i_gang { background:var(--warn-light);   color:var(--warn); }
+    .zpill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
+    .zpill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
     .zpill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
     .zpill.fast_laeser   { background:var(--win-light);    color:var(--win); }
     .zpill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }

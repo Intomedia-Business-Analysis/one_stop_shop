@@ -251,11 +251,11 @@ tjek("overskreden fra i gaar forsvinder ikke i morgen",
 
 
 print("--- 4: zone_alvor ---")
-tjek("gaaet_i_staa er vaerst", zone_alvor("gaaet_i_staa"), 0)
-# De to kan dele vaegt 0,50 (gaaet_i_staa uden vane, og aldrig_i_gang), og
-# netop derfor skal alvoren kunne skille dem.
-tjek("gaaet_i_staa foer aldrig_i_gang trods mulig samme vaegt",
-     zone_alvor("gaaet_i_staa") < zone_alvor("aldrig_i_gang"))
+tjek("aldrig_i_gang er vaerst", zone_alvor("aldrig_i_gang"), 0)
+# Maalt 25-08-2026 (kohortemaaling.py): aldrig_i_gang churner konsekvent
+# hoejere end gaaet_i_staa, saa ZONE_ORDER byttede plads paa de to.
+tjek("aldrig_i_gang foer gaaet_i_staa efter kalibreringen 25-08-2026",
+     zone_alvor("aldrig_i_gang") < zone_alvor("gaaet_i_staa"))
 tjek("ingen_data er sidst af de kendte",
      zone_alvor("ingen_data"), len(ZONE_ORDER) - 1)
 tjek("ukendt zone ligger EFTER alle kendte",
@@ -379,7 +379,7 @@ poster_9 = p.fold_risici([abo(site="a.dk", zone="paa_vej_ned", score=100.0),
                               arr=None)], {}, I_DAG)
 tjek("tre abonnementer bliver én kunde", len(poster_9), 1)
 tjek("scoren summeres", poster_9[0]["score"], 600.0)
-tjek("vaerste zone vinder", poster_9[0]["vaerste_zone"], "gaaet_i_staa")
+tjek("vaerste zone vinder", poster_9[0]["vaerste_zone"], "aldrig_i_gang")
 tjek("antal abonnementer talt", poster_9[0]["antal_abonnementer"], 3)
 # To tal og ikke én boolean: siden skal kunne sige "scoren daekker 2 af 3".
 tjek("antal med kendt ARR talt for sig", poster_9[0]["abonnementer_med_arr"], 2)
@@ -399,7 +399,7 @@ tjek("alvoren bryder uafgjort",
               navn="Aldrig A/S"),
           abo(org_id="2", site="y.dk", zone="gaaet_i_staa", score=500.0,
               navn="Gaaet A/S")], {}, I_DAG)],
-     ["Gaaet A/S", "Aldrig A/S"])
+     ["Aldrig A/S", "Gaaet A/S"])
 # Summen er aldrig None, heller ikke naar alle led mangler ARR.
 tjek("kunde uden kendt ARR summerer til 0,0 og vaelter ikke sorteringen",
      p.fold_risici([abo(score=None, arr=None, kunde_arr=None)], {},

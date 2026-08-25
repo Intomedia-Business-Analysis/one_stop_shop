@@ -118,13 +118,26 @@ from moduler.modul_retention.usage import (                          # noqa: E40
     customer_key, forbrug_pr_abonnement, load_usage_kunde, serie_og_dage,
 )
 from moduler.modul_retention.zones import (                          # noqa: E402
-    PAKKE_SITES, ZONE_ORDER, bestem_zone, forskyd_maaned, kanonisk_site,
+    FALD_VINDUE, NY_MAANEDER, PAKKE_SITES, ZONE_ORDER, bestem_zone,
+    er_vanebruger, forskyd_maaned, kanonisk_site,
 )
 
 # Tre kohorter og seks maaneders horisont, som 21-08. Tre og ikke een, fordi et
 # indeks paa een kohorte ikke kan skelnes fra stoej: skifter rangordenen mellem
 # de tre, er signalet ikke stabilt nok til at baere en vaegt.
-KOHORTER = ["2025-12", "2026-01", "2026-02"]
+#
+# 2025-11 til 2026-01, IKKE 2025-12 til 2026-02 (rettet 25-08-2026). To krav
+# skal begge holde:
+#   1. Referencen skal have MIN_HISTORIK = max(NY_MAANEDER, FALD_VINDUE) + 1
+#      = 4 maaneder forbrug BAG sig i eksporten (min 2025-07), ellers beskaeres
+#      serien saa haardt at alt ser "nystartet" ud, jf. kalibrering.py's egen
+#      MIN_HISTORIK-graense. 2025-11 er den TIDLIGSTE maaned der bestaar det.
+#   2. Horisonten (+6 maaneder) skal vaere UDLOEBET i dag, ellers undertaeller
+#      kohorten. Malt 25-08-2026 var 2026-02 SEKS DAGE FRA at vaere gyldig
+#      (2026-02 + 6 mdr = 2026-08-31, i dag er 2026-08-25) - filens egen
+#      advarsel (>>> HORISONTEN ER IKKE UDLOEBET <<<) udloeste for den, og
+#      handoffens tal for 2026-02 var derfor systematisk for lave.
+KOHORTER = ["2025-11", "2025-12", "2026-01"]
 HORISONT = 6
 
 # MONITOR KAN IKKE MAALES HISTORISK, og det er strukturelt og ikke en fejl vi
@@ -147,6 +160,7 @@ RECENCY_ORDER = ["R 0-7", "R 8-25", "R 26-60", "R 61-90", "R 90+", "R aldrig"]
 ARTIKEL_ORDER = ["art 60+", "art 21-60", "art 6-20", "art 1-5", "art 0"]
 FLAG_ORDER = ["uden aktiv konto (LAEKKET)", "har aktiv konto"]
 HUL_ORDER = ["uden kobling", "utrackbart site"]
+VANE_ORDER = ["gaaet_i_staa MED vane", "gaaet_i_staa UDEN vane"]
 
 
 def sidste_dag(maaned: str) -> str:
@@ -317,7 +331,7 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
     uden_aktiv = forbrug["uden_aktiv_konto"]
 
     grupper = {"zoner": {}, "recency": {}, "artikler": {}, "flag": {},
-               "hul": {}}
+               "hul": {}, "vane": {}}
     n_udeladt = n_allerede = n_monitor = 0
     alle_n = alle_o = 0
 
@@ -343,8 +357,9 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
         opsagt = any(ultimo < d <= slut for d in datoer)      # Regel 1
 
         site = kanonisk_site(r["sites"])
-        serie, _dage = serie_og_dage(forbrug, kunde, site)
+        serie, dage = serie_og_dage(forbrug, kunde, site)
         serie = beskaer(serie, maaned)                        # Regel 2
+        dage = beskaer(dage, maaned)                          # Regel 2
 
         # UDEN har_aktiv_konto, jf. regel 5: konto_status beskriver i dag.
         z = bestem_zone(serie, maaned, r["foerste_maaned"], site,
@@ -366,6 +381,16 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
             continue
 
         taeld("zoner", z, opsagt)
+        # Vanebruger-splittet i zone_vaegt() sænker "gaaet_i_staa" fra 1,00 til
+        # aldrig_i_gang-niveau (0,50) naar der ikke var en vane at miste - den
+        # stoerste enkelte loeftestang i vaegtmodellen, og den er ALDRIG maalt
+        # mod rigtige opsigelser foer nu. bestem_zone kaldes UDEN
+        # har_aktiv_konto (regel 5), men er_vanebruger tager kun 12 maaneder
+        # FOER referencen, saa den kan ikke laekke fremad af sig selv.
+        if z == "gaaet_i_staa":
+            taeld("vane",
+                  "gaaet_i_staa MED vane" if er_vanebruger(dage, maaned)
+                  else "gaaet_i_staa UDEN vane", opsagt)
         # ingen_data har TO aarsager, og de opfoerte sig 60 gange forskelligt
         # i maalingen 21-08: utrackbart site 0,15, uden kobling 9,0. Splittet
         # er kontrollen for at den tilbagevaerende halvdel er ren.
@@ -403,6 +428,74 @@ def indeks(fordeling: dict, basisrate: float) -> dict:
             rate = opsagt / n
             ud[g] = (n, opsagt, rate, rate / basisrate if basisrate else 0.0)
     return ud
+
+
+def skriv_vaegtvektor(resultater: list) -> dict:
+    """Forslag til ny ZONE_VAEGT, bygget paa churn-RATEN snittet over kohorterne.
+
+    IKKE kalibrering.py's skriv_vaegtvektor(): den maaler forsvinden fra
+    dbo.retention, ikke opsigelse, mangler regel 4 i naevneren (skaerer ikke
+    kun_fra_snapshot fra), og dens max() ville normalisere imod ingen_data.
+    Denne funktion retter alle tre: udfaldet er won_time (regel 1), naevneren
+    er den RENE basisrate (regel 4), og ingen_data er UDELUKKET fra
+    normaliseringen uanset hvor hoej dens rate er - den er laekage, ikke
+    risiko, og kontrolgruppen der beviste det ("utrackbart site", praecis
+    0,00 i tre kohorter) er tabt siden den danske afgraensning 25-08-2026, se
+    modulets docstring regel 4.
+
+    Saetter ikke ZONE_VAEGT. Printer et forslag, som skal ses igennem og
+    godkendes foer det skrives ind i zones.py - jf. at zonernes taerskler og
+    vaegte ikke bygges uden at designet er set paa en skaerm foerst.
+    """
+    from moduler.modul_retention.zones import ZONE_VAEGT
+
+    rate_pr_zone: dict = {}
+    indeks_pr_zone: dict = {}
+    n_pr_zone: dict = {}
+    for r in resultater:
+        basisrate = r["basisrate"]
+        for z, (n, opsagt) in r["zoner"].items():
+            if not n:
+                continue
+            rate = opsagt / n
+            rate_pr_zone.setdefault(z, []).append(rate)
+            indeks_pr_zone.setdefault(z, []).append(
+                rate / basisrate if basisrate else 0.0)
+            n_pr_zone[z] = n_pr_zone.get(z, 0) + n
+
+    snit_rate = {z: sum(v) / len(v) for z, v in rate_pr_zone.items()}
+
+    # Filens egen laeseregel: et baand baerer kun en vaegt hvis dets indeks er
+    # over 1,00 i ALLE kohorter (se print naest sidst i main()).
+    bestaar = {z: all(ix > 1.00 for ix in ixs)
+               for z, ixs in indeks_pr_zone.items()}
+
+    kandidater = {z: snit_rate[z] for z in snit_rate
+                  if z != "ingen_data" and bestaar.get(z)}
+    top = max(kandidater.values()) if kandidater else None
+
+    print()
+    print("  FORSLAG TIL ZONE_VAEGT  "
+          "(normaliseret saa den vaerste BESTAAEDE zone er 1,00)")
+    print("  " + "-" * 78)
+    print("  %-16s %8s %10s %9s %8s %8s" %
+          ("zone", "n", "rate", "bestaar?", "forslag", "i dag"))
+    for z in ZONE_ORDER:
+        if z not in snit_rate:
+            continue
+        ok = bestaar.get(z, False)
+        forslag = (snit_rate[z] / top) if (ok and z != "ingen_data" and top) \
+            else None
+        print("  %-16s %8d %9.2f%% %9s %8s %8.2f" % (
+            z, n_pr_zone[z], 100 * snit_rate[z], "ja" if ok else "NEJ",
+            ("%.2f" % forslag) if forslag is not None else "n/a",
+            ZONE_VAEGT.get(z, 0.0)))
+    print()
+    print("  BESTAAR = indeks over 1,00 i ALLE tre kohorter (filens egen")
+    print("  laeseregel). ingen_data er udelukket af normaliseringen med")
+    print("  vilje: dens rate er laekage, ikke risiko, og kontrolgruppen der")
+    print("  beviste det er tabt siden den danske afgraensning 25-08-2026.")
+    return {"rate": snit_rate, "bestaar": bestaar, "top": top}
 
 
 def tegn(titel: str, pr_kohorte: list, raekkefoelge: list) -> None:
@@ -487,6 +580,8 @@ def main() -> int:
     for titel, noegle, raekkefoelge, rate in (
             ("ZONER, modellen som den staar i dag", "zoner", ZONE_ORDER,
              "basisrate"),
+            ("VANE-SPLITTET i gaaet_i_staa (zone_vaegt's stoerste loeftestang)",
+             "vane", VANE_ORDER, "basisrate"),
             ("RECENCY, dage siden sidste laesning", "recency", RECENCY_ORDER,
              "basisrate"),
             ("ARTIKELVISNINGER i kohortemaaneden", "artikler", ARTIKEL_ORDER,
@@ -508,6 +603,8 @@ def main() -> int:
     print("  KONTO-FLAGET er maerket LAEKKET med vilje: konto_status beskriver")
     print("  i dag og ikke kohortemaaneden. Tallet siger hvor meget af")
     print("  aldrig_i_gang's 2,5 der var ophoerte konti, ikke laeseadfaerd.")
+
+    skriv_vaegtvektor(resultater)
     return 0
 
 

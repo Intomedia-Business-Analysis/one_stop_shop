@@ -177,9 +177,7 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                          for m in foregaaende_maaneder(reference, FALD_VINDUE)]
             snit = sum(tidligere) / len(tidligere)
 
-        # Én gang, ikke to: vægten afhænger nu af vanebruger, og to kald med
-        # forskellige argumenter ville give en score der ikke matcher kolonnen.
-        vaegt = zone_vaegt(zone, vanebruger)
+        vaegt = zone_vaegt(zone)
         # Ophoersdatoen kan ligge i fremtiden (varslet loeber) eller i fortiden
         # (aftalen er slut). Begge skal ud af scoren, og vaegten saettes derfor
         # FOER score regnes nedenfor. Nul og ikke None: beloebet er kendt, det er
@@ -216,10 +214,10 @@ def abonnementer_i_risiko(owner_name: str | None = None,
             # forskel afgoer om der er noget at ringe om.
             "opsagt_dato":     opsagt_dato,
             "opsagt":          bool(opsagt_dato) and opsagt_dato <= i_dag,
-            # Zonemodellens skel mellem "stoppet vanebruger" og en onboarding-sag.
-            # Dagene med i rækken, så tabellen kan vise "56 aktive dage" ved
-            # siden af zonen — det er den oplysning der afgør om opkaldet er
-            # værd at tage.
+            # Paavirker IKKE laengere vaegten (fjernet 25-08-2026, se
+            # zones.zone_vaegt). Vises stadig som kontekst: dagene med i
+            # rækken, så tabellen kan vise "56 aktive dage" ved siden af
+            # zonen — specialisten kan selv vurdere om der var en vane.
             "vanebruger":      vanebruger,
             "aktive_dage_12m": dage_12m,
             "arr_dkk":         arr,
@@ -261,10 +259,6 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                              is not None else 10**6,
                              -(r["kunde_arr_dkk"] or 0)))
 
-    # zone_vaegt(z) uden andet argument giver zonens NOMINELLE vægt. Kortet viser
-    # altså 1,00 for "gaaet_i_staa", mens de enkelte rækker kan have 0,50 hvis der
-    # ikke var en vane at miste. Det er bevidst: kortet beskriver zonen, rækken
-    # beskriver abonnementet.
     zones = {z: {"label": ZONE_LABELS[z], "vaegt": zone_vaegt(z),
                  "gruppe": zone_gruppe(z),
                  "abonnementer": 0, "kunder": 0, "arr_dkk": 0.0,
@@ -317,13 +311,6 @@ def abonnementer_i_risiko(owner_name: str | None = None,
         "uden_ejer":        sum(1 for r in rows if not r["owner_name"]),
         "uden_team":        sum(1 for r in rows
                                 if r["owner_name"] and not r["teams"]),
-        # Hvor mange af de gaaet-i-staa der havde en vane at miste. Tallet
-        # hører i forbeholdene: det er selve begrundelsen for at 565 af dem
-        # har halv vægt, og uden det ser vægtforskellen vilkårlig ud.
-        "gaaet_i_staa_vanebrugere": sum(1 for r in rows
-                                        if r["zone"] == "gaaet_i_staa" and r["vanebruger"]),
-        "gaaet_i_staa_uden_vane":   sum(1 for r in rows
-                                        if r["zone"] == "gaaet_i_staa" and not r["vanebruger"]),
         "mikrokunder":      sum(1 for r in rows if r["mikrokunde"]),
         "uden_aktiv_konto": sum(1 for r in rows if r["uden_aktiv_konto"]),
         "usage_export_date": usage_meta.get("export_date"),
@@ -345,9 +332,11 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                                  if r["fornyelse_dage"] is not None
                                  and 0 <= r["fornyelse_dage"] <= 60),
         "usage_error":       usage_error,
-        # Tærsklerne i zones.py er gæt, ikke måleresultater. Målingside:
-        # forudsigelsesraten kalibrerer dem efter 6 måneders udfaldsdata. Så
-        # længe dette er False, skal siden sige det.
+        # DELVIST maalt 25-08-2026 (kohortemaaling.py, tre udloebne kohorter):
+        # aldrig_i_gang og gaaet_i_staa's vaegte er maalt mod rigtige
+        # opsigelser. paa_vej_ned's vaegt (0,40), FALD_GRAENSE (0,50) og
+        # VANEBRUGER_DAGE (20) er stadig gaet. Bliver derfor staaende False,
+        # indtil ALLE tærskler og vaegte er maalt, ikke kun de to vaerste.
         "thresholds_validated": False,
         # Fra data og ikke tastet ind i skabelonen, så en fremtidig ændring af
         # UDENLANDSKE_ACCOUNTS ikke kræver at nogen husker at rette teksten to

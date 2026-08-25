@@ -42,12 +42,12 @@
     .ghead .ghint  { font-size:11px; color:var(--ink-4); margin-left:auto; }
     .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
              border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
-    /* Farven følger VÆGTEN, ikke zonens navn. To zoner deler gul, fordi de
-       reelt har samme prioritet (0,40-0,50) — syv forskellige farver ville
-       antyde en rangorden modellen ikke har. Vægten står på kortet, så
-       grupperingen forklarer sig selv. */
-    .zcard.gaaet_i_staa  { border-left-color:var(--danger); }
-    .zcard.aldrig_i_gang { border-left-color:var(--warn); }
+    /* Farven følger GRUPPEN (Ring nu / Følg op), ikke zonens navn. gaaet_i_staa
+       og paa_vej_ned deler gul, fordi de begge ligger i Følg op (vægt 0,40-0,70)
+       — syv forskellige farver ville antyde en finere rangorden end modellen
+       kan bære. Vægten står på kortet, så grupperingen forklarer sig selv. */
+    .zcard.aldrig_i_gang { border-left-color:var(--danger); }
+    .zcard.gaaet_i_staa  { border-left-color:var(--warn); }
     .zcard.paa_vej_ned   { border-left-color:var(--warn); }
     .zcard.fast_laeser   { border-left-color:var(--win); }
     .zcard.nystartet     { border-left-color:var(--taupe); }
@@ -72,8 +72,8 @@
        kan se på farven alene hvilket udvalg man kigger på. ✕ i labelen er den
        farveblinde-sikre markering af at et klik mere rydder filteret. */
     .zcard.valgt { border-color:var(--border-strong); }
-    .zcard.gaaet_i_staa.valgt  { background:var(--danger-light); }
-    .zcard.aldrig_i_gang.valgt { background:var(--warn-light); }
+    .zcard.aldrig_i_gang.valgt { background:var(--danger-light); }
+    .zcard.gaaet_i_staa.valgt  { background:var(--warn-light); }
     .zcard.paa_vej_ned.valgt   { background:var(--warn-light); }
     .zcard.fast_laeser.valgt   { background:var(--win-light); }
     .zcard.nystartet.valgt     { background:var(--taupe-light); }
@@ -128,8 +128,8 @@
     table.risk tbody tr:hover { background:var(--bg); }
 
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
-    .pill.gaaet_i_staa  { background:var(--danger-light); color:var(--danger); }
-    .pill.aldrig_i_gang { background:var(--warn-light);   color:var(--warn); }
+    .pill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
+    .pill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
     .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
     .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
     .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
@@ -137,9 +137,6 @@
     .pill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
     .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
            background:var(--taupe-light); color:var(--ink-2); margin-left:6px; }
-    /* Halv vægt fordi der ikke var en vane at miste. Egen farve, fordi det er
-       den oplysning der afgør om rækken er værd at ringe på. */
-    .tag.ingenvane { background:var(--warn-light); color:var(--warn); }
     /* To grader af samme kendsgerning: lys = varslet loeber endnu, moerk =
        aftalen er slut. Ingen af dem bruger zonefarverne, fordi en opsigelse
        ikke er en risikograd. */
@@ -403,7 +400,8 @@
   document.getElementById('zones-note').innerHTML =
     friskTxt + ' · abonnementer aktive i ' + esc(meta.abo_maaned) + ' · '
     + (meta.thresholds_validated === false
-        ? '<strong>vægtene er ikke kalibreret mod faktisk churn endnu</strong>'
+        ? '<strong>vægtene er kun DELVIST kalibreret mod faktisk churn</strong>'
+          + ' (aldrig i gang og gået i stå er målt, de øvrige er stadig gæt)'
         : 'vægte kalibreret mod faktiske udfald')
     + (opsagte.length
         ? ' · <strong>' + nf0.format(opsagte.length) + ' abonnementer er opsagt</strong>'
@@ -514,12 +512,6 @@
       if (r.mikrokunde) {
         tags.push('<span class="tag" title="Kundens samlede årsværdi er under 5.000 kr. '
           + '— får aldrig et opkald">mikrokunde</span>');
-      }
-      // Den vigtigste enkeltoplysning på rækken: et stop uden forudgående vane
-      // er en onboarding-sag, ikke et retention-opkald (Zonemodellen).
-      if (r.zone === 'gaaet_i_staa' && !r.vanebruger) {
-        tags.push('<span class="tag ingenvane" title="Højst 20 aktive dage på et år '
-          + '— der var ingen vane at miste, så vægten er halveret">ingen vane</span>');
       }
       // Den overtrumfer alt andet på rækken når den findes: zonen beskriver
       // hvad kunden LÆSER, men aftalen er allerede slut eller på vej ud.
@@ -644,12 +636,6 @@
     + '“ingen data”: enten et site uden kilde, eller en kunde vi ikke kan '
     + 'oversætte til en organisation. '
     + 'Et datahul er ikke bevis på sundhed, og de har derfor vægt 0,15 — ikke 0.');
-  if (meta.gaaet_i_staa_uden_vane) {
-    punkter.push(nf0.format(meta.gaaet_i_staa_vanebrugere) + ' af de gået-i-stå abonnementer '
-      + 'var <strong>vanebrugere</strong> med over 20 aktive dage på et år og vejer fuldt. '
-      + 'De øvrige ' + nf0.format(meta.gaaet_i_staa_uden_vane) + ' havde ingen vane at miste '
-      + 'og vejer halvt — de er onboarding-sager, ikke retention-opkald.');
-  }
   if (meta.uden_aktiv_konto) {
     const zonen = rows.filter(r => r.zone === 'lukket_konto').length;
     punkter.push('<strong>' + nf0.format(meta.uden_aktiv_konto) + ' abonnementer har '
