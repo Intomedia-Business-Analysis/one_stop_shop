@@ -24,30 +24,97 @@
     .kpi .k-value { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
     .kpi .k-note  { font-size:11px; color:var(--ink-4); line-height:1.5; }
 
-    /* Ét kort pr. abonnement. Farven følger VÆGTEN som på §7.2, ikke zonens
-       navn — tre zoner deler gul, fordi de har samme prioritet. */
+    /* Ét kort pr. abonnement. Farven følger VÆGTEN som på Churn-risiko, ikke zonens
+       navn — to zoner deler gul, fordi de har samme prioritet. */
     .abo { border:1px solid var(--border); border-left:4px solid var(--ink-4); border-radius:var(--r);
            padding:14px 16px; margin-bottom:12px; background:var(--surface); }
-    .abo.stoppet       { border-left-color:var(--danger); }
-    .abo.laenge_tavs   { border-left-color:var(--warn); }
-    .abo.aldrig_i_brug { border-left-color:var(--warn); }
-    .abo.faldende      { border-left-color:var(--warn); }
-    .abo.sund          { border-left-color:var(--win); }
-    .abo.ny            { border-left-color:var(--taupe); }
-    .abo.intet_signal  { border-left-color:var(--ink-4); }
+    .abo.aldrig_i_gang { border-left-color:var(--danger); }
+    .abo.gaaet_i_staa  { border-left-color:var(--warn); }
+    .abo.paa_vej_ned   { border-left-color:var(--warn); }
+    .abo.fast_laeser   { border-left-color:var(--win); }
+    .abo.nystartet     { border-left-color:var(--taupe); }
+    .abo.lukket_konto  { border-left-color:var(--ink-4); }
+    .abo.ingen_data    { border-left-color:var(--ink-4); }
+    /* Opsagt overtrumfer zonefarven paa kortet. Zonen beskriver forbrug, men er
+       aftalen opsagt, er forbruget ikke laengere det vigtigste man skal se. Kun
+       venstrekanten skifter, saa kortet ikke skriger. */
+    .abo.er-opsagt { border-left-color:var(--ink-2); }
+    .abo-opsagt { font-size:12px; font-weight:600; color:var(--ink);
+                  background:var(--taupe-light); border:1px solid var(--border-strong);
+                  border-radius:var(--r-xs); padding:7px 10px; margin:9px 0 0; }
+    .abo-opsagt .fine { display:block; font-weight:400; color:var(--ink-3);
+                        margin-top:2px; }
+    .opill { display:inline-block; font-size:10px; font-weight:700;
+             text-transform:uppercase; letter-spacing:.04em; padding:2px 7px;
+             border-radius:999px; background:var(--ink-2); color:var(--surface);
+             margin-left:4px; }
     .abo-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
     .abo-site { font-size:14px; font-weight:700; color:var(--ink); }
     .abo-sub  { font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.6; }
     .abo-arr  { font-size:16px; font-weight:700; color:var(--ink); white-space:nowrap; }
+    /* Pillen baerer ZONENS farve og ikke graa. Farve er den hurtigste laesning der
+       findes, og en graa pille tvinger oejet til at laese ORDET foer det kan se hvor
+       slemt det er. Samme farvepar som prioriteringslisten og churn-risiko bruger,
+       saa en zone ser ens ud overalt i modulet. gaaet_i_staa og paa_vej_ned deler
+       gul, fordi de begge ligger i "Foelg op" (vaegt 0,40-0,70), ikke fordi de deler
+       en vaegt. */
     .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
-             padding:2px 8px; border-radius:999px; background:var(--bg-2,#f0efec); color:var(--ink-2); }
+             padding:2px 8px; border-radius:999px; background:var(--taupe-light); color:var(--ink-2); }
+    .zpill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
+    .zpill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
+    .zpill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .zpill.fast_laeser   { background:var(--win-light);    color:var(--win); }
+    .zpill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
 
-    /* Sparkline. Ingen akser: den skal læses som en form, ikke aflæses. Den
-       præcise værdi står i title på hver søjle. */
-    .spark { display:flex; align-items:flex-end; gap:2px; height:38px; margin-top:10px; }
-    .spark i { flex:1; background:var(--ink-4); border-radius:1px 1px 0 0; min-height:1px; display:block; }
-    .spark i.ref { background:var(--ink-2); }
-    .spark-x { display:flex; justify-content:space-between; font-size:10px; color:var(--ink-4); margin-top:3px; }
+    /* ── Forbrugsgrafen.
+       Datateamet 2026-08-14: graferne manglede vaerdier paa begge akser. Foer
+       2026-08-17 var den 38px hoej, havde hverken y-akse eller gitter, og x-aksen
+       viste to raa ISO-maaneder. Tallene fandtes kun i en tooltip, altsaa kun for
+       den der vidste at der var noget at holde musen over.
+
+       HVER GRAF HAR SIN EGEN Y-SKALA. Faelles skala for hele kunden blev proevet
+       2026-08-18 og forkastet efter at have set den: hos en kunde med 158.704
+       sidevisninger paa ét site blev de oevrige sites' 13, 17 og 32 en flad streg,
+       altsaa netop de abonnementer der skal vurderes. Sammenligneligheden loeses
+       derfor med TAL og ikke med hoejde: gitteret er maerket, hoejeste maaned staar
+       i overskriften, og hver soejle har sin vaerdi over sig. */
+    .graf { margin-top:14px; }
+    .graf-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+                font-size:10px; color:var(--ink-3); margin-bottom:8px; }
+    .graf-top strong { color:var(--ink-2); font-weight:600; }
+    .graf-plot { display:flex; gap:8px; }
+    /* FEM maerker og ikke to. Med kun maks og nul skal man gaette hvad en soejle i
+       halv hoejde er, og det var praecis indvendingen. */
+    .graf-y { display:flex; flex-direction:column; justify-content:space-between;
+              font-size:9px; color:var(--ink-4); text-align:right; min-width:38px;
+              line-height:1; flex:none; }
+    /* Gitteret er et gentaget baggrundsmoenster og ikke fem elementer: linjerne skal
+       ligge BAG soejlerne, og en baggrund kan ikke komme i vejen for dem. Perioden
+       er 25%, saa der staar en linje ved 0, 25, 50, 75 og 100 procent. */
+    .spark { display:flex; align-items:flex-end; gap:6px; height:150px; flex:1; min-width:0;
+             border-bottom:1px solid var(--border-strong,var(--border));
+             background-image:repeating-linear-gradient(to top,
+               var(--border) 0 1px, transparent 1px 25%); }
+    /* Soejlen er en KOLONNE i fuld hoejde med indholdet i bunden, saa etiketten
+       laegger sig af sig selv lige over soejlen uden absolut placering. */
+    .spark .col { flex:1; min-width:0; height:100%; display:flex; flex-direction:column;
+                  justify-content:flex-end; align-items:center; }
+    .spark .col b { font-size:10px; font-weight:600; color:var(--ink-3); line-height:1;
+                    margin-bottom:3px; white-space:nowrap; }
+    .spark .col u { width:100%; background:var(--taupe,#b9b2a6); border-radius:2px 2px 0 0;
+                    min-height:1px; display:block; text-decoration:none; }
+    .spark .col.ref u { background:var(--ink); }
+    .spark .col.ref b { color:var(--ink); font-weight:700; }
+    /* Maanedsnavn under HVER soejle. Tre bogstaver holder fjorten maerker inden for
+       bredden. Aarstallet staar kun paa den foerste og paa januar, hvor det skifter,
+       saa fjorten aarstal ikke drukner maanederne. Venstremargenen er y-aksens
+       bredde plus gab, saa maerkerne staar under deres egen soejle. */
+    .spark-x { display:flex; gap:6px; font-size:9px; color:var(--ink-4); margin:5px 0 0 46px; }
+    .spark-x span { flex:1; min-width:0; text-align:center; }
+    .spark-x span.aar { color:var(--ink-3); font-weight:600; }
+    .graf-note { font-size:10px; color:var(--ink-4); margin:6px 0 0 46px; line-height:1.5; }
 
     .hist { border-left:2px solid var(--border); padding-left:16px; margin-left:4px; }
     .hist-item { margin-bottom:16px; }
@@ -60,7 +127,7 @@
     .advar { background:#fdf6e3; border:1px solid var(--warn); border-radius:var(--r); padding:10px 14px;
              font-size:11px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
 
-    /* --- Registreringsformular (PRD §7.4) --- */
+    /* --- Registreringsformular (Kundeside) --- */
     /* datetime-local står ikke i hub.css' .fld-liste, så den arver ikke selv. */
     .fld input[type="datetime-local"] {
       font-family:var(--font); font-size:12px; padding:8px 11px;
@@ -87,7 +154,7 @@
     .vaelg .z { font-size:10px; color:var(--ink-4); }
 
     /* ARR-kilden er ikke dekoration: den siger om beløbet er målt eller gættet,
-       og §9's "kroner reddet" arver forskellen. Derfor vises den, og derfor
+       og Målingsidens "kroner reddet" arver forskellen. Derfor vises den, og derfor
        skifter den synligt, når feltet redigeres. */
     .kilde { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
              padding:2px 8px; border-radius:999px; white-space:nowrap; }
@@ -120,12 +187,12 @@
     </div>
 
     <div style="flex:1;min-height:0;overflow-y:auto;">
-      <div style="padding:2rem;max-width:1400px;">
+      <div style="padding:2rem;max-width:1680px;">
 
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a>
           <span class="bc-sep">/</span>
-          <a href="/retention/overview" class="bc-link">Retention</a>
+          <a href="/category/retention" class="bc-link">Retention</a>
           <span class="bc-sep">/</span>
           <a href="/retention/risk_overview" class="bc-link">Churn-risiko</a>
           <span class="bc-sep">/</span>
@@ -156,7 +223,7 @@
           <div class="panel-header">
             <div>
               <h2>Registrér samtale</h2>
-              <p>Hvad der FAKTISK skete. Uden det kan zonevægtene aldrig kalibreres (PRD §9).</p>
+              <p>Hvad der FAKTISK skete. Uden det kan zonerne aldrig efterprøves mod virkeligheden.</p>
             </div>
             <button type="button" class="btn-primary" id="reg-aabn">Registrér samtale</button>
           </div>
@@ -207,8 +274,8 @@
             <div id="reg-uden-kontakt" hidden>
               <p class="fine" style="margin-top:0;">
                 Uden kontakt registreres samtalen på kunden og ikke på et abonnement.
-                Der gemmes derfor intet udfald — forsøget tæller, jf. PRD §8's grænse på
-                tre kontaktforsøg.
+                Der gemmes derfor intet udfald, men forsøget tæller. Grænsen er tre
+                forsøg over ti hverdage, hvorefter kunden sættes til «ikke kontaktbar».
               </p>
               <div class="form-grid">
                 <div class="fld">
@@ -256,14 +323,108 @@
   const kr = v => v === null || v === undefined ? '—' : nf0.format(v) + ' kr.';
   const dato = s => !s ? '—' : String(s).slice(0, 10);
 
+  // Hele dage fra i dag til en ISO-dato. Negativt tal betyder fortid. Regnes i
+  // UTC paa begge sider, saa en sommertidsovergang ikke giver 0,96 dag og en
+  // afrunding den forkerte vej.
+  const dageTil = iso => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    if (!m) return null;
+    const nu = new Date();
+    return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3])
+                       - Date.UTC(nu.getFullYear(), nu.getMonth(), nu.getDate()))
+                      / 86400000);
+  };
+
+  // ── Opsigelsen paa kundesiden.
+  //
+  // Den staar som sin EGEN linje og ikke som en lille markering ved zonen: det
+  // er den vigtigste enkeltoplysning foer et opkald, og zonen kan modsige den.
+  // Energinets EnergiWatch DK til 260.356 kr. staar i zonen "fast_laeser" og ophoerer
+  // 29-09-2026, altsaa en kunde der laeser normalt og alligevel er gaaet.
+  //
+  // Tre tilstande, fordi de kraever tre forskellige handlinger: varslet loeber
+  // (ring), aftalen er slut i denne maaned (registrer udfaldet), og aftalen
+  // ophoerte foer maaneden (raekken burde ikke vaere her, se marketwires
+  // 'Opsigelser'-pipeline i queries.db_opsigelser).
+  const opsagtLinje = (a, abo_maaned) => {
+    if (!a.opsagt_dato) return '';
+    const dage = dageTil(a.opsagt_dato);
+    if (!a.opsagt) {
+      return `<div class="abo-opsagt">Opsagt. Aftalen ophører ${dato(a.opsagt_dato)}`
+        + (dage === null ? '' : `, om ${dage} dag${dage === 1 ? '' : 'e'}`) + '.'
+        + '<span class="fine">Abonnementet tæller ikke som en risiko, fordi '
+        + 'udfaldet er afgjort. Der er stadig varsel tilbage, så et opkald kan '
+        + 'nå at ændre noget.</span></div>';
+    }
+    if (a.opsagt_dato < abo_maaned + '-01') {
+      return `<div class="abo-opsagt">Opsagt. Aftalen ophørte ${dato(a.opsagt_dato)}`
+        + ', altså før denne måned.'
+        + '<span class="fine">Rækken burde ikke længere være aktiv. Opsigelsen '
+        + 'ligger i en Pipedrive-pipeline, som dbo.retention ikke kender, så '
+        + 'abonnementet lukkede aldrig. Det er datahygiejne, ikke et opkald.</span></div>';
+    }
+    return `<div class="abo-opsagt">Opsagt. Aftalen ophørte ${dato(a.opsagt_dato)}.`
+      + '<span class="fine">Den står her, fordi den var aktiv i en del af denne '
+      + 'måned. Der er intet varsel tilbage.</span></div>';
+  };
+
+  // '2026-07' → 'juli 2026'. Raa ISO-maaneder stod indtil 2026-08-17 direkte i
+  // brugerens tekst ('aktive i 2026-08', 'Startet 2024-03'). En ISO-streng ser ud
+  // som en maskinvaerdi, og datateamet 2026-08-14 bad netop om at tallene skulle
+  // kunne tolkes af en ikke-datakyndig. Prioteringssiden bruger samme oversaettelse.
+  const MDR_LANG = ['januar','februar','marts','april','maj','juni',
+                    'juli','august','september','oktober','november','december'];
+  const MDR_KORT = ['jan.','feb.','mar.','apr.','maj','jun.',
+                    'jul.','aug.','sep.','okt.','nov.','dec.'];
+  const _maaned = (s, navne, langtAar) => {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(s || ''));
+    if (!m) return String(s || '?');
+    return navne[+m[2] - 1] + ' ' + (langtAar ? m[1] : m[1].slice(2));
+  };
+  const maanedLang = s => _maaned(s, MDR_LANG, true);
+  const maanedKort = s => _maaned(s, MDR_KORT, false);
+
+  // Sidevisninger forkortet, saa etiketten kan staa over en soejle i en graf med
+  // 14 af dem: 1.240 → '1,2t'. Under tusind staar tallet uforkortet, fordi tre
+  // cifre er kortere end forkortelsen ville vaere.
+  const kortTal = (n) => n >= 1000
+    ? (n / 1000).toFixed(n < 10000 ? 1 : 0).replace('.', ',') + 't'
+    : String(n);
+
+  // Aksens loft rundet OP til et paent tal, saa gittermaerkerne bliver laesbare.
+  // Med det raa maksimum ville de fire mellemmaerker hedde 17,5 og 52,5, og et
+  // gitter man skal regne i er vaerre end intet gitter. Prisen er at soejlerne
+  // ikke naar helt til top, fx 70 paa en akse til 100, og det er den rigtige
+  // pris: HOEJESTE MAANED staar med sit eget tal i overskriften.
+  const akseLoft = (n) => {
+    if (n <= 1) return 1;
+    const e = Math.pow(10, Math.floor(Math.log10(n)));
+    for (const m of [1, 2, 2.5, 5]) if (n <= m * e) return m * e;
+    return 10 * e;
+  };
+
+  // Hvor beloebet pr. abonnement kommer fra. Teksten staar UNDER beloebet, fordi
+  // de tre slags tal ser ens ud og betyder noget forskelligt: et maalt beloeb, en
+  // fordelt andel, og et vi ikke kender. Uden maerket ville en fordelt andel blive
+  // taget med til et moede som prisen paa dét site.
+  const ARR_KILDE = {
+    site:        'abonnementets egen årsværdi',
+    lige_deling: 'skøn: kundens ARR delt ligeligt',
+  };
+  // Serveren sender null naar beloebet er ukendt. Slaas det op direkte i objektet
+  // ovenfor, virker det kun fordi JS laver null om til strengen "null", og det er
+  // en faelde for den naeste der laeser koden. Derfor en egen funktion.
+  const arrKildeTekst = (k) => k ? (ARR_KILDE[k] || 'årsværdi')
+                                 : 'ukendt: ACV har intet beløb på dette site';
+
   const ZONE_TEKST = {
-    stoppet:       'Læste før, læser ikke længere',
-    laenge_tavs:   'Ingen aktivitet i lang tid',
-    aldrig_i_brug: 'Har aldrig taget produktet i brug',
-    faldende:      'Forbruget falder',
-    sund:          'Stabilt forbrug',
-    ny:            'For ny til at vurderes',
-    intet_signal:  'Vi kan ikke se forbruget — ikke det samme som risiko'
+    gaaet_i_staa:  'Læste før, er gået i stå',
+    aldrig_i_gang: 'Har aldrig taget produktet i brug',
+    paa_vej_ned:   'Forbruget falder',
+    fast_laeser:   'Stabilt forbrug',
+    nystartet:     'For ny til at vurderes',
+    lukket_konto:  'Ingen aktiv konto i Zuora, og intet forbrug. Aftalen ser ophørt ud',
+    ingen_data:    'Vi kan ikke se forbruget, og det er ikke det samme som risiko'
   };
 
   let d;
@@ -287,18 +448,29 @@
      k.teams || 'Intet team'].join(' · ');
 
   // Forbehold øverst, ikke nederst: de ændrer hvordan tallene skal læses.
+  // INGEN DOKUMENTHENVISNINGER I BRUGERENS TEKST. Her stod "Regler og Guardrails regel 2" og
+  // "Målingside" indtil 2026-08-17. Brugeren kan ikke aabne dokumentet, saa en
+  // henvisning fortaeller kun at forklaringen findes et sted hun ikke kommer, og
+  // PRD'en arkiveres i oevrigt. Datateamet 2026-08-14: det skal kunne tolkes paa
+  // siden.
   const adv = [];
   if (d.ingen_aktive) adv.push('Kunden har ingen aktive abonnementer i ' +
-    esc(d.meta.abo_maaned) + '. Historikken vises alligevel.');
-  if (k.mikrokunde) adv.push('Mikrokunde (under 5.000 kr./år). PRD §10 regel 2: ' +
-    'får aldrig et opkald — den automatiserede mail er sporet her.');
+    esc(maanedLang(d.meta.abo_maaned)) + '. Historikken vises alligevel.');
+  // MIKROKUNDE-TEKSTEN LOEJ. Den sagde at den automatiserede mail "er sporet
+  // her", hvilket fik det til at se ud som om der sker noget for mikrokunder.
+  // Mailen er ikke bygget, saa der sker ingenting, og det skal staa.
+  if (k.mikrokunde) adv.push('Mikrokunde med under 5.000 kr./år i samlet årsværdi. '
+    + 'Får aldrig et opkald, fordi det koster mere i løn end kunden er værd. '
+    + 'Der er ikke bygget et alternativ, så der sker i praksis ingenting for '
+    + 'kunden i dag.');
   if (d.meta.usage_error) adv.push('Forbrugsdata kunne ikke læses: ' +
     esc(d.meta.usage_error) + '. Zoner og grafer er derfor ikke retvisende.');
   if (d.meta.reference_alder > 0) adv.push('Forbrugssignalet er ' +
-    d.meta.reference_alder + ' måned(er) gammelt (reference ' +
-    esc(d.meta.reference_maaned) + '). Eksporten er ikke kørt.');
-  if (!d.meta.thresholds_validated) adv.push('Zonetærsklerne er ikke kalibreret ' +
-    'på rigtige udfald endnu (PRD §9). Zonen er et kvalificeret gæt, ikke en måling.');
+    d.meta.reference_alder + ' måned(er) gammelt, og dækker kun til og med ' +
+    esc(maanedLang(d.meta.reference_maaned)) + '. Et nyt udtræk mangler.');
+  if (!d.meta.thresholds_validated) adv.push('Zonetærsklerne er ikke kalibreret '
+    + 'mod rigtige, registrerede opsigelser endnu. Zonen er et kvalificeret gæt '
+    + 'og ikke en måling, så brug den som en rækkefølge og ikke som et facit.');
   document.getElementById('advarsler').innerHTML =
     adv.map(t => `<div class="advar">${t}</div>`).join('');
 
@@ -311,7 +483,7 @@
     <div class="kpi">
       <div class="k-label">Abonnementer</div>
       <div class="k-value">${k.antal_abonnementer}</div>
-      <div class="k-note">aktive i ${esc(d.meta.abo_maaned)}</div>
+      <div class="k-note">aktive i ${esc(maanedLang(d.meta.abo_maaned))}</div>
     </div>
     <div class="kpi">
       <div class="k-label">Samtaler registreret</div>
@@ -325,17 +497,61 @@
     ? `${abos.length} abonnement(er), højeste score først`
     : 'Ingen aktive abonnementer';
 
+  // HVER GRAF HAR SIN EGEN Y-SKALA.
+  //
+  // Faelles skala for hele kunden blev proevet 2026-08-18 og forkastet efter at
+  // have set den: hos en kunde med maks 158.704 sidevisninger paa ét site blev de
+  // oevrige sites' 13, 17 og 32 visninger en flad streg. Grafen viste ingenting,
+  // netop for de abonnementer man skal vurdere.
+  //
+  // Sammenligneligheden loeses derfor med TAL og ikke med hoejde: maksimum staar
+  // paa hver graf, og hver soejle har sin vaerdi over sig. Prisen er at
+  // soejlehoejder IKKE kan sammenlignes mellem to grafer, og det skal siden
+  // skrive, ellers laeses to lige hoeje soejler som to lige store tal.
   const sparkline = (trend, ref) => {
     if (!trend || !trend.length) return '';
-    const max = Math.max(...trend.map(t => t.sidevisninger), 1);
+    const grafMax = Math.max(1, ...trend.map(t => t.sidevisninger));
+    const loft = akseLoft(grafMax);
+
     const bars = trend.map(t => {
-      const h = Math.round((t.sidevisninger / max) * 100);
+      const h = (t.sidevisninger / loft) * 100;
       const erRef = t.maaned === ref;
-      return `<i class="${erRef ? 'ref' : ''}" style="height:${Math.max(h, 2)}%"
-                 title="${esc(t.maaned)}: ${nf0.format(t.sidevisninger)} sidevisninger, ${t.dage} aktive dage"></i>`;
+      // Nul faar INGEN etiket. Paa et stille abonnement er de fleste maaneder nul,
+      // og fjorten nuller over fjorten flade soejler er stoej, der skjuler de tal
+      // der betyder noget.
+      const mrk = t.sidevisninger > 0 ? `<b>${esc(kortTal(t.sidevisninger))}</b>` : '';
+      return `<div class="col${erRef ? ' ref' : ''}"
+                   title="${esc(maanedLang(t.maaned))}: ${nf0.format(t.sidevisninger)} sidevisninger, ${t.dage} aktive dage">`
+           + `${mrk}<u style="height:${Math.max(h, t.sidevisninger > 0 ? 2 : 0)}%"></u></div>`;
     }).join('');
-    return `<div class="spark">${bars}</div>
-            <div class="spark-x"><span>${esc(trend[0].maaned)}</span><span>${esc(trend[trend.length - 1].maaned)}</span></div>`;
+
+    // Fem gittermaerker fra loftet ned til nul.
+    const ymaerker = [1, 0.75, 0.5, 0.25, 0]
+      .map(f => `<span>${esc(kortTal(Math.round(loft * f)))}</span>`).join('');
+
+    // Aarstallet kun paa den foerste og paa januar. Fjorten aarstal ville drukne
+    // maanederne, og skiftet er det eneste sted man er i tvivl.
+    const xmaerker = trend.map((t, i) => {
+      const m = /^(\d{4})-(\d{2})$/.exec(String(t.maaned || ''));
+      if (!m) return '<span></span>';
+      const visAar = i === 0 || m[2] === '01';
+      return `<span class="${visAar ? 'aar' : ''}">`
+           + esc(MDR_KORT[+m[2] - 1].replace('.', ''))
+           + (visAar ? ' ' + esc(m[1].slice(2)) : '') + '</span>';
+    }).join('');
+
+    return `<div class="graf">
+              <div class="graf-top">
+                <span>Sidevisninger pr. måned</span>
+                <span>Højeste måned: <strong>${esc(nf0.format(grafMax))}</strong></span>
+              </div>
+              <div class="graf-plot">
+                <div class="graf-y">${ymaerker}</div>
+                <div class="spark">${bars}</div>
+              </div>
+              <div class="spark-x">${xmaerker}</div>
+              <div class="graf-note">Den mørke søjle er ${esc(maanedLang(ref))}, som zonen er beregnet på.</div>
+            </div>`;
   };
 
   document.getElementById('abonnementer').innerHTML = abos.length ? abos.map(a => {
@@ -344,25 +560,26 @@
     // referencen). Grafen går til og med referencen, så en sum af søjlerne
     // ville give et andet tal — vis aldrig det.
     const dele = [
-      `Zone: ${esc(a.zone_label)} — ${ZONE_TEKST[a.zone] || ''}`,
+      `Zone: ${esc(a.zone_label)} (${ZONE_TEKST[a.zone] || ''})`,
       `Vægt ${nfv.format(a.vaegt)}`,
       a.aktive_dage_12m === null ? null : `${a.aktive_dage_12m} aktive dage (12 mdr.)`,
       a.vanebruger ? 'Vanebruger' : null,
-      `Startet ${esc(a.foerste_maaned)}`,
+      `Startet ${esc(maanedLang(a.foerste_maaned))}`,
       a.fornyelsesdato ? `Fornyes ${dato(a.fornyelsesdato)}` : null
     ].filter(Boolean);
     return `
-      <div class="abo ${esc(a.zone)}">
+      <div class="abo ${esc(a.zone)}${a.opsagt_dato ? ' er-opsagt' : ''}">
         <div class="abo-top">
           <div>
-            <div class="abo-site">${esc(a.site)} <span class="zpill">${esc(a.zone_label)}</span></div>
+            <div class="abo-site">${esc(a.site)} <span class="zpill ${esc(a.zone)}">${esc(a.zone_label)}</span>${a.opsagt_dato ? `<span class="opill">${a.opsagt ? 'ophørt' : 'opsagt'}</span>` : ''}</div>
             <div class="abo-sub">${dele.map(esc).join(' · ')}</div>
           </div>
           <div style="text-align:right">
             <div class="abo-arr">${kr(a.arr_dkk)}</div>
-            <div class="fine">andel af kundens ARR</div>
+            <div class="fine">${esc(arrKildeTekst(a.arr_kilde))}</div>
           </div>
         </div>
+        ${opsagtLinje(a, d.meta.abo_maaned)}
         ${sparkline(a.trend, d.meta.reference_maaned)}
         ${u ? `<div class="hist-udfald">Seneste udfald: <strong>${esc(u.outcome || u.contact_result)}</strong>
                ${u.followup_date ? ' · opfølgning ' + dato(u.followup_date) : ''}
@@ -370,14 +587,44 @@
       </div>`;
   }).join('') : '<div class="tom">Ingen aktive abonnementer i denne måned.</div>';
 
-  // ARR pr. abonnement er kundens ARR delt med antal sites — et VALG, ikke en
-  // måling (queries.py). Det skal stå på siden, ellers læses beløbet som prisen
-  // på dét site, og et registreret udfald ville arve divisionen.
-  if (abos.length > 1) {
+  // ── Summerer abonnementernes beloeb til kundens ARR?
+  //
+  // FRA 2026-08-18 har hvert abonnement sit EGET beloeb fra ACV, i stedet for
+  // kundens ARR delt med antal sites. Det afdaekkede noget, ligedelingen skjulte:
+  // ACV er en aendringslog og beholder beloebet EFTER abonnementet er opsagt, saa
+  // kundens samlede ARR kan vaere langt hoejere end summen af det hun har i dag.
+  //
+  // Malt 2026-08-18: 276 af 11.620 kunder har en forskel, i alt 7,0 mio. kr.
+  // Vaerst er AL Sydbank med 1.218.384 kr. i ACV mod 124.024 kr. paa de otte
+  // aktive abonnementer: FinansWatch DK (800.000) og FINANS DK (261.160) blev
+  // opsagt i juni 2026, og ACV baerer dem stadig.
+  //
+  // Linjen vises KUN naar der er en forskel. Ellers ville den staa paa hver
+  // kundeside og blive ignoreret, praecis som "scoren daekker 3 af 4" tier paa
+  // prioriteringslisten naar alle beloeb er kendte.
+  const sumAbo = k.arr_aktive_abonnementer;
+  const diff = (k.arr_dkk == null || sumAbo == null) ? 0
+             : Math.round(k.arr_dkk - sumAbo);
+  if (diff > 0) {
     document.getElementById('abonnementer').insertAdjacentHTML('beforeend',
-      `<p class="fine">Årsværdien pr. abonnement er kundens samlede ARR fordelt ligeligt
-       på ${abos.length} sites. ACV kender ikke kronerne pr. site, så fordelingen er en
-       antagelse — ikke en måling. Bekræft beløbet hos kunden, før det registreres.</p>`);
+      `<p class="fine" style="margin-top:14px">Abonnementernes beløb summerer til
+       <strong>${esc(kr(sumAbo))}</strong>, mens kundens samlede årsværdi i ACV er
+       <strong>${esc(kr(k.arr_dkk))}</strong>. Forskellen på
+       <strong>${esc(kr(diff))}</strong> ligger på abonnementer kunden
+       <strong>ikke har aktive</strong> i ${esc(maanedLang(d.meta.abo_maaned))}.
+       ACV beholder beløbet, efter et abonnement er opsagt, så kundens årsværdi
+       kan være højere end det, der faktisk står på spil i dag.</p>`);
+  }
+
+  if (abos.length > 1) {
+    // NOEDVENDIG naar skalaerne er forskellige. Uden den laeses to lige hoeje
+    // soejler i to grafer som to lige store tal, og det er den fejl egen skala
+    // koster. Staar ét sted og ikke paa hver graf, hvor den ville staa syv gange.
+    document.getElementById('abonnementer').insertAdjacentHTML('beforeend',
+      `<p class="fine" style="margin-top:8px">Hver graf har <strong>sin egen
+       skala</strong>, så et site med få læsninger stadig kan læses. Søjlehøjder
+       kan derfor ikke sammenlignes mellem to grafer. Brug tallene, ikke højden:
+       «Højeste måned» øverst til højre viser hver grafs loft.</p>`);
   }
 
   // --- historik ---
@@ -399,7 +646,7 @@
         </div>`).join('') + `</div>`
     : '<div class="tom">Ingen samtaler registreret endnu.</div>';
 
-  // ================= registreringsformular (PRD §7.4) =================
+  // ================= registreringsformular (Kundeside) =================
   // Vokabularet kommer fra outcomes.py via routeren. Det må IKKE gentages her:
   // værdierne er databasens CHECK-constraints, og en option med en værdi
   // databasen afviser fejler først når specialisten har lagt på.
@@ -429,7 +676,7 @@
 
   // Sentinel-valget. Har kunden ingen aktive abonnementer, kan der stadig
   // registreres — en netop opsagt kunde er præcis den, man skal kunne skrive
-  // 'allerede_opsagt' på (PRD §7.4). Tom site → INTET_SITE serverside.
+  // 'allerede_opsagt' på (Kundeside). Tom site → INTET_SITE serverside.
   // Den lige deling er kundens ARR / antal sites og kommer ud som en rå float
   // (121952.61538461539). Rundes til hele kroner, af to grunde: kortet ovenfor
   // viser samme tal med nul decimaler, og en division med femten decimaler
@@ -452,13 +699,13 @@
 
   // UDFALDSTYPER er en liste af [værdi, label]-par og ikke en dict, netop for at
   // rækkefølgen holder — se kommentaren i router.py om Jinjas sort_keys.
-  const udfaldOptions = ['<option value="">— vælg udfald —</option>'].concat(
+  const udfaldOptions = ['<option value="">Vælg udfald</option>'].concat(
     UDFALDSTYPER.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`)
   ).join('');
 
   // Et felt pr. valgt abonnement. Årsværdien er forudfyldt med den lige deling
   // og MÆRKET som skøn; rører specialisten feltet, skifter mærket til bekræftet.
-  // Det er hele grunden til at arr_before_kilde findes: uden mærket kan §9 ikke
+  // Det er hele grunden til at arr_before_kilde findes: uden mærket kan Målingside ikke
   // skelne et målt beløb fra en division.
   const blok = (v, i) => `
     <div class="reg-abo" data-i="${i}" data-kilde="${v.arr === null || v.arr === undefined ? '' : KILDE_DELING}">
@@ -664,7 +911,7 @@
       location.reload();
     } catch (e) {
       visFejl(['Registreringen kunne ikke sendes: ' + String(e) +
-               '. Intet er gemt — prøv igen.']);
+               '. Intet er gemt, prøv igen.']);
       el('reg-status').textContent = '';
       knap.disabled = false;
     }

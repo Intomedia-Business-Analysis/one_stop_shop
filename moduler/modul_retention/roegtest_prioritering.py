@@ -1,4 +1,4 @@
-"""Røgtest af §7.3's datalag (prioritering.py) UDEN database.
+"""Røgtest af Dagens opkalds side datalag (prioritering.py) UDEN database.
 
     .venv/Scripts/python.exe moduler/modul_retention/roegtest_prioritering.py
 
@@ -38,6 +38,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from moduler.modul_retention import cache  # noqa: E402
 from moduler.modul_retention import outcomes as o  # noqa: E402
 from moduler.modul_retention import prioritering as p  # noqa: E402
+from moduler.modul_retention import queries as q  # noqa: E402
 from moduler.modul_retention.zones import ZONE_ORDER, zone_alvor  # noqa: E402
 
 I_DAG = dt.date(2026, 8, 11)
@@ -80,13 +81,14 @@ def udfald(account="watch", org_id=2084, site="amwatch.dk",
             "renewal_date": fornyelse}
 
 
-def abo(account="watch", org_id="2084", site="amwatch.dk", zone="stoppet",
+def abo(account="watch", org_id="2084", site="amwatch.dk", zone="gaaet_i_staa",
         score=1000.0, arr=1000.0, kunde_arr=50000.0, navn="Test A/S",
-        mikro=False):
+        mikro=False, opsagt=None):
     """Én række som abonnementer_i_risiko ville levere den. org_id som STRENG."""
     return {"account": account, "org_id": org_id, "site": site, "zone": zone,
             "score": score, "arr_dkk": arr, "kunde_arr_dkk": kunde_arr,
-            "org_name": navn, "mikrokunde": mikro}
+            "org_name": navn, "mikrokunde": mikro,
+            "opsagt_dato": opsagt}
 
 
 def kpi_raekke(cid, account="watch", org_id=2084, vejen_ud="fornyet",
@@ -164,7 +166,7 @@ tjek("kalenderen daekker hele spaendet",
      (o.HELLIGDAGE_FOERSTE_AAR, o.HELLIGDAGE_SIDSTE_AAR))
 
 
-print("--- 2: tilbage_paa_listen (PRD 6.4) ---")
+print("--- 2: tilbage_paa_listen (Fristmodellen) ---")
 tjek("ingen_kontakt -> naeste hverdag",
      o.tilbage_paa_listen(udfald(resultat=o.INGEN_KONTAKT, vejen_ud=None,
                                  created=dt.datetime(2026, 8, 6, 14, 30))),
@@ -200,8 +202,9 @@ tjek("fornyet uden dato -> 180 dage fra created_at",
 tjek("nedgraderet foelger fornyet",
      o.tilbage_paa_listen(udfald(vejen_ud="nedgraderet")),
      dt.date(2026, 8, 10) + dt.timedelta(days=o.FORNYET_UDEN_DATO))
-# PRD 6.2's hul: 'opgraderet' findes ikke i CK_RetOut_outcome. Kommer den nogen
-# sinde ind ad en anden vej, skal kunden VISES, ikke forsvinde lydloest.
+# Hvad Specialisten kan registreres hul: 'opgraderet' findes ikke i
+# CK_RetOut_outcome. Kommer den nogen sinde ind ad en anden vej, skal kunden
+# VISES, ikke forsvinde lydloest.
 tjek("ukendt udfald -> STRAKS",
      o.tilbage_paa_listen(udfald(vejen_ud="opgraderet")), o.STRAKS)
 tjek("created_at mangler -> STRAKS",
@@ -248,13 +251,13 @@ tjek("overskreden fra i gaar forsvinder ikke i morgen",
 
 
 print("--- 4: zone_alvor ---")
-tjek("stoppet er vaerst", zone_alvor("stoppet"), 0)
-tjek("stoppet foer laenge_tavs", zone_alvor("stoppet") < zone_alvor("laenge_tavs"))
-# De to deler vaegt 0,50, og netop derfor skal alvoren kunne skille dem.
-tjek("laenge_tavs foer aldrig_i_brug trods samme vaegt",
-     zone_alvor("laenge_tavs") < zone_alvor("aldrig_i_brug"))
-tjek("intet_signal er sidst af de kendte",
-     zone_alvor("intet_signal"), len(ZONE_ORDER) - 1)
+tjek("aldrig_i_gang er vaerst", zone_alvor("aldrig_i_gang"), 0)
+# Maalt 25-08-2026 (kohortemaaling.py): aldrig_i_gang churner konsekvent
+# hoejere end gaaet_i_staa, saa ZONE_ORDER byttede plads paa de to.
+tjek("aldrig_i_gang foer gaaet_i_staa efter kalibreringen 25-08-2026",
+     zone_alvor("aldrig_i_gang") < zone_alvor("gaaet_i_staa"))
+tjek("ingen_data er sidst af de kendte",
+     zone_alvor("ingen_data"), len(ZONE_ORDER) - 1)
 tjek("ukendt zone ligger EFTER alle kendte",
      zone_alvor("noget_nyt"), len(ZONE_ORDER))
 tjek("ukendt zone kaster ikke", isinstance(zone_alvor(None), int))
@@ -312,8 +315,8 @@ except TypeError:
     tjek("datetime som i_dag rejser TypeError", True)
 
 
-print("--- 7: fold_risici, filtrene fra PRD 4 ---")
-tjek("sund frasorteres", len(p.fold_risici([abo(zone="sund")], {}, I_DAG)), 0)
+print("--- 7: fold_risici, filtrene fra Prioriteringsmodellen ---")
+tjek("fast_laeser frasorteres", len(p.fold_risici([abo(zone="fast_laeser")], {}, I_DAG)), 0)
 tjek("mikrokunde frasorteres", len(p.fold_risici([abo(mikro=True)], {}, I_DAG)), 0)
 tjek("uden udfald er abonnementet med", len(p.fold_risici([abo()], {}, I_DAG)), 1)
 # fornyet 2026-08-10 giver +180 dage, altsaa langt ude i fremtiden.
@@ -325,6 +328,32 @@ tjek("udloebet udsaettelse er med igen",
                        {("watch", "2084", "amwatch.dk"):
                         udfald(created=dt.datetime(2025, 1, 1, 9, 0))},
                        I_DAG)), 1)
+
+
+# Landeafgraensningen flyttede til SQL 2026-08-25 (queries._KUN_DANSKE), saa
+# fold_risici filtrerer ikke laengere paa account. En syntetisk watch_no-raekke
+# kan derfor ikke bevise noget her; garantien flytter med til fragmentet.
+tjek("de tre udenlandske accounts staar i SQL-filteret",
+     all(a in q._KUN_DANSKE for a in q.UDENLANDSKE_ACCOUNTS), True)
+tjek("de danske accounts staar IKKE i SQL-filteret",
+     any(a in q._KUN_DANSKE for a in ("watch_medier", "monitor", "marketwire")),
+     False)
+tjek("opsagt abonnement frasorteres",
+     len(p.fold_risici([abo(opsagt="2026-10-31")], {}, I_DAG)), 0)
+# En kunde med ét opsagt og ét levende abonnement skal BLIVE paa listen, men
+# posten maa kun indeholde det levende. Ellers taeller det opsagte med i
+# "scoren daekker X af Y", og tallet bliver forkert.
+blandet = p.fold_risici([abo(site="amwatch.dk", opsagt="2026-10-31"),
+                         abo(site="finanswatch.dk")], {}, I_DAG)
+tjek("kunde med ét opsagt og ét levende bliver paa listen", len(blandet), 1)
+tjek("kun det levende abonnement er i posten",
+     blandet[0]["antal_abonnementer"], 1)
+tjek("og det er det rigtige", blandet[0]["abonnementer"][0]["site"],
+     "finanswatch.dk")
+# En dato i FORTIDEN frasorteres ogsaa. Aftalen er slut, saa der er ikke
+# engang et varsel at ringe indenfor.
+tjek("opsagt med dato i fortiden frasorteres ogsaa",
+     len(p.fold_risici([abo(opsagt="2024-01-31")], {}, I_DAG)), 0)
 
 
 print("--- 8: site-sentinelen ---")
@@ -344,13 +373,13 @@ tjek("uden sentinelen ville den slippe igennem",
 
 
 print("--- 9: fold_risici, foldning og sortering ---")
-poster_9 = p.fold_risici([abo(site="a.dk", zone="faldende", score=100.0),
-                          abo(site="b.dk", zone="stoppet", score=300.0),
-                          abo(site="c.dk", zone="laenge_tavs", score=200.0,
+poster_9 = p.fold_risici([abo(site="a.dk", zone="paa_vej_ned", score=100.0),
+                          abo(site="b.dk", zone="gaaet_i_staa", score=300.0),
+                          abo(site="c.dk", zone="aldrig_i_gang", score=200.0,
                               arr=None)], {}, I_DAG)
 tjek("tre abonnementer bliver én kunde", len(poster_9), 1)
 tjek("scoren summeres", poster_9[0]["score"], 600.0)
-tjek("vaerste zone vinder", poster_9[0]["vaerste_zone"], "stoppet")
+tjek("vaerste zone vinder", poster_9[0]["vaerste_zone"], "aldrig_i_gang")
 tjek("antal abonnementer talt", poster_9[0]["antal_abonnementer"], 3)
 # To tal og ikke én boolean: siden skal kunne sige "scoren daekker 2 af 3".
 tjek("antal med kendt ARR talt for sig", poster_9[0]["abonnementer_med_arr"], 2)
@@ -366,11 +395,11 @@ tjek("hoejeste score foerst",
 # zone_alvor afgjorde Pythons stabile sort det paa den raekkefoelge de kom i.
 tjek("alvoren bryder uafgjort",
      [x["org_name"] for x in p.fold_risici(
-         [abo(org_id="1", site="x.dk", zone="laenge_tavs", score=500.0,
-              navn="Tavs A/S"),
-          abo(org_id="2", site="y.dk", zone="stoppet", score=500.0,
-              navn="Stoppet A/S")], {}, I_DAG)],
-     ["Stoppet A/S", "Tavs A/S"])
+         [abo(org_id="1", site="x.dk", zone="aldrig_i_gang", score=500.0,
+              navn="Aldrig A/S"),
+          abo(org_id="2", site="y.dk", zone="gaaet_i_staa", score=500.0,
+              navn="Gaaet A/S")], {}, I_DAG)],
+     ["Aldrig A/S", "Gaaet A/S"])
 # Summen er aldrig None, heller ikke naar alle led mangler ARR.
 tjek("kunde uden kendt ARR summerer til 0,0 og vaelter ikke sorteringen",
      p.fold_risici([abo(score=None, arr=None, kunde_arr=None)], {},
@@ -409,7 +438,7 @@ tjek("ingen opfoelgninger -> ti poster", len(r["poster"]), p.LISTE_LAENGDE)
 tjek("ingen aarsag naar listen er fuld", r["aarsag"], None)
 tjek("plads rapporteret", r["plads"], p.LISTE_LAENGDE)
 # Baeres ALTID med, ikke kun naar loftet binder: findes tallet kun i det oejeblik
-# vaeggen rammes, kan PRD 9 aldrig se om det rigtige loft var 25 eller 90.
+# vaeggen rammes, kan Målingside aldrig se om det rigtige loft var 25 eller 90.
 tjek("aabne sager baeres med selv om loftet ikke binder", r["aabne_sager"], 3)
 
 tjek("seks opfoelgninger -> fire nye",
@@ -423,7 +452,7 @@ tjek("loftet binder VED graensen, ikke over den", r["aarsag"], "loft")
 tjek("loftet giver ingen poster", len(r["poster"]), 0)
 tjek("under graensen binder ikke",
      p.afkort_nye_risici(mange, 0, p.MAKS_AABNE_SAGER - 1)["aarsag"], None)
-# Loftet gaar FORUD for pladsregnestykket: det er en haard port (PRD 8).
+# Loftet gaar FORUD for pladsregnestykket: det er en haard port (Arbejdsgang).
 tjek("loftet vinder over opfoelgninger_fylder",
      p.afkort_nye_risici(mange, 12, p.MAKS_AABNE_SAGER)["aarsag"], "loft")
 
@@ -596,6 +625,25 @@ finally:
     # for enhver, der importerer denne fil i stedet for at koere den.
     (cache.risiko, cache.navne, cache.ejere,
      p.db_seneste_udfald, p.db_maanedens_udfald) = _oprindelig
+
+
+print("--- 14: CSS-selectors for hver zone (den tavse faelde ved en omdoebning) ---")
+# Klassenavnet interpoleres RAAT i skabelonerne, fx
+# '<button class="zcard ' + z. En omdoebt zone uden en tilsvarende omdoebt
+# CSS-selector mister derfor bare sin farve, uden at noget fejler nogen steder
+# — det er den eneste fejl i Omdoebningen der ellers ikke ville kaste. Denne
+# test er spaerren, og skal opdateres naeste gang en zone faar et nyt id.
+_SKABELON_ROOT = REPO_ROOT / "templates"
+for _navn, _klasser in (
+        ("retention_risk.html", ("zcard", "pill")),
+        ("retention_prioritering.html", ("pill",)),
+        ("retention_kunde.html", ("abo", "zpill")),
+):
+    _tekst = (_SKABELON_ROOT / _navn).read_text(encoding="utf-8")
+    for _zid in ZONE_ORDER:
+        for _klasse in _klasser:
+            tjek(f"{_navn}: .{_klasse}.{_zid} findes",
+                 f".{_klasse}.{_zid}" in _tekst, True)
 
 
 print()

@@ -1,9 +1,11 @@
-"""Kalibrering af zonevægtene mod FAKTISK churn. PRD §12's vigtigste punkt.
+"""Kalibrering af zonevægtene mod FAKTISK churn. Modulets vigtigste
+ubesvarede spørgsmål.
 
     .venv/Scripts/python.exe moduler/modul_retention/kalibrering.py
 
-Spørgsmålet er ikke "hvem er i risiko" men "forudsiger zonen noget". Metoden er
-PRD §12's: `dbo.retention` ved hvem der forsvandt, måned for måned. For hver
+Spørgsmålet er ikke "hvem er i risiko" men "forudsiger zonen noget". Metoden
+bygger paa det eneste vi har: `dbo.retention` ved hvem der forsvandt, måned
+for måned. For hver
 referencemåned R sammenlignes zonefordelingen for de abonnementer, der var væk H
 måneder senere, med fordelingen for dem der stadig var der. Overlapper de to
 helt, forudsiger zonen ingenting, og de syv vægte er postulater.
@@ -15,7 +17,7 @@ FIRE TING DER SKAL VÆRE RIGTIGE, ellers måler filen sig selv:
 
 1. INGEN FREMADKIGNING. `bestem_zone` er næsten rent bagudskuende, men to steder
    ser den på hele serien: `any(v > 0 for v in forbrug.values())` skiller
-   `laenge_tavs` fra `aldrig_i_brug`, og `foerste_kendte_maaned` tager `min` over
+   `gaaet_i_staa` fra `aldrig_i_gang`, og `foerste_kendte_maaned` tager `min` over
    alle måneder. I produktion er det harmløst, fordi der ikke FINDES måneder
    efter referencen. Her ville det lade zonen vide, hvad kunden gjorde bagefter.
    Serien beskæres derfor til måneder <= R, før den sendes ind. Det er også
@@ -29,18 +31,18 @@ FIRE TING DER SKAL VÆRE RIGTIGE, ellers måler filen sig selv:
    måneder. Vinduet koster måneder: H=6 kræver at R+6 er en hel måned, så den
    horisont har færrest referencer bag sig. Antallet står i tabellen.
 
-3. FORSVUNDET ER IKKE OPSAGT. PRD §11, punkt 7: mellem april og maj 2026 blev
+3. FORSVUNDET ER IKKE OPSAGT. Mellem april og maj 2026 blev
    1.769 abonnementer GENSKABT efter at have været væk. Et abonnement kan altså
    forsvinde og komme tilbage. Kohorten afgøres derfor på tilstanden i R+H — er
    den tilbage dér, tælles den som blevet — og filen tæller særskilt, hvor mange
    der FLIMREDE undervejs. Er det tal stort, er rækkerne støj og ikke kontrakter.
 
-4. `intet_signal` ER IKKE EN FORUDSIGELSE. Zonen har vægt 0,15 og tæller derfor
+4. `ingen_data` ER IKKE EN FORUDSIGELSE. Zonen har vægt 0,15 og tæller derfor
    med i "i risiko", men den betyder "vi kan ikke se noget". Regnes den med, ser
    modellen skarp ud, fordi den flager alt den er blind for. Forudsigelsesraten
    vises derfor med OG uden, og zonen splittes på sin årsag: en række uden
    Zuora-kobling er en datamangel, et utrackbart site er et kildehul. Skiller
-   churn'en sig mellem de to, er "intet signal" et hygiejneproblem.
+   churn'en sig mellem de to, er "ingen data" et hygiejneproblem.
 
 Filen skriver ikke til databasen og har ingen bivirkninger.
 """
@@ -54,17 +56,16 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from moduler.modul_retention.queries import db_abonnementer          # noqa: E402
 from moduler.modul_retention.usage import (                          # noqa: E402
-    _account_to_customer_map, customer_key, forbrug_pr_abonnement,
-    serie_og_dage)
+    customer_key, forbrug_pr_abonnement, serie_og_dage)
 from moduler.modul_retention.zones import (                          # noqa: E402
-    NY_MAANEDER, STOPPET_VINDUE, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
-    ZONE_VAEGT, bestem_zone, er_vanebruger, forskyd_maaned, kanonisk_site,
-    zone_vaegt)
+    FALD_VINDUE, NY_MAANEDER, UNTRACKBARE_SITES, ZONE_LABELS, ZONE_ORDER,
+    ZONE_VAEGT, bestem_zone, forskyd_maaned, kanonisk_site, zone_vaegt)
 
 # Hvor meget historik en referencemåned skal have bag sig i forbrugsvinduet, før
 # zonen betyder noget. Uden dette ville de tidligste måneder få alt til at se
-# `ny` ud — ikke fordi abonnementerne er nye, men fordi serien er beskåret.
-MIN_HISTORIK = max(NY_MAANEDER, STOPPET_VINDUE) + 1
+# `nystartet` ud — ikke fordi abonnementerne er nye, men fordi serien er
+# beskåret.
+MIN_HISTORIK = max(NY_MAANEDER, FALD_VINDUE) + 1
 
 HORISONTER = (1, 3, 6)
 
@@ -75,7 +76,7 @@ def beskaer(serie: dict, reference: str) -> dict:
 
 
 def abo_noegle(r: dict) -> tuple:
-    """Abonnementets grain, PRD §2: (account, org_id, sites).
+    """Abonnementets grain, Definitioner: (account, org_id, sites).
 
     GENNEM `customer_key`, ikke råt fra rækken. `db_abonnementer` er en SQL-query
     og leverer `org_id` som INT (982), mens hvert forbrugsopslag i usage.py er
@@ -95,6 +96,11 @@ def hul_aarsag(site, har_zuora: bool) -> str:
 
     Rækkefølgen er ikke vilkårlig: mangler Zuora-koblingen, kan vi ikke engang
     slå kunden op, og så er sitets trackbarhed uden betydning.
+
+    FLAG 2026-08-25: "utrackbart site" bæres af Shifter/Kom24 NO/Medier24 NO,
+    som alle lå under watch_no. Kunder herfra findes ikke længere i
+    db_abonnementer efter queries._KUN_DANSKE, så bøtten skrumper til
+    marketwires rækker. Se samme note i kohortemaaling.py.
     """
     if not har_zuora:
         return "ingen Zuora-kobling"
@@ -113,23 +119,30 @@ def hent_maaneder(maaneder: list) -> dict:
 
 
 def zone_for(r: dict, kunde: tuple, reference: str, forbrug: dict,
-             med_zuora: set) -> tuple:
-    """(zone, vægt, hul-årsag) for ét abonnement i én referencemåned."""
+             med_zuora: set, uden_aktiv_konto: set = frozenset()) -> tuple:
+    """(zone, vægt, hul-årsag) for ét abonnement i én referencemåned.
+
+    `uden_aktiv_konto` maa KUN sendes med naar referencen er en LEVENDE maaned.
+    Saettet bygges paa konto_status, som beskriver tilstanden i dag, saa paa en
+    bagdateret kohorte er det et input dateret EFTER udfaldet. Default er
+    derfor et tomt saet, og kohortemaaling.py sender det ikke med. Se regel 5 i
+    kohortemaaling.py, hvor flaget i stedet maales for sig selv og staar
+    maerket som laekket.
+    """
     site = kanonisk_site(r["sites"])
-    serie, dage = serie_og_dage(forbrug, kunde, site)
-    # BESKÆRINGEN. Uden de to linjer måler filen sig selv.
-    serie, dage = beskaer(serie, reference), beskaer(dage, reference)
+    serie, _dage = serie_og_dage(forbrug, kunde, site)
+    # BESKÆRINGEN. Uden denne linje måler filen sig selv.
+    serie = beskaer(serie, reference)
 
     har_zuora = kunde in med_zuora
-    zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora)
-    # Vægten afhænger af vanen for "stoppet", præcis som i risiko.py — ellers
-    # ville den målte vektor sammenlignes med en vægt, ingen række havde.
-    vaegt = zone_vaegt(zone, er_vanebruger(dage, reference))
+    zone = bestem_zone(serie, reference, r["foerste_maaned"], site, har_zuora,
+                       kunde not in uden_aktiv_konto)
+    vaegt = zone_vaegt(zone)
     return zone, vaegt, hul_aarsag(site, har_zuora)
 
 
 def maal(reference: str, horisont: int, pr_maaned: dict, forbrug: dict,
-         med_zuora: set) -> dict:
+         med_zuora: set, uden_aktiv_konto: set = frozenset()) -> dict:
     """Zonefordeling for dem der var VÆK i R+H mod dem der stadig var der."""
     slut = forskyd_maaned(reference, -horisont)
     mellem = [forskyd_maaned(reference, -n) for n in range(1, horisont)]
@@ -158,9 +171,9 @@ def maal(reference: str, horisont: int, pr_maaned: dict, forbrug: dict,
         else:
             forsvandt[zone] += 1
             forsvandt["_n"] += 1
-            if zone == "intet_signal":
+            if zone == "ingen_data":
                 huller["forsvandt"][aarsag] += 1
-        if noegle in i_slut and zone == "intet_signal":
+        if noegle in i_slut and zone == "ingen_data":
             huller["blev"][aarsag] += 1
 
     return {"reference": reference, "horisont": horisont, "slut": slut,
@@ -223,11 +236,11 @@ def skriv_horisont(horisont: int, maalinger: list) -> None:
         print(f"  {ZONE_LABELS[z].ljust(14)} {b:>9,} {a_b:>6.1f}% "
               f"{f:>7,} {a_f:>6.1f}% {lift:>6.2f} {_andel(f, b + f):>10.2f}%")
 
-    # PRD §9's forudsigelsesrate, med og uden datahullet. Se punkt 4.
+    # Målingsidens forudsigelsesrate, med og uden datahullet. Se punkt 4.
     risiko = [z for z in ZONE_ORDER if ZONE_VAEGT.get(z, 0) > 0]
-    for navn, zoner in (("MED intet_signal ", risiko),
-                        ("UDEN intet_signal", [z for z in risiko
-                                               if z != "intet_signal"])):
+    for navn, zoner in (("MED ingen_data ", risiko),
+                        ("UDEN ingen_data", [z for z in risiko
+                                             if z != "ingen_data"])):
         r_f = _andel(sum(forsvandt[z] for z in zoner), n_f)
         r_b = _andel(sum(blev[z] for z in zoner), n_b)
         print(f"\n  forudsigelsesrate {navn}: {r_f:5.1f}% af de forsvundne"
@@ -256,10 +269,10 @@ def skriv_horisont(horisont: int, maalinger: list) -> None:
 def skriv_vaegtvektor(horisont: int, maalinger: list) -> None:
     """Churn-rate pr. zone som vægtvektor, holdt op mod dagens skøn.
 
-    Rå churn-rate og ikke en model: vægten i PRD §4 ganges på ARR, så det den
-    skal udtrykke er "hvor sandsynligt er det, at dette abonnement forsvinder".
-    Normaliseret så den højeste zone er 1,00, fordi ZONE_VAEGT er skaleret sådan
-    — ellers kan de to kolonner ikke sammenlignes.
+    Rå churn-rate og ikke en model: vægten i Prioriteringsmodellen ganges på
+    ARR, så det den skal udtrykke er "hvor sandsynligt er det, at dette
+    abonnement forsvinder". Normaliseret så den højeste zone er 1,00, fordi
+    ZONE_VAEGT er skaleret sådan — ellers kan de to kolonner ikke sammenlignes.
     """
     s = laeg_sammen(maalinger)
     rater = {}
@@ -288,13 +301,20 @@ def main() -> int:
     print("--- forbrugsdata ---")
     forbrug = forbrug_pr_abonnement()
     vindue = sorted(forbrug["maaneder"])
-    med_zuora = set(_account_to_customer_map().values())
+    # Navnet er historisk: saettet er nu koblingsbare kunder fra dm_kobling
+    # plus ACV_snapshot. Snapshot-halvdelen kender kun de AKTIVE konti, saa den
+    # er dateret efter udfaldet og maa skaeres ud naar zonerne maales paa en
+    # historisk maaned. forbrug["uden_aktiv_konto"] er den gruppe.
+    med_zuora = forbrug["koblingsbare"]
+    # Tomt saet: denne fil maaler bagdaterede referencer, og konto_status er
+    # dateret efter udfaldet. Se zone_for's docstring.
+    uden_aktiv_konto = frozenset()
     print(f"  vindue: {vindue[0]} .. {vindue[-1]}  ({len(vindue)} maaneder)")
 
     # R+H skal være en HEL måned. Indeværende måned er ufuldstændig, og et
     # abonnement der endnu ikke har fået sin række ville se ud som churn.
     sidste_hele = forskyd_maaned(date.today().strftime("%Y-%m"), 1)
-    # Referencen skal have historik BAG sig, ellers gør beskæringen alt "ny".
+    # Referencen skal have historik BAG sig, ellers gør beskæringen alt "nystartet".
     med_historik = [m for m in vindue if vindue.index(m) >= MIN_HISTORIK]
     print(f"  referencer med nok historik: {med_historik[0]} .. {med_historik[-1]}"
           f"  ({len(med_historik)})")
@@ -324,7 +344,8 @@ def main() -> int:
     pr_maaned = hent_maaneder(alle)
 
     for h in HORISONTER:
-        maalinger = [maal(r, h, pr_maaned, forbrug, med_zuora)
+        maalinger = [maal(r, h, pr_maaned, forbrug, med_zuora,
+                          uden_aktiv_konto)
                      for r in pr_horisont[h]
                      if forskyd_maaned(r, -h) in pr_maaned]
         if not maalinger:
@@ -341,7 +362,7 @@ def main() -> int:
           "\n  pakke. Foerst RetentionOutcomes kan skelne de tre, og den er tom"
           "\n  indtil specialisten registrerer den foerste samtale.")
     print("\n  Maj 2026 er en kendt artefakt: 1.769 abonnementer blev genskabt"
-          "\n  mellem april og maj (PRD §11 punkt 7), og abonnementstallet"
+          "\n  mellem april og maj, og abonnementstallet"
           "\n  springer fra ca. 12.000 til ca. 15.500. Referencemaaneder paa hver"
           "\n  side af springet er ikke sammenlignelige.")
     return 0

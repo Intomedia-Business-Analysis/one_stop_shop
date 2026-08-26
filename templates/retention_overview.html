@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Retention — Intomedia Hub</title>
+  <title>Porteføljen — Intomedia Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -16,6 +16,39 @@
     .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
     .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
     .panel-body { padding:20px; }
+
+    /* ── Fire noegletal.
+       Her hoerer de OEVERST, i modsaetning til paa prioteringssiden hvor de blev
+       flyttet vaek 2026-08-17. Det er ikke en modsigelse: prioteringssiden er en
+       arbejdsliste og svarer paa "hvem skal jeg ringe til", mens denne side er et
+       overblik og svarer paa "hvordan gaar det". Datateamet 2026-08-14: overblik
+       oeverst, dybere ned jo laengere man kommer.
+
+       Alle fire handler om PORTEFOELJEN. Tilskrivningen stod her indtil 2026-08-18
+       og er flyttet ned under portefoelje-grafen: den er et datakvalitetstal, ikke
+       et retention-tal, og specialisten kan ikke handle paa den. */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:14px; margin:0 0 24px; }
+    .kcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
+             border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
+    .kcard.ned  { border-left-color:var(--danger); }
+    .kcard.op   { border-left-color:var(--win); }
+    .kcard .klabel { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+    .kcard .kval   { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; font-variant-numeric:tabular-nums; }
+    .kcard.ned .kval { color:var(--danger); }
+    .kcard .kmeta  { font-size:11px; color:var(--ink-3); line-height:1.5; }
+    /* Maaneden staar PAA kortet. To af de fire peger paa sidste ENDELIGE maaned og
+       ikke paa den nyeste, fordi den nyeste er foreloebig, og et kort kan ikke
+       baere et forbehold. Uden maaneden ser de fire ud som om de er fra samme. */
+    .kcard .kmaaned { font-size:10px; color:var(--ink-4); margin-top:4px; }
+
+    /* Noten hoerer UNDER grafen, ikke over. Foer 2026-08-18 stod tre forbehold i
+       panelets header, altsaa femten linjer graa tekst FOER billedet. Nu staar hver
+       note ved den graf den forklarer. */
+    .graf-note { font-size:11px; color:var(--ink-3); line-height:1.6; margin:14px 0 0;
+                 padding-top:14px; border-top:1px solid var(--border); }
+    .graf-note strong { color:var(--ink-2); font-weight:600; }
+    .graf-note p { margin:0 0 8px; }
+    .graf-note p:last-child { margin-bottom:0; }
   </style>
 </head>
 <body>
@@ -35,41 +68,44 @@
     </div>
 
     <div style="flex:1;min-height:0;overflow-y:auto;">
-      <div style="padding:2rem;max-width:1100px;">
+      <div style="padding:2rem;max-width:1680px;">
 
         <div class="breadcrumb">
           <a href="/" class="bc-link">Hub</a>
           <span class="bc-sep">/</span>
-          <span class="bc-current">Retention</span>
+          <a href="/category/retention" class="bc-link">Retention</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Porteføljen</span>
         </div>
 
         <div class="summary-bar">
           <div>
-            <h1>Retention</h1>
-            <p>Antal aktive abonnementer pr. måned</p>
+            <h1>Porteføljen</h1>
+            <p>Porteføljens udvikling måned for måned, og hvor mange der falder fra</p>
+          </div>
+        </div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Porteføljen måned for måned</h2>
+            <p id="portefoelje-sub">Indlæser…</p>
+          </div>
+          <div class="panel-body">
+            <canvas id="portefoeljeChart" height="80"></canvas>
+            <div class="graf-note" id="portefoelje-note"></div>
           </div>
         </div>
 
         <div class="panel">
           <div class="panel-header">
-            <h2>Aktive abonnementer pr. måned</h2>
-            <p id="retention-chart-sub">Indlæser…</p>
-            <!-- Ejerskabet er et nutidsbillede (kundens nuværende ejer i
-                 Pipedrive), trukket bagud over hele historikken. Det har to
-                 konsekvenser en læser ikke kan gætte, og som derfor står her:
-                 en sælger ser kunder han har arvet, og de tidlige år
-                 under-tilskriver, fordi kunder der siden er churnet ikke har en
-                 nuværende ejer (juni 2016: 79% tilskrevet mod 92% i 2026). -->
-            <p style="font-size:11px;color:var(--ink-3);margin:6px 0 0;">
-              Tilskrivningen bruger kundens <strong>nuværende</strong> ejer, ikke den
-              der oprindeligt solgte abonnementet — samme definition som på
-              churn-risiko-siden. Derfor viser linjen “min bogs historie”, og de
-              tidlige år har en større ikke-tilskrevet andel, fordi kunder der siden
-              er holdt op ikke har en nuværende ejer.
-            </p>
+            <h2>Churn-rate måned for måned</h2>
+            <p id="churn-sub">Indlæser…</p>
           </div>
           <div class="panel-body">
-            <canvas id="retentionChart" height="90"></canvas>
+            <canvas id="churnChart" height="60"></canvas>
+            <div class="graf-note" id="churn-note"></div>
           </div>
         </div>
 
@@ -79,11 +115,21 @@
 </div>
 <script>
 (async function () {
-  const sub    = document.getElementById('retention-chart-sub');
-  const canvas = document.getElementById('retentionChart');
+  const el = (id) => document.getElementById(id);
 
   const nf  = new Intl.NumberFormat('da-DK');
   const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const nf2 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // '2026-07-01' → 'juli 2026'. Raa ISO stod indtil 2026-08-18 i underoverskriften
+  // ('126 maaneder (2016-03-01 - 2026-08-01)'), og en ISO-streng ser ud som en
+  // maskinvaerdi. Samme oversaettelse som de tre andre sider bruger.
+  const MDR = ['januar','februar','marts','april','maj','juni',
+               'juli','august','september','oktober','november','december'];
+  const maanedDK = (s) => {
+    const m = /^(\d{4})-(\d{2})/.exec(String(s || ''));
+    return m ? MDR[+m[2] - 1] + ' ' + m[1] : String(s || '?');
+  };
 
   const cssVar = (name, fallback) =>
     getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -95,7 +141,12 @@
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   };
 
-  const fail = (msg) => { sub.textContent = msg; canvas.remove(); };
+  const fail = (msg) => {
+    el('portefoelje-sub').textContent = msg;
+    el('churn-sub').textContent = 'Ingen data';
+    el('portefoeljeChart').remove();
+    el('churnChart').remove();
+  };
 
   // Rolle-filtreringen i router.py svarer 403 med en forklaring i {"detail": ...}.
   // Uden res.ok-tjekket ville res.json() give et objekt, og rows.map kaste en
@@ -124,29 +175,157 @@
   const customers    = rows.map(r => r.customer_count);
   const churn        = rows.map(r => r.churn_pct);
 
-  // Split'et for seneste måned i panel-headeren — ellers forsvinder de ~16%
-  // ikke-tilskrevne kunder tavst, og summen af sælger-visninger kan aldrig
-  // stemme med firmatotalen.
-  const last   = rows[rows.length - 1];
-  const lastUn = last.active_count - last.attributed_count;
-  const pct    = last.active_count ? (lastUn / last.active_count) * 100 : 0;
-  sub.textContent =
-    `${rows.length} måneder (${labels[0]} – ${labels[labels.length - 1]}) · seneste: `
-    + `${nf.format(last.active_count)} abonnementer hos `
-    + `${nf.format(last.customer_count)} kunder, heraf `
-    + `${nf.format(lastUn)} ikke tilskrevet (${nf1.format(pct)} %)`;
+  // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. Definitioner (besluttet
+  // 2026-08-17): et hul på én måned er en pause og tælles ikke som churn. Men et
+  // abonnement der sidst findes i måneden FØR den nyeste, har endnu ingen
+  // efterfølgende række, så det tælles som churn med det samme. Kommer det igen
+  // ved næste eksport, bliver hullet ét måned langt og hændelsen forsvinder.
+  //
+  // Derfor kan den nyeste søjle KUN FALDE, aldrig stige, og retningen er
+  // kontraintuitiv nok til at skulle skrives på siden.
+  //
+  // Måneden før er derimod ENDELIG: en genkomst dér ville allerede være synlig i
+  // den nyeste måned. Kun det sidste punkt skal altså markeres, ikke de to
+  // sidste. Se `churn`-CTE'ens `WHERE h.FirstDayOfMonth < s.max_maaned` i
+  // queries.db_monthly_active_counts.
+  const foreloebigIndex = churn.length - 1;
+
+  // ── De fire noegletal.
+  //
+  // TO MAANEDER I SPIL, og det er med vilje. `nyeste` er august og bruges til de
+  // rene TAELLINGER: antal abonnementer og kunder er rigtige tal, ogsaa i den
+  // nyeste maaned. `endelig` er juli og bruges til STROEMNINGERNE, churn og
+  // nettoaendring, fordi churn i den nyeste maaned er et maksimum der revideres
+  // nedad. Et kort kan ikke baere et forbehold, saa maaneden staar paa hvert kort.
+  const nyeste  = rows[rows.length - 1];
+  const endelig = rows[rows.length - 2] || nyeste;
+  const foer    = rows[rows.length - 3] || endelig;
+
+  // INGEN AAR-TIL-AAR-SAMMENLIGNING PAA DENNE SIDE. Den ville vise +30,1% vaekst
+  // (11.688 → 15.205), men 3.450 af dem kom i bulk-importen i maj 2026 og er ikke
+  // salg. Et vaekst-tal her ville vaere forkert hver gang det blev laest, indtil
+  // importen ruller ud af tolvmaanedersvinduet i maj 2027.
+  const netto = endelig.active_count - foer.active_count;
+  // NYE ER UDREGNET, ikke maalt: nettoaendring plus churn. Pauser goer den en
+  // smule stoejende (1,9% af haendelserne kommer igen efter én maaned), og derfor
+  // staar der "udregnet" paa kortet.
+  const nye   = netto + endelig.churned_count;
+  const abo_pr_kunde = nyeste.customer_count
+    ? nyeste.active_count / nyeste.customer_count : null;
+
+  // TO TÆLLINGER, og de er forskellige med vilje.
+  //
+  // `endeligeRater` er UDEN den nyeste måned og bruges til SNITTET, så et
+  // foreløbigt tal ikke trækker sammenligningsgrundlaget.
+  //
+  // `visteRater` er MED den nyeste og beskriver hvad grafen faktisk tegner. Brugte
+  // man den første til begge, ville underoverskriften sige 88 måneder, mens grafen
+  // tegnede 89 punkter. Det var fejlen indtil den blev set i browseren.
+  const endeligeRater = rows.slice(0, -1).map(r => r.churn_pct)
+                            .filter(v => v !== null && v !== undefined).map(Number);
+  const visteRater = rows.filter(r => r.churn_pct !== null && r.churn_pct !== undefined);
+  const snit12 = endeligeRater.length
+    ? endeligeRater.slice(-12).reduce((a, b) => a + b, 0)
+      / Math.min(12, endeligeRater.length) : null;
+
+  // TO DECIMALER paa churn-kortet, ikke én. Raten ligger mellem 0,40 og 2,18, så
+  // hundrededele betyder noget: med én decimal blev 1,23 mod et snit på 1,39 vist
+  // som "1,2 mod 1,4", og forskellen så større ud end den er. Akserne beholder én
+  // decimal, hvor pladsen er knap og præcisionen ikke læses.
+  const nfC = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const kort = (klasse, label, vaerdi, meta, maaned) =>
+      '<div class="kcard' + (klasse ? ' ' + klasse : '') + '">'
+    + '<div class="klabel">' + label + '</div>'
+    + '<div class="kval">' + vaerdi + '</div>'
+    + '<div class="kmeta">' + meta + '</div>'
+    + '<div class="kmaaned">' + maaned + '</div>'
+    + '</div>';
+
+  el('kpis').innerHTML =
+      kort('', 'Aktive abonnementer', nf.format(nyeste.active_count),
+           'Måleenheden er abonnementet, ikke kunden',
+           maanedDK(nyeste.FirstDayOfMonth))
+    + kort('', 'Kunder', nf.format(nyeste.customer_count),
+           abo_pr_kunde ? nf2.format(abo_pr_kunde) + ' abonnementer pr. kunde' : '',
+           maanedDK(nyeste.FirstDayOfMonth))
+    + kort('', 'Churn-rate',
+           endelig.churn_pct === null ? '—' : nfC.format(endelig.churn_pct) + ' %',
+           nf.format(endelig.churned_count) + ' abonnementer mistet'
+           + (snit12 !== null ? '. Snit 12 mdr.: ' + nfC.format(snit12) + ' %' : ''),
+           maanedDK(endelig.FirstDayOfMonth) + ', seneste endelige')
+    + kort(netto < 0 ? 'ned' : netto > 0 ? 'op' : '', 'Nettoændring',
+           (netto > 0 ? '+' : netto < 0 ? '−' : '') + nf.format(Math.abs(netto)),
+           '+' + nf.format(nye) + ' nye (udregnet), −'
+           + nf.format(endelig.churned_count) + ' churn',
+           maanedDK(endelig.FirstDayOfMonth) + ', seneste endelige');
+
+  const sidsteUn = nyeste.active_count - nyeste.attributed_count;
+  const sidstePct = nyeste.active_count ? (sidsteUn / nyeste.active_count) * 100 : 0;
+  el('portefoelje-sub').textContent =
+    rows.length + ' måneder, ' + maanedDK(labels[0]) + ' til '
+    + maanedDK(labels[labels.length - 1]);
+  el('churn-sub').textContent = visteRater.length
+    ? 'Vises for ' + visteRater.length + ' måneder, fra '
+      + maanedDK(visteRater[0].FirstDayOfMonth)
+    : 'Kan ikke måles endnu';
+
+  // Bulk-importen i maj 2026: 3.450 abonnementer på én måned, hvoraf 1.769 var
+  // GENSKABTE abonnementer der allerede fandtes. Den er det mest iøjnefaldende på
+  // grafen, og den var indtil 2026-08-18 ikke forklaret noget sted på siden, selv
+  // om queries.py's docstring siger at den SKAL være det.
+  const klippeIndex = labels.indexOf('2026-05-01');
 
   const brand = cssVar('--green', '#1C1C1A');
   // --warn frem for --taupe: paletten er monokrom, og de ikke-tilskrevne kunder
   // er netop en "vær opmærksom"-post, ikke en neutral baggrundsserie.
   const warn  = cssVar('--warn', '#8A6D1F');
 
-  new Chart(canvas, {
+  // Faelles for de to grafer: kun aarstal paa x-aksen. Chart.js' autoSkip glider
+  // ujaevnt over 126 maaneder (11 og 13 mdr. ad gangen), og et aarstal pr. januar
+  // giver rene aarsskift.
+  const xAkse = {
+    ticks: {
+      autoSkip: false,
+      maxRotation: 0,
+      callback: function (val, index) {
+        const label = labels[index];
+        return label && label.slice(5, 7) === '01' ? label.slice(0, 4) : undefined;
+      },
+    },
+  };
+
+  // Legendens farvefirkanter skal vise LINJEfarven. Arealernes fyld er for
+  // gennemsigtigt til at kunne ses i en 10px swatch (0,12 alpha bliver naesten
+  // hvid). datasetIndex + hidden bevarer klik-til-skjul.
+  const legendeFarver = (chart) => chart.data.datasets.map((ds, i) => ({
+    text: ds.label,
+    fillStyle: ds.borderColor,
+    strokeStyle: ds.borderColor,
+    lineWidth: 1,
+    hidden: !chart.isDatasetVisible(i),
+    datasetIndex: i,
+  }));
+
+  const tooltipFarve = (ctx) => ({
+    borderColor: ctx.dataset.borderColor,
+    backgroundColor: ctx.dataset.borderColor,
+    borderWidth: 0,
+  });
+
+  // ══════════ GRAF 1: porteføljen ══════════
+  //
+  // CHURN-RATEN ER FLYTTET UD I SIN EGEN GRAF (2026-08-18). Den laa her paa en
+  // hoejre akse, og en serie paa 0,40 til 2,18% mod en akse til 16.000 abonnementer
+  // er en flad krusning man ikke kan laese. Dertil var fire serier i en monokrom
+  // palet umulige at skelne: "Tilskrevet en saelger" og "Kunder" var begge sorte.
+  // Kundelinjen er derfor ogsaa skiftet til taupe her.
+  new Chart(el('portefoeljeChart'), {
     type: 'line',
     data: {
       labels: labels,
-      // Stablet areal: nederste lag er de tilskrevne, øverste de ikke-tilskrevne,
-      // så stakkens overkant er totalen (= den linje grafen viste før).
+      // Stablet areal: nederste lag er de tilskrevne, oeverste de ikke-tilskrevne,
+      // saa stakkens overkant er totalen.
       datasets: [
         {
           label: 'Tilskrevet en sælger',
@@ -164,31 +343,26 @@
           borderColor: warn,
           backgroundColor: rgba(warn, 0.35),
           borderWidth: 2,
-          pointRadius: 0,
           tension: 0.15,
           fill: true,
+          // Et synligt punkt ved maj 2026, saa klippen kan peges paa med musen.
+          // Punktet sidder paa stakkens overkant, altsaa paa totalen.
+          pointRadius: (ctx) => (ctx.dataIndex === klippeIndex ? 4 : 0),
+          pointStyle: 'circle',
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: warn,
+          pointBorderWidth: 2,
         },
         {
-          // Egen stak, så linjen IKKE lægges oven på abonnementsarealet.
-          // Kontrollen er triviel: kundelinjen skal ligge UNDER stakkens
-          // overkant (11.583 mod 15.150 i august 2026). Står den omkring
-          // 26.700, blev den stakket alligevel — se noten nedenfor.
+          // Egen stak, saa linjen IKKE lægges oven paa abonnementsarealet.
+          // Kontrollen er triviel: kundelinjen skal ligge UNDER stakkens overkant.
+          // Staar den omkring 26.700, blev den stakket alligevel.
           stack: 'kunder',
           label: 'Kunder',
           data: customers,
-          borderColor: brand,
+          borderColor: cssVar('--taupe', '#8A857C'),
           borderWidth: 2,
           borderDash: [5, 3],
-          pointRadius: 0,
-          tension: 0.15,
-          fill: false,
-        },
-        {
-          label: 'Churn-rate (%)',
-          data: churn,
-          yAxisID: 'y2',
-          borderColor: cssVar('--taupe', '#8A857C'),
-          borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.15,
           fill: false,
@@ -201,70 +375,154 @@
       plugins: {
         legend: {
           position: 'bottom',
-          labels: {
-            boxWidth: 10,
-            boxHeight: 10,
-            font: { size: 11 },
-            // Arealernes fyld er for gennemsigtigt til at kunne ses i en 10px
-            // swatch (0.12 alpha bliver næsten hvid) — brug linjefarven solidt
-            // i legenden i stedet. datasetIndex + hidden bevarer klik-til-skjul.
-            generateLabels: (chart) => chart.data.datasets.map((ds, i) => ({
-              text: ds.label,
-              fillStyle: ds.borderColor,
-              strokeStyle: ds.borderColor,
-              lineWidth: 1,
-              hidden: !chart.isDatasetVisible(i),
-              datasetIndex: i,
-            })),
-          },
+          labels: { boxWidth: 10, boxHeight: 10, font: { size: 11 },
+                    generateLabels: legendeFarver },
         },
         tooltip: {
           callbacks: {
-            // Samme problem som i legenden — tooltip'ens farvefirkanter skal
-            // vise linjefarven, ikke det gennemsigtige arealfyld.
-            labelColor: (ctx) => ({
-              borderColor: ctx.dataset.borderColor,
-              backgroundColor: ctx.dataset.borderColor,
-              borderWidth: 0,
-            }),
-            // Chart.js viser kun hvert lags egen værdi i en stak, så totalen
-            // tilføjes eksplicit — det er den brugeren leder efter. Kun de to
-            // STAKKEDE serier tæller med: kundelinjen og churn-raten er andre
-            // enheder og ville gøre summen meningsløs.
-            footer: (items) => 'I alt: ' + nf.format(
-              items.filter(i => i.dataset.yAxisID !== 'y2'
-                             && i.dataset.stack !== 'kunder')
+            labelColor: tooltipFarve,
+            title: (items) => maanedDK(items[0].label),
+            // Chart.js viser kun hvert lags egen vaerdi i en stak, saa totalen
+            // tilfoejes eksplicit. Kun de STAKKEDE serier taeller med:
+            // kundelinjen er en anden enhed og ville goere summen meningsloes.
+            footer: (items) => 'Abonnementer i alt: ' + nf.format(
+              items.filter(i => i.dataset.stack !== 'kunder')
                    .reduce((s, i) => s + i.parsed.y, 0)),
+            afterBody: (items) =>
+              items.some(i => i.dataIndex === klippeIndex)
+                ? ['Bulk-import: 3.450 abonnementer på én måned,',
+                   'hvoraf 1.769 allerede fandtes. Ikke salg.']
+                : [],
           },
         },
       },
       scales: {
-        x: {
-          ticks: {
-            autoSkip: false,
-            maxRotation: 0,
-            callback: function (val, index) {
-              // Vis kun label ved januar — giver rene årsskift i stedet for
-              // Chart.js' autoSkip, som ellers glider ujævnt (11/13 mdr. ad gangen).
-              const label = labels[index];
-              return label && label.slice(5, 7) === '01' ? label.slice(0, 4) : undefined;
+        x: xAkse,
+        // AKSEN HAR ET NAVN. Datateamet 2026-08-14: graferne manglede vaerdier paa
+        // begge akser. Aksen baerer BEGGE enheder, abonnementer i stakken og kunder
+        // som linje, og derfor staar begge ord i titlen.
+        y: {
+          beginAtZero: true,
+          stacked: true,
+          title: { display: true, text: 'Antal abonnementer og kunder',
+                   font: { size: 10 }, color: cssVar('--ink-3', '#6B6862') },
+          ticks: { callback: (v) => nf.format(v) },
+        },
+      },
+    },
+  });
+
+  // ══════════ GRAF 2: churn-raten ══════════
+  //
+  // Egen graf med egen akse. Alene bliver spaendet 0,40 til 2,18% laesbart, og de
+  // 37 maaneder uden rate bliver et synligt hul i stedet for et mysterium.
+  new Chart(el('churnChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Churn-rate',
+          data: churn,
+          borderColor: cssVar('--danger', '#8A2B2B'),
+          backgroundColor: rgba(cssVar('--danger', '#8A2B2B'), 0.10),
+          borderWidth: 1.5,
+          tension: 0.15,
+          fill: true,
+          // Kun det SIDSTE segment stiples, saa resten af linjen fortsat laeses som
+          // faerdige tal. `p1DataIndex` er segmentets slutpunkt, og undefined
+          // betyder "brug datasaettets egen streg".
+          segment: {
+            borderDash: (ctx) =>
+              ctx.p1DataIndex === foreloebigIndex ? [4, 3] : undefined,
+          },
+          // Et synligt punkt oven i stiplingen. Med 126 maaneder paa x-aksen er det
+          // sidste segment faa pixels bredt, og stipling alene kan ikke ses.
+          pointRadius: (ctx) => (ctx.dataIndex === foreloebigIndex ? 3.5 : 0),
+          pointStyle: 'circle',
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: cssVar('--danger', '#8A2B2B'),
+          pointBorderWidth: 1.5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        // Én serie, saa en legende ville kun gentage panelets overskrift.
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            labelColor: tooltipFarve,
+            title: (items) => maanedDK(items[0].label),
+            label: (ctx) => {
+              const r = rows[ctx.dataIndex];
+              return nfC.format(ctx.parsed.y) + ' % · '
+                   + nf.format(r.churned_count) + ' af '
+                   + nf.format(rows[ctx.dataIndex - 1]
+                       ? rows[ctx.dataIndex - 1].active_count : 0)
+                   + ' abonnementer';
             },
+            // Stiplingen siger "noget er anderledes ved dette punkt", ikke HVAD.
+            // Forbeholdet skal derfor staa i ord, dér hvor brugeren peger.
+            afterBody: (items) =>
+              items.some(i => i.dataIndex === foreloebigIndex)
+                ? ['Foreløbig og kan kun falde:',
+                   'pauser er endnu ikke udelukket.']
+                : items.some(i => i.dataIndex === klippeIndex + 1)
+                ? ['Måneden efter bulk-importen.']
+                : [],
           },
         },
-        y: { beginAtZero: true, stacked: true },
-        // Churn-raten er 0-3% og kan ikke dele akse med 15.000 abonnementer.
-        // drawOnChartArea: false, så den højre akse ikke lægger et andet
-        // gitter oven i det venstre.
-        y2: {
-          position: 'right',
+      },
+      scales: {
+        x: xAkse,
+        y: {
           beginAtZero: true,
-          stacked: false,
-          grid: { drawOnChartArea: false },
+          title: { display: true, text: 'Churn-rate, andel af forrige måned',
+                   font: { size: 10 }, color: cssVar('--ink-3', '#6B6862') },
           ticks: { callback: (v) => nf1.format(v) + ' %' },
         },
       },
     },
   });
+
+  // ══════════ Noterne, hver under sin egen graf ══════════
+  el('portefoelje-note').innerHTML =
+      '<p><strong>Tilskrivningen bruger kundens nuværende ejer</strong>, ikke den der '
+    + 'oprindeligt solgte abonnementet. Derfor viser linjen "min bogs historie", og '
+    + 'de tidlige år har en større ikke-tilskrevet andel, fordi kunder der siden er '
+    + 'holdt op ikke har en nuværende ejer. I ' + maanedDK(nyeste.FirstDayOfMonth)
+    + ' er ' + nf.format(sidsteUn) + ' abonnementer ikke tilskrevet, altså '
+    + nf1.format(sidstePct) + ' %. Det er grunden til at summen af sælgernes '
+    + 'visninger ikke rammer firmatotalen.</p>'
+    + '<p><strong>Det lodrette spring i maj 2026 er ikke salg.</strong> Porteføljen '
+    + 'gik fra 12.035 til 15.485 abonnementer på én måned, og 1.769 af dem var '
+    + 'abonnementer der allerede fandtes, forsvandt og kom tilbage, mod 19 til 42 i '
+    + 'en normal måned. Det er en synkronisering i Pipedrive. Springet gør også, at '
+    + 'en sammenligning med samme måned sidste år ikke kan bruges før maj 2027.</p>'
+    + '<p><strong>Linjen må ikke bruges til at vurdere en sælgers præstation.</strong> '
+    + 'Ejerskabet er et nutidsbillede trukket bagud over hele historikken, så en '
+    + 'sælger ansat i 2024 får en linje tilbage til 2016 med kunder hun har arvet.</p>';
+
+  el('churn-note').innerHTML =
+      '<p><strong>Sådan regnes churn:</strong> et abonnement tælles som churn, når '
+    + 'det mangler i <strong>mindst to måneder i træk</strong>, og det tælles i den '
+    + 'første måned det manglede. Er det væk i kun én måned og tilbage igen, er det '
+    + 'en pause og tælles ikke. Raten er churn i måneden divideret med antal aktive '
+    + 'abonnementer måneden før.</p>'
+    + '<p><strong>Den stiplede ende er foreløbig.</strong> For den nyeste måned kan '
+    + 'vi endnu ikke se, om et manglende abonnement kommer tilbage, så det tælles '
+    + 'med indtil videre. Tallet kan derfor <strong>kun falde</strong>, aldrig '
+    + 'stige. En stigning i det sidste punkt er ikke et signal, og derfor peger '
+    + 'nøgletallet ovenfor på ' + maanedDK(endelig.FirstDayOfMonth) + '.</p>'
+    + '<p><strong>Hullet før ' + (visteRater.length
+        ? maanedDK(visteRater[0].FirstDayOfMonth) : 'april 2019')
+    + ' er med vilje.</strong> Raten vises ikke, når grundlaget er under 1.000 '
+    + 'aktive abonnementer i måneden før. I 2016 til 2018 er der 1 til 5 churn om '
+    + 'måneden på et grundlag under 600, og linjen ville hoppe mellem 0 og 7 % uden '
+    + 'at afspejle andet end afrunding.</p>';
 })();
 </script>
 </body>

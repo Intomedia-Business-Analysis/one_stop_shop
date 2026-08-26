@@ -2,11 +2,12 @@
 
 HVORFOR ET EGET MODUL: `abonnementer_i_risiko()` tager 3,6 sekunder, fordi
 `forbrug_pr_abonnement()` aggregerer 182.000 rækker ved hvert kald. Både
-kunde-detaljen (PRD §7.4) og prioriteringssiden (§7.3) har brug for præcis det
-samme resultat, og arbejdsgangen i §8 skifter mellem de to sider hele dagen.
+kunde-detaljen og Dagens opkald har brug for præcis det
+samme resultat, og arbejdsgangen skifter mellem de to sider hele dagen.
 
-Cachen lå oprindeligt i kunde.py og flyttede hertil, da §7.3 kom til. Grunden er
-ikke hukommelse, men UTAKT: to caches over samme beregning kan blive uenige.
+Cachen lå oprindeligt i kunde.py og flyttede hertil, da Dagens opkald kom
+til. Grunden er ikke hukommelse, men UTAKT: to caches over samme beregning
+kan blive uenige.
 Lander en ny forbrugseksport mellem to udløb, ville prioriteringssiden kunne vise
 "stoppet" for en kunde, mens detaljesiden viste "faldende" — i op til
 CACHE_SEKUNDER, uden at noget fejlede. Ét sted kan ikke være uenigt med sig selv.
@@ -29,7 +30,7 @@ from .usage import forbrug_pr_abonnement
 
 logger = logging.getLogger(__name__)
 
-# Hvor længe et beregnet resultat genbruges. Signalet er MÅNEDLIGT (PRD §3), så
+# Hvor længe et beregnet resultat genbruges. Signalet er MÅNEDLIGT (Zonemodellen), så
 # selv en time ville være fagligt forsvarligt; ti minutter er valgt for at en ny
 # usage-eksport eller en ARR-rettelse slår igennem inden for en pause, uden at en
 # specialist venter 3,6 sekunder pr. kunde.
@@ -65,7 +66,7 @@ def ryd_cache() -> None:
 
 
 def risiko(teams, abo_maaned):
-    """Risikobilledet, cachet. Samme resultat til §7.2, §7.3 og §7.4."""
+    """Risikobilledet, cachet. Samme resultat til alle tre retention-sider."""
     # teams er en liste og kan ikke være nøgle. Sorteret tuple, så to kald med
     # samme teams i forskellig rækkefølge rammer samme post.
     noegle = ("risiko", abo_maaned, tuple(sorted(teams)) if teams else None)
@@ -99,9 +100,9 @@ def navne():
     """{(account, org_id): org_name} for ALLE kunder, cachet.
 
     15.269 rækker pr. kald er for meget på en side, der loades hele dagen, og
-    §7.3's liste 1 har højst MAKS_AABNE_SAGER navne at slå op. Det målrettede
-    alternativ ville kræve dynamisk SQL med variabelt antal parametre; cachen
-    betaler én gang og holder opslaget på én linje.
+    Dagens opkalds side liste 1 har højst MAKS_AABNE_SAGER navne at slå op. Det
+    målrettede alternativ ville kræve dynamisk SQL med variabelt antal
+    parametre; cachen betaler én gang og holder opslaget på én linje.
 
     TTL'en er ikke til for at slippe nye NAVNE igennem — der er målt 0
     navneskift på 15.269 kunder — men for nye KUNDER: en kunde oprettet efter

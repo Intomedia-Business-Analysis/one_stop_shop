@@ -1,82 +1,86 @@
-"""Usage: sidevisninger pr. abonnement pr. måned, som churn-risiko-signal.
+"""Usage: sidevisninger pr. kunde pr. site pr. maaned, som churn-risiko-signal.
 
-Dataen stammer fra Snowplow (`snowplow_v2_pageview` i Redshift, external schema
-`erhvervsmedier_dsa_prv_external`). Queryen kan IKKE køres live: Redshift
-Spectrum fakturerer pr. byte scannet fra S3 (~$5/TB), og 13 måneder tager ~40
-sekunder, så hvert opslag koster både tid og kroner.
+Dataen stammer fra Snowplow i Redshift (external schemas `erhvervsmedier_dsa`
+og `jyllandsposten_dsa`). Queryen kan IKKE koeres live: Redshift Spectrum
+fakturerer pr. byte scannet fra S3 (~$5/TB), og 14 maaneder tager ~40 sekunder,
+saa hvert opslag koster baade tid og kroner.
 
-Derfor samme løsning som Zuora-snapshottet i `modul_portfolio_alignment`:
-queryen køres i DataGrip, resultatet lægges som fil i en kendt mappe, og appen
-læser den nyeste — så vi undgår systemintegration mod koncernens dataplatform.
-Der er derfor hverken scheduler eller cache-tabel; "cachen" er filen selv plus
-det mtime-nøglede opslag herunder.
+Derfor samme loesning som Zuora-snapshottet i `modul_portfolio_alignment`:
+queryen koeres i DataGrip, resultatet lægges som fil i en kendt mappe, og appen
+læser den nyeste. Der er hverken scheduler eller cache-tabel; "cachen" er filen
+selv plus det mtime-noeglede opslag herunder.
 
-ÉN eksport (mappen kan overrides via USAGE_SNAPSHOT_DIR):
+TO EKSPORTER (mappen kan overrides via USAGE_SNAPSHOT_DIR):
 
-    usage_trend_DDMMYYYY.csv    — pr. konto pr. site pr. måned (13 mdr.)
-        account_number, site, maaned, page_views, artikelvisninger,
-        aktive_dage, unikke_brugere
+    usage_kunde_DDMMYYYY.csv   - forbruget, kunde x site x maaned
+    dm_kobling_DDMMYYYY.csv    - hvilke konti hoerer til hvilken kunde
 
-Filen læses POSITIONELT med eller uden header-række, som Zuora-snapshottet.
-Ændrer du rækkefølgen i SQL'en, skal USAGE_COLUMNS følge med — ellers læses tal
+Begge læses POSITIONELT med eller uden header-række. Ændrer du rækkefølgen i
+SQL'en, skal USAGE_COLUMNS eller KOBLING_COLUMNS foelge med, ellers læses tal
 som tekst uden at fejle. SQL'en ligger i
-`Desktop\\DataBase Views DataGrip\\usage_trend.txt` med sin egen dokumentation.
+`Desktop\\DataBase Views DataGrip\\Retention\\`.
 
-SIGNALET ER MÅNEDLIGT, IKKE DAGSBASERET. Recency-modellen — dage siden sidste
-aktivitet — er fjernet 2026-08-10 sammen med risk.py, jf. PRD §3. Begrundelsen
-skal stå her, så den ikke bliver genopfundet: fordi tærsklen var 14 dage, kunne
-zonen "sund" ikke eksistere når filen var ældre end 14 dage. Målt 2026-08-04 var
-77% af kunderne ved 14 dages filalder flyttet til en værre zone udelukkende pga.
-filens alder, og ved 30 dage var ALLE kritiske. Et dagsbaseret signal kræver
-ugentlig eksport-kadence, som bliver glemt. "Læste 0 gange i sidste HELE måned"
-er derimod et komplet faktum om en afsluttet måned og rådner ikke. Se zones.py.
+FORBRUGSFILEN ER EN UNION AF TO FORMER, og de udelukker hinanden fuldstændigt:
 
-BÅDE sidevisninger og aktive dage bæres videre, og begge bruges. Sidevisninger
-afgør zonen; aktive dage afgør om der var en vane at miste (zones.er_vanebruger).
-Genmålt 2026-08-11: blandt de 2.064 stoppede abonnementer er medianen 4,0
-sidevisninger pr. abonnement-måned over hele vinduet, nul-måneder talt med, men
-69,7% har over 20 aktive dage i de 12 måneder før referencen. To faste besøg om
-måneden er en vane, og volumen alene kan ikke skelne den fra støj.
+  * `pipedrive_id` udfyldt og `account_number` tom. SQL'en har allerede koblet
+    gennem datamartens `dim_account`, og kundenoeglen bygges af (brand,
+    pipedrive_id) uden nogen opslagsfil.
+  * `account_number` udfyldt og `pipedrive_id` tom. Konti som `dim_account`
+    ikke kender. Maalt 24-08-2026: INGEN af dem findes i dm_kobling, nul af
+    3.645. De kan kun oversættes gennem ACV_snapshot, og de er naesten alle
+    monitor, som datamarten slet ikke har.
 
-Nøgle-kæden til retention er indirekte:
-    Snowplow access_agreements[].account_number = Zuora account_number
-        → pipedrive_id = org_id
-Zuora-snapshottet er altså påkrævet for at kunne koble usage til en kunde i
-`dbo.retention`. Mangler snapshottet, kan rå usage stadig læses — kun
-oversættelsen til kunde-nøglen fejler.
+FAELDE, og den er tavs: læses en tom celle uden `.fillna("")` foerst, bevarer
+pandas 3 den som NaN gennem `.astype(str)`, og `NaN != ""` er SANDT. Saa bliver
+alle raekker i den anden form regnet som koblede med NaN som kundenoegle, uden
+en fejl og uden en linje i loggen. Se rensningen i load_usage_kunde.
 
-VIGTIGT: org_id er kun unikt INDEN FOR én Pipedrive-account. Nøglen er derfor
-(account, org_id) — se customer_key() — ikke org_id alene. Verificeret
-2026-08-04: 1.226 org_id'er findes i både `Monitor` og `Watch DK` i
-PipeDrive_ACV, og org_name matcher i 0 af dem (org_id 3995 er både
-"Sorø Akademis Skole" og "Ret og Råd Sekretariatet A/S"). I Zuora-snapshottet
-optræder 893 af 8.948 pipedrive_id'er under mere end ét brand. Nøgles usage på
-org_id alene, blandes to fremmede virksomheders besøg sammen — og en aktiv
-fremmed ville gøre en tavs kunde sund, altså SKJULE risiko.
+SIGNALET ER MAANEDLIGT, IKKE DAGSBASERET. Recency-modellen (dage siden sidste
+aktivitet) er fjernet 2026-08-10 sammen med risk.py. Begrundelsen skal staa
+her, saa den ikke bliver genopfundet: fordi tærsklen var 14 dage, kunne zonen
+"sund" ikke eksistere naar filen var ældre end 14 dage. Maalt 2026-08-04 var
+77 % af kunderne ved 14 dages filalder flyttet til en værre zone udelukkende
+pga. filens alder, og ved 30 dage var ALLE kritiske. Et dagsbaseret signal
+kræver ugentlig eksport-kadence, som bliver glemt. "Læste 0 gange i sidste HELE
+maaned" er derimod et komplet faktum om en afsluttet maaned og raadner ikke.
 
-KENDTE HULLER (målt 2026-08-07):
+BAADE sidevisninger og aktive dage bæres videre, og begge bruges. Sidevisninger
+afgoer zonen; aktive dage afgoer om der var en vane at miste
+(zones.er_vanebruger). Genmaalt 2026-08-11: blandt de 2.064 stoppede
+abonnementer er medianen 4,0 sidevisninger pr. abonnement-maaned over hele
+vinduet, nul-maaneder talt med, men 69,7 % har over 20 aktive dage i de 12
+maaneder foer referencen. To faste besoeg om maaneden er en vane, og volumen
+alene kan ikke skelne den fra stoej.
 
-  * Watch-appen kan ikke tilskrives. `prod.watchmedier.native.ios` (522.073
-    rækker i juli 2026) og `.android` (44.117) har NUL rækker med brugbar
-    `access_agreements` i `snowplow_v2_screenview`. En kunde hvor alle læser i
-    appen står derfor som tavs. Finans-appen sætter feltet korrekt
-    (`dk.jp.finans`: 97.462 af 225.129), så det er en manglende implementering,
-    ikke en umulighed. Spørgsmålet ligger hos datascientisten.
+VIGTIGT: org_id er kun unikt INDEN FOR een Pipedrive-account. Noeglen er derfor
+(account, org_id), se customer_key(), og aldrig org_id alene. Verificeret
+2026-08-04: 1.226 org_id'er findes i baade `Monitor` og `Watch DK` i
+PipeDrive_ACV, og org_name matcher i 0 af dem (org_id 3995 er baade
+"Soroe Akademis Skole" og "Ret og Raad Sekretariatet A/S"). Noegles usage paa
+org_id alene, blandes to fremmede virksomheders besoeg sammen, og en aktiv
+fremmed ville goere en tavs kunde sund, altsaa SKJULE risiko.
 
-  * finans.dk ligger i `jyllandsposten_dsa_prv_external`. Det var ALDRIG et
-    tracking-hul — det var et rettighedsproblem, og adgangen kom 2026-08-07.
-    `usage_trend.txt` henter WEB derfra, men IKKE appen: dækningstjekket
-    2026-08-10 viste et app-skifte midt i vinduet, hvor det samlede app-signal
-    faldt fra ~150.000 rækker om måneden til 45.237 i juni og 106.352 i juli.
-    Et niveauskifte dér ville give falske "stoppet" ved vægt 1,00 for konti
-    hvis brugere kun lå på den gamle app. Alle sites i eksporten er derfor web
-    alene. En eksportfil fra FØR 2026-08-10 har slet ingen finans-rækker, og så
-    står finans.dk's 1.163 abonnementer fortsat som "intet_signal".
+KENDTE HULLER:
+
+  * Watch-appen kan ikke tilskrives. `prod.watchmedier.native.ios` og
+    `.android` har NUL raekker med brugbar `access_agreements` i
+    `snowplow_v2_screenview`. En kunde hvor alle læser i appen staar derfor som
+    tavs. Det er en manglende implementering, ikke en umulighed, og
+    spoergsmaalet ligger hos datascientisten.
+
+  * Finans-appen ER med siden 24-08-2026, fordi den sætter feltet korrekt.
+    Signalet er altsaa web for Watch og app plus web for finans.dk, samme
+    afgrænsning som sælger-dashboardet bruger. To dashboards i samme hub med
+    forskellige tal for samme kunde bliver opdaget, og saa kan ingen vide
+    hvilket der er i stykker. Maalt 24-08-2026: af 1.065 finans-konti med
+    trafik i juli læste 649 kun paa web, 377 begge steder og 39 KUN i appen. De
+    39 stod tidligere som "har aldrig læst". FOELGEN er at volumen ikke er
+    sammenlignelig mellem finans og Watch, og en graf der stiller dem op mod
+    hinanden skal sige hvilken kilde den hviler paa.
 
   * Shifter, Kom24 NO og Medier24 NO ligger uden for erhvervsmedier-schemaet.
     marketwire har intet site i `dbo.retention`. Se zones.UNTRACKBARE_SITES.
 """
-
 import logging
 import os
 import re
@@ -99,15 +103,21 @@ DEFAULT_USAGE_DIR = (
     / "Business Analysis"
     / "Retention"
 )
-# Dato-suffikset DDMMYYYY er fælles for begge eksport-typer.
+# Dato-suffikset DDMMYYYY er faelles for alle eksport-typer.
 _FILE_DATE_RE = re.compile(r"_(\d{2})(\d{2})(\d{4})$")
 
-TREND_PREFIX = "usage_trend"
-# Kolonnerækkefølgen i eksportens SELECT er kontrakten. Filen læses positionelt,
-# så flyttes en kolonne i SQL'en, skal denne liste følge med.
+KUNDE_PREFIX = "usage_kunde"
+KOBLING_PREFIX = "dm_kobling"
+# Kolonnernes raekkefoelge i eksportens SELECT er kontrakten. Filerne laeses
+# positionelt, saa flyttes en kolonne i SQL'en, skal listen her foelge med.
 USAGE_COLUMNS = [
-    "account_number", "site", "maaned",
+    "pipedrive_id", "account_number", "brand", "b2b_b2c", "site", "maaned",
     "page_views", "artikelvisninger", "aktive_dage", "unikke_brugere",
+    "antal_konti",
+]
+KOBLING_COLUMNS = [
+    "account_number", "pipedrive_id", "brand", "superbrand", "b2b_b2c",
+    "account_future_cancelled", "konto_status", "foerste_abo_start",
 ]
 
 # Cache-key: (sti, mtime). Samme fil → samme resultat, ingen genparsning.
@@ -173,8 +183,13 @@ def _find_latest(prefix: str, folder: Optional[Path] = None) -> Optional[Path]:
 
 
 def find_latest_usage_file(folder: Optional[Path] = None) -> Optional[Path]:
-    """Nyeste usage_trend-eksport."""
-    return _find_latest(TREND_PREFIX, folder)
+    """Nyeste usage_kunde-eksport."""
+    return _find_latest(KUNDE_PREFIX, folder)
+
+
+def find_latest_kobling_file(folder: Optional[Path] = None) -> Optional[Path]:
+    """Nyeste dm_kobling-eksport."""
+    return _find_latest(KOBLING_PREFIX, folder)
 
 
 def _date_from_path(p: Path) -> Optional[str]:
@@ -216,26 +231,26 @@ def _missing_file_error(prefix: str) -> FileNotFoundError:
     )
 
 
-def load_usage_trend(path: Optional[Path] = None) -> dict:
-    """Læs usage_trend-eksporten som en DataFrame.
+def load_usage_kunde(path: Optional[Path] = None) -> dict:
+    """Laes usage_kunde-eksporten som en DataFrame.
 
-    Returnerer en DataFrame og ikke en dict-af-dicts: filen er ~156.000 rækker,
-    og `iterrows()` over dem tager minutter. Opslag pr. abonnement bygges én gang
-    i forbrug_pr_abonnement().
+    Returnerer en DataFrame og ikke en dict-af-dicts: filen er ~183.000 raekker,
+    og `iterrows()` over dem tager minutter. Opslag pr. abonnement bygges een
+    gang i forbrug_pr_abonnement().
 
     Returnerer:
-        frame    — DataFrame med kolonnerne i USAGE_COLUMNS, renset
-        maaneder — sorteret liste af måneder i filen ('YYYY-MM')
-        meta     — sti, filnavn, eksportdato, tællinger
+        frame    - DataFrame med kolonnerne i USAGE_COLUMNS, renset
+        maaneder - sorteret liste af maaneder i filen ('YYYY-MM')
+        meta     - sti, filnavn, eksportdato, taellinger
     """
     target = path or find_latest_usage_file()
     if not target:
-        raise _missing_file_error(TREND_PREFIX)
+        raise _missing_file_error(KUNDE_PREFIX)
 
     try:
-        # "trend" i nøglen: recency-loaderen bruger samme _USAGE_CACHE, og et
-        # præfiks gør en kollision umulig i stedet for blot usandsynlig.
-        cache_key = ("trend", str(target), target.stat().st_mtime)
+        # Praefikset i noeglen: dm_kobling bruger samme _USAGE_CACHE, og det
+        # goer en kollision umulig i stedet for blot usandsynlig.
+        cache_key = ("kunde", str(target), target.stat().st_mtime)
         cached = _USAGE_CACHE.get(cache_key)
         if cached is not None:
             return cached
@@ -250,7 +265,7 @@ def load_usage_trend(path: Optional[Path] = None) -> dict:
         df = pd.read_csv(target, header=None, sep=",", encoding="utf-8", dtype=str)
 
     # Header-detektion på første celle — filen kan eksporteres med eller uden.
-    if str(df.iloc[0].iloc[0]).strip().lower() == "account_number":
+    if str(df.iloc[0].iloc[0]).strip().lower() == "pipedrive_id":
         df = df.iloc[1:].reset_index(drop=True)
 
     if df.shape[1] < len(USAGE_COLUMNS):
@@ -261,12 +276,16 @@ def load_usage_trend(path: Optional[Path] = None) -> dict:
     df = df.iloc[:, :len(USAGE_COLUMNS)].copy()
     df.columns = USAGE_COLUMNS
 
-    df["account_number"] = df["account_number"].astype(str).str.strip()
-    df["site"] = df["site"].astype(str).str.strip()
+    # fillna("") FOERST: i pandas 3 bevarer .astype(str) en tom celle som NaN,
+    # og NaN != "" er SANDT. Uden den bliver alle 39.953 ukoblede raekker
+    # regnet som koblede med NaN som kundenoegle.
+    for kol in ("pipedrive_id", "account_number", "brand", "site"):
+        df[kol] = df[kol].fillna("").astype(str).str.strip()
     # [:7] klipper til 'YYYY-MM' uanset om eksporten skriver det korte eller det
     # lange datoformat. Hele modulet sammenligner måneder som tekst.
     df["maaned"] = df["maaned"].astype(str).str.strip().str[:7]
-    for kol in ("page_views", "artikelvisninger", "aktive_dage", "unikke_brugere"):
+    for kol in ("page_views", "artikelvisninger", "aktive_dage", "unikke_brugere",
+                "antal_konti"):
         df[kol] = pd.to_numeric(df[kol], errors="coerce").fillna(0).astype("int64")
 
     # En ulæselig måned kan ikke placeres på en tidsakse og ville falde stille ud
@@ -284,7 +303,10 @@ def load_usage_trend(path: Optional[Path] = None) -> dict:
         # som ville give et forkert svar når `path` er givet eksplicit.
         "export_date":  _date_from_path(target),
         "row_count":    len(df),
-        "konti":        int(df["account_number"].nunique()),
+        # kunder_i_fil og ikke kunder: forbrug_pr_abonnement saetter
+        # meta["kunder"] til dem der faktisk blev koblet, og ville overskrive.
+        "kunder_i_fil":   int(df.loc[df["pipedrive_id"] != "", "pipedrive_id"].nunique()),
+        "konti_ukoblet":  int(df.loc[df["account_number"] != "", "account_number"].nunique()),
         "sites":        int(df["site"].nunique()),
     }
     result = {"frame": df, "maaneder": sorted(df["maaned"].unique().tolist()),
@@ -307,33 +329,136 @@ def customer_key(account: str, org_id) -> tuple[str, str]:
     return (str(account).strip(), str(org_id).strip())
 
 
-def _account_to_customer_map() -> dict:
-    """Zuora account_number → (pd_account, org_id).
+def load_kobling(path: Optional[Path] = None) -> dict:
+    """Laes dm_kobling-eksporten: hvilke konti hoerer til hvilken kunde.
 
-    Én Zuora-konto har præcis én pipedrive_id, men flere konti kan pege på samme
-    organisation. Konti uden pipedrive_id udelades — de kan ikke kobles til en
-    kunde i `dbo.retention`.
+    Filen daekker datamartens `dim_account` og indeholder OGSAA de ophoerte
+    konti. Det er hele grunden til at den findes: et fravaer i den siger ikke
+    noget om udfaldet, og kilden kan derfor bruges paa en historisk maaned uden
+    at laekke.
 
-    Zuora's `brand` oversættes til Pipedrive's `account` med SCOPE_BY_ZUORA_BRAND
-    fra alignment-modulet, så mappingen kun findes ét sted. Et brand vi ikke
-    kender kan ikke placeres i en account, og rækken udelades derfor — at gætte
-    ville koble usage til den forkerte virksomhed. Antallet logges, så et nyt
-    brand i Zuora bliver synligt i stedet for stille at mangle.
+    Et brand vi ikke kender kan ikke placeres i en account, og raekken udelades
+    derfor: at gaette ville koble usage til den forkerte virksomhed. Antallet
+    logges, saa et nyt brand bliver synligt i stedet for stille at mangle.
 
-    Importen ligger inde i funktionen, fordi Zuora-snapshottet kun er nødvendigt
-    for oversættelsen; rå usage kan læses uden det.
+    Returnerer:
+        kunder - saet af kundenoegler der kan oversaettes
+        aktive - delmaengde med mindst een konto i status Active
+        meta   - sti, filnavn, eksportdato, antal konti
+    """
+    from moduler.modul_portfolio_alignment.queries import SCOPE_BY_ZUORA_BRAND
+
+    target = path or find_latest_kobling_file()
+    if not target:
+        raise _missing_file_error(KOBLING_PREFIX)
+
+    try:
+        cache_key = ("kobling", str(target), target.stat().st_mtime)
+        cached = _USAGE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+    except OSError:
+        cache_key = None
+
+    if target.suffix.lower() == ".xlsx":
+        df = pd.read_excel(target, header=None)
+    else:
+        df = pd.read_csv(target, header=None, sep=",", encoding="utf-8", dtype=str)
+
+    if str(df.iloc[0].iloc[0]).strip().lower() == "account_number":
+        df = df.iloc[1:].reset_index(drop=True)
+    if df.shape[1] < len(KOBLING_COLUMNS):
+        raise ValueError(
+            f"Koblingsfil {target.name} har {df.shape[1]} kolonner, forventer "
+            f"mindst {len(KOBLING_COLUMNS)}: {KOBLING_COLUMNS}"
+        )
+    df = df.iloc[:, :len(KOBLING_COLUMNS)].copy()
+    df.columns = KOBLING_COLUMNS
+    # fillna("") af samme grund som i load_usage_kunde: uden den er en tom
+    # celle NaN, og NaN er sand i en if.
+    for kol in ("pipedrive_id", "brand", "konto_status"):
+        df[kol] = df[kol].fillna("").astype(str).str.strip()
+
+    kunder: set = set()
+    aktive: set = set()
+    ukendte_brands: dict = {}
+    for org, brand, status in zip(df["pipedrive_id"], df["brand"],
+                                  df["konto_status"]):
+        if not org:
+            continue
+        scope = SCOPE_BY_ZUORA_BRAND.get(brand)
+        if not scope:
+            ukendte_brands[brand] = ukendte_brands.get(brand, 0) + 1
+            continue
+        kunde = customer_key(scope, org)
+        kunder.add(kunde)
+        # Kolonnen heder active_subscriptions i datamarten og indeholder TEKST,
+        # ikke et antal. Eksporten omdoeber den til konto_status.
+        if status == "Active":
+            aktive.add(kunde)
+    if ukendte_brands:
+        logger.warning(
+            "dm_kobling har brands uden mapping til en Pipedrive-account "
+            "(raekkerne udelades af koblingen): %s", ukendte_brands,
+        )
+
+    meta = {
+        "kobling_path":        str(target),
+        "kobling_filename":    target.name,
+        "kobling_export_date": _date_from_path(target),
+        "kobling_konti":       int(len(df)),
+    }
+    result = {"kunder": kunder, "aktive": aktive, "meta": meta}
+    if cache_key:
+        _USAGE_CACHE[cache_key] = result
+    return result
+
+
+def koblingsgrundlag() -> dict:
+    """Hvilke kunder KAN oversaettes, og har de en aktiv Zuora-konto.
+
+    TO kilder, og begge er noedvendige:
+
+      dm_kobling    Primaer. Indeholder ophoerte konti, saa den laekker ikke.
+                    Den kender ikke monitor: datamarten har slet ikke brandet.
+      ACV_snapshot  Tilbagefald. Den ENESTE kilde til monitor, og den eneste vej
+                    fra et account_number til en kunde for de konti som
+                    dim_account ikke kender.
+
+    LAEKAGE-ADVARSEL: snapshottet indeholder kun de AKTIVE konti, saa et fravaer
+    i den halvdel betyder "ophoert". Bruges grundlaget paa en historisk maaned,
+    er den halvdel altsaa dateret EFTER udfaldet, og det var praecis den fejl
+    der gav gruppen uden kobling 86 til 88 % opsigelsesrate i maalingen
+    21-08-2026. Til levende prioritering er det harmloest: dér ER spoergsmaalet
+    hvem der er kunde i dag.
+
+    `uden_aktiv_konto` er kunder der kun kan kobles gennem OPHOERTE konti. De
+    har en raekke i `dbo.retention` (som kommer fra Pipedrive) men ingen aktiv
+    konto i Zuora. De maa IKKE taelle som en almindelig aldrig_i_brug: zonen
+    ville saa maale "kontoen er ophoert" og ikke "kunden laeser ikke", og den
+    ville derfor maale kunstigt staerkt naar vaegtene proeves efter.
+
+    Returnerer:
+        kunder           - koblingsbare kundenoegler, begge kilder
+        aktive           - delmaengde med mindst een aktiv Zuora-konto
+        uden_aktiv_konto - koblingsbare uden aktiv konto, KUN hvor det vides
+        acc_til_kunde    - account_number -> kundenoegle, KUN fra snapshottet
+        meta             - taellinger og filnavne fra begge kilder
     """
     from moduler.modul_portfolio_alignment.queries import (
         SCOPE_BY_ZUORA_BRAND,
         load_zuora_snapshot,
     )
 
+    kobling = load_kobling()
     zuora = load_zuora_snapshot()
-    acct_to_customer: dict[str, tuple[str, str]] = {}
-    ukendte_brands: dict[str, int] = {}
+
+    acc_til_kunde: dict = {}
+    snapshot_kunder: set = set()
+    ukendte_brands: dict = {}
     for r in zuora["enterprise_rows"]:
         acct = r.get("account_number")
-        org  = r.get("pipedrive_id")
+        org = r.get("pipedrive_id")
         if not (acct and org):
             continue
         brand = str(r.get("brand") or "").strip()
@@ -341,13 +466,37 @@ def _account_to_customer_map() -> dict:
         if not scope:
             ukendte_brands[brand] = ukendte_brands.get(brand, 0) + 1
             continue
-        acct_to_customer[str(acct).strip()] = customer_key(scope, org)
+        kunde = customer_key(scope, org)
+        acc_til_kunde[str(acct).strip()] = kunde
+        snapshot_kunder.add(kunde)
     if ukendte_brands:
         logger.warning(
             "Zuora-snapshottet har brands uden mapping til en Pipedrive-account "
-            "(rækkerne udelades af usage-koblingen): %s", ukendte_brands,
+            "(raekkerne udelades af koblingen): %s", ukendte_brands,
         )
-    return acct_to_customer
+
+    kunder = kobling["kunder"] | snapshot_kunder
+    # At staa i snapshottet ER at have en aktiv konto: filen er dagens
+    # portefoelje. Derfor tæller den som aktiv uden at have en status-kolonne.
+    aktive = kobling["aktive"] | snapshot_kunder
+    # Traekkes fra dm_koblings kunder og ikke fra hele saettet: en kunde der kun
+    # findes i snapshottet har ingen KENDT status, og et gaet paa "ophoert"
+    # ville sende alle monitor-kunder i den gruppe.
+    uden_aktiv_konto = kobling["kunder"] - aktive
+
+    # Saettet og ikke kun tallet: kohortemaalingen skal kunne SKAERE gruppen ud
+    # af baade zonen og basisraten, fordi snapshottet kun kender de aktive
+    # konti og derfor er dateret efter udfaldet.
+    kun_fra_snapshot = snapshot_kunder - kobling["kunder"]
+
+    meta = dict(kobling["meta"])
+    meta["koblingsbare_kunder"] = len(kunder)
+    meta["kunder_kun_fra_snapshot"] = len(kun_fra_snapshot)
+    meta["kunder_uden_aktiv_konto"] = len(uden_aktiv_konto)
+    return {"kunder": kunder, "aktive": aktive,
+            "uden_aktiv_konto": uden_aktiv_konto,
+            "kun_fra_snapshot": kun_fra_snapshot,
+            "acc_til_kunde": acc_til_kunde, "meta": meta}
 
 
 def latest_complete_month(months: list) -> Optional[str]:
@@ -376,7 +525,7 @@ def serie_og_dage(forbrug: dict, kunde: tuple, site: str) -> tuple[dict, dict]:
     Dagene slås op på SAMME niveau som sidevisningerne — ellers ville en pakke
     få vanebruger-testen på ét site og zonen på syv.
 
-    Ligger her og ikke i risiko.py, fordi kunde-detaljesiden (PRD §7.4) skal
+    Ligger her og ikke i risiko.py, fordi kunde-detaljesiden (Kundeside) skal
     tegne præcis den serie, zonen blev beregnet på. To kopier af valget ville
     kunne drive fra hinanden, og så ville grafen modsige zonen ved siden af.
     """
@@ -399,8 +548,11 @@ def forbrug_pr_abonnement() -> dict:
         pr_kunde           — {kunde: {maaned: sidevisninger}}
         dage_pr_abonnement — {(kunde, kanonisk_site): {maaned: aktive dage}}
         dage_pr_kunde      — {kunde: {maaned: aktive dage}}
+        koblingsbare       — kundenoegler der kan oversaettes, UANSET forbrug
+        uden_aktiv_konto   — delmaengde uden aktiv Zuora-konto
+        kun_fra_snapshot   — delmaengde der KUN kan kobles via ACV_snapshot
         maaneder           — sorteret liste
-        meta               — fra load_usage_trend, plus tællinger
+        meta               — fra load_usage_kunde, plus tællinger
 
     `pr_kunde` findes for pakkeabonnementer: `Watch Medier DK` giver adgang til
     alle Watch-titler, og kun 7% af dens 264 abonnenter læser pakkens eget site,
@@ -411,8 +563,16 @@ def forbrug_pr_abonnement() -> dict:
     ind i søster-sitet — samme funktion som abonnementssiden bruger, og dét er
     grunden til at de to vokabularer mødes (41 af 46 sites matcher direkte).
 
-    Kunder uden Zuora-kobling udelades: uden den kan et kontonummer ikke blive
-    til en kunde. Antallet ligger i meta, så hullet er synligt og ikke bare væk.
+    TO VEJE til kundenoeglen, se koblingsgrundlag():
+      1. Raekken har selv et pipedrive_id, og noeglen bygges af (brand, id).
+      2. Raekken har kun et account_number, som slaas op i ACV_snapshot.
+    Raekker der ikke kan tage nogen af vejene udelades. Antallet ligger i meta,
+    saa hullet er synligt og ikke bare vaek.
+
+    `koblingsbare` er IKKE det samme som noeglerne i `pr_kunde`, og forskellen
+    ER zonen aldrig_i_brug: en kunde kan godt kunne oversaettes og alligevel
+    ikke have een raekke i forbrugsfilen. Bruges pr_kunde.keys() som
+    koblingssaet, forsvinder aldrig_i_brug og alt lander i intet_signal.
 
     `dage_pr_abonnement`/`dage_pr_kunde` bærer `aktive_dage` og er grundlaget for
     zones.er_vanebruger. Kolonnen har ligget i eksporten hele tiden og blev
@@ -430,27 +590,45 @@ def forbrug_pr_abonnement() -> dict:
     """
     # Lokal import: der er ingen cirkel i dag, men lægges den i toppen opstår
     # den i det øjeblik zones.py får brug for noget herfra.
+    from moduler.modul_portfolio_alignment.queries import SCOPE_BY_ZUORA_BRAND
+
     from .zones import kanonisk_site
 
-    usage = load_usage_trend()
+    usage = load_usage_kunde()
     df = usage["frame"]
-    acct_to_customer = _account_to_customer_map()
+    grundlag = koblingsgrundlag()
+    acc_til_kunde = grundlag["acc_til_kunde"]
 
     pr_abonnement: dict = {}
     pr_kunde: dict = {}
     dage_pr_abonnement: dict = {}
     dage_pr_kunde: dict = {}
     ukoblede = set()
+    ukendte_brands: dict = {}
+    raekker_datamart = 0
+    raekker_snapshot = 0
 
     # zip over de rå kolonner og ikke df.iterrows(): iterrows bygger en Series
-    # pr. række og tager minutter på 156.000 rækker.
-    for konto, site, maaned, pv, dage in zip(df["account_number"], df["site"],
-                                             df["maaned"], df["page_views"],
-                                             df["aktive_dage"]):
-        kunde = acct_to_customer.get(konto)
-        if kunde is None:
-            ukoblede.add(konto)
-            continue
+    # pr. række og tager minutter på 183.000 rækker.
+    for org, konto, brand, site, maaned, pv, dage in zip(
+            df["pipedrive_id"], df["account_number"], df["brand"], df["site"],
+            df["maaned"], df["page_views"], df["aktive_dage"]):
+        # Raekkefoelgen er betydningsbaerende: har raekken et pipedrive_id, er
+        # den koblet i SQL'en, og account_number er tom. De to former optraeder
+        # aldrig sammen, saa et opslag i snapshottet ville vaere spildt.
+        if org:
+            scope = SCOPE_BY_ZUORA_BRAND.get(brand)
+            if not scope:
+                ukendte_brands[brand] = ukendte_brands.get(brand, 0) + 1
+                continue
+            kunde = customer_key(scope, org)
+            raekker_datamart += 1
+        else:
+            kunde = acc_til_kunde.get(konto)
+            if kunde is None:
+                ukoblede.add(konto)
+                continue
+            raekker_snapshot += 1
         site_k = kanonisk_site(site)
         # Lægges sammen, ikke tildeles: en kunde kan have flere Zuora-konti på
         # samme site, og .com- og .dk-rækker folder sammen til samme nøgle.
@@ -465,13 +643,28 @@ def forbrug_pr_abonnement() -> dict:
         dk = dage_pr_kunde.setdefault(kunde, {})
         dk[maaned] = dk.get(maaned, 0) + int(dage)
 
+    if ukendte_brands:
+        logger.warning(
+            "Forbrugsfilen har brands uden mapping til en Pipedrive-account "
+            "(raekkerne udelades): %s", ukendte_brands,
+        )
+
     meta = dict(usage["meta"])
+    meta.update(grundlag["meta"])
     meta["kunder"] = len(pr_kunde)
     meta["abonnementer"] = len(pr_abonnement)
+    # RAEKKER og ikke kunder. Tallene skal paa siden: en raekke fra snapshottet
+    # hviler paa en kilde der kun kender de aktive konti, og det er en anden
+    # slags sandhed end en raekke der kom koblet fra datamarten.
+    meta["raekker_fra_datamart"] = raekker_datamart
+    meta["raekker_fra_snapshot"] = raekker_snapshot
     # Antal KONTI der ikke kan kobles, ikke antal rækker — de to tal fortæller
     # vidt forskellige historier.
-    meta["konti_uden_zuora"] = len(ukoblede)
+    meta["konti_uden_kobling"] = len(ukoblede)
     return {"pr_abonnement": pr_abonnement, "pr_kunde": pr_kunde,
             "dage_pr_abonnement": dage_pr_abonnement,
             "dage_pr_kunde": dage_pr_kunde,
+            "koblingsbare": grundlag["kunder"],
+            "uden_aktiv_konto": grundlag["uden_aktiv_konto"],
+            "kun_fra_snapshot": grundlag["kun_fra_snapshot"],
             "maaneder": usage["maaneder"], "meta": meta}

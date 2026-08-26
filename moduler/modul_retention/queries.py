@@ -30,6 +30,64 @@ ACV_BRAND_TO_ACCOUNT: dict[str, str] = {
     "Watch SE": "watch_se",
 }
 
+# ACV's site-vokabular mod dbo.retentions. ACV gemmer sitet UDEN landekode
+# ('FinansWatch') og landet i brand ('Watch DK'), mens dbo.retention gemmer det
+# samlet ('FinansWatch DK'). Reglen er et suffiks pr. brand plus syv navngivne
+# undtagelser.
+#
+# Maalt 2026-08-18 mod juli 2026, FOER den danske afgraensning 25-08 (de
+# 15.203 var derfor UFILTRERET, alle lande med): alle 42 (brand, site)-par i
+# ACV rammer et site der findes i dbo.retention, og 15.039 af 15.203
+# abonnementer kan dermed faa deres EGET beloeb i stedet for kundens ARR delt
+# med antal sites. Selve funktionen er stadig ufiltreret med vilje (se dens
+# docstring), saa daekningsprocenten (98,9%) staar til troende, men totalen
+# 15.203 maa ikke sammenlignes med db_abonnementer's danske 13.044.
+ACV_SITE_SUFFIKS: dict[str, str] = {
+    "Watch DK": " DK",
+    "Watch NO": " NO",
+    "Watch SE": " SE",
+    "Monitor":  "monitor",
+}
+
+# Undtagelserne er NAVNGIVNE og ikke regelbaserede med vilje. De tre
+# monitor-navne mangler et fuge-s ('Sundhed' -> 'Sundhedsmonitor'), som ingen
+# regel kan udlede uden at gaette, og en gaettet fuge-s-regel ville ramme forkert
+# paa det naeste nye site. De tre oevrige er helt egne navne.
+ACV_SITE_UNDTAGELSER: dict[tuple[str, str], str] = {
+    ("Watch DK", "WatchMedier"):   "Watch Medier DK",
+    ("Watch NO", "Shifter"):       "Shifter",
+    ("Monitor",  "Monitormedier"): "Monitormedier",
+    ("Monitor",  "Idræt"):         "Idrætsmonitor",
+    ("Monitor",  "Uddannelse"):    "Uddannelsesmonitor",
+    ("Monitor",  "Sundhed"):       "Sundhedsmonitor",
+    ("Finans",   "Finans"):        "FINANS DK",
+}
+
+
+def acv_site_til_retention(brand: str | None, site: str | None) -> str | None:
+    """ACV's (brand, site) oversat til dbo.retention.sites. None ved ukendt brand.
+
+    Kommer der et nyt brand i ACV, giver funktionen None frem for at gaette.
+    Abonnementet falder saa tilbage til den gamle ligedeling, og fejlen bliver
+    et beloeb der er lidt for groft i stedet for et beloeb paa det FORKERTE site.
+
+    KENDT FAELDE, verificeret 2026-08-18: parret ('Watch DK', 'Finans') findes
+    1.626 gange i PipeDrive_ACV, men NUL af dem er den nyeste raekke for sit
+    (org_id, site). Kalderen filtrerer paa rk = 1, saa parret rammer aldrig
+    funktionen i drift. Sker der en redigering, der loefter en af dem til nyeste,
+    mapper reglen den til 'Finans DK', som ikke findes i dbo.retention, og
+    beloebet falder tavst tilbage til ligedeling. Det er sikkert, men det er
+    tavst: rammer daekningen under 98,9%, er det her man skal se foerst.
+    """
+    if brand is None or site is None:
+        return None
+    egen = ACV_SITE_UNDTAGELSER.get((brand, site))
+    if egen:
+        return egen
+    suffiks = ACV_SITE_SUFFIKS.get(brand)
+    return site + suffiks if suffiks else None
+
+
 # Aktivt team-medlemskab — samme datovindue som get_led_teams i
 # modul_saelger_portfolio, så en risikoliste og en sælger-dropdown ikke kan
 # blive uenige om hvem der sidder i hvilket team.
@@ -49,6 +107,63 @@ _AKTIVT_MEDLEMSKAB = """
 # 6,07 mio. kr. Begynder en Web Sale-deal at ramme en af retention-viewets
 # pipelines, ville de kroner ellers dukke op som én kunde i toppen af listen.
 _KUN_B2B = " AND ISNULL(r.org_name, '') NOT LIKE 'Web Sale%' "
+
+# Kun danske accounts. Retention-teamet er dansk (aftalt 2026-08-20, udvidet til
+# HELE modulet 2026-08-25).
+#
+# EXCLUDE og ikke include, med vilje. En include-liste ville tavst droppe en NY
+# dansk account, og en tabt dansk kunde kan ingen se. En ny udenlandsk account
+# dukker derimod op som stoej, og stoej kan man se og rette.
+#
+# AFGRAENSNINGEN ER REN GEOGRAFI. Alle 20 watch_medier-sites er danske (inkl.
+# FINANS DK), og der findes ikke ét .com-site i HELE dbo.retention. De
+# internationale udgaver bor kun i Snowplow, hvor zones.BRAND_FAMILIE folder
+# .com ned paa .dk, saa et account-filter kan ikke ramme den internationale
+# sektion.
+#
+# LISTE 1 RAMMES IKKE, og det er med vilje. Den bygger paa RetentionOutcomes og
+# db_org_navne, som ingen af dem gaar gennem dette filter. Et lovet opkald er en
+# forpligtelse uanset land. Se prioritering.py.
+#
+# HISTORIKKEN FILTRERES OGSAA (besluttet 2026-08-25). Overblikkets graf falder
+# derfor ca. 14 % i hele sin laengde. Konsistens vejer tungere end den absolutte
+# total: en graf paa 15.213 over en liste paa 13.040 faar nogen til at spoerge
+# hver maaned, hvor de 2.173 blev af.
+#
+# Maalt 2026-08-25: 15.213 -> 13.040 abonnementer, 218,5 -> 189,5 mio. kr.
+# watch_no 2.050, watch_se 119, watch_de 4. monitor og marketwire er DANSKE og
+# staar bevidst ikke paa listen.
+#
+# FOELGEVIRKNING RETTET 2026-08-25: alle "Maalt <dato>"-tal i modulet der
+# refererede en FOER-filter population (db_acv_beloeb_pr_site x2, TRE UDFALD-
+# blokken i abonnementer_med_ejer, db_opsigelser, og risiko.py's opsigelses-
+# maaling) er enten genmaalt paa dagens 13.040 danske abonnementer, eller
+# maerket UFILTRERET med en advarsel om at de ikke maa sammenlignes med den
+# danske total. De linjenumre en tidligere session listede her (130-140 osv.)
+# havde allerede flyttet sig og pegede paa forkert indhold - soeg i stedet paa
+# "Maalt 20" for at finde daterede tal, hvis en fremtidig aendring skal
+# efterses igen.
+UDENLANDSKE_ACCOUNTS = ("watch_no", "watch_se", "watch_de")
+
+# Literaler i SQL'en og ikke %s, praecis som _KUN_B2B: fragmentet splejses ind
+# med f-string i tre queries med positionelle params, og en parameter her skulle
+# placeres det rigtige sted i hver af de tre tupler. Bygget af konstanten, saa de
+# to ikke kan drive fra hinanden.
+_KUN_DANSKE = (" AND r.account NOT IN ("
+               + ", ".join(f"'{a}'" for a in UDENLANDSKE_ACCOUNTS) + ") ")
+
+# Opsigelser bor i TRE pipelines. 'Opsigelser' er marketwires egen, og
+# dbo.retention-viewet kender kun de to foerste, saa marketwires opsigelser har
+# aldrig lukket et abonnement: 9 staar aktive med et ophoer op til tre aar
+# tilbage, det aeldste fra 2023-03-04.
+OPSIGELSE_PIPELINES = ("Cancellation", "Cancellations", "Opsigelser")
+
+# Livstegn: en deal der viser at aftalen fortsaetter. Fornyelse og Upsale SKAL
+# vaere med. Refinitiv Limited opsagde i februar 2023 og har fornyet tre gange
+# siden, senest i denne maaned - uden de to pipelines ville de se opsagte ud og
+# blive skrabet af listerne som en tabt kunde.
+LIVSTEGN_PIPELINES = ("Customer", "Newbizz", "Company Trial",
+                      "Fornyelse", "Upsale")
 
 
 def _acv_owner_cte() -> tuple[str, tuple]:
@@ -169,7 +284,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
 
     Returnerer pr. måned: `active_count` (abonnementer), `attributed_count`
     (abonnementer med en ACV-ejer), `customer_count` (distinkte (account,
-    org_id)), `churned_count` og `churn_pct`. PRD §7.1 kræver de to sidste
+    org_id)), `churned_count` og `churn_pct`. Porteføljen kræver de to sidste
     kolonner, og kunde-linjen findes for at gøre forskellen på 15.205 og 11.621
     synlig i stedet for forvirrende.
 
@@ -180,10 +295,32 @@ def db_monthly_active_counts(owner_name: str | None = None,
     stedet HVER gang der opstår et hul. Den sidste måned i dataen udelades —
     ellers ville alle nulevende abonnementer se ud som om de churnede.
 
-    Målt 2026-08-10: churn ligger på 0,4-1,8% gennem hele historikken. Juni 2026
-    er undtagelsen med 2,20%, måneden efter at porteføljen sprang fra 12.035 til
-    15.486 abonnementer. Grafen får derfor en lodret klippe i maj 2026, som SKAL
-    forklares på siden — se PRD §11 pkt. 7.
+    TÆRSKLEN ER TO MÅNEDER, jf. Definitioner, besluttet 2026-08-17. Et hul
+    på PRÆCIS én
+    måned er en pause og tælles ikke. Målt: 162 af 8.565 hændelser var én-måneds
+    huller, altså 1,9%, og de klumpede i april (36) og januar (22) frem for at
+    ligge jævnt. Det er synkronisering og fakturering, ikke kundeadfærd. Totalen
+    er 8.403 efter ændringen, og kun april 2026 flyttede sig synligt, fra 1,78%
+    til 1,53%.
+
+    DE TO DATEADD-TAL I `churn`-CTE'EN ER FORSKELLIGE MED VILJE. Det er den eneste
+    fælde i funktionen, og den ligner en tastefejl. `month, 2` i WHERE er
+    TÆRSKLEN, altså hvor stort hullet skal være. `month, 1` i GROUP BY er
+    REGISTRERINGSMÅNEDEN, altså at churn tilskrives den måned kunden forsvandt og
+    ikke den måned vi kan bekræfte det. Gøres de to ens, forsvinder enten
+    pause-reglen eller registreringsmåneden, og INGEN TEST FANGER DET:
+    churn-tallet indgår hverken i roegtest_outcomes eller roegtest_prioritering,
+    og læses kun af retention_overview.html.
+
+    FØLGE AF TÆRSKLEN: `h.naeste IS NULL` rammer også rækker i måneden før den
+    nyeste, og de kan endnu ikke skelnes fra pauser. Nyeste måneds churn er derfor
+    et MAKSIMUM, der revideres NEDAD ved næste eksport. Porteføljen kræver at søjlen
+    markeres foreløbig, ellers læses artefaktet som en churn-stigning.
+
+    Målt 2026-08-17: churn ligger på 0,4-1,8% gennem hele historikken, vist for 89
+    måneder fra 2019-04 og frem. Juni 2026 er undtagelsen med 2,18%, måneden efter
+    at porteføljen sprang fra 12.035 til 15.486 abonnementer. Grafen får derfor en
+    lodret klippe i maj 2026, som SKAL forklares på siden.
     """
     cte, params = _acv_owner_cte()
 
@@ -218,6 +355,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
                        ON k.account = r.account AND k.org_id = r.org_id
                 WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
                     {_KUN_B2B}
+                    {_KUN_DANSKE}
                     {clause}
             ),
             sidste AS (
@@ -237,7 +375,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
                 CROSS JOIN sidste s
                 WHERE h.FirstDayOfMonth < s.max_maaned
                   AND (h.naeste IS NULL
-                       OR h.naeste > DATEADD(month, 1, h.FirstDayOfMonth))
+                       OR h.naeste > DATEADD(month, 2, h.FirstDayOfMonth))
                 GROUP BY DATEADD(month, 1, h.FirstDayOfMonth)
             ),
             aktive AS (
@@ -338,6 +476,7 @@ def db_customers_at_risk_base(owner_name: str | None = None,
                 FROM dbo.retention r
                 WHERE r.FirstDayOfMonth = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
                   {_KUN_B2B}
+                  {_KUN_DANSKE}
                 GROUP BY r.account, r.org_id
             )
             SELECT a.account,
@@ -381,7 +520,7 @@ def db_customers_at_risk_base(owner_name: str | None = None,
 def db_abonnementer(maaned: str) -> list:
     """Abonnementerne i én måned, med abonnementets første måned som alder.
 
-    Grain er `(account, org_id, sites)` = PRD §3's måleenhed. `maaned` er
+    Grain er `(account, org_id, sites)` = Zonemodellens måleenhed. `maaned` er
     'YYYY-MM' og skal være den sidste HELE måned — samme reference som
     zones.bestem_zone regner i.
 
@@ -416,6 +555,7 @@ def db_abonnementer(maaned: str) -> list:
             FROM dbo.retention r
             WHERE r.FirstDayOfMonth <= %s
               {_KUN_B2B}
+              {_KUN_DANSKE}
         )
         SELECT account, org_id, sites,
                MAX(org_name) AS org_name,
@@ -521,8 +661,8 @@ def db_org_navne() -> dict:
     (account, org_id). Holder den antagelse op, er det HER det skal rettes — en
     aggregering skjuler et navneskift i stedet for at vælge imellem.
 
-    PRD §10, regel 6: FirstDayOfMonth-filteret er påkrævet, viewet projicerer
-    til 2030-12. Uden det læses fremtidige rækker.
+    Regler og Guardrails, regel 6: FirstDayOfMonth-filteret er påkrævet, viewet
+    projicerer til 2030-12. Uden det læses fremtidige rækker.
 
     ÉN pass over viewet. En CTE-kæde der scannede dbo.retention tre gange
     timede forbindelsen ud — aggreger i SQL, sammenlign i Python."""
@@ -555,6 +695,181 @@ def db_org_navne() -> dict:
     except Exception:
         logger.exception("db_org_navne fejlede")
         return {}
+
+
+def db_acv_beloeb_pr_site() -> dict:
+    """{(account, org_id, sites): beloeb} — ACV's kroner pr. ABONNEMENT.
+
+    Modstykket til db_acv_ejere, som er paa KUNDE-niveau. Denne har grainen
+    (account, org_id, site) og gjorde det muligt at holde op med at dele kundens
+    ARR ligeligt ud paa dens sites.
+
+    UFILTRERET MED VILJE: beloebet pr. site afhaenger ikke af hvem der ser paa
+    det, og afgraensningen sker i forvejen paa kundeniveau i
+    abonnementer_med_ejer. En WHERE her ville kunne komme i utakt med den.
+
+    Noeglen gaar gennem customer_key, praecis som db_acv_ejere og
+    db_abonnementer. org_id kommer tilbage som int, og de tre opslag SKAL bruge
+    samme funktion, ellers matcher 1 aldrig '1'.
+
+    Maalt 2026-08-18, FOER den danske afgraensning 25-08: 15.039 af 15.203
+    juli-abonnementer (UFILTRERET, alle lande med) finder et beloeb her,
+    altsaa 98,9%, og de daekker alle 218.238.867 ACV-kroner. De 164 der ikke
+    goer, er Kom24 NO, Medier24 NO, marketwire og FinanzBusiness, hvis brands
+    ACV slet ikke har, plus fem kunder der mangler en raekke paa et site de har.
+    Funktionen selv er stadig ufiltreret (se ovenfor), saa daekningsprocenten
+    staar til troende, men 15.203 er IKKE det samme tal som db_abonnementer's
+    danske 13.044 (maalt 2026-08-25).
+    """
+    from .usage import customer_key
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+            WITH acv_ranked AS (
+                -- RANK og ikke ROW_NUMBER, samme grund som i _acv_owner_cte: 67
+                -- (org_id, site)-grupper har en tie paa updated_at, og
+                -- ROW_NUMBER dropper dem tavst.
+                SELECT org_id, brand, site, acv_value_dkk,
+                       RANK() OVER (
+                           PARTITION BY org_id, site ORDER BY updated_at DESC
+                       ) AS rk
+                FROM dbo.PipeDrive_ACV
+            )
+            SELECT org_id, brand, site, MAX(acv_value_dkk) AS arr
+            FROM acv_ranked
+            WHERE rk = 1
+            GROUP BY org_id, brand, site;
+        """)
+        raekker = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("db_acv_beloeb_pr_site fejlede")
+        return {}
+
+    ud: dict = {}
+    for r in raekker:
+        account = ACV_BRAND_TO_ACCOUNT.get(r["brand"])
+        site = acv_site_til_retention(r["brand"], r["site"])
+        # NUL ER UKENDT, IKKE NUL. Verificeret 2026-08-18: 7.766 af 20.642
+        # ACV-raekker har vaerdien 0, og de har ALLE mindst én deal bag sig (DNB
+        # Bank har 79 paa FinansWatch). Vaerdien er ogsaa 0 i lokal valuta, saa
+        # det er ikke en kursfejl: beloebet MANGLER.
+        #
+        # Springes de ikke over, faar 568 abonnementer score 0 i stedet for at
+        # staa som uopgjorte, og de forsvinder tavst fra prioriteringslisten,
+        # fordi score = ARR x vaegt. Samme regel som risiko.py's kommentar om
+        # score: 0 betyder "ingen risiko", None betyder "vi ved det ikke".
+        if account is None or site is None or not r["arr"]:
+            continue
+        kunde = customer_key(account, r["org_id"])
+        ud[(kunde[0], kunde[1], site)] = float(r["arr"])
+    return ud
+
+
+def db_opsigelser() -> dict:
+    """{(account, org_id, sites): 'YYYY-MM-DD'} - datoen for en GAELDENDE opsigelse.
+
+    Et abonnement er opsagt, naar der findes en vundet opsigelse dateret EFTER
+    det seneste livstegn paa aftalen. Retningen ER reglen: ligger opsigelsen
+    FOER livstegnet, er kunden kommet tilbage efter at have sagt op.
+
+    HVORFOR IKKE BARE "har en opsigelse": maalt 2026-08-19, FOER den danske
+    afgraensning 25-08 (tallet skal genmaales paa dagens 13.044 abonnementer,
+    men princippet er upaavirket): 4.430 af dengang 15.189 aktive abonnementer
+    (39 mio. kr.) havde en opsigelse et sted i historikken. 107 af dem havde
+    opsigelse og ny aftale paa SAMME dato (genmaalt 2026-08-25: 83 par i dag).
+    Det er genforhandlinger: abonnementet loeber uaendret videre, men
+    opsigelsen bliver staaende i historikken. 3.858 var kunder der var holdt
+    op og kommet tilbage aar senere. Uden datosammenligningen ville en
+    fjerdedel af portefoeljen forsvinde tavst.
+
+    DATOEN ER service_activation_date, ikke won_time. won_time er hvornaar
+    opsigelsen blev REGISTRERET, sad er hvornaar abonnementet OPHOERER. Maalt
+    paa 12.755 vundne opsigelser ligger sad EFTER won_time i 69% af dem, typisk
+    32 til 200 dage, altsaa varslet: Oersteds Klimamonitor blev opsagt
+    2026-08-10 med ophoer 2027-08-20. Reserven COALESCE(..., won_time,
+    add_time) daekker 262 raekker med standardvaerdien 2019-01-01 plus 5 helt
+    uden dato. Det er samme kolonne og samme reserveregel som
+    dbo.retention-viewet selv bruger, saa modulet og portefoeljetallet ikke kan
+    blive uenige om hvornaar et abonnement holdt op.
+
+    AABNE DEALS TAELLER SOM LIVSTEGN, men kun vundne som opsigelse. En aaben
+    fornyelse siger at aftalen loeber videre; en aaben opsigelse er ikke en
+    opsigelse endnu.
+
+    UFILTRERET MED VILJE, praecis som db_acv_beloeb_pr_site: opslaget kender
+    ingen maaned og indeholder derfor ogsaa abonnementer der ophoerte for aar
+    siden og laenge er ude af dbo.retention, samt udenlandske accounts, som
+    IKKE er filtreret fra her (filteret ligger paa db_abonnementer, ikke her).
+    Maalt 2026-08-25 PAA DET DANSKE GRUNDLAG (13.044 abonnementer, efter
+    afgraensningen samme dag): 5.801 opslag i alt, og 277 af dem rammer et af
+    maanedens abonnementer, fordelt paa 9 forfaldne (alle marketwire), 72
+    ophoert og 205 i opsigelse.
+
+    Noeglen gaar gennem customer_key som de tre andre opslag, og `sites`
+    beholdes RAA: marketwire har NULL, som bliver None i Python og matcher
+    db_abonnementer's egen noegle.
+    """
+    from .usage import customer_key
+
+    ph_liv = ",".join(["%s"] * len(LIVSTEGN_PIPELINES))
+    ph_ops = ",".join(["%s"] * len(OPSIGELSE_PIPELINES))
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            WITH deals AS (
+                SELECT account, org_id, sites, pipeline_name, status,
+                       COALESCE(
+                           CASE WHEN service_activation_date = '2019-01-01'
+                                THEN NULL
+                                ELSE CAST(service_activation_date AS datetime)
+                           END,
+                           won_time, add_time) AS dato
+                FROM dbo.PipedriveDeals
+                WHERE status IN ('won', 'open')
+                  AND org_id IS NOT NULL
+            ),
+            livstegn AS (
+                SELECT account, org_id, sites, MAX(dato) AS livsdato
+                FROM deals
+                WHERE pipeline_name IN ({ph_liv})
+                GROUP BY account, org_id, sites
+            ),
+            opsigelse AS (
+                SELECT account, org_id, sites, MAX(dato) AS opsigelsesdato
+                FROM deals
+                WHERE status = 'won'
+                  AND pipeline_name IN ({ph_ops})
+                GROUP BY account, org_id, sites
+            )
+            SELECT o.account, o.org_id, o.sites,
+                   CONVERT(char(10), o.opsigelsesdato, 23) AS opsigelsesdato
+            FROM opsigelse o
+            JOIN livstegn l
+              ON l.account = o.account AND l.org_id = o.org_id
+             -- ISNULL paa BEGGE sider: marketwires sites er NULL, og NULL = NULL
+             -- er falsk i SQL. Uden den ville de 9 forfaldne aldrig kobles.
+             AND ISNULL(l.sites, '') = ISNULL(o.sites, '')
+            WHERE o.opsigelsesdato > l.livsdato;
+        """, LIVSTEGN_PIPELINES + OPSIGELSE_PIPELINES)
+        raekker = cur.fetchall()
+        conn.close()
+    except Exception:
+        logger.exception("db_opsigelser fejlede")
+        return {}
+
+    ud: dict = {}
+    for r in raekker:
+        kunde = customer_key(r["account"], r["org_id"])
+        # CONVERT i SQL'en gav en streng med vilje. TDS 7.0 leverer date og
+        # datetime2 som str alligevel, og resten af modulet sammenligner datoer
+        # som tekst, saa 'YYYY-MM-DD' kan bruges direkte.
+        ud[(kunde[0], kunde[1], r["sites"])] = r["opsigelsesdato"]
+    return ud
 
 
 def abonnementer_med_ejer(maaned: str,
@@ -598,20 +913,52 @@ def abonnementer_med_ejer(maaned: str,
             "kunde_arr_dkk":  ejer.get("arr_dkk"),
             "acv_sites":      ejer.get("acv_sites"),
         })
+    # Antallet taelles EFTER filtreringen, saa ligedelingen (naar den bruges)
+    # summerer til kundens ARR inden for den visning brugeren faktisk ser.
+    #
+    # `har_eget` SKAL beregnes i den foerste loekke: reglen nedenfor er pr. KUNDE
+    # og ikke pr. site, og den kan derfor ikke afgoeres mens man gaar raekkerne
+    # igennem foerste gang.
+    beloeb = db_acv_beloeb_pr_site()
 
-    # Antallet tælles EFTER filtreringen, så fordelingen summerer til kundens
-    # ARR inden for den visning brugeren faktisk ser.
     antal: dict = {}
+    har_eget: dict = {}
     for r in resultat:
         antal[r["kunde"]] = antal.get(r["kunde"], 0) + 1
+        if (r["kunde"][0], r["kunde"][1], r["sites"]) in beloeb:
+            har_eget[r["kunde"]] = True
+
+    # TRE UDFALD, og det sidste er hele grunden til at reglen er pr. kunde.
+    # Maalt 2026-08-18 mod juli 2026, FOER den danske afgraensning 25-08 (alle
+    # lande med, samme forbehold som i db_acv_beloeb_pr_site's docstring):
+    #
+    #   1. Sitet har sin egen ACV-raekke              -> rigtigt beloeb.  15.039
+    #   2. Kunden har INGEN beloeb paa noget af sine  -> ligedeling.           2
+    #   3. Kunden har beloeb paa ANDRE sites, ikke her -> None.               34
+    #
+    # NUMMER 3 MAA IKKE LIGEDELES. Et ligedelt tal ved siden af rigtige beloeb
+    # paa samme kundeside modsiger dem: kunden ville se fem beloeb, hvor det
+    # femte er regnet paa en anden maade end de fire. None siger i stedet "vi ved
+    # det ikke", og maskineriet findes allerede: fold_risici taeller
+    # `abonnementer_med_arr` for sig, og prioriteringslisten viser tagget
+    # "scoren daekker 3 af 4", som fra nu af begynder at virke.
+    #
+    # Nummer 2 beholder ligedelingen, saa de kunder ikke stilles DAARLIGERE end
+    # i dag. Det er to abonnementer, og de har ingen rigtige beloeb at modsige.
     for r in resultat:
         r["sites_i_alt"] = antal[r["kunde"]]
-        # Lige deling er et VALG, ikke en måling: ACV kender kronerne pr.
-        # (org_id, site), men de to site-vokabularer kan ikke brolægges. Indtil
-        # broen findes, er lige deling den eneste fordeling der ikke opfinder en
-        # rangorden mellem kundens sites.
-        r["arr_pr_abonnement"] = (
-            r["kunde_arr_dkk"] / r["sites_i_alt"]
-            if r["kunde_arr_dkk"] is not None else None
-        )
+        eget = beloeb.get((r["kunde"][0], r["kunde"][1], r["sites"]))
+        if eget is not None:
+            r["arr_pr_abonnement"] = eget
+            r["arr_kilde"] = "site"
+        # `> 0` og ikke `is not None`: en total paa nul er summen af ukendte
+        # beloeb og ikke en maaling, jf. nul-reglen i db_acv_beloeb_pr_site. 2.311
+        # af 11.620 kunder har en samlet ACV paa nul, og at dele det ud ville
+        # give dem et beloeb der ser maalt ud og er nul.
+        elif not har_eget.get(r["kunde"]) and (r["kunde_arr_dkk"] or 0) > 0:
+            r["arr_pr_abonnement"] = r["kunde_arr_dkk"] / r["sites_i_alt"]
+            r["arr_kilde"] = "lige_deling"
+        else:
+            r["arr_pr_abonnement"] = None
+            r["arr_kilde"] = None
     return resultat

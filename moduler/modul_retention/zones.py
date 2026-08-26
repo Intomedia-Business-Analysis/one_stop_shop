@@ -1,6 +1,6 @@
 """Zoner: hvor et abonnement står i sit forbrugsforløb.
 
-Måleenheden er abonnementet `(account, org_id, site)`, jf. PRD §3. Zonen
+Måleenheden er abonnementet `(account, org_id, site)`, jf. Zonemodellen. Zonen
 beregnes på et MÅNEDLIGT signal og ikke på dage siden sidste aktivitet — et
 dagsbaseret signal rådner med filens alder, mens "læste i juli" er et komplet
 faktum om en afsluttet måned.
@@ -16,11 +16,12 @@ SÆSON: "stoppet" ligger på 6-8% fra november til april og stiger til 13% i
 juli. Halvdelen af sommertallet er ferie, ikke churn. Tærskler må derfor ikke
 kalibreres på en sommermåned, og zonefordelingen skal læses med måneden i hånden.
 
-HVORFOR "ny" ER EN EGEN TILSTAND: mellem april og maj 2026 voksede porteføljen
-med 2.498 kunder og 3.451 abonnementer, fordelt næsten jævnt over hvert eneste
-site. Ægte salg ankommer ikke sådan, så det er efter alt at dømme en bulk-import.
-Uden `ny` ville hele den tilgang stå som churn-risiko på den første liste
-specialisten ser.
+HVORFOR "nystartet" ER EN EGEN TILSTAND (hed `ny` før Omdøbningen 2026-08-25):
+mellem april og maj 2026 voksede porteføljen med 2.498 kunder og 3.451
+abonnementer, fordelt næsten jævnt over hvert eneste site. Ægte salg ankommer
+ikke sådan, så det er efter alt at dømme en bulk-import.
+Uden `nystartet` ville hele den tilgang stå som churn-risiko på den første
+liste specialisten ser.
 
 Alderen måles IKKE på abonnementets første måned i `dbo.retention` alene, men på
 det tidligste af den og den første måned med læsning — se foerste_kendte_maaned.
@@ -40,65 +41,97 @@ from typing import Optional
 
 from moduler.modul_portfolio_alignment.queries import normalize_site
 
-# Under så mange hele måneder i dbo.retention er et abonnement "ny". Tre, fordi
-# "faldende" sammenligner mod snittet af de tre foregående måneder og derfor
-# ikke kan beregnes før.
+# Under så mange hele måneder i dbo.retention er et abonnement "nystartet".
+# Tre, fordi "paa_vej_ned" sammenligner mod snittet af de tre foregående
+# måneder og derfor ikke kan beregnes før.
 NY_MAANEDER = 3
 
-# Hvor langt tilbage "stoppet" kigger efter tidligere læsning.
-STOPPET_VINDUE = 3
+# Hvor langt tilbage "paa_vej_ned" og "gaaet_i_staa" kigger efter tidligere
+# læsning. Hed STOPPET_VINDUE til Omdøbningen (2026-08-25): navnet holder
+# betydningen, den daekker nu begge zoner i stedet for kun én.
+FALD_VINDUE = 3
 
-# Hvor stort et fald der skal til for zonen "faldende". 0,50 = halveret.
+# Hvor stort et fald der skal til for zonen "paa_vej_ned". 0,50 = halveret.
 FALD_GRAENSE = 0.50
 
-# PRD §3: "Stoppet vanebruger — over 20 aktive dage i de seneste 12 måneder, nu
-# 0. Vægt 1,00" mod "Aldrig i brug — højst 1 aktiv dag i 12 måneder. Vægt 0,50".
-# Diskriminatoren er AKTIVE DAGE, ikke sidevisninger, og genmålingen 2026-08-11
-# viser hvorfor: blandt de 2.064 stoppede abonnementer er medianen 4,0
-# sidevisninger pr. abonnement-måned — målt over ALLE måneder i vinduet, også
-# dem uden læsning; kun over måneder med læsning er den 9,0 — men 69,7% har
-# over 20 aktive dage i de 12 måneder før referencen, median 37 dage. Ørsted
-# læste AgriWatch på 56 forskellige dage med et snit på 1,7 sidevisninger — en
-# vane, som volumen alene ville have kaldt støj.
+# Diskriminatoren for "vanebruger" er AKTIVE DAGE, ikke sidevisninger, og
+# genmålingen 2026-08-11 viser hvorfor: blandt de 2.064 stoppede abonnementer
+# er medianen 4,0 sidevisninger pr. abonnement-måned — målt over ALLE måneder
+# i vinduet, også dem uden læsning; kun over måneder med læsning er den 9,0 —
+# men 69,7% har over 20 aktive dage i de 12 måneder før referencen, median 37
+# dage. Ørsted læste AgriWatch på 56 forskellige dage med et snit på 1,7
+# sidevisninger — en vane, som volumen alene ville have kaldt støj.
+#
+# Vanen paavirkede tidligere ZONE_VAEGT (en gaaet_i_staa uden vane vejede
+# halvt). Det er FJERNET 25-08-2026, se zone_vaegt()'s docstring - maalt mod
+# rigtige opsigelser churnede gruppen UDEN vane lige saa stabilt. Konstanterne
+# og er_vanebruger() lever videre som maalt diagnose (kohortemaaling.py) og som
+# kontekst paa raekken (risiko.py's "vanebruger"/"aktive_dage_12m"), bare uden
+# at saette scoren.
 VANEBRUGER_DAGE = 20
 VANEBRUGER_VINDUE = 12
 
 # Visningsrækkefølge: værst først, datahuller sidst.
-ZONE_ORDER = ["stoppet", "laenge_tavs", "aldrig_i_brug", "faldende",
-              "sund", "ny", "intet_signal"]
+#
+# SYV ZONER, IKKE OTTE. `stoppet` og `laenge_tavs` blev lagt sammen til
+# `gaaet_i_staa` ved Omdøbningen (2026-08-25): begge betød "signalet er væk,
+# lav redningssandsynlighed" og delte allerede vægt for den halvdel uden vane
+# (dengang zone_vaegt()'s modifikator, siden fjernet, se ovenfor). Navnene
+# laaner FT Strategies' RFV-stil (konkrete nok til at huskes), ikke deres akse
+# — se plandokumentet for hvorfor.
+ZONE_ORDER = ["aldrig_i_gang", "gaaet_i_staa", "paa_vej_ned", "fast_laeser",
+              "nystartet", "lukket_konto", "ingen_data"]
 
-# Vægten i score = ARR × vægt × timingfaktor. Kun "stoppet" er 1,00, fordi det er
-# den eneste tilstand hvor noget er sket for nylig og et opkald kan nå at virke.
+# Vægten i score = ARR × vægt × timingfaktor. MÅLT 25-08-2026 mod rigtige
+# opsigelser (kohortemaaling.py: won_time efter kohortemaaneden, tre kohorter
+# med udløbet 6-maaneders horisont, 2025-11 til 2026-01). Se skriv_vaegtvektor()
+# i den fil for beregningen.
 #
-# `laenge_tavs` sat til 0,50 den 2026-08-10, samme som `aldrig_i_brug`: begge er
-# "signalet er væk for længe siden, lav redningssandsynlighed". Valgt frem for
-# 0,70 fordi 0,70 ville være det eneste tal i vektoren uden dækning i PRD §3 —
-# de øvrige fem kommer derfra. Zonerne vises fortsat hver for sig, de har blot
-# samme prioritet, og ZONE_ORDER bryder uafgjort i sorteringen. Alle vægte er
-# provisoriske indtil forudsigelsesraten kan kalibrere dem på rigtige udfald
-# (PRD §9).
+# `aldrig_i_gang` og `gaaet_i_staa` har BYTTET RANGORDEN siden Omdøbningen.
+# aldrig_i_gang målte konsekvent højest (indeks 1,62-1,82, snit 1,71, churn-rate
+# 9,77%) og er nu den værste zone, normaliseret til 1,00. gaaet_i_staa målte
+# lavere men stadig over 1,00 i alle tre kohorter (indeks 1,11-1,47, snit 1,33,
+# churn-rate 6,80%), normaliseret til 0,70 — OGSAA vanebruger-splittet der før
+# gav den 1,00/0,50 er fjernet, se zone_vaegt()'s docstring.
 #
-# Tabellen er de NOMINELLE vægte. Den faktiske vægt for et abonnement kommer fra
-# zone_vaegt(), som sænker "stoppet" til aldrig_i_brug-niveau når der ikke var en
-# vane at miste.
+# `paa_vej_ned` BESTOD IKKE maalingens laeseregel (indeks 0,55 i den foerste af
+# tre kohorter, under 1,00) og staar derfor UAENDRET paa sin gamle 0,40 som et
+# ukalibreret skoen, ikke en maalt vaerdi. Samme status som foer 25-08-2026.
+#
+# `ingen_data` maalte hoejest af alle (indeks ca. 5,3, churn-rate 31%), men det
+# er LAEKAGE og ikke risiko: gruppen bestaar naesten kun af raekker uden Zuora-
+# kobling, som historisk maalte 7-9x mens den ægte kontrolgruppe ("utrackbart
+# site") maalte praecis 0,00 — se kohortemaaling.py regel 4. Kontrolgruppen er
+# tabt siden den danske afgraensning 25-08-2026, saa beviset kan ikke gentages,
+# men konklusionen bliver staaende: vaegten er 0,15 AF PRINCIP, ikke af maaling,
+# og er bevidst udelukket fra normaliseringen i skriv_vaegtvektor().
+#
+# Tabellen er de NOMINELLE vægte. Alle rækker af samme zone har nu samme
+# faktiske vægt (bortset fra opsigelsesfilteret, som nulstiller til 0).
 ZONE_VAEGT = {
-    "stoppet":       1.00,
-    "laenge_tavs":   0.50,
-    "aldrig_i_brug": 0.50,
-    "faldende":      0.40,
-    "intet_signal":  0.15,
-    "sund":          0.00,
-    "ny":            0.00,
+    "aldrig_i_gang": 1.00,
+    "gaaet_i_staa":  0.70,
+    "paa_vej_ned":   0.40,
+    "ingen_data":    0.15,
+    "fast_laeser":   0.00,
+    "nystartet":     0.00,
+    # Nul og ikke 0,15 som ingen_data, fordi det ikke er et datahul: vi VED
+    # hvem kunden er, og Zuora siger at kontoen er ophoert. Maalt 24-08-2026 paa
+    # de 1.253 ramte abonnementer: 47 af dem har overhovedet et ARR-beloeb i
+    # ACV, mod 87,1 % af de oevrige, og hele gruppen udgoer 336.511 kr. af 202
+    # mio. Det stoerste enkelte er 38.143 kr. Der er ingen portefoelje at
+    # forsvare, og et opkald om churn er det forkerte opkald.
+    "lukket_konto":  0.00,
 }
 
 ZONE_LABELS = {
-    "stoppet":       "Stoppet",
-    "laenge_tavs":   "Tavs længere",
-    "aldrig_i_brug": "Aldrig i brug",
-    "faldende":      "Faldende",
-    "sund":          "Sund",
-    "ny":            "Ny",
-    "intet_signal":  "Intet signal",
+    "gaaet_i_staa":  "Gået i stå",
+    "aldrig_i_gang": "Aldrig i gang",
+    "paa_vej_ned":   "På vej ned",
+    "fast_laeser":   "Fast læser",
+    "nystartet":     "Nystartet",
+    "lukket_konto":  "Lukket konto",
+    "ingen_data":    "Ingen data",
 }
 
 # .com-udgaverne er samme produkt på engelsk. Verificeret 2026-08-06: 92% af
@@ -116,8 +149,14 @@ PAKKE_SITES = {
     "watchmedier.dk", "monitormedier.dk",
 }
 
-# Sites hvor vi ikke har nogen kilde. Et abonnement her får "intet_signal" og
-# ALDRIG "aldrig_i_brug" — et datahul er ikke bevis på at kunden er tavs.
+# Sites hvor vi ikke har nogen kilde. Et abonnement her får "ingen_data" og
+# ALDRIG "aldrig_i_gang" — et datahul er ikke bevis på at kunden er tavs.
+#
+# DE TRE NO-SITES ER UOPNÅELIGE FRA 2026-08-25. Shifter, Kom24 NO og Medier24 NO
+# lå udelukkende under watch_no, som queries._KUN_DANSKE nu udelukker af hele
+# modulet. De står med vilje: reglen beskriver Snowplows dækning, ikke modulets
+# geografiske afgrænsning, og skal ikke slettes bare fordi den ikke rammer noget
+# lige nu.
 UNTRACKBARE_SITES = {
     "shifter",      # norsk brand, ikke i erhvervsmedier-schemaet
     "kom24 no",
@@ -129,7 +168,7 @@ UNTRACKBARE_SITES = {
 # 2026-08-07, og eksporten dækker nu sitet: 1.692 konti, fladt over alle 13 hele
 # måneder. Signalet er WEB ALENE — finans-appen er bevidst udeladt af
 # usage_trend.txt, fordi en app-migrering i juni 2026 ellers ville have skabt
-# falske stoppet-zoner. Det gør finans sammenligneligt med Watch-sitene, som
+# falske gaaet_i_staa-zoner. Det gør finans sammenligneligt med Watch-sitene, som
 # også er web alene.
 
 
@@ -188,7 +227,7 @@ def er_trackbare(site: Optional[str], har_zuora_kobling: bool) -> bool:
 
     To uafhængige grunde til nej: sitet har ingen kilde, eller kundens
     Zuora-konto kan ikke oversættes til en kunde. Begge skal give
-    "intet_signal" og ikke "aldrig_i_brug".
+    "ingen_data" og ikke "aldrig_i_gang".
     """
     return har_zuora_kobling and site not in UNTRACKBARE_SITES
 
@@ -203,7 +242,7 @@ def foerste_kendte_maaned(forbrug: dict, foerste_maaned: str) -> str:
     HVORFOR IKKE BARE `foerste_maaned`: den er en KONTRAKT-kendsgerning fra
     dbo.retention, ikke en oplysning om hvor længe kunden har læst. De to falder
     kun sammen, når rækken og relationen begynder samtidig — og det gør de ikke
-    i 59,6% af de abonnementer, `ny` fanger ved reference 2026-07. Der er
+    i 59,6% af de abonnementer, `nystartet` fanger ved reference 2026-07. Der er
     forbrug FØR abonnementets egen første måned, median otte måneder.
 
     Et site lagt ind på en eksisterende kunde, en genforhandlet kontrakt eller
@@ -211,8 +250,8 @@ def foerste_kendte_maaned(forbrug: dict, foerste_maaned: str) -> str:
     afslører det: har kunden læst sitet i et år, er der rigeligt at sammenligne
     med, uanset hvad rækken siger.
 
-    Målt på det tidligste af de to bliver `ny` det, navnet lover — "for ny til
-    at vurderes" — frem for "kontrakten er ung".
+    Målt på det tidligste af de to bliver `nystartet` det, navnet lover — "for
+    ny til at vurderes" — frem for "kontrakten er ung".
 
     GRÆNSE: forbrugseksporten dækker 14 måneder. Er relationen ældre end
     vinduet, kan vi ikke se det, og så er den her datering stadig for ung. Det
@@ -227,7 +266,7 @@ def foerste_kendte_maaned(forbrug: dict, foerste_maaned: str) -> str:
 
 
 def er_vanebruger(dage: dict, reference: str) -> bool:
-    """Havde abonnementet en vane at miste? PRD §3's tærskel.
+    """Havde abonnementet en vane at miste? Zonemodellens tærskel.
 
     `dage` er {måned: aktive dage} for abonnementet. For pakkeabonnementer skal
     kalderen sende KUNDENS dage, præcis samme regel som for sidevisningerne —
@@ -246,7 +285,8 @@ def bestem_zone(forbrug: dict,
                 reference: str,
                 foerste_maaned: str,
                 site: Optional[str],
-                har_zuora_kobling: bool = True) -> str:
+                har_zuora_kobling: bool = True,
+                har_aktiv_konto: bool = True) -> str:
     """Zonen for ét abonnement i én referencemåned.
 
     `forbrug` er {måned: sidevisninger} for dette abonnement — kun måneder med
@@ -257,12 +297,36 @@ def bestem_zone(forbrug: dict,
     `reference` skal være den sidste HELE måned. Indeværende måned er levende og
     ville få enhver kunde til at se ud som et frit fald.
 
+    `har_aktiv_konto` er falsk naar kunden KUN kan kobles gennem ophoerte
+    Zuora-konti. Default sand, saa en kalder uden den oplysning ikke faar en
+    zone skjult; samme princip som zone_vaegt's `vanebruger`.
+
     Rækkefølgen af tjek er betydningsbærende og må ikke ombyttes:
-    et nyt abonnement kan ikke være "stoppet", og et utrackbart kan ikke være
-    "aldrig i brug".
+    et nyt abonnement kan ikke være "gaaet i staa", og et utrackbart kan ikke
+    være "aldrig i gang".
     """
     if not er_trackbare(site, har_zuora_kobling):
-        return "intet_signal"
+        return "ingen_data"
+
+    # Pipedrive siger aktiv, Zuora har ingen aktiv konto, OG der er ikke laest
+    # en enkelt gang i vinduet. To grunde til at tjekket staar praecis her:
+    #
+    # EFTER er_trackbare, fordi et utrackbart site ikke kan bevise noget om
+    # forbrug. De 37 ramte raekker der ligger paa shifter, kom24, medier24 og
+    # marketwire skal blive i ingen_data.
+    #
+    # FOER de forbrugsbaserede tjek, og gated paa at forbruget er tomt. Uden
+    # gaten ville de 195 der FAKTISK laeser miste deres zone, og laesningen er
+    # det staerkeste bevis vi har: laeser de, er det konto-statussen der er
+    # foraeldet, ikke kunden der er vaek. Med gaten flytter kun de tavse.
+    #
+    # HVORFOR ikke lade dem staa som aldrig_i_gang: maalt 24-08-2026 var 690 af
+    # zonens 1.422 abonnementer i denne gruppe. Zonen maalte altsaa knap
+    # halvvejs "kontoen er ophoert" i stedet for "kunden laeser ikke", og den
+    # ville derfor maale kunstigt staerkt naar vaegtene proeves efter paa
+    # rigtige opsigelser.
+    if not har_aktiv_konto and not any(v > 0 for v in forbrug.values()):
+        return "lukket_konto"
 
     # Abonnementet fandtes IKKE i referencemåneden. Så kan referencens forbrug
     # umuligt være dets, og enhver sammenligning beskriver kunden frem for denne
@@ -271,70 +335,111 @@ def bestem_zone(forbrug: dict,
     #
     # Spærringen står FØR den forbrugsbaserede datering, fordi den ellers falder
     # væk netop for de nyeste abonnementer: målt 2026-08-11 gav den seks rækker
-    # en rigtig zone, heriblandt en uge gammel aftale som "stoppet" med vægt
-    # 1,00 — øverst på listen. Se risiko.py's docstring om abo_maaned efter
+    # en rigtig zone, heriblandt en uge gammel aftale som "gaaet_i_staa" med
+    # vægt 1,00 — øverst på listen. Se risiko.py's docstring om abo_maaned efter
     # reference.
     if maaneders_alder(foerste_maaned, reference) < 0:
-        return "ny"
+        return "nystartet"
 
     # Ellers måles alderen på det tidligste SPOR, ikke på kontraktrækken.
-    # `faldende` kræver tre måneders FORBRUG at sammenligne med — ikke tre
+    # `paa_vej_ned` kræver tre måneders FORBRUG at sammenligne med — ikke tre
     # måneders abonnement — og de to er forskellige, når rækken er nyere end
     # relationen. Se foerste_kendte_maaned.
     if maaneders_alder(foerste_kendte_maaned(forbrug, foerste_maaned),
                        reference) < NY_MAANEDER:
-        return "ny"
+        return "nystartet"
 
     tidligere = [forbrug.get(m, 0)
-                 for m in foregaaende_maaneder(reference, STOPPET_VINDUE)]
+                 for m in foregaaende_maaneder(reference, FALD_VINDUE)]
 
     if forbrug.get(reference, 0) > 0:
         snit = sum(tidligere) / len(tidligere)
         # snit == 0 betyder at kunden lige er begyndt at læse. Det er ikke et fald.
         if snit > 0 and forbrug[reference] <= snit * (1 - FALD_GRAENSE):
-            return "faldende"
-        return "sund"
+            return "paa_vej_ned"
+        return "fast_laeser"
 
-    if any(v > 0 for v in tidligere):
-        return "stoppet"
+    # TJEK 7 OG 8 SMELTET TIL ÉT ved Omdøbningen (2026-08-25). Der var tidligere
+    # skelnet mellem "stoppet" (læste i FALD_VINDUE, ikke i referencen) og
+    # "laenge_tavs" (læste engang, men ikke i FALD_VINDUE) — de delte allerede
+    # samme vægt for den halvdel uden vane, så skellet bar ingen beslutning.
+    # `tidligere` er stadig beregnet ovenfor, til brug i "fast_laeser"/
+    # "paa_vej_ned"-grenen, men afgør ikke længere noget her.
     if any(v > 0 for v in forbrug.values()):
-        return "laenge_tavs"
-    return "aldrig_i_brug"
+        return "gaaet_i_staa"
+    return "aldrig_i_gang"
 
 
-def zone_vaegt(zone: str, vanebruger: bool = True) -> float:
-    """Risikovægten til score = ARR × vægt × timingfaktor (PRD §4).
+def zone_vaegt(zone: str) -> float:
+    """Risikovægten til score = ARR × vægt × timingfaktor (Prioriteringsmodellen).
 
-    `vanebruger` modulerer KUN "stoppet", jf. PRD §3: en stoppet vanebruger er
-    1,00 og kræver et opkald i dag, mens et abonnement uden vane at miste er en
-    onboarding-sag og deler vægt med "aldrig i brug". De øvrige zoner er
-    upåvirkede — "faldende" er 97,7% vanebrugere og ligger allerede under 0,50,
-    og "laenge_tavs"/"aldrig_i_brug" er 0,50 uanset.
-
-    Default True, så en kalder uden dage-data ikke får risiko skjult. Fejlen
-    peger dermed mod at vise for meget frem for for lidt.
-
-    Slår op i ZONE_VAEGT["aldrig_i_brug"] frem for at hardkode 0,50: ændres den
-    vægt, skal de to følges, fordi det er samme argument der bærer dem.
+    HAVDE et vanebruger-argument der halverede "gaaet_i_staa" for abonnementer
+    uden 20+ aktive dage i de foregående 12 måneder. Fjernet 25-08-2026: målt
+    mod rigtige opsigelser (kohortemaaling.py, tre udløbne kohorter) churner
+    gruppen UDEN vane lige så stabilt som gruppen MED vane, det modsatte af
+    modellens antagelse (indeks 1,25/1,19/1,47 mod 0,00/0,54/1,20 — sidstnævnte
+    for ustabilt og for lille, n=49-89, til at bære en vægtforskel). Se
+    er_vanebruger() og risiko.py's "vanebruger"/"aktive_dage_12m" felter, som
+    stadig beregnes og vises — kun vægten er upåvirket nu.
 
     Ukendt zone giver 0,0 og ikke en fejl: en ny zone må aldrig kunne skubbe
     kunder op på listen ved et uheld, kun ned.
     """
-    if zone == "stoppet" and not vanebruger:
-        return ZONE_VAEGT["aldrig_i_brug"]
     return ZONE_VAEGT.get(zone, 0.0)
+
+
+# Tre overgrupper over de syv zoner. Syv tilstande er for mange at handle
+# paa: FT loeste samme problem ved at folde syv clustre til tre overskrifter.
+#
+# GRUPPEN UDLEDES AF VAEGTEN og staar bevidst IKKE som en liste af zonenavne.
+# En liste mere ville vaere den tredje kopi af samme rangorden (ZONE_ORDER og
+# ZONE_VAEGT er de to foerste), og tre kopier bliver uenige. Faar en zone en ny
+# vaegt, flytter den gruppe af sig selv.
+GRUPPE_ORDER = ["ring_nu", "foelg_op", "ingen_handling"]
+GRUPPE_LABELS = {
+    "ring_nu":        "Ring nu",
+    "foelg_op":       "Følg op",
+    "ingen_handling": "Ingen handling",
+}
+# Gruppen ER vaegtbaandet, og teksten siger det, saa ingen kan tro at
+# overskriften er en selvstaendig vurdering oven i modellen.
+GRUPPE_HINT = {
+    "ring_nu":        "risikovægt 1,00 · aldrig i gang målte højest af de rigtige zoner",
+    "foelg_op":       "risikovægt 0,15 til 0,70",
+    "ingen_handling": "risikovægt 0,00",
+}
+
+
+def zone_gruppe(zone: str) -> str:
+    """Zonens overgruppe, udledt af den NOMINELLE vaegt.
+
+    Nominel og faktisk falder nu sammen: siden vanebruger-modifikatoren blev
+    fjernet 25-08-2026 (se zone_vaegt()), har alle rækker af samme zone samme
+    vægt, bortset fra opsigelsesfilteret.
+
+    Ukendt zone lander i ingen_handling, samme princip som zone_vaegt's 0,0 og
+    zone_alvor's sidsteplads: en ny zone maa aldrig kunne skubbe kunder op paa
+    listen ved et uheld, kun ned.
+    """
+    v = ZONE_VAEGT.get(zone, 0.0)
+    if v >= 1.00:
+        return "ring_nu"
+    if v > 0:
+        return "foelg_op"
+    return "ingen_handling"
 
 
 def zone_alvor(zone: str) -> int:
     """Zonens alvor som sorteringsnøgle: lavere tal er værre. ZONE_ORDER's index.
 
-    Findes fordi vægten IKKE kan bruges til at bryde uafgjort. Tre zoner deler
-    0,50 (`laenge_tavs`, `aldrig_i_brug`, og `stoppet` uden vane), og en
-    sortering på score alene lader så Pythons stabile sort afgøre resten ud fra
-    den rækkefølge rækkerne tilfældigvis kom i. Målt hos Jyske Bank: AgriWatch
-    ("tavs længere") lå over AMWatch ("stoppet"), begge 0,50 — og "stoppet" er
-    den eneste tilstand hvor noget er sket for nylig og et opkald kan nå at
-    virke. Den blev begravet.
+    Findes fordi vægten IKKE kan bruges til at bryde uafgjort. To zoner deler
+    0,50 (`aldrig_i_gang`, og `gaaet_i_staa` uden vane), og en sortering på
+    score alene lader så Pythons stabile sort afgøre resten ud fra den
+    rækkefølge rækkerne tilfældigvis kom i. Målt hos Jyske Bank, dengang
+    zonerne hed anderledes: AgriWatch ("tavs længere", i dag en del af
+    `gaaet_i_staa`) lå over AMWatch ("stoppet", i dag også `gaaet_i_staa`),
+    begge 0,50 — og en stoppet vanebruger er den eneste tilstand hvor noget er
+    sket for nylig og et opkald kan nå at virke. Den blev begravet.
 
     Rangordenen er ZONE_ORDER selv, som allerede står værst-først. Den må ikke
     kopieres til en ny liste: to kopier af samme rangorden bliver uenige.

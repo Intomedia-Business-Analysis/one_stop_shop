@@ -1,29 +1,30 @@
-"""Kunde-detalje: forberedelse til opkaldet (PRD §7.4).
+"""Kunde-detalje: forberedelse til opkaldet (Kundeside).
 
 Samler alt specialisten skal have foran sig, før hun ringer: kundens
 abonnementer med zone og ARR, 12 måneders forbrug pr. abonnement, ejer og team,
 startdato — og hele historikken af tidligere samtaler og udfald.
 
-Siden skal kunne åbnes for ENHVER kunde, ikke kun dem på risikolisten (PRD
-§7.4). Ellers kan der ikke registreres et udfald på et sundt abonnement, og så
-måler §9 kun de sager vi allerede havde mistanke til.
+Siden skal kunne åbnes for ENHVER kunde, ikke kun dem på risikolisten.
+Ellers kan der ikke registreres et udfald på et sundt abonnement, og så måler
+Målingsiden kun de sager vi allerede havde mistanke til.
 
 CACHEN LIGGER I cache.py, ikke her. `abonnementer_i_risiko()` tager 3,6 sekunder
-selv med varm fil, og arbejdsgangen i PRD §8 åbner én kunde ad gangen. Da §7.3's
-prioriteringsside kom til, fik den brug for samme beregning — og to caches over
-samme tal kan komme i utakt, så de to sider ville kunne vise forskellige zoner
+selv med varm fil, og arbejdsgangen åbner én kunde ad gangen. Da Dagens
+opkald kom til, fik den brug for samme beregning, og to caches over samme tal
+kan komme i utakt, så de to sider ville kunne vise forskellige zoner
 for samme kunde. Se cache.py for hvorfor den heller ikke ligger i risiko.py.
 """
 import logging
 
 from . import cache
 from .outcomes import INTET_SITE, db_historik, db_seneste_udfald
+from .queries import UDENLANDSKE_ACCOUNTS
 from .usage import serie_og_dage
 from .zones import foregaaende_maaneder, zone_alvor
 
 logger = logging.getLogger(__name__)
 
-# Antal måneder i trendgrafen på detaljesiden. PRD §7.4: "usage-trend 12 mdr".
+# Antal måneder i trendgrafen på detaljesiden. Kundeside: "usage-trend 12 mdr".
 TREND_MAANEDER = 12
 
 
@@ -94,8 +95,8 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
             "trend": trend,
             "seneste_udfald": u,
             # Eneste kilde til en fornyelsesdato, vi har: den nogen har skrevet
-            # ned efter et opkald. Zuora-feltet er stadig ubekræftet, jf. PRD
-            # §11 pkt. 1, og derfor er risiko.TIMINGFAKTOR fortsat 1,0.
+            # ned efter et opkald. Zuora-feltet er stadig ubekræftet, og
+            # derfor er risiko.TIMINGFAKTOR fortsat 1,0.
             "fornyelsesdato": u["renewal_date"] if u else None,
         })
 
@@ -104,8 +105,9 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
     #
     # Zonens alvor bryder uafgjort. Uden den afgjorde Pythons stabile sort
     # resten ud fra rækkernes tilfældige rækkefølge fra risikolaget, og hos
-    # Jyske Bank lå AgriWatch ("tavs længere") derfor over AMWatch ("stoppet")
-    # — begge scorer 0,50, fordi tre zoner deler den vægt. Se zones.zone_alvor.
+    # Jyske Bank lå AgriWatch ("tavs længere", i dag en del af "gaaet_i_staa")
+    # derfor over AMWatch ("stoppet", i dag også "gaaet_i_staa") — begge
+    # scorer 0,50, fordi to zoner deler den vægt. Se zones.zone_alvor.
     abonnementer.sort(key=lambda a: (a["score"] is None,
                                      -(a["score"] or 0),
                                      zone_alvor(a["zone"])))
@@ -126,6 +128,11 @@ def kunde_detalje(account: str, org_id: int, teams: list | None = None,
             "arr_aktive_abonnementer": arr_total,
             "antal_abonnementer": len(abonnementer),
             "mikrokunde": bool(foerste and foerste["mikrokunde"]),
+            # En bogmærket udenlandsk kunde skal have en TOM side (ingen_aktive)
+            # og ikke en 404, se router.py — men den tomme side skal sige
+            # HVORFOR, så det ikke ligner datatab. rows er allerede tom for
+            # disse, uanset flaget her, fordi db_abonnementer filtrerer dem fra.
+            "udenfor_afgraensning": account in UDENLANDSKE_ACCOUNTS,
         },
         "abonnementer": abonnementer,
         "historik":     historik,
