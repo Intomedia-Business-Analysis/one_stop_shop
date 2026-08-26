@@ -52,6 +52,15 @@ NY_MAANEDER = 3
 FALD_VINDUE = 3
 
 # Hvor stort et fald der skal til for zonen "paa_vej_ned". 0,50 = halveret.
+#
+# STYRER KUN ZONE-LABELEN, IKKE LAENGERE EN SCORE. Maalt 26-08-2026 (fald-sweep,
+# 24 kombinationer af taerskel/vindue/basis, se ZONE_VAEGT's kommentar): ingen
+# kombination bestod laesereglen, og heller ikke 0,50 selv (paa_vej_ned churner
+# UNDER fast_laeser). "paa_vej_ned" og "fast_laeser" har derfor samme vaegt
+# (0,00) og samme gruppe (Ingen handling), og 0,50/3 afgoer stadig hvilken af
+# de to labels en laesers kort viser - en reel forskel for specialisten (en
+# faldende laeser er stadig vaerre nyt end en stabil, jf. zone_alvor), men uden
+# proven grundlag. Aendres graensen, aendres kun HVEM der ser hvilket ord.
 FALD_GRAENSE = 0.50
 
 # Diskriminatoren for "vanebruger" er AKTIVE DAGE, ikke sidevisninger, og
@@ -94,9 +103,25 @@ ZONE_ORDER = ["aldrig_i_gang", "gaaet_i_staa", "paa_vej_ned", "fast_laeser",
 # churn-rate 6,80%), normaliseret til 0,70 — OGSAA vanebruger-splittet der før
 # gav den 1,00/0,50 er fjernet, se zone_vaegt()'s docstring.
 #
-# `paa_vej_ned` BESTOD IKKE maalingens laeseregel (indeks 0,55 i den foerste af
-# tre kohorter, under 1,00) og staar derfor UAENDRET paa sin gamle 0,40 som et
-# ukalibreret skoen, ikke en maalt vaerdi. Samme status som foer 25-08-2026.
+# `paa_vej_ned` ER NU AFSKAFFET SOM SCORE, MAALT 26-08-2026. Zonen dumpede sin
+# egen laeseregel to gange (21-08: 36 kombinationer af visninger/laesedage/
+# unikke_brugere x fire taerskler, ingen over 1,10; 25-08: indeks 0,55 i den
+# foerste kohorte). Et fald-sweep 26-08 udvidede gitteret til seks taerskler
+# (20-70 %) x to baser (visninger/laesedage) x to vinduer (3 og 6 maaneder, 6
+# kun daekket for kohorten 2026-01) - 24 celler, NUL bestod laesereglen (indeks
+# over 1,00 i alle tre kohorter, n >= 300, konsistent rangorden). Den taetteste
+# celle var "visninger v3 70%" (0,71/0,89/1,24), som baade dumper 2025-11 og
+# 2025-12 OG har n=289 under n-graensen. En faldende laeser churner ikke
+# oftere end en stabil (paa_vej_ned 4,38 % mod fast_laeser 4,75 %), saa vaegten
+# er 0,00 og ikke et skoen. Se kohortemaaling.py's FALD_GITTER.
+#
+# Konsekvens maalt paa 13.044 danske abonnementer FOER aendringen: Foelg op
+# gaar fra 6.779 til 3.890 abonnementer (70,2 til 21,2 mio. kr.), Ingen
+# handling fra 5.580 til 8.469. Ring nu er UPAAVIRKET (685 / 3,8 mio. kr., kun
+# aldrig_i_gang naar 1,00). Top 20 skifter markant: kun 4 af 20 kunder/sites
+# staar fast, fordi store paa_vej_ned-konti (DR, KMD, Deloitte, Ascendis
+# Pharma, Takeda) tidligere konkurrerede sig ind paa ARR trods en moderat
+# vaegt (score = ARR x vaegt x TIMINGFAKTOR) og nu forsvinder helt fra listen.
 #
 # `ingen_data` maalte hoejest af alle (indeks ca. 5,3, churn-rate 31%), men det
 # er LAEKAGE og ikke risiko: gruppen bestaar naesten kun af raekker uden Zuora-
@@ -111,7 +136,7 @@ ZONE_ORDER = ["aldrig_i_gang", "gaaet_i_staa", "paa_vej_ned", "fast_laeser",
 ZONE_VAEGT = {
     "aldrig_i_gang": 1.00,
     "gaaet_i_staa":  0.70,
-    "paa_vej_ned":   0.40,
+    "paa_vej_ned":   0.00,
     "ingen_data":    0.15,
     "fast_laeser":   0.00,
     "nystartet":     0.00,
@@ -299,7 +324,8 @@ def bestem_zone(forbrug: dict,
 
     `har_aktiv_konto` er falsk naar kunden KUN kan kobles gennem ophoerte
     Zuora-konti. Default sand, saa en kalder uden den oplysning ikke faar en
-    zone skjult; samme princip som zone_vaegt's `vanebruger`.
+    zone skjult - samme princip som `har_zuora_kobling` lige over: mangler
+    en kalder oplysningen, skal fejlen vise for meget risiko, ikke skjule den.
 
     Rækkefølgen af tjek er betydningsbærende og må ikke ombyttes:
     et nyt abonnement kan ikke være "gaaet i staa", og et utrackbart kan ikke
@@ -406,6 +432,10 @@ GRUPPE_LABELS = {
 GRUPPE_HINT = {
     "ring_nu":        "risikovægt 1,00 · aldrig i gang målte højest af de rigtige zoner",
     "foelg_op":       "risikovægt 0,15 til 0,70",
+    # paa_vej_ned (0,40) er ude siden 26-08-2026: zonen churner UNDER
+    # fast_laeser (4,38 % mod 4,75 %), maalt over 24 taerskel/vindue/basis-
+    # kombinationer uden en eneste over 1,00. Foelg op er derfor kun
+    # gaaet_i_staa og ingen_data.
     "ingen_handling": "risikovægt 0,00",
 }
 

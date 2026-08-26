@@ -101,6 +101,7 @@ vaerdier for recency, og 77 % ligger paa nul, saa den kan ikke maales derfra.
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -119,7 +120,7 @@ from moduler.modul_retention.usage import (                          # noqa: E40
 )
 from moduler.modul_retention.zones import (                          # noqa: E402
     FALD_VINDUE, NY_MAANEDER, PAKKE_SITES, ZONE_ORDER, bestem_zone,
-    er_vanebruger, forskyd_maaned, kanonisk_site,
+    er_vanebruger, foregaaende_maaneder, forskyd_maaned, kanonisk_site,
 )
 
 # Tre kohorter og seks maaneders horisont, som 21-08. Tre og ikke een, fordi et
@@ -161,6 +162,27 @@ ARTIKEL_ORDER = ["art 60+", "art 21-60", "art 6-20", "art 1-5", "art 0"]
 FLAG_ORDER = ["uden aktiv konto (LAEKKET)", "har aktiv konto"]
 HUL_ORDER = ["uden kobling", "utrackbart site"]
 VANE_ORDER = ["gaaet_i_staa MED vane", "gaaet_i_staa UDEN vane"]
+
+# FALD-SWEEPET. 21-08-maalingen testede 36 kombinationer (visninger, laesedage,
+# unikke_brugere x 20/30/40/50 %) mod rigtige opsigelser og fandt intet over
+# 1,10 - men aldrig en taerskel haardere end 50 %. Det er den ene celle-blok
+# der er ny, saa den er med her. Vindue 6 er den anden uprovede dimension
+# (zones.FALD_VINDUE er aldrig varieret), og maales KUN hvor der er daekning i
+# eksporten - se fald_baand().
+FALD_VINDUER = (3, 6)
+FALD_BASER = ("visninger", "laesedage")
+FALD_TAERSKLER = (0.20, 0.30, 0.40, 0.50, 0.60, 0.70)
+
+
+def _fald_cellenavn(basis: str, vindue: int, graense: float) -> str:
+    return "%s v%d %d%%" % (basis, vindue, round(100 * graense))
+
+
+FALD_GITTER = [(basis, vindue, graense)
+               for vindue in FALD_VINDUER
+               for basis in FALD_BASER
+               for graense in FALD_TAERSKLER]
+FALD_ORDER = [_fald_cellenavn(*celle) for celle in FALD_GITTER]
 
 
 def sidste_dag(maaned: str) -> str:
@@ -322,8 +344,32 @@ def recency_baand(sidste: dict, kunde: tuple, site: str, maaned: str,
     return "R 90+"
 
 
+def fald_baand(kilde: dict, reference: str, vindue: int, graense: float,
+               eksport_foerste_maaned: str) -> Optional[str]:
+    """FALDER/stabil for ét abonnement, på et af FALD_GITTERs kombinationer.
+
+    Regnereglen er den samme som zones.bestem_zone's egen: snit over vinduet,
+    `snit > 0` som gate (et snit paa nul er en kunde der lige er begyndt at
+    laese, ikke et fald), og referencen sammenlignet mod snit * (1 - graense).
+
+    Returnerer None naar vinduet raekker foer eksportens foerste maaned. En
+    manglende maaned laeses som nul af `kilde.get(m, 0)`, og det ville
+    FABRIKERE et fald i stedet for at mangle daekning - se planens fælde om
+    FALD_VINDUE=6, som derfor kun kan maales for kohorten 2026-01.
+    """
+    tidligere_maaneder = foregaaende_maaneder(reference, vindue)
+    if min(tidligere_maaneder) < eksport_foerste_maaned:
+        return None
+    tidligere = [kilde.get(m, 0) for m in tidligere_maaneder]
+    snit = sum(tidligere) / vindue
+    if snit > 0 and kilde.get(reference, 0) <= snit * (1 - graense):
+        return "FALDER"
+    return "stabil"
+
+
 def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
-                 sidste: dict, pr_abo: dict, pr_kunde: dict) -> dict:
+                 sidste: dict, pr_abo: dict, pr_kunde: dict,
+                 eksport_foerste_maaned: str) -> dict:
     """Alle grupperinger for een kohortemaaned."""
     slut = sidste_dag(forskyd_maaned(maaned, -HORISONT))
     ultimo = sidste_dag(maaned)
@@ -331,7 +377,7 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
     uden_aktiv = forbrug["uden_aktiv_konto"]
 
     grupper = {"zoner": {}, "recency": {}, "artikler": {}, "flag": {},
-               "hul": {}, "vane": {}}
+               "hul": {}, "vane": {}, "fald": {}}
     n_udeladt = n_allerede = n_monitor = 0
     alle_n = alle_o = 0
 
@@ -405,6 +451,22 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
             if sidste:
                 taeld("recency", recency_baand(sidste, kunde, site, maaned,
                                                ultimo), opsagt)
+
+        # FALD-SWEEPET. Populationen er praecis de rækker hvor spoergsmaalet
+        # findes: dem der laeste i referencemaaneden. z's produktions-vaerdi
+        # kommer allerede fra bestem_zone med FALD_VINDUE=3/FALD_GRAENSE=0,50
+        # (den nuvaerende celle er derfor med i gitteret som sanity-check mod
+        # ZONER-tabellens paa_vej_ned-indeks). Kun FALDER-udfaldet taelles ind
+        # pr. celle, samme princip som zonen "paa_vej_ned" selv kun taeller de
+        # raekker der falder - de stabile er allerede i basisraten.
+        if z in ("fast_laeser", "paa_vej_ned"):
+            for basis, vindue, graense in FALD_GITTER:
+                kilde = serie if basis == "visninger" else dage
+                udfald = fald_baand(kilde, maaned, vindue, graense,
+                                    eksport_foerste_maaned)
+                if udfald == "FALDER":
+                    taeld("fald", _fald_cellenavn(basis, vindue, graense),
+                          opsagt)
 
     n = sum(v[0] for v in grupper["zoner"].values())
     o = sum(v[1] for v in grupper["zoner"].values())
@@ -548,10 +610,16 @@ def main() -> int:
     print("  opsigelser  : %d abonnementer med mindst een vundet opsigelse"
           % len(opsigelser))
 
+    # Eksportens foerste maaned, til fald_baand()'s daekningstjek: et vindue
+    # der raekker udenfor eksporten laeses ellers som nul og fabrikerer et
+    # fald i stedet for at mangle daekning.
+    eksport_foerste_maaned = min(forbrug["maaneder"])
+    print("  eksportvindue: fra %s" % eksport_foerste_maaned)
+
     resultater = []
     for m in KOHORTER:
         r = maal_kohorte(m, forbrug, opsigelser, udeluk, sidste, pr_abo,
-                         pr_kunde)
+                         pr_kunde, eksport_foerste_maaned)
         resultater.append(r)
         print("\n  %s: %d i maalingen, %d opsagt inden for %d mdr."
               "  BASISRATE %.2f %%"
@@ -590,6 +658,9 @@ def main() -> int:
              "basisrate"),
             ("KONTO-FLAGET, mod HELE populationen, kun diagnose", "flag",
              FLAG_ORDER, "basisrate_alle"),
+            ("FALD-SWEEP: kun FALDER-udfaldet, basis x vindue x taerskel "
+             "(vindue 6 kun daekket for 2026-01, kan ikke baere en "
+             "beslutning alene)", "fald", FALD_ORDER, "basisrate"),
     ):
         pr = [indeks(r[noegle], r[rate]) for r in resultater]
         if any(pr):
