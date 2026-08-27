@@ -429,6 +429,14 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
     Begge sendes med, fordi siden SKAL skrive dem. Gør den ikke det, spørger
     nogen hver måned, hvorfor "kroner reddet" er lille, mens risikolisten er
     lang — og tror, at det ene modsiger det andet.
+
+    `risiko`-nøglen bærer HELE risikobilledet videre (alle rækker, zonerne,
+    rækkefølgen), ikke kun de folder-rester `fold_risici` selv har brug for.
+    Den findes, fordi "Opkald og risiko" (sammenlagt 2026-08-27 af Dagens
+    opkald og Churn-risiko) skal kunne tegne zonekortene og den fulde tabel af
+    ét og samme kald — kaldte siden `/retention/risk` derved selv, ville
+    `abonnementer_i_risiko()` (3,6 sekunder ukachet) køre igen oven på det
+    `cache.risiko()` allerede lige har regnet.
     """
     risiko_data = cache.risiko(teams, abo_maaned)
     navne = cache.navne()
@@ -477,4 +485,14 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
         # forbrugsfilen, står ALLE abonnementer som "intet signal", og en liste
         # der ser tom for risiko ud er den farligste visning siden kan lave.
         "meta":             risiko_data["meta"],
+        # Det UFOLDEDE risikobillede, pr. abonnement — til zonekortene og den
+        # store tabel på "Opkald og risiko". `rows` her er ALLE abonnementer,
+        # ikke kun dem `fold_risici` har rangeret; `nye_risici` ovenfor er en
+        # udvalgt delmængde, denne er totalen.
+        "risiko": {
+            "rows":         risiko_data["rows"],
+            "zones":        risiko_data["zones"],
+            "zone_order":   risiko_data["zone_order"],
+            "gruppe_order": risiko_data["gruppe_order"],
+        },
     }
