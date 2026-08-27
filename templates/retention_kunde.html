@@ -30,7 +30,7 @@
            padding:14px 16px; margin-bottom:12px; background:var(--surface); }
     .abo.aldrig_i_gang { border-left-color:var(--danger); }
     .abo.gaaet_i_staa  { border-left-color:var(--warn); }
-    .abo.paa_vej_ned   { border-left-color:var(--warn); }
+    .abo.paa_vej_ned   { border-left-color:var(--win); }
     .abo.fast_laeser   { border-left-color:var(--win); }
     .abo.nystartet     { border-left-color:var(--taupe); }
     .abo.lukket_konto  { border-left-color:var(--ink-4); }
@@ -48,21 +48,27 @@
              text-transform:uppercase; letter-spacing:.04em; padding:2px 7px;
              border-radius:999px; background:var(--ink-2); color:var(--surface);
              margin-left:4px; }
-    .abo-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+    .abo-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+    /* Uden min-width:0 vokser venstre kolonne med sin egen tekst i stedet for
+       at bryde om, og skubber hele beløbet ned under teksten i stedet for at
+       holde det stående til højre. Sås 2026-08-26, da faldprocenten gjorde
+       linjen lang nok til at ramme det. */
+    .abo-links { flex:1 1 auto; min-width:0; }
+    .abo-beloeb { flex:0 0 auto; text-align:right; }
     .abo-site { font-size:14px; font-weight:700; color:var(--ink); }
     .abo-sub  { font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.6; }
     .abo-arr  { font-size:16px; font-weight:700; color:var(--ink); white-space:nowrap; }
     /* Pillen baerer ZONENS farve og ikke graa. Farve er den hurtigste laesning der
        findes, og en graa pille tvinger oejet til at laese ORDET foer det kan se hvor
        slemt det er. Samme farvepar som prioriteringslisten og churn-risiko bruger,
-       saa en zone ser ens ud overalt i modulet. gaaet_i_staa og paa_vej_ned deler
-       gul, fordi de begge ligger i "Foelg op" (vaegt 0,40-0,70), ikke fordi de deler
-       en vaegt. */
+       saa en zone ser ens ud overalt i modulet. Maalt 26-08-2026: paa_vej_ned
+       churner UNDER fast_laeser og deler nu dens farve i stedet for
+       gaaet_i_staa's - begge ligger i "Ingen handling" (vaegt 0,00). */
     .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
              padding:2px 8px; border-radius:999px; background:var(--taupe-light); color:var(--ink-2); }
     .zpill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
     .zpill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
-    .zpill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .zpill.paa_vej_ned   { background:var(--win-light);    color:var(--win); }
     .zpill.fast_laeser   { background:var(--win-light);    color:var(--win); }
     .zpill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
     .zpill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
@@ -421,7 +427,10 @@
     gaaet_i_staa:  'Læste før, er gået i stå',
     aldrig_i_gang: 'Har aldrig taget produktet i brug',
     paa_vej_ned:   'Forbruget falder',
-    fast_laeser:   'Stabilt forbrug',
+    // 'Stabilt forbrug' stod her til 2026-08-26: en beroligelse maalingen
+    // modsiger. fast_laeser churner 4,75 % mod paa_vej_neds 4,38 %, se
+    // zones.py's ZONE_VAEGT-kommentar. Teksten laaner ikke ordet "stabilt".
+    fast_laeser:   'Læser stadig, intet målt fald',
     nystartet:     'For ny til at vurderes',
     lukket_konto:  'Ingen aktiv konto i Zuora, og intet forbrug. Aftalen ser ophørt ud',
     ingen_data:    'Vi kan ikke se forbruget, og det er ikke det samme som risiko'
@@ -521,7 +530,7 @@
       // der betyder noget.
       const mrk = t.sidevisninger > 0 ? `<b>${esc(kortTal(t.sidevisninger))}</b>` : '';
       return `<div class="col${erRef ? ' ref' : ''}"
-                   title="${esc(maanedLang(t.maaned))}: ${nf0.format(t.sidevisninger)} sidevisninger, ${t.dage} aktive dage">`
+                   title="${esc(maanedLang(t.maaned))}: ${nf0.format(t.sidevisninger)} sidevisninger, ${t.dage} læsedage">`
            + `${mrk}<u style="height:${Math.max(h, t.sidevisninger > 0 ? 2 : 0)}%"></u></div>`;
     }).join('');
 
@@ -554,6 +563,23 @@
             </div>`;
   };
 
+  // Faldets procent, regnet af de SAMME to tal zonen selv bruger
+  // (risiko.py's pv_reference og pv_snit_3, samme vindue som zones.bestem_zone
+  // sammenligner mod). Vises kun for paa_vej_ned og fast_laeser: det er den
+  // eneste population hvor pv_snit_3 er positivt og spørgsmålet "hvor meget?"
+  // giver mening — gaaet_i_staa er altid 100 % under (referencen er nul), og
+  // aldrig_i_gang har intet snit at måle fra.
+  const faldTekst = (a) => {
+    if (a.zone !== 'paa_vej_ned' && a.zone !== 'fast_laeser') return null;
+    if (a.pv_snit_3 === null || !(a.pv_snit_3 > 0)) return null;
+    const aendring = a.pv_reference / a.pv_snit_3 - 1;
+    const proc = Math.round(Math.abs(aendring) * 100);
+    if (proc === 0) return 'på niveau med de 3 foregående måneders snit';
+    return proc + (aendring < 0
+      ? ' % under de 3 foregående måneders snit'
+      : ' % over de 3 foregående måneders snit');
+  };
+
   document.getElementById('abonnementer').innerHTML = abos.length ? abos.map(a => {
     const u = a.seneste_udfald;
     // aktive_dage_12m er rækkens EGET tal (vanebruger-vinduet, de 12 mdr FØR
@@ -561,8 +587,9 @@
     // ville give et andet tal — vis aldrig det.
     const dele = [
       `Zone: ${esc(a.zone_label)} (${ZONE_TEKST[a.zone] || ''})`,
+      faldTekst(a),
       `Vægt ${nfv.format(a.vaegt)}`,
-      a.aktive_dage_12m === null ? null : `${a.aktive_dage_12m} aktive dage (12 mdr.)`,
+      a.aktive_dage_12m === null ? null : `${a.aktive_dage_12m} læsedage (12 mdr., alle adgange lagt sammen)`,
       a.vanebruger ? 'Vanebruger' : null,
       `Startet ${esc(maanedLang(a.foerste_maaned))}`,
       a.fornyelsesdato ? `Fornyes ${dato(a.fornyelsesdato)}` : null
@@ -570,11 +597,11 @@
     return `
       <div class="abo ${esc(a.zone)}${a.opsagt_dato ? ' er-opsagt' : ''}">
         <div class="abo-top">
-          <div>
+          <div class="abo-links">
             <div class="abo-site">${esc(a.site)} <span class="zpill ${esc(a.zone)}">${esc(a.zone_label)}</span>${a.opsagt_dato ? `<span class="opill">${a.opsagt ? 'ophørt' : 'opsagt'}</span>` : ''}</div>
             <div class="abo-sub">${dele.map(esc).join(' · ')}</div>
           </div>
-          <div style="text-align:right">
+          <div class="abo-beloeb">
             <div class="abo-arr">${kr(a.arr_dkk)}</div>
             <div class="fine">${esc(arrKildeTekst(a.arr_kilde))}</div>
           </div>

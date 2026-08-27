@@ -81,7 +81,7 @@
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; white-space:nowrap; }
     .pill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
     .pill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
-    .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .pill.paa_vej_ned   { background:var(--win-light);    color:var(--win); }
     .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
     .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
     .pill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
@@ -426,7 +426,7 @@
       + '<th style="width:32%">Kunde</th>'
       // KOLONNEN HED "SCORE" INDTIL 2026-08-17. Tallet er kroner GANGE vægt, altså
       // ikke kroner, men det så ud som et beløb: en kunde til 300.000 kr. i zonen
-      // "faldende" (0,40) stod som 120.000. Datateamet 2026-08-14: en ikke-datakyndig
+      // "gået i stå" (0,70) stod som 210.000. Datateamet 2026-08-14: en ikke-datakyndig
       // skal kunne tolke tallene. "Prioritet" kan ikke læses som penge, og
       // hjælpeteksten er den samme som churn-risiko-siden bruger om samme tal.
       + '<th class="num" style="width:14%" title="Kundens årsværdi × zonens '
@@ -467,8 +467,8 @@
     ud += '<p class="fine" style="margin:14px 0 0"><strong>Om «prioritet»:</strong> '
       + 'kundens årsværdi gange zonens risikovægt, lagt sammen for kundens '
       + 'abonnementer. Det er <strong>ikke et beløb</strong>, men et tal der kun '
-      + 'bruges til at rangere listen. En kunde til 300.000 kr. i zonen «på vej ned» '
-      + '(vægt 0,40) får prioritet 120.000, og en kunde i «aldrig i gang» til 150.000 kr. '
+      + 'bruges til at rangere listen. En kunde til 300.000 kr. i zonen «gået i stå» '
+      + '(vægt 0,70) får prioritet 210.000, og en kunde i «aldrig i gang» til 150.000 kr. '
       + '(vægt 1,00) får 150.000 og ligger dermed øverst.</p>';
 
     // Er listen kortere end pladsen, er bunken tom OGSÅ selv om der står rækker.

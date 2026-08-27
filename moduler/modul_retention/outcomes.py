@@ -293,9 +293,10 @@ def tilbage_paa_listen(raekke: dict) -> dt.date:
     og "har et udfald" følges altid, og de to grene kan ikke overlappe.
 
     UKENDTE VÆRDIER giver STRAKS og ikke ALDRIG. Fejlen skal pege mod at vise
-    for meget frem for for lidt, samme valg som zone_vaegt's `vanebruger=True`.
-    ALDRIG ville lade en kunde forsvinde lydløst; STRAKS lader den dukke op for
-    tidligt, og det bliver set.
+    for meget frem for for lidt, samme valg som zones.bestem_zone's
+    `har_aktiv_konto=True` og `har_zuora_kobling=True`. ALDRIG ville lade en
+    kunde forsvinde lydløst; STRAKS lader den dukke op for tidligt, og det
+    bliver set.
     """
     grundlag = raekke.get("created_at")
     # created_at er en datetime (se _TIDSPUNKT_FELTER), mens resten af regningen

@@ -201,8 +201,8 @@
   const endelig = rows[rows.length - 2] || nyeste;
   const foer    = rows[rows.length - 3] || endelig;
 
-  // INGEN AAR-TIL-AAR-SAMMENLIGNING PAA DENNE SIDE. Den ville vise +30,1% vaekst
-  // (11.688 → 15.205), men 3.450 af dem kom i bulk-importen i maj 2026 og er ikke
+  // INGEN AAR-TIL-AAR-SAMMENLIGNING PAA DENNE SIDE. Den ville vise +30,7% vaekst
+  // (9.982 → 13.046), men 3.426 af dem kom i bulk-importen i maj 2026 og er ikke
   // salg. Et vaekst-tal her ville vaere forkert hver gang det blev laest, indtil
   // importen ruller ud af tolvmaanedersvinduet i maj 2027.
   const netto = endelig.active_count - foer.active_count;
@@ -228,7 +228,7 @@
     ? endeligeRater.slice(-12).reduce((a, b) => a + b, 0)
       / Math.min(12, endeligeRater.length) : null;
 
-  // TO DECIMALER paa churn-kortet, ikke én. Raten ligger mellem 0,40 og 2,18, så
+  // TO DECIMALER paa churn-kortet, ikke én. Raten ligger mellem 0,39 og 2,37, så
   // hundrededele betyder noget: med én decimal blev 1,23 mod et snit på 1,39 vist
   // som "1,2 mod 1,4", og forskellen så større ud end den er. Akserne beholder én
   // decimal, hvor pladsen er knap og præcisionen ikke læses.
@@ -270,7 +270,7 @@
       + maanedDK(visteRater[0].FirstDayOfMonth)
     : 'Kan ikke måles endnu';
 
-  // Bulk-importen i maj 2026: 3.450 abonnementer på én måned, hvoraf 1.769 var
+  // Bulk-importen i maj 2026: 3.426 abonnementer på én måned, hvoraf 1.776 var
   // GENSKABTE abonnementer der allerede fandtes. Den er det mest iøjnefaldende på
   // grafen, og den var indtil 2026-08-18 ikke forklaret noget sted på siden, selv
   // om queries.py's docstring siger at den SKAL være det.
@@ -316,7 +316,7 @@
   // ══════════ GRAF 1: porteføljen ══════════
   //
   // CHURN-RATEN ER FLYTTET UD I SIN EGEN GRAF (2026-08-18). Den laa her paa en
-  // hoejre akse, og en serie paa 0,40 til 2,18% mod en akse til 16.000 abonnementer
+  // hoejre akse, og en serie paa 0,39 til 2,37% mod en akse til 16.000 abonnementer
   // er en flad krusning man ikke kan laese. Dertil var fire serier i en monokrom
   // palet umulige at skelne: "Tilskrevet en saelger" og "Kunder" var begge sorte.
   // Kundelinjen er derfor ogsaa skiftet til taupe her.
@@ -356,7 +356,7 @@
         {
           // Egen stak, saa linjen IKKE lægges oven paa abonnementsarealet.
           // Kontrollen er triviel: kundelinjen skal ligge UNDER stakkens overkant.
-          // Staar den omkring 26.700, blev den stakket alligevel.
+          // Staar den omkring 22.800, blev den stakket alligevel.
           stack: 'kunder',
           label: 'Kunder',
           data: customers,
@@ -390,8 +390,8 @@
                    .reduce((s, i) => s + i.parsed.y, 0)),
             afterBody: (items) =>
               items.some(i => i.dataIndex === klippeIndex)
-                ? ['Bulk-import: 3.450 abonnementer på én måned,',
-                   'hvoraf 1.769 allerede fandtes. Ikke salg.']
+                ? ['Bulk-import: 3.426 abonnementer på én måned,',
+                   'hvoraf 1.776 allerede fandtes. Ikke salg.']
                 : [],
           },
         },
@@ -414,7 +414,7 @@
 
   // ══════════ GRAF 2: churn-raten ══════════
   //
-  // Egen graf med egen akse. Alene bliver spaendet 0,40 til 2,18% laesbart, og de
+  // Egen graf med egen akse. Alene bliver spaendet 0,39 til 2,37% laesbart, og de
   // 37 maaneder uden rate bliver et synligt hul i stedet for et mysterium.
   new Chart(el('churnChart'), {
     type: 'line',
@@ -498,8 +498,8 @@
     + nf1.format(sidstePct) + ' %. Det er grunden til at summen af sælgernes '
     + 'visninger ikke rammer firmatotalen.</p>'
     + '<p><strong>Det lodrette spring i maj 2026 er ikke salg.</strong> Porteføljen '
-    + 'gik fra 12.035 til 15.485 abonnementer på én måned, og 1.769 af dem var '
-    + 'abonnementer der allerede fandtes, forsvandt og kom tilbage, mod 19 til 42 i '
+    + 'gik fra 9.932 til 13.358 abonnementer på én måned, og 1.776 af dem var '
+    + 'abonnementer der allerede fandtes, forsvandt og kom tilbage, mod 7 til 44 i '
     + 'en normal måned. Det er en synkronisering i Pipedrive. Springet gør også, at '
     + 'en sammenligning med samme måned sidste år ikke kan bruges før maj 2027.</p>'
     + '<p><strong>Linjen må ikke bruges til at vurdere en sælgers præstation.</strong> '

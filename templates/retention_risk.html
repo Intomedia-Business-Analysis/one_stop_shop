@@ -42,13 +42,16 @@
     .ghead .ghint  { font-size:11px; color:var(--ink-4); margin-left:auto; }
     .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
              border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
-    /* Farven følger GRUPPEN (Ring nu / Følg op), ikke zonens navn. gaaet_i_staa
-       og paa_vej_ned deler gul, fordi de begge ligger i Følg op (vægt 0,40-0,70)
-       — syv forskellige farver ville antyde en finere rangorden end modellen
-       kan bære. Vægten står på kortet, så grupperingen forklarer sig selv. */
+    /* Farven følger GRUPPEN (Ring nu / Følg op), ikke zonens navn. Maalt
+       26-08-2026: paa_vej_ned churner UNDER fast_laeser (4,38 % mod 4,75 %,
+       nul af 24 taerskel/vindue/basis-kombinationer over 1,00), saa vaegten er
+       0,00 og kortet deler nu farve med fast_laeser i stedet for gaaet_i_staa
+       — en farve der stadig lovede en handling der ikke findes, ville modsige
+       kortets egen vægt-linje. Vægten står på kortet, så grupperingen
+       forklarer sig selv. */
     .zcard.aldrig_i_gang { border-left-color:var(--danger); }
     .zcard.gaaet_i_staa  { border-left-color:var(--warn); }
-    .zcard.paa_vej_ned   { border-left-color:var(--warn); }
+    .zcard.paa_vej_ned   { border-left-color:var(--win); }
     .zcard.fast_laeser   { border-left-color:var(--win); }
     .zcard.nystartet     { border-left-color:var(--taupe); }
     .zcard.lukket_konto  { border-left-color:var(--ink-4); }
@@ -74,7 +77,7 @@
     .zcard.valgt { border-color:var(--border-strong); }
     .zcard.aldrig_i_gang.valgt { background:var(--danger-light); }
     .zcard.gaaet_i_staa.valgt  { background:var(--warn-light); }
-    .zcard.paa_vej_ned.valgt   { background:var(--warn-light); }
+    .zcard.paa_vej_ned.valgt   { background:var(--win-light); }
     .zcard.fast_laeser.valgt   { background:var(--win-light); }
     .zcard.nystartet.valgt     { background:var(--taupe-light); }
     .zcard.lukket_konto.valgt  { background:var(--taupe-light); }
@@ -130,7 +133,7 @@
     .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
     .pill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
     .pill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
-    .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .pill.paa_vej_ned   { background:var(--win-light);    color:var(--win); }
     .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
     .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
     .pill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
@@ -401,7 +404,9 @@
     friskTxt + ' · abonnementer aktive i ' + esc(meta.abo_maaned) + ' · '
     + (meta.thresholds_validated === false
         ? '<strong>vægtene er kun DELVIST kalibreret mod faktisk churn</strong>'
-          + ' (aldrig i gang og gået i stå er målt, de øvrige er stadig gæt)'
+          + ' (aldrig i gang, gået i stå og på vej ned er målt mod rigtige'
+          + ' opsigelser, på vej ned faldt ud som følge; tærsklerne bag den'
+          + ' resterende zone-opdeling er stadig gæt)'
         : 'vægte kalibreret mod faktiske udfald')
     + (opsagte.length
         ? ' · <strong>' + nf0.format(opsagte.length) + ' abonnementer er opsagt</strong>'
@@ -419,7 +424,7 @@
     { key:'zone',            label:'Zone',       w:'11%',
       hint:'Beregnet på sidevisninger i sidste hele måned mod de 3 foregående' },
     { key:'aktive_dage_12m', label:'Dage',       w:'7%', num:true,
-      hint:'Dage med aktivitet i de 12 måneder før referencen, lagt sammen pr. adgang. Over 20 = vanebruger, og først da vejer et stop fuldt' },
+      hint:'Dage med aktivitet i de 12 måneder før referencen, lagt sammen pr. adgang. Over 20 = vanebruger, vist som kontekst — påvirker ikke længere risikovægten (fjernet 25-08-2026, målt mod rigtige opsigelser)' },
     { key:'pv_reference',    label:'Forbrug',    w:'9%', num:true,
       hint:'Sidevisninger i referencemåneden, og til højre snittet af de 3 foregående. Det er de to tal zonen er beregnet af' },
     { key:'fornyelse_dage',  label:'Fornyelse',  w:'8%', num:true,

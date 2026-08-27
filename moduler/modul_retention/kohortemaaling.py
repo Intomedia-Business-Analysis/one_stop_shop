@@ -101,6 +101,7 @@ vaerdier for recency, og 77 % ligger paa nul, saa den kan ikke maales derfra.
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -115,30 +116,56 @@ from moduler.modul_retention.queries import (                        # noqa: E40
     OPSIGELSE_PIPELINES, db_abonnementer,
 )
 from moduler.modul_retention.usage import (                          # noqa: E402
-    customer_key, forbrug_pr_abonnement, load_usage_kunde, serie_og_dage,
+    customer_key, find_latest_kalibrering_file, forbrug_pr_abonnement,
+    load_usage_kunde, serie_og_dage,
 )
 from moduler.modul_retention.zones import (                          # noqa: E402
     FALD_VINDUE, NY_MAANEDER, PAKKE_SITES, ZONE_ORDER, bestem_zone,
-    er_vanebruger, forskyd_maaned, kanonisk_site,
+    er_vanebruger, foregaaende_maaneder, forskyd_maaned, kanonisk_site,
 )
 
-# Tre kohorter og seks maaneders horisont, som 21-08. Tre og ikke een, fordi et
-# indeks paa een kohorte ikke kan skelnes fra stoej: skifter rangordenen mellem
-# de tre, er signalet ikke stabilt nok til at baere en vaegt.
-#
-# 2025-11 til 2026-01, IKKE 2025-12 til 2026-02 (rettet 25-08-2026). To krav
-# skal begge holde:
-#   1. Referencen skal have MIN_HISTORIK = max(NY_MAANEDER, FALD_VINDUE) + 1
-#      = 4 maaneder forbrug BAG sig i eksporten (min 2025-07), ellers beskaeres
-#      serien saa haardt at alt ser "nystartet" ud, jf. kalibrering.py's egen
-#      MIN_HISTORIK-graense. 2025-11 er den TIDLIGSTE maaned der bestaar det.
-#   2. Horisonten (+6 maaneder) skal vaere UDLOEBET i dag, ellers undertaeller
-#      kohorten. Malt 25-08-2026 var 2026-02 SEKS DAGE FRA at vaere gyldig
-#      (2026-02 + 6 mdr = 2026-08-31, i dag er 2026-08-25) - filens egen
-#      advarsel (>>> HORISONTEN ER IKKE UDLOEBET <<<) udloeste for den, og
-#      handoffens tal for 2026-02 var derfor systematisk for lave.
-KOHORTER = ["2025-11", "2025-12", "2026-01"]
 HORISONT = 6
+
+# MIN_HISTORIK maaneders forbrug skal ligge FOER referencen, ellers beskaeres
+# serien saa haardt at alt ser "nystartet" ud (samme graense som
+# kalibrering.py's egen MIN_HISTORIK).
+MIN_HISTORIK = max(NY_MAANEDER, FALD_VINDUE) + 1
+
+# INDTIL 2026-08-26 var KOHORTER en hardkodet liste, ["2025-11", "2025-12",
+# "2026-01"], sat 25-08-2026 fordi maanedsfilens 14-maaneders vindue kun kunne
+# baere tre kohorter (se udled_kohorter nedenfor for de to krav der afgoer
+# det). Med det dybere kalibreringsudtraek kan flere kohorter maales, saa
+# listen udledes nu af den fil der faktisk er indlaest, i stedet for at staa
+# fast naar en dybere fil dukker op.
+KOHORTER: list[str] = []
+
+
+def udled_kohorter(eksport_foerste_maaned: str) -> list[str]:
+    """De kohorter eksporten kan baere, tidligste foerst.
+
+    To krav skal begge holde for hver kandidat-maaned:
+      1. Referencen skal have MIN_HISTORIK maaneders forbrug BAG sig i
+         eksporten, ellers beskaeres serien saa haardt at alt ser "nystartet"
+         ud.
+      2. Horisonten (+HORISONT maaneder) skal vaere UDLOEBET i dag, ellers
+         undertaeller kohorten. Maalt 25-08-2026 var 2026-02 SEKS DAGE FRA at
+         vaere gyldig (2026-02 + 6 mdr = 2026-08-31, dengang var det 2026-08-25)
+         - filens egen advarsel (>>> HORISONTEN ER IKKE UDLOEBET <<<) udloeste
+         for den, og handoffens tal for 2026-02 var derfor systematisk for
+         lave.
+
+    `forskyd_maaned(m, antal)` gaar `antal` maaneder TILBAGE, saa "+HORISONT"
+    skrives som `forskyd_maaned(m, -HORISONT)`, praecis som line med
+    HORISONTEN-tjekket i main() allerede goer.
+    """
+    tidligste = forskyd_maaned(eksport_foerste_maaned, -MIN_HISTORIK)
+    i_dag = date.today().isoformat()
+    kohorter = []
+    m = tidligste
+    while sidste_dag(forskyd_maaned(m, -HORISONT)) <= i_dag:
+        kohorter.append(m)
+        m = forskyd_maaned(m, -1)
+    return kohorter
 
 # MONITOR KAN IKKE MAALES HISTORISK, og det er strukturelt og ikke en fejl vi
 # kan rette i denne fil. Datamarten indeholder slet ikke brandet, saa den
@@ -161,6 +188,27 @@ ARTIKEL_ORDER = ["art 60+", "art 21-60", "art 6-20", "art 1-5", "art 0"]
 FLAG_ORDER = ["uden aktiv konto (LAEKKET)", "har aktiv konto"]
 HUL_ORDER = ["uden kobling", "utrackbart site"]
 VANE_ORDER = ["gaaet_i_staa MED vane", "gaaet_i_staa UDEN vane"]
+
+# FALD-SWEEPET. 21-08-maalingen testede 36 kombinationer (visninger, laesedage,
+# unikke_brugere x 20/30/40/50 %) mod rigtige opsigelser og fandt intet over
+# 1,10 - men aldrig en taerskel haardere end 50 %. Det er den ene celle-blok
+# der er ny, saa den er med her. Vindue 6 er den anden uprovede dimension
+# (zones.FALD_VINDUE er aldrig varieret), og maales KUN hvor der er daekning i
+# eksporten - se fald_baand().
+FALD_VINDUER = (3, 6)
+FALD_BASER = ("visninger", "laesedage")
+FALD_TAERSKLER = (0.20, 0.30, 0.40, 0.50, 0.60, 0.70)
+
+
+def _fald_cellenavn(basis: str, vindue: int, graense: float) -> str:
+    return "%s v%d %d%%" % (basis, vindue, round(100 * graense))
+
+
+FALD_GITTER = [(basis, vindue, graense)
+               for vindue in FALD_VINDUER
+               for basis in FALD_BASER
+               for graense in FALD_TAERSKLER]
+FALD_ORDER = [_fald_cellenavn(*celle) for celle in FALD_GITTER]
 
 
 def sidste_dag(maaned: str) -> str:
@@ -204,12 +252,17 @@ def db_opsigelser_paa_registrering() -> dict:
     return ud
 
 
-def laes_ekstra_kolonner() -> tuple[dict, dict, dict]:
+def laes_ekstra_kolonner(target: Optional[Path] = None) -> tuple[dict, dict, dict]:
     """(sidste_dato, artikler_pr_abonnement, artikler_pr_kunde) fra eksporten.
 
     Laeses HER og ikke i usage.forbrug_pr_abonnement, saa den koerende app ikke
     baerer omkostningen for noget kun en maaling bruger, og saa en maaling ikke
     kan vaelte en side.
+
+    `target` peger normalt paa ingenting (None), og saa laeses den nyeste
+    usage_kunde-eksport. main() sender det dybe kalibreringsudtraek ind her,
+    naar det findes, saa denne funktion og forbrug_pr_abonnement() laeser
+    NOEJAGTIG samme fil.
 
     sidste_dato er tom hvis eksporten mangler kolonne 12.
 
@@ -226,7 +279,7 @@ def laes_ekstra_kolonner() -> tuple[dict, dict, dict]:
         USAGE_COLUMNS, find_latest_usage_file,
     )
 
-    target = find_latest_usage_file()
+    target = target or find_latest_usage_file()
     if target is None:
         raise FileNotFoundError("ingen usage_kunde-eksport fundet")
     df = pd.read_csv(target, header=None, sep=",", encoding="utf-8", dtype=str)
@@ -322,8 +375,32 @@ def recency_baand(sidste: dict, kunde: tuple, site: str, maaned: str,
     return "R 90+"
 
 
+def fald_baand(kilde: dict, reference: str, vindue: int, graense: float,
+               eksport_foerste_maaned: str) -> Optional[str]:
+    """FALDER/stabil for ét abonnement, på et af FALD_GITTERs kombinationer.
+
+    Regnereglen er den samme som zones.bestem_zone's egen: snit over vinduet,
+    `snit > 0` som gate (et snit paa nul er en kunde der lige er begyndt at
+    laese, ikke et fald), og referencen sammenlignet mod snit * (1 - graense).
+
+    Returnerer None naar vinduet raekker foer eksportens foerste maaned. En
+    manglende maaned laeses som nul af `kilde.get(m, 0)`, og det ville
+    FABRIKERE et fald i stedet for at mangle daekning - se planens fælde om
+    FALD_VINDUE=6, som derfor kun kan maales for kohorten 2026-01.
+    """
+    tidligere_maaneder = foregaaende_maaneder(reference, vindue)
+    if min(tidligere_maaneder) < eksport_foerste_maaned:
+        return None
+    tidligere = [kilde.get(m, 0) for m in tidligere_maaneder]
+    snit = sum(tidligere) / vindue
+    if snit > 0 and kilde.get(reference, 0) <= snit * (1 - graense):
+        return "FALDER"
+    return "stabil"
+
+
 def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
-                 sidste: dict, pr_abo: dict, pr_kunde: dict) -> dict:
+                 sidste: dict, pr_abo: dict, pr_kunde: dict,
+                 eksport_foerste_maaned: str) -> dict:
     """Alle grupperinger for een kohortemaaned."""
     slut = sidste_dag(forskyd_maaned(maaned, -HORISONT))
     ultimo = sidste_dag(maaned)
@@ -331,7 +408,7 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
     uden_aktiv = forbrug["uden_aktiv_konto"]
 
     grupper = {"zoner": {}, "recency": {}, "artikler": {}, "flag": {},
-               "hul": {}, "vane": {}}
+               "hul": {}, "vane": {}, "fald": {}}
     n_udeladt = n_allerede = n_monitor = 0
     alle_n = alle_o = 0
 
@@ -406,6 +483,22 @@ def maal_kohorte(maaned: str, forbrug: dict, opsigelser: dict, udeluk: set,
                 taeld("recency", recency_baand(sidste, kunde, site, maaned,
                                                ultimo), opsagt)
 
+        # FALD-SWEEPET. Populationen er praecis de rækker hvor spoergsmaalet
+        # findes: dem der laeste i referencemaaneden. z's produktions-vaerdi
+        # kommer allerede fra bestem_zone med FALD_VINDUE=3/FALD_GRAENSE=0,50
+        # (den nuvaerende celle er derfor med i gitteret som sanity-check mod
+        # ZONER-tabellens paa_vej_ned-indeks). Kun FALDER-udfaldet taelles ind
+        # pr. celle, samme princip som zonen "paa_vej_ned" selv kun taeller de
+        # raekker der falder - de stabile er allerede i basisraten.
+        if z in ("fast_laeser", "paa_vej_ned"):
+            for basis, vindue, graense in FALD_GITTER:
+                kilde = serie if basis == "visninger" else dage
+                udfald = fald_baand(kilde, maaned, vindue, graense,
+                                    eksport_foerste_maaned)
+                if udfald == "FALDER":
+                    taeld("fald", _fald_cellenavn(basis, vindue, graense),
+                          opsagt)
+
     n = sum(v[0] for v in grupper["zoner"].values())
     o = sum(v[1] for v in grupper["zoner"].values())
     grupper["basisrate"] = o / n if n else 0.0
@@ -474,28 +567,43 @@ def skriv_vaegtvektor(resultater: list) -> dict:
                   if z != "ingen_data" and bestaar.get(z)}
     top = max(kandidater.values()) if kandidater else None
 
+    antal_kohorter = len(resultater)
+
     print()
     print("  FORSLAG TIL ZONE_VAEGT  "
           "(normaliseret saa den vaerste BESTAAEDE zone er 1,00)")
     print("  " + "-" * 78)
-    print("  %-16s %8s %10s %9s %8s %8s" %
-          ("zone", "n", "rate", "bestaar?", "forslag", "i dag"))
+    print("  %-16s %8s %10s %9s %8s %8s %8s" %
+          ("zone", "n", "rate", "bestaar?", "over1,00", "forslag", "i dag"))
     for z in ZONE_ORDER:
         if z not in snit_rate:
             continue
         ok = bestaar.get(z, False)
+        ixs = indeks_pr_zone.get(z, [])
+        andel = "%d/%d" % (sum(1 for ix in ixs if ix > 1.00), len(ixs)) \
+            if ixs else "n/a"
         forslag = (snit_rate[z] / top) if (ok and z != "ingen_data" and top) \
             else None
-        print("  %-16s %8d %9.2f%% %9s %8s %8.2f" % (
-            z, n_pr_zone[z], 100 * snit_rate[z], "ja" if ok else "NEJ",
+        print("  %-16s %8d %9.2f%% %9s %8s %8s %8.2f" % (
+            z, n_pr_zone[z], 100 * snit_rate[z], "ja" if ok else "NEJ", andel,
             ("%.2f" % forslag) if forslag is not None else "n/a",
             ZONE_VAEGT.get(z, 0.0)))
     print()
-    print("  BESTAAR = indeks over 1,00 i ALLE tre kohorter (filens egen")
-    print("  laeseregel). ingen_data er udelukket af normaliseringen med")
+    print("  BESTAAR = indeks over 1,00 i ALLE %d kohorter (filens egen"
+          % antal_kohorter)
+    print("  laeseregel). OVER1,00 viser hvor mange af de %d en zone rammer,"
+          % antal_kohorter)
+    print("  saa en zone der lige akkurat dumper kan skelnes fra en der")
+    print("  dumper klart. ingen_data er udelukket af normaliseringen med")
     print("  vilje: dens rate er laekage, ikke risiko, og kontrolgruppen der")
     print("  beviste det er tabt siden den danske afgraensning 25-08-2026.")
     return {"rate": snit_rate, "bestaar": bestaar, "top": top}
+
+
+# Soejler pr. blok i tegn(). 6 x 14 tegn er 84 tegn, plus gruppenavnets 24
+# er 108, hvilket passer i en almindelig terminal. 11 kohorter i EEN linje
+# ville vaere 24 + 14*11 = 178 tegn og ulaeselig.
+SOEJLER_PR_BLOK = 6
 
 
 def tegn(titel: str, pr_kohorte: list, raekkefoelge: list) -> None:
@@ -503,33 +611,57 @@ def tegn(titel: str, pr_kohorte: list, raekkefoelge: list) -> None:
 
     Grupper der IKKE staar i raekkefoelgen tegnes til sidst, saa en ny vaerdi
     aldrig kan forsvinde tavst fra tabellen.
+
+    Skrevet i BLOKKE af hoejst SOEJLER_PR_BLOK kohorter, med gruppenavnene
+    gentaget i hver blok. `pr_kohorte[i]` svarer til `KOHORTER[i]`, samme
+    orden som resultater-listen i main().
     """
     kendte = [g for g in raekkefoelge if any(g in d for d in pr_kohorte)]
     ekstra = sorted({g for d in pr_kohorte for g in d} - set(raekkefoelge))
+    grupper = kendte + ekstra
     print()
     print("  " + titel)
-    print("  " + "-" * (24 + 14 * len(KOHORTER)))
-    print("  %-22s" % "gruppe" + "".join("%13s " % k for k in KOHORTER))
-    for g in kendte + ekstra:
-        celler = []
-        for d in pr_kohorte:
-            if g in d:
-                n, _o, _r, ix = d[g]
-                celler.append("%6.2f (%5d)" % (ix, n))
-            else:
-                celler.append("%13s" % "-")
-        print("  %-22s" % g + "".join("%13s " % c for c in celler))
+    for start in range(0, len(KOHORTER), SOEJLER_PR_BLOK):
+        blok_kohorter = KOHORTER[start:start + SOEJLER_PR_BLOK]
+        blok_data = pr_kohorte[start:start + SOEJLER_PR_BLOK]
+        print("  " + "-" * (24 + 14 * len(blok_kohorter)))
+        print("  %-22s" % "gruppe"
+              + "".join("%13s " % k for k in blok_kohorter))
+        for g in grupper:
+            celler = []
+            for d in blok_data:
+                if g in d:
+                    n, _o, _r, ix = d[g]
+                    celler.append("%6.2f (%5d)" % (ix, n))
+                else:
+                    celler.append("%13s" % "-")
+            print("  %-22s" % g + "".join("%13s " % c for c in celler))
 
 
 def main() -> int:
-    print("=" * 78)
-    print("KOHORTEMAALING  ·  %s  ·  %d maaneders horisont"
-          % (", ".join(KOHORTER), HORISONT))
-    print("=" * 78)
+    global KOHORTER
 
-    forbrug = forbrug_pr_abonnement()
+    # Det dybe kalibreringsudtraek vinder naar det findes. Findes det ikke,
+    # er target None, og BAADE forbrug_pr_abonnement() og laes_ekstra_kolonner()
+    # falder tilbage til den nyeste usage_kunde-maanedsfil, som i dag.
+    target = find_latest_kalibrering_file()
+
+    forbrug = forbrug_pr_abonnement(target)
+
+    # Eksportens foerste maaned, til fald_baand()'s daekningstjek (et vindue
+    # der raekker udenfor eksporten laeses ellers som nul og fabrikerer et
+    # fald i stedet for at mangle daekning) og til at udlede hvilke kohorter
+    # DENNE fil kan baere.
+    eksport_foerste_maaned = min(forbrug["maaneder"])
+    KOHORTER = udled_kohorter(eksport_foerste_maaned)
+
+    print("=" * 78)
+    print("KOHORTEMAALING  ·  %d kohorter (%s)  ·  %d maaneders horisont"
+          % (len(KOHORTER), ", ".join(KOHORTER), HORISONT))
+    print("=" * 78)
     print("  forbrugsfil : %s" % forbrug["meta"]["filename"])
     print("  koblingsfil : %s" % forbrug["meta"]["kobling_filename"])
+    print("  eksportvindue: fra %s" % eksport_foerste_maaned)
 
     udeluk = set(forbrug["kun_fra_snapshot"])                 # Regel 4
     print("  udeladt     : %d kunder der KUN kan kobles via ACV_snapshot"
@@ -537,7 +669,7 @@ def main() -> int:
     print("  BEHOLDT     : %d kunder uden aktiv konto, jf. regel 5"
           % len(forbrug["uden_aktiv_konto"]))
 
-    sidste, pr_abo, pr_kunde = laes_ekstra_kolonner()
+    sidste, pr_abo, pr_kunde = laes_ekstra_kolonner(target)
     if sidste:
         print("  recency     : sidste_dato fundet paa %d enheder" % len(sidste))
     else:
@@ -551,7 +683,7 @@ def main() -> int:
     resultater = []
     for m in KOHORTER:
         r = maal_kohorte(m, forbrug, opsigelser, udeluk, sidste, pr_abo,
-                         pr_kunde)
+                         pr_kunde, eksport_foerste_maaned)
         resultater.append(r)
         print("\n  %s: %d i maalingen, %d opsagt inden for %d mdr."
               "  BASISRATE %.2f %%"
@@ -574,6 +706,14 @@ def main() -> int:
             print("           >>> HORISONTEN ER IKKE UDLOEBET: %d dage mangler"
                   " til %s. Raten er for LAV. <<<" % (mgl, udloeb))
 
+    # Hvor mange kohorter der reelt har daekning for et vindue-6-baand: en
+    # cohorte bidrager kun hvis mindst een " v6 "-celle har faaet et taeld,
+    # jf. fald_baand()'s daekningstjek der springer cohorten over i stedet
+    # for at fabrikere et fald.
+    antal_kohorter = len(resultater)
+    v6_daekning = sum(1 for r in resultater
+                      if any(" v6 " in navn for navn in r["fald"]))
+
     # Adfaerdstabellerne maales mod den RENE basisrate, flag-tabellen mod hele
     # populationens. Blandes de to, sammenlignes en gruppe med et gennemsnit
     # den selv har loeftet.
@@ -590,6 +730,12 @@ def main() -> int:
              "basisrate"),
             ("KONTO-FLAGET, mod HELE populationen, kun diagnose", "flag",
              FLAG_ORDER, "basisrate_alle"),
+            ("FALD-SWEEP: kun FALDER-udfaldet, basis x vindue x taerskel "
+             "(vindue 6 daekket for %d af %d kohorter%s)"
+             % (v6_daekning, antal_kohorter,
+                "" if v6_daekning > 1
+                else ", kan ikke baere en beslutning alene"),
+             "fald", FALD_ORDER, "basisrate"),
     ):
         pr = [indeks(r[noegle], r[rate]) for r in resultater]
         if any(pr):
@@ -597,8 +743,10 @@ def main() -> int:
 
     print()
     print("  LAES TABELLEN SAADAN: 1,00 er gennemsnittet. Et baand kan kun")
-    print("  baere en vaegt hvis det ligger over 1,00 i ALLE tre kohorter OG")
-    print("  rangordenen mellem baandene er den samme i alle tre.")
+    print("  baere en vaegt hvis det ligger over 1,00 i ALLE %d kohorter OG"
+          % antal_kohorter)
+    print("  rangordenen mellem baandene er den samme i alle %d."
+          % antal_kohorter)
     print()
     print("  KONTO-FLAGET er maerket LAEKKET med vilje: konto_status beskriver")
     print("  i dag og ikke kohortemaaneden. Tallet siger hvor meget af")
