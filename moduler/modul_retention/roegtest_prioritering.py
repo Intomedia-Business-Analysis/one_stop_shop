@@ -559,7 +559,11 @@ def saet_afgraensning(tilladte):
     cache.risiko = lambda teams, abo_maaned: {
         "rows": [r for r in risiko_rows
                  if not teams or p.kunde_noegle(r) in tilladte],
-        "meta": {"reference_maaned": "2026-07"}}
+        "meta": {"reference_maaned": "2026-07"},
+        # Tomme, ikke udeladt: prioriteringsdata() baerer dem videre uaendret
+        # i sit "risiko"-svar (Opkald og risiko, 2026-08-27), og de skal derfor
+        # kunne slaas op — testene her proever ikke selve zonekortene.
+        "zones": {}, "zone_order": [], "gruppe_order": []}
 
 
 try:
@@ -635,8 +639,9 @@ print("--- 14: CSS-selectors for hver zone (den tavse faelde ved en omdoebning) 
 # test er spaerren, og skal opdateres naeste gang en zone faar et nyt id.
 _SKABELON_ROOT = REPO_ROOT / "templates"
 for _navn, _klasser in (
-        ("retention_risk.html", ("zcard", "pill")),
-        ("retention_prioritering.html", ("pill",)),
+        # De to sider blev lagt sammen 2026-08-27 til "Opkald og risiko" —
+        # begge klassesæt lever nu i samme skabelon.
+        ("retention_opkald.html", ("zcard", "pill")),
         ("retention_kunde.html", ("abo", "zpill")),
 ):
     _tekst = (_SKABELON_ROOT / _navn).read_text(encoding="utf-8")
