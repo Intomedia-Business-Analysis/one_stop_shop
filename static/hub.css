@@ -770,6 +770,8 @@ a { text-decoration: none; color: inherit; }
   --danger-light:#FDEDF0;
   --warn:        #8A6D1F;   /* amber/gul status */
   --warn-light:  #F6EFD9;
+  --info:        #2E5C8A;   /* neutral blue status, hverken godt eller skidt */
+  --info-light:  #E8EEF5;
 }
 
 /* ── Page scaffolding for tools ──────────────────────────────── */
