@@ -30,11 +30,11 @@
            padding:14px 16px; margin-bottom:12px; background:var(--surface); }
     .abo.aldrig_i_gang { border-left-color:var(--danger); }
     .abo.gaaet_i_staa  { border-left-color:var(--warn); }
-    .abo.paa_vej_ned   { border-left-color:var(--win); }
-    .abo.fast_laeser   { border-left-color:var(--win); }
-    .abo.nystartet     { border-left-color:var(--taupe); }
-    .abo.lukket_konto  { border-left-color:var(--ink-4); }
-    .abo.ingen_data    { border-left-color:var(--ink-4); }
+    .abo.ingen_data    { border-left-color:var(--warn); }
+    .abo.paa_vej_ned   { border-left-color:var(--info); }
+    .abo.fast_laeser   { border-left-color:var(--info); }
+    .abo.nystartet     { border-left-color:var(--info); }
+    .abo.lukket_konto  { border-left-color:var(--info); }
     /* Opsagt overtrumfer zonefarven paa kortet. Zonen beskriver forbrug, men er
        aftalen opsagt, er forbruget ikke laengere det vigtigste man skal se. Kun
        venstrekanten skifter, saa kortet ikke skriger. */
@@ -58,21 +58,24 @@
     .abo-site { font-size:14px; font-weight:700; color:var(--ink); }
     .abo-sub  { font-size:11px; color:var(--ink-3); margin-top:3px; line-height:1.6; }
     .abo-arr  { font-size:16px; font-weight:700; color:var(--ink); white-space:nowrap; }
-    /* Pillen baerer ZONENS farve og ikke graa. Farve er den hurtigste laesning der
-       findes, og en graa pille tvinger oejet til at laese ORDET foer det kan se hvor
-       slemt det er. Samme farvepar som prioriteringslisten og churn-risiko bruger,
-       saa en zone ser ens ud overalt i modulet. Maalt 26-08-2026: paa_vej_ned
-       churner UNDER fast_laeser og deler nu dens farve i stedet for
-       gaaet_i_staa's - begge ligger i "Ingen handling" (vaegt 0,00). */
+    /* Pillen baerer GRUPPENS farve, ikke graa og ikke zonens egen. Farve er den
+       hurtigste laesning der findes, og en graa pille tvinger oejet til at
+       laese ORDET foer det kan se hvor slemt det er. Samme farvepar som
+       prioriteringslisten og churn-risiko bruger, saa en zone ser ens ud
+       overalt i modulet. Rettet 2026-08-27: "Ingen handling" (paa_vej_ned,
+       fast_laeser, nystartet, lukket_konto) er nu BLA, ikke groen — groen
+       sagde "sundt", men paa_vej_ned i den gruppe er ikke et godt tegn, bare
+       ikke (endnu) handlingsudloesende. ingen_data er nu gul som resten af
+       "Foelg op" (vaegt 0,15 > 0), i stedet for graa som en femte kategori. */
     .zpill { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
              padding:2px 8px; border-radius:999px; background:var(--taupe-light); color:var(--ink-2); }
     .zpill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
     .zpill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
-    .zpill.paa_vej_ned   { background:var(--win-light);    color:var(--win); }
-    .zpill.fast_laeser   { background:var(--win-light);    color:var(--win); }
-    .zpill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
-    .zpill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
-    .zpill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
+    .zpill.ingen_data    { background:var(--warn-light);   color:var(--warn); }
+    .zpill.paa_vej_ned   { background:var(--info-light);   color:var(--info); }
+    .zpill.fast_laeser   { background:var(--info-light);   color:var(--info); }
+    .zpill.nystartet     { background:var(--info-light);   color:var(--info); }
+    .zpill.lukket_konto  { background:var(--info-light);   color:var(--info); }
 
     /* ── Forbrugsgrafen.
        Datateamet 2026-08-14: graferne manglede vaerdier paa begge akser. Foer
