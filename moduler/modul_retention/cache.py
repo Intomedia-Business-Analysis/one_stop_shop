@@ -26,7 +26,7 @@ import time
 
 from .queries import db_acv_ejere, db_org_navne
 from .risiko import abonnementer_i_risiko
-from .usage import forbrug_pr_abonnement
+from .usage import forbrug_pr_abonnement, forbrug_pr_site
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,16 @@ def risiko(teams, abo_maaned):
 def forbrug():
     """Forbrug pr. abonnement pr. måned, cachet. 182.000 rækker aggregeret."""
     return cachet(("forbrug",), forbrug_pr_abonnement)
+
+
+def forbrug_site():
+    """Forbrug pr. site pr. måned, cachet. Porteføljens engagement-panel.
+
+    Egen cache-post, IKKE en genbrug af forbrug()'s data: forbrug_pr_site
+    aggregerer UDEN kundekobling (se dens docstring), så de to funktioner
+    læser samme fil men returnerer forskellige ting. Én ryd_cache rammer
+    stadig begge, fordi den tømmer hele _cache."""
+    return cachet(("forbrug_site",), forbrug_pr_site)
 
 
 def ejere(teams):

@@ -7,13 +7,15 @@ from fastapi.templating import Jinja2Templates
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from log_setup import audit_log
 from nav_utils import register_nav_globals
-from .cache import ryd_cache
+from .cache import forbrug_site, ryd_cache
 from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
                        UDFALD, registrer_samtale, valider_registrering)
 from .prioritering import prioriteringsdata
-from .queries import db_monthly_active_counts
+from .queries import (account_churn_rate, db_monthly_active_counts,
+                      db_monthly_churn_pr_site)
+from .usage import latest_complete_month
 
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)
@@ -129,6 +131,56 @@ async def retention_prioritering_redirect(user=Depends(get_current_user)):
 def get_monthly_active_counts(user=Depends(get_current_user)):
     owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
     return db_monthly_active_counts(owner_name=owner_name, teams=teams)
+
+
+@router.get("/retention/churn_pr_site")
+def get_churn_pr_site(maaneder: str, user=Depends(get_current_user)):
+    """"Måned mod måned pr. site"-panelet: opsigelser og aktive pr. site for
+    de valgte måneder, plus raten rullet op pr. account.
+
+    `maaneder` er kommasepareret ('2026-06-01,2026-07-01'), ISO-datoer som i
+    /retention/monthly_active_counts' egne rækker — panelet bygger sine
+    månedsvælgere af DEN liste og sender valget tilbage hertil, så der aldrig
+    opstår et format begge sider skal blive enige om hver for sig.
+
+    Ingen rate pr. site i svaret — churn-rate-kan-ikke-maales-pr-site: kun 2
+    af 35 danske sites har grundlag over MIN_AKTIVE_FOR_RATE. `account_churn_rate`
+    rummer den rate, `sites`-rækkerne rummer kun absolutte tal.
+    """
+    owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
+    maaned_liste = [m.strip() for m in maaneder.split(",") if m.strip()]
+    rows = db_monthly_churn_pr_site(maaned_liste, owner_name=owner_name, teams=teams)
+    return {"sites": rows, "accounts": account_churn_rate(rows, maaned_liste)}
+
+
+@router.get("/retention/forbrug_pr_site")
+def get_forbrug_pr_site(user=Depends(get_current_user)):
+    """"Side- og artikelvisninger pr. site"-panelet.
+
+    INGEN team-afgrænsning på selve dataene: forbrugsfilen har ingen
+    ejer-kolonne, og der findes ingen vej fra et site til et team (se
+    usage.forbrug_pr_site). `_resolve_filters` kaldes alligevel — den er
+    stedet der håndhæver ADGANGEN til RES_OVERBLIK, uafhængigt af om `teams`
+    bruges bagefter.
+
+    ASYMMETRIEN VISES, DEN SKJULES IKKE: er brugeren selv team-afgrænset
+    (`teams is not None`), viser dette endpoints data alligevel hele
+    porteføljen, mens churn-panelet ovenfor ER afgrænset. To paneler der
+    tavst er uenige om omfang er præcis den slags man opdager på et
+    ledermøde, så `bruger_har_team_begraensning` sendes med, og panelet
+    skriver en linje når den er sand. I praksis sjældent: retention er
+    lukket for alt under Sales Operations, og en ubegrænset bruger får
+    `teams=None`.
+    """
+    _, teams = _resolve_filters(user, RES_OVERBLIK)
+    data = forbrug_site()
+    return {
+        "pr_site": data["pr_site"],
+        "maaneder": data["maaneder"],
+        "referencemaaned": latest_complete_month(data["maaneder"]),
+        "meta": data["meta"],
+        "bruger_har_team_begraensning": teams is not None,
+    }
 
 
 @router.get("/retention/overview", response_class=HTMLResponse)

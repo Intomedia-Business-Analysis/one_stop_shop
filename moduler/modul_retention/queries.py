@@ -427,6 +427,199 @@ def db_monthly_active_counts(owner_name: str | None = None,
         return []
 
 
+def _maaned_foer(iso_dato: str) -> str:
+    """Måneden FØR `iso_dato` ('YYYY-MM-DD', altid en FirstDayOfMonth-dato).
+
+    Samme heltalsregning som zones.forskyd_maaned, bare på en fuld ISO-dato i
+    stedet for 'YYYY-MM' — de to konventioner lever side om side i modulet, og
+    denne funktion hører til her, hvor kalderen allerede har fulde datoer fra
+    db_monthly_active_counts.
+    """
+    aar, md = int(iso_dato[:4]), int(iso_dato[5:7])
+    i = aar * 12 + (md - 1) - 1
+    return f"{i // 12:04d}-{i % 12 + 1:02d}-01"
+
+
+def db_monthly_churn_pr_site(maaneder: list[str], owner_name: str | None = None,
+                             teams: list | None = None) -> list:
+    """Aktive og churnede abonnementer pr. (måned, account, site) — Porteføljens
+    "Måned mod måned pr. site"-panel.
+
+    Samme gap-baserede churn-definition som db_monthly_active_counts, én
+    dimension mere. Se den funktions docstring for selve reglerne (to
+    måneders tærskel, DE TO FORSKELLIGE DATEADD-TAL, sidste måned som
+    maksimum) — de er IKKE gentaget her, og de er IKKE ændret.
+
+    `maaneder` er de(n) måned(er) brugeren har valgt i UI'et ('YYYY-MM-01').
+    Funktionen henter selv hver måneds FORGÆNGER (_maaned_foer), fordi
+    account-raten (regnet i Python, se queries-kaldestedet i router.py) skal
+    bruge aktive i M-1 som nævner — churn-raten pr. site vises bevidst IKKE,
+    se churn-rate-kan-ikke-maales-pr-site: kun 2 af 35 danske sites har
+    grundlag over 1.000 aktive.
+
+    KRITISK: `base`-CTE'en er IKKE afgrænset til `maaneder`. Skæres serien af
+    før huller-CTE'en kører sin LEAD, ser hvert abonmenent, der er aktivt i
+    den tidligste valgte måned, ud som om det lige er startet der — og et
+    abonnement der churner LIGE UDEN FOR det valgte vindue ville se ud som om
+    det stadig var aktivt. Afgrænsningen til `maaneder` sker udelukkende i
+    den afsluttende SELECT.
+
+    Returnerer én række pr. (FirstDayOfMonth, account, sites):
+        FirstDayOfMonth, account, sites, active_count, churned_count
+    Ingen customer_count (en kunde med syv sites ville tælles syv gange) og
+    ingen churn_pct (se ovenfor).
+    """
+    if not maaneder:
+        return []
+
+    cte, params = _acv_owner_cte()
+
+    clause = ''
+    if owner_name:
+        clause += ' AND k.owner_name = %s'
+        params += (owner_name,)
+    if teams:
+        team_sql, team_params = _team_exists_clause(teams)
+        clause += team_sql
+        params += team_params
+
+    # Både de valgte måneder og deres forgængere skal med i resultatet — se
+    # docstringen. sorted(set(...)) fjerner dubletter, når to valgte måneder
+    # ligger lige efter hinanden (forgængeren for den ene ER den anden).
+    alle_maaneder = sorted(set(maaneder) | {_maaned_foer(m) for m in maaneder})
+    maaned_ph = ",".join(["%s"] * len(alle_maaneder))
+
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+                       f"""WITH {cte},
+            base AS (
+                SELECT r.FirstDayOfMonth,
+                       r.account,
+                       r.org_id,
+                       -- Samme sentinel som db_monthly_active_counts, af
+                       -- samme grund: marketwires 35 rækker skal holdes
+                       -- samlet i PARTITION BY, ikke spredes af NULL-semantik.
+                       ISNULL(r.sites, '(intet site)') AS sites,
+                       k.owner_name
+                FROM dbo.retention r
+                LEFT JOIN acv_kunde k
+                       ON k.account = r.account AND k.org_id = r.org_id
+                WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
+                    {_KUN_B2B}
+                    {_KUN_DANSKE}
+                    {clause}
+            ),
+            sidste AS (
+                SELECT MAX(FirstDayOfMonth) AS max_maaned FROM base
+            ),
+            huller AS (
+                SELECT FirstDayOfMonth,
+                       account,
+                       sites,
+                       LEAD(FirstDayOfMonth) OVER (
+                           PARTITION BY account, org_id, sites
+                           ORDER BY FirstDayOfMonth) AS naeste
+                FROM base
+            ),
+            churn AS (
+                -- SAMME TO DATEADD-TAL, forskellige med vilje: se
+                -- db_monthly_active_counts. `month, 2` er tærsklen (hvor
+                -- stort hullet skal være), `month, 1` er
+                -- registreringsmåneden.
+                SELECT DATEADD(month, 1, h.FirstDayOfMonth) AS maaned,
+                       h.account,
+                       h.sites,
+                       COUNT(*) AS churned_count
+                FROM huller h
+                CROSS JOIN sidste s
+                WHERE h.FirstDayOfMonth < s.max_maaned
+                  AND (h.naeste IS NULL
+                       OR h.naeste > DATEADD(month, 2, h.FirstDayOfMonth))
+                GROUP BY DATEADD(month, 1, h.FirstDayOfMonth), h.account, h.sites
+            ),
+            aktive AS (
+                SELECT FirstDayOfMonth,
+                       account,
+                       sites,
+                       COUNT(*) AS active_count
+                FROM base
+                GROUP BY FirstDayOfMonth, account, sites
+            )
+            SELECT a.FirstDayOfMonth,
+                   a.account,
+                   a.sites,
+                   a.active_count,
+                   ISNULL(c.churned_count, 0) AS churned_count
+            FROM aktive a
+            LEFT JOIN churn c ON c.maaned = a.FirstDayOfMonth
+                             AND c.account = a.account
+                             AND c.sites = a.sites
+            WHERE a.FirstDayOfMonth IN ({maaned_ph})
+            ORDER BY a.FirstDayOfMonth, a.account, a.sites;""",
+            params + tuple(alle_maaneder),
+        )
+        result = cur.fetchall()
+        conn.close()
+        return result
+    except Exception:
+        logger.exception("db_monthly_churn_pr_site fejlede")
+        return []
+
+
+# Samme grænse som db_monthly_active_counts' churn_pct: under 1.000 aktive i
+# M-1 er raten støj, ikke måling. Genbruges her og IKKE i SQL'en, se
+# account_churn_rate's docstring for hvorfor.
+MIN_AKTIVE_FOR_RATE = 1000
+
+
+def account_churn_rate(rows: list, maaneder: list[str]) -> list:
+    """Ruller db_monthly_churn_pr_site's site-rækker op til en rate pr.
+    account — churn-rate-kan-ikke-maales-pr-site (målt 2026-08-27): kun 2 af
+    35 danske sites har grundlag over MIN_AKTIVE_FOR_RATE, mens account-
+    niveauet holder (fx AdvokatWatch DK svinger med faktor 7,5 på syv
+    måneder, hele porteføljen kun 0,39-2,37% over 126 måneder).
+
+    Ren funktion over rækkerne, IKKE en ny forespørgsel: grænsen skal stå ét
+    sted, ikke gentages i endnu en SQL-aggregering, hvor den kunne komme til
+    at afvige fra db_monthly_active_counts' egen.
+
+    For hver valgt måned M: nævneren er summen af active_count over ALLE
+    sites for kontoen i M-1 (måneden før), tælleren er summen af
+    churned_count over alle sites for kontoen i M. Rækkerne for M-1 findes i
+    `rows`, fordi db_monthly_churn_pr_site selv henter hver måneds forgænger
+    — se den funktions docstring.
+
+    Returnerer én række pr. (account, maaned):
+        account, maaned, active_foer, churned, churn_pct (None under grænsen)
+    """
+    aktive: dict[tuple, int] = {}
+    churnet: dict[tuple, int] = {}
+    for r in rows:
+        noegle = (r["account"], r["FirstDayOfMonth"])
+        aktive[noegle] = aktive.get(noegle, 0) + r["active_count"]
+        churnet[noegle] = churnet.get(noegle, 0) + r["churned_count"]
+
+    resultat = []
+    for maaned in maaneder:
+        forrige = _maaned_foer(maaned)
+        accounts = sorted({acc for (acc, m) in aktive if m in (maaned, forrige)})
+        for account in accounts:
+            active_foer = aktive.get((account, forrige), 0)
+            churned_nu = churnet.get((account, maaned), 0)
+            churn_pct = (round(100.0 * churned_nu / active_foer, 2)
+                         if active_foer >= MIN_AKTIVE_FOR_RATE else None)
+            resultat.append({
+                "account": account,
+                "maaned": maaned,
+                "active_foer": active_foer,
+                "churned": churned_nu,
+                "churn_pct": churn_pct,
+            })
+    return resultat
+
+
 def db_customers_at_risk_base(owner_name: str | None = None,
                               teams: list | None = None) -> list:
     """Aktive kunder i indeværende måned med ARR og ejer — grundlaget for

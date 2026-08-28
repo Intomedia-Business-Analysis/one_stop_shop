@@ -685,3 +685,76 @@ def forbrug_pr_abonnement(path: Optional[Path] = None) -> dict:
             "uden_aktiv_konto": grundlag["uden_aktiv_konto"],
             "kun_fra_snapshot": grundlag["kun_fra_snapshot"],
             "maaneder": usage["maaneder"], "meta": meta}
+
+
+def _aggreger_pr_site(df) -> dict:
+    """Ren funktion over usage_kunde-framen: sidevisninger og artikelvisninger
+    lagt sammen pr. (kanonisk site, måned), UDEN kundekobling.
+
+    Split ud af `forbrug_pr_site` for at kunne testes mod en lille
+    fixture-DataFrame uden filen — samme grund som `koblingsgrundlag` og
+    `forbrug_pr_abonnement` er to funktioner og ikke én.
+
+    INGEN KUNDENØGLE. Det er hele grunden til at `monitor` kan vises: 0 af
+    monitors 36.707 rækker har et `pipedrive_id` (målt 2026-08-28), så de kan
+    kun kobles til en KUNDE gennem ACV_snapshot, som kun kender AKTIVE konti
+    — se koblingsgrundlag()'s lækage-advarsel. Et SITE-panel har ikke brug for
+    kundenøglen og rammer derfor ikke den begrænsning. Populationen her er
+    derfor BREDERE end forbrug_pr_abonnement's: enhver række på sitet tælles
+    med, uanset om kunden bag den kan slås op. Det skal stå i panelets
+    undertekst, ikke kun her.
+
+    `.com`-udgaver foldes ind i søster-sitet af samme `zones.kanonisk_site`
+    som abonnementssiden bruger — det er dét der lader de to vokabularer
+    mødes, og derfor bruges den samme funktion begge steder frem for en
+    lokal kopi der kunne drive fra den.
+
+    Returnerer {site: {maaned: {"page_views": n, "artikelvisninger": n}}}.
+    """
+    from .zones import kanonisk_site
+
+    pr_site: dict = {}
+    # zip over de rå kolonner, ikke df.iterrows(): samme begrundelse som
+    # forbrug_pr_abonnement — iterrows bygger en Series pr. række og tager
+    # minutter på 183.000 rækker.
+    for site, maaned, pv, artikler in zip(
+            df["site"], df["maaned"], df["page_views"], df["artikelvisninger"]):
+        site_k = kanonisk_site(site)
+        if site_k is None:
+            # marketwire og de sitelose rækker har intet at aggregere PÅ —
+            # der findes intet site-panel-bucket for "intet site", i
+            # modsætning til risikolistens INTET_SITE, som nøgler på en
+            # KUNDE. Rammer aldrig i praksis (usage-filen har altid en
+            # site-streng), men skal ikke kunne krasje på en tom.
+            continue
+        m = pr_site.setdefault(site_k, {})
+        c = m.setdefault(maaned, {"page_views": 0, "artikelvisninger": 0})
+        c["page_views"] += int(pv)
+        c["artikelvisninger"] += int(artikler)
+    return pr_site
+
+
+def forbrug_pr_site(path: Optional[Path] = None) -> dict:
+    """Side- og artikelvisninger pr. site pr. måned — Porteføljens
+    "Side- og artikelvisninger pr. site"-panel.
+
+    I MODSÆTNING TIL `forbrug_pr_abonnement` er der INGEN kundekobling her,
+    se `_aggreger_pr_site`'s docstring for hvorfor det er nødvendigt for at
+    kunne vise `monitor`. Konsekvensen er at denne funktions population er
+    større: en række uden kendt kunde tælles stadig med her, men ville være
+    faldet ud af `forbrug_pr_abonnement`.
+
+    `path` peger normalt på ingenting (None), og så læses den nyeste
+    usage_kunde-eksport, som er appens eneste adfærd.
+
+    Returnerer:
+        pr_site   — {site: {maaned: {"page_views", "artikelvisninger"}}}
+        maaneder  — sorteret liste, 'YYYY-MM', fra usage["maaneder"]
+        meta      — fra load_usage_kunde, plus antal sites
+    """
+    usage = load_usage_kunde(path)
+    pr_site = _aggreger_pr_site(usage["frame"])
+
+    meta = dict(usage["meta"])
+    meta["sites_med_forbrug"] = len(pr_site)
+    return {"pr_site": pr_site, "maaneder": usage["maaneder"], "meta": meta}
