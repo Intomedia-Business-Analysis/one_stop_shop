@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hub-dev",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-Command", "$env:DEV_MODE='1'; .venv\\Scripts\\python.exe -m uvicorn app:app --port $env:PORT"],
+      "port": 8123,
+      "autoPort": true
+    },
+    {
+      "name": "hub-login",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-Command", ".venv\\Scripts\\python.exe -m uvicorn app:app --port 8124"],
+      "port": 8124
+    }
+  ]
+}

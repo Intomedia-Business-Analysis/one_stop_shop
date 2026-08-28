@@ -182,11 +182,6 @@ def _acv_owner_cte() -> tuple[str, tuple]:
     sælgeres lister (2.402 af 2.403 fler-site-kunder har præcis én ACV-ejer,
     mod 1.358 af 2.389 med 2+ retention_owner-ejere).
 
-    ALLE TAL I DETTE AFSNIT er målt 2026-08-04, FOER den danske afgraensning
-    25-08, og er ikke genmålt: sammenligningen kræver en kørsel af
-    dbo.retention_owner. ACV-siden alene er genmålt 2026-08-26 til 12.178 af
-    13.046 rækker (93,3%), se db_monthly_active_counts.
-
     Bemærk at ingen af kilderne er historisk korrekte: begge er nutids-snapshots,
     så en sælger ansat i 2024 får en trendlinje tilbage til 2016 med kunder han
     har arvet. Linjen er "min bogs historie", ikke "det jeg har solgt".
@@ -271,19 +266,15 @@ def db_monthly_active_counts(owner_name: str | None = None,
     """Antal aktive org+site-kombinationer pr. måned — retention-trendlinjen.
 
     Grainen er bevidst uændret: én række pr. (account, org_id, sites) pr. måned,
-    så hele historikken er sammenlignelig med de tal der er valideret tidligere.
-    `active_count` er 13.046 for indeværende måned, genmålt 2026-08-26. Var
-    15.123 målt 2026-08-04, FOER den danske afgraensning 25-08.
+    så `active_count` fortsat er 15.123 for indeværende måned og hele historikken
+    er sammenlignelig med de tal der er valideret tidligere.
 
     Ejeren kommer fra ACV (se _acv_owner_cte), ikke længere fra
-    dbo.retention_owner. Det ændrer IKKE `active_count`, kun `attributed_count`.
-    Genmålt 2026-08-26: 12.178 af 13.046 rækker har en ejer, altså 93,3%
-    dækning, og gruppen '(Ikke tilskrevet)' i grafen er 868 abonnementer.
-    Sammenligningen med dbo.retention_owner (12.623 til 13.916 af 15.123, 83,5%
-    til 92,0%, uenighed om 47% af rækkerne) er målt 2026-08-04, FOER den danske
-    afgraensning 25-08, og er IKKE genmålt: den gamle kilde skal køres igen for
-    at give et tal på dagens grundlag. Skiftet blev valgt for at risikolisten og
-    denne graf kan bruge samme ejer-definition.
+    dbo.retention_owner. Det ændrer IKKE `active_count`, kun `attributed_count`:
+    målt 2026-08-04 flytter den fra 12.623 til 13.916 af 15.123 rækker, altså fra
+    83,5% til 92,0% dækning. Gruppen '(Ikke tilskrevet)' i grafen falder dermed
+    fra ~2.500 til ~1.200. Skiftet blev valgt for at risikolisten og denne graf
+    kan bruge samme ejer-definition — de var før uenige om 47% af rækkerne.
 
     Ejer-filteret ligger i WHERE og ikke i ON: i ON ville rækker der tilhører
     ANDRE sælgere blive bevaret med NULL (LEFT JOIN-semantik), så en sælger ville
@@ -294,23 +285,23 @@ def db_monthly_active_counts(owner_name: str | None = None,
     Returnerer pr. måned: `active_count` (abonnementer), `attributed_count`
     (abonnementer med en ACV-ejer), `customer_count` (distinkte (account,
     org_id)), `churned_count` og `churn_pct`. Porteføljen kræver de to sidste
-    kolonner, og kunde-linjen findes for at gøre forskellen på 13.046 og 9.784
-    synlig i stedet for forvirrende (genmålt 2026-08-26).
+    kolonner, og kunde-linjen findes for at gøre forskellen på 15.205 og 11.621
+    synlig i stedet for forvirrende.
 
     CHURN-DEFINITIONEN er GAP-baseret, ikke "sidste måned abonnementet fandtes".
-    Et abonnement kan forsvinde og komme tilbage: maj 2026 havde 1.776
-    genstartede mod 7-44 i en normal måned (genmålt 2026-08-26). En MAX-baseret definition ville kun
+    Et abonnement kan forsvinde og komme tilbage: maj 2026 havde 1.769
+    genstartede mod 19-42 i en normal måned. En MAX-baseret definition ville kun
     se det sidste farvel og undertælle al historisk churn, så `LEAD` finder i
     stedet HVER gang der opstår et hul. Den sidste måned i dataen udelades —
     ellers ville alle nulevende abonnementer se ud som om de churnede.
 
     TÆRSKLEN ER TO MÅNEDER, jf. Definitioner, besluttet 2026-08-17. Et hul
     på PRÆCIS én
-    måned er en pause og tælles ikke. Genmålt 2026-08-26: 154 af 8.016 hændelser
-    var én-måneds huller, altså 1,9%, og de klumpede i april 2026 (30) frem for
-    at ligge jævnt. Det er synkronisering og fakturering, ikke kundeadfærd.
-    Totalen er 7.862 efter ændringen, og kun april 2026 flyttede sig synligt,
-    fra 1,91% til 1,61%.
+    måned er en pause og tælles ikke. Målt: 162 af 8.565 hændelser var én-måneds
+    huller, altså 1,9%, og de klumpede i april (36) og januar (22) frem for at
+    ligge jævnt. Det er synkronisering og fakturering, ikke kundeadfærd. Totalen
+    er 8.403 efter ændringen, og kun april 2026 flyttede sig synligt, fra 1,78%
+    til 1,53%.
 
     DE TO DATEADD-TAL I `churn`-CTE'EN ER FORSKELLIGE MED VILJE. Det er den eneste
     fælde i funktionen, og den ligner en tastefejl. `month, 2` i WHERE er
@@ -326,9 +317,9 @@ def db_monthly_active_counts(owner_name: str | None = None,
     et MAKSIMUM, der revideres NEDAD ved næste eksport. Porteføljen kræver at søjlen
     markeres foreløbig, ellers læses artefaktet som en churn-stigning.
 
-    Genmålt 2026-08-26: churn ligger på 0,39-2,37% gennem hele historikken, vist
-    for 89 måneder fra 2019-04 og frem. Juni 2026 er undtagelsen med 2,37%,
-    måneden efter at porteføljen sprang fra 9.932 til 13.358 abonnementer. Grafen får derfor en
+    Målt 2026-08-17: churn ligger på 0,4-1,8% gennem hele historikken, vist for 89
+    måneder fra 2019-04 og frem. Juni 2026 er undtagelsen med 2,18%, måneden efter
+    at porteføljen sprang fra 12.035 til 15.486 abonnementer. Grafen får derfor en
     lodret klippe i maj 2026, som SKAL forklares på siden.
     """
     cte, params = _acv_owner_cte()
@@ -733,13 +724,12 @@ def db_abonnementer(maaned: str) -> list:
     altså give dem vægt 0,00 og fjerne dem fra specialistens liste.
 
     Alternativet var start på seneste SAMMENHÆNGENDE kæde. Det er forkastet:
-    mellem april og maj 2026 blev 1.776 eksisterende abonnementer genskabt
-    (mod 7-44 i en normal måned, genmålt 2026-08-26), og kædestart ville give
-    hele den bunke vægt 0,00 på grundlag af en dataartefakt.
+    mellem april og maj 2026 blev 1.769 eksisterende abonnementer genskabt
+    (mod 19-42 i en normal måned), og kædestart ville give hele den bunke
+    vægt 0,00 på grundlag af en dataartefakt.
 
     Rækkeantallet ligger under viewets, fordi 2026-07 har to ægte dubletrækker
-    som GROUP BY her folder sammen (15.203 mod 15.205, målt 2026-08-07, FOER
-    den danske afgraensning 25-08; mekanismen er upåvirket). Tallet
+    som GROUP BY her folder sammen (15.203 mod 15.205, målt 2026-08-07). Tallet
     er ikke fast: viewet er live, og et redigeret Pipedrive-deal kan tilføje en
     række i en måned der ellers er afsluttet — 15.204 samme dag kl. 11.
     """
@@ -856,10 +846,8 @@ def db_org_navne() -> dict:
     Findes fordi dbo.RetentionOutcomes ikke har en org_name-kolonne, og fordi
     navnet ikke kan tages fra risikolaget: det viser kun abonnementer der er
     AKTIVE i måneden, mens en kunde man har lovet at ringe tilbage til ofte er
-    en, hvis abonnement er ophørt. Målt 2026-08-11, FOER den danske
-    afgraensning 25-08: viewet har 15.269 kunder, risikolaget 11.621 for juli,
-    altså 3.648 kunder uden navn. Størrelsesordenen bærer pointen, og tallene
-    er ikke genmålt.
+    en, hvis abonnement er ophørt. Målt 2026-08-11: viewet har 15.269 kunder,
+    risikolaget 11.621 for juli — 3.648 kunder ville stå uden navn.
 
     MAX(org_name) og ikke ROW_NUMBER på måneden: målt 2026-08-11 har 0 af
     15.269 kunder mere end ét org_name, så navnet er funktionelt afhængigt af

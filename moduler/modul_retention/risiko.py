@@ -333,14 +333,11 @@ def abonnementer_i_risiko(owner_name: str | None = None,
                                  if r["fornyelse_dage"] is not None
                                  and 0 <= r["fornyelse_dage"] <= 60),
         "usage_error":       usage_error,
-        # Maalt 25-08 og 26-08-2026 (kohortemaaling.py, tre udloebne kohorter):
+        # DELVIST maalt 25-08-2026 (kohortemaaling.py, tre udloebne kohorter):
         # aldrig_i_gang og gaaet_i_staa's vaegte er maalt mod rigtige
-        # opsigelser, og paa_vej_ned's vaegt er nu OGSAA maalt - resultatet var
-        # 0,00, ikke et tal at kalibrere. Staar alligevel False: FALD_GRAENSE
-        # (0,50) og FALD_VINDUE (3) styrer stadig en ZONE-LABEL uden proven
-        # grundlag (paa_vej_ned mod fast_laeser), og VANEBRUGER_DAGE (20) er
-        # stadig et gaet der styrer en visning. Flippet kraever at ALLE
-        # taerskler er maalt, ikke kun dem der driver en score.
+        # opsigelser. paa_vej_ned's vaegt (0,40), FALD_GRAENSE (0,50) og
+        # VANEBRUGER_DAGE (20) er stadig gaet. Bliver derfor staaende False,
+        # indtil ALLE tærskler og vaegte er maalt, ikke kun de to vaerste.
         "thresholds_validated": False,
         # Fra data og ikke tastet ind i skabelonen, så en fremtidig ændring af
         # UDENLANDSKE_ACCOUNTS ikke kræver at nogen husker at rette teksten to

@@ -9,9 +9,15 @@ screen_configs.json
 .claude/worktrees/
 .claude/settings.local.json
 .vscode/
+.venv/
+venv/
+*.p8
+*.pem
 
 # Klippekort-migrering: regenererbare arbejds-/datafiler (holdes lokalt)
 klippekort_mapping.csv
 klippekort_koder.csv
 klippekort_forslag.txt
 klippekort_aktive_rapport.txt
+
+data/

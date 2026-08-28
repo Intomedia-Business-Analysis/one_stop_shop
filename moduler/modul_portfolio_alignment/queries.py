@@ -26,10 +26,9 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import pymssql
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()
 
 logger = logging.getLogger(__name__)
 
@@ -234,15 +233,16 @@ def normalize_site(raw: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 def get_pipedrive_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=10,
-        timeout=30,
-    )
+    """Egen forbindelse uden for poolen — de tunge sync-queries må køre længere.
+
+    Timeouts er uændrede (10 s login, 30 s query); det er kun selve
+    forbindelsen der nu defineres ét sted, i db.new_connection(). Før stod
+    tds_version="7.0" her, og TDS 7.0 kan ikke TLS — så modulet kunne ikke nå
+    en server der kræver kryptering.
+    """
+    from db import new_connection
+
+    return new_connection(login_timeout=10, timeout=30)
 
 
 # ---------------------------------------------------------------------------

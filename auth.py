@@ -3,10 +3,10 @@ import datetime
 import logging
 import pymssql
 from passlib.context import CryptContext
-from dotenv import load_dotenv
+from env import load_env
 from fastapi import Request
 
-load_dotenv()
+load_env()
 
 logger = logging.getLogger(__name__)
 

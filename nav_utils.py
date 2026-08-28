@@ -94,7 +94,7 @@ CATEGORIES = [
     {
         "id": "retention",
         "title": "Retention",
-        "description": "Opkald og risiko, samt porteføljens udvikling over tid",
+        "description": "Dagens opkaldsliste, aktive abonnementer over tid og churn-risiko pr. abonnement",
         "icon": "settings",
         "color": "amber",
         # sales_operations SKAL matche MIN_ROLLE i modul_retention/router.py.
@@ -110,14 +110,13 @@ CATEGORIES = [
         "min_role": "sales_operations",
         "subcategories": [],
         "items": [
-            # ØVERST med vilje: modulets INDGANG. "Opkald og risiko" er
-            # sammenlægningen (2026-08-27) af Dagens opkald og Churn-risiko —
+            # ØVERST med vilje: PRD §8 gør Prioritering til modulets indgang —
             # arbejdsgangen begynder her og går derfra til kunde-detaljen.
             # Rækkefølgen i listen ER den viste rækkefølge, så lå den nederst,
-            # ville arbejdsgangen være forkert fra første klik. Id'et er
-            # UÆNDRET (retention-risk), se RES_RISIKO i router.py for hvorfor.
-            {"id": "retention-risk",     "title": "Opkald og risiko", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
-            {"id": "retention-overview", "title": "Porteføljen",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            # ville arbejdsgangen være forkert fra første klik.
+            {"id": "retention-prioritering", "title": "Dagens opkald",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/prioritering"},
+            {"id": "retention-overview", "title": "Porteføljen",  "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            {"id": "retention-risk",     "title": "Churn-risiko",   "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
         ],
     },
     {

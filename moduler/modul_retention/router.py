@@ -1,7 +1,7 @@
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
@@ -13,6 +13,9 @@ from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
                        UDFALD, registrer_samtale, valider_registrering)
 from .prioritering import prioriteringsdata
+from .queries import db_monthly_active_counts
+from .risiko import abonnementer_i_risiko
+from .zones import ZONE_LABELS
 from .queries import (account_churn_rate, db_monthly_active_counts,
                       db_monthly_churn_pr_site)
 from .usage import latest_complete_month
@@ -36,12 +39,9 @@ EKSKLUDEREDE_ROLLER = ["marketing", "management"]
 # admin kan åbne én side for én bruger via UserResourceAccess uden kodeændring
 # — og menu og endpoint bruger så garanteret samme nøgle.
 RES_OVERBLIK = "retention-overview"
-# "Opkald og risiko" (sammenlagt 2026-08-27 af Dagens opkald og Churn-risiko).
-# Modulets INDGANG: arbejdsgangen begynder her, og derfor øverst i
-# nav_utils' items-liste. Id'et hedder fortsat retention-risk og ikke fx
-# retention-opkald — ændres det, mister enhver bruger med et
-# UserResourceAccess-override på den gamle nøgle sin adgang.
 RES_RISIKO = "retention-risk"
+# Modulets INDGANG (Arbejdsgang), og derfor øverst i nav_utils' items-liste.
+RES_PRIORITERING = "retention-prioritering"
 # Kunde-detaljen står IKKE i nav_utils.CATEGORIES: den er en gennemklikning,
 # ikke et sted man går hen — Kundeside nås fra risikolisten og senere fra
 # prioriteringssiden. Id'et findes alligevel, så adgangen kan styres på samme
@@ -86,45 +86,43 @@ def _resolve_filters(user: dict, resource_id: str) -> tuple[str | None, list | N
     return None, allowed_data_teams(user)
 
 
-@router.get("/retention/opkald_data")
-def get_opkaldsdata(user=Depends(get_current_user)):
-    """Alt "Opkald og risiko" skal vise: dagens to lister, det fulde
-    risikobillede og månedens tre tal.
-
-    Erstatter de to tidligere endepunkter /retention/prioritering_data og
-    /retention/risk (fjernet 2026-08-27, da Dagens opkald og Churn-risiko blev
-    lagt sammen til én side). De to sider læste tidligere risikobilledet
-    hver for sig — /retention/risk kaldte `abonnementer_i_risiko()` direkte og
-    UKACHET (3,6 sekunder), mens denne side allerede læste det samme billede
-    gennem `cache.risiko()`. Med begge lister på én side ville to fetch-kald
-    have udført samme beregning to gange; ét kald løser det.
+@router.get("/retention/prioritering_data")
+def get_prioriteringsdata(user=Depends(get_current_user)):
+    """Dagens to lister og månedens tre tal (Dagens opkald).
 
     KLOKKEN LÆSES ÉN GANG, her. `prioriteringsdata` har med vilje ingen default
     på `i_dag`: kaldes `date.today()` to gange under samme sideopslag, kan de to
     kald ligge på hver sin side af midnat, og siden ville beregne opfølgninger
     mod i dag og KPI'er mod i morgen. Ét argument gør fejlen umulig.
 
-    `abo_maaned` sendes bevidst IKKE videre: produktionsvisningen er altid
-    indeværende måned, og parameteren findes kun til kontrolkørsler.
+    `abo_maaned` sendes bevidst IKKE videre, samme regel som risikolisten:
+    produktionsvisningen er altid indeværende måned, og parameteren findes kun
+    til kontrolkørsler.
 
     Siden er en SKAL plus dette kald og ikke en server-renderet side. Et koldt
     kald tager 7,5 sekunder, fordi forbruget aggregeres fra grunden (varmt: 0,08
     s), og de sekunder ville ellers være en hvid skærm uden forklaring. Samme
-    mønster som modulets øvrige sider.
+    mønster som modulets tre andre sider.
     """
-    _, teams = _resolve_filters(user, RES_RISIKO)
+    _, teams = _resolve_filters(user, RES_PRIORITERING)
     return prioriteringsdata(dt.date.today(), teams=teams)
 
 
-@router.get("/retention/prioritering")
-async def retention_prioritering_redirect(user=Depends(get_current_user)):
-    """Gammel URL for Dagens opkald. Siden findes ikke længere som egen
-    side — den blev lagt sammen med Churn-risiko 2026-08-27 til "Opkald og
-    risiko". Redirectet holder eksisterende links og bogmærker i live.
-
-    `get_current_user` afhænger stadig med, så et kald uden session først
-    rammer login-redirectet og ikke denne — samme opførsel som før."""
-    return RedirectResponse("/retention/risk_overview", status_code=302)
+@router.get("/retention/prioritering", response_class=HTMLResponse)
+async def retention_prioritering(request: Request, user=Depends(get_current_user)):
+    # Samme adgangsvagt som modulets øvrige sider: dataene er beskyttet af
+    # _resolve_filters, men skallen skal heller ikke kunne åbnes uden adgang.
+    _kraev_adgang(user, RES_PRIORITERING)
+    # Zonernes navne kommer FRA zones.py, ikke fra skabelonen — samme regel som
+    # vokabularet på kunde-detaljen. Skrives de af i JS'en, kan de drive fra
+    # modellen, og en pille ville påstå en zone der ikke findes.
+    #
+    # De fire ÅRSAGSNØGLER oversættes derimod i skabelonen. Det er med vilje:
+    # nøglen er kontrakten, den danske sætning er til mennesker, og
+    # afkort_nye_risici siger selv at teksten hører her.
+    return templates.TemplateResponse(request, "retention_prioritering.html",
+                                      {"user": user,
+                                       "zone_labels": ZONE_LABELS})
 
 
 @router.get("/retention/monthly_active_counts")
@@ -132,6 +130,27 @@ def get_monthly_active_counts(user=Depends(get_current_user)):
     owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
     return db_monthly_active_counts(owner_name=owner_name, teams=teams)
 
+@router.get("/retention/risk")
+def get_abonnementer_i_risiko(user=Depends(get_current_user)):
+    """Risikolisten pr. ABONNEMENT. Samme rolle-filtrering som trendlinjen.
+
+    Skiftet fra recency-modellen (risk.customers_at_risk) 2026-08-10, jf.
+    Zonemodellen hvor 14/30-dages-tærsklerne udfases: signalet rådnede med
+    filens alder, og grainen var kunden, hvilket er den forkerte måleenhed
+    (Definitioner og Churn-risiko). Ruten beholder sit navn, så eksisterende
+    links og bogmærker virker.
+
+    `owner_name` er altid None nu, hvor modulet kræver Sales Operations: ingen
+    tilbageværende rolle skal se sin egen bog. Den gamle advarsel om at
+    `retention_owner` og ACV's org-ejer er uenige om ejerskab i 47% af rækkerne
+    gælder derfor ikke længere for ADGANGEN — men den gælder stadig for enhver
+    visning der grupperer på ejer, og det skal fremgå af siden.
+
+    `abo_maaned` sendes bevidst IKKE videre: produktionsvisningen skal altid være
+    indeværende måned, og parameteren findes kun til kontrolkørsler.
+    """
+    owner_name, teams = _resolve_filters(user, RES_RISIKO)
+    return abonnementer_i_risiko(owner_name=owner_name, teams=teams)
 
 @router.get("/retention/churn_pr_site")
 def get_churn_pr_site(maaneder: str, user=Depends(get_current_user)):
@@ -182,7 +201,6 @@ def get_forbrug_pr_site(user=Depends(get_current_user)):
         "bruger_har_team_begraensning": teams is not None,
     }
 
-
 @router.get("/retention/overview", response_class=HTMLResponse)
 async def retention_overview(request: Request, user=Depends(get_current_user)):
     # Selve dataene hentes client-side og er beskyttet af _resolve_filters, men
@@ -196,12 +214,8 @@ async def retention_overview(request: Request, user=Depends(get_current_user)):
 async def retention_risk_overview(request: Request, user=Depends(get_current_user)):
     # Samme adgangsvagt som de øvrige retention-sider: dataene er beskyttet af
     # _resolve_filters, men skallen skal heller ikke kunne åbnes uden adgang.
-    #
-    # "Opkald og risiko" (sammenlagt 2026-08-27 af Dagens opkald og
-    # Churn-risiko). URL'en er UÆNDRET, kun skabelonen og navnet i nav_utils er
-    # nye — se RES_RISIKO's kommentar for hvorfor id'et heller ikke ændres.
     _kraev_adgang(user, RES_RISIKO)
-    return templates.TemplateResponse(request, "retention_opkald.html", {"user": user})
+    return templates.TemplateResponse(request, "retention_risk.html", {"user": user})
 
 
 @router.get("/retention/kunde_data/{account}/{org_id}")

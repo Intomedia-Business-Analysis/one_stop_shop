@@ -5,13 +5,11 @@ Kør dette én gang inden du starter appen:
 
     python create_admin.py
 """
-import os
 import getpass
 
-import pymssql
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()
 
 from auth import hash_password
 
@@ -37,13 +35,17 @@ def main():
     print("=" * 50)
     print()
 
-    conn = pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-    )
+    # Forbindelsen defineres i db.new_connection() — samme server, login og
+    # TDS-version som appen selv bruger.
+    from db import check_connection, new_connection
+
+    info = check_connection()
+    print(f"Server:   {info['servername']}")
+    print(f"Database: {info['database']}")
+    print(f"Login:    {info['login']}")
+    print()
+
+    conn = new_connection(login_timeout=5, timeout=30)
     cur = conn.cursor()
 
     print("Opretter HubUsers-tabel (hvis den ikke findes)...")

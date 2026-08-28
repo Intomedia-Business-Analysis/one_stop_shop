@@ -31,14 +31,15 @@ from datetime import date
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
+from env import load_env
+from os_trust import session
 
 from moduler.modul_portfolio_alignment.queries import (
     ACCOUNT_SCOPES,
     normalize_site,
 )
 
-load_dotenv()
+load_env()
 
 
 BASE_URL = "https://api.pipedrive.com/api/v2"
@@ -132,7 +133,7 @@ def _api_get(token: str, path: str, params: Optional[dict] = None) -> list | dic
     """Hent én side. Håndterer 429-rate-limit med Retry-After."""
     url = f"{BASE_URL}{path}"
     for attempt in range(1, MAX_RETRIES + 1):
-        resp = requests.get(url, headers=_headers(token), params=params or {}, timeout=30)
+        resp = session().get(url, headers=_headers(token), params=params or {}, timeout=30)
         if resp.status_code == 429:
             wait = int(resp.headers.get("Retry-After", 5))
             time.sleep(wait)
@@ -156,7 +157,7 @@ def _api_get_all(token: str, path: str, params: Optional[dict] = None) -> list:
         if cursor:
             p["cursor"] = cursor
         for attempt in range(1, MAX_RETRIES + 1):
-            resp = requests.get(url, headers=_headers(token), params=p, timeout=30)
+            resp = session().get(url, headers=_headers(token), params=p, timeout=30)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 5))
                 time.sleep(wait)
@@ -175,7 +176,7 @@ def _api_get_all(token: str, path: str, params: Optional[dict] = None) -> list:
 
 def _api_post(token: str, path: str, payload: dict) -> dict:
     url = f"{BASE_URL}{path}"
-    resp = requests.post(url, headers=_headers(token), json=payload, timeout=30)
+    resp = session().post(url, headers=_headers(token), json=payload, timeout=30)
     if resp.status_code >= 400:
         try:
             body = resp.json()
@@ -199,7 +200,7 @@ def _get_company_domain(token: str) -> Optional[str]:
         return _COMPANY_DOMAIN_CACHE[token]
     domain = None
     try:
-        resp = requests.get(f"{BASE_URL_V1}/users/me", headers=_headers(token), timeout=30)
+        resp = session().get(f"{BASE_URL_V1}/users/me", headers=_headers(token), timeout=30)
         if resp.status_code < 400:
             body = resp.json()
             if body.get("success"):

@@ -3,12 +3,12 @@ import os
 from datetime import date
 
 import pymssql
-from dotenv import load_dotenv
+from env import load_env
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_env()
 
 # Fælles brand-konstanter — én kilde til sandheden i constants.py.
 from constants import SUBSCRIPTION_BRANDS, BRAND_GROUPS, deal_value_sql  # noqa: E402,F401
