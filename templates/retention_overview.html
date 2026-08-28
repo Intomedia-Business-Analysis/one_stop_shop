@@ -49,6 +49,50 @@
     .graf-note strong { color:var(--ink-2); font-weight:600; }
     .graf-note p { margin:0 0 8px; }
     .graf-note p:last-child { margin-bottom:0; }
+
+    /* ── Fane 2 (Performance og effekt): tom ramme, se etape 3. Ingen
+       spinner og intet placeholder-tal — det ærlige svar i dag er "ingen
+       samtaler registreret", og det skal se rigtigt ud, ikke midlertidigt. */
+    .tom-tilstand { padding:32px 20px; text-align:center; color:var(--ink-3); font-size:12px; line-height:1.6; }
+    .tom-tilstand strong { display:block; color:var(--ink-2); font-size:13px; margin-bottom:6px; }
+
+    /* ── "Måned mod måned pr. site" og "Side- og artikelvisninger pr. site".
+       Egne, lokale tabelklasser — IKKE table.risk/.pill fra retention_opkald.html:
+       de er zone-farvede og hører til risikobilledet, disse to er flade
+       datatabeller uden zonefarver. */
+    .tbl-wrap { overflow-x:auto; }
+    .mm-controls, .eng-controls { display:flex; gap:16px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+    .mm-controls label { font-size:11px; color:var(--ink-3); font-weight:600; display:flex; align-items:center; gap:6px; }
+    .mm-controls select { font-family:var(--font); font-size:12px; padding:5px 8px; border:1px solid var(--border);
+                           border-radius:var(--r-xs); background:var(--surface); color:var(--ink); }
+    .eng-metric-btn { font-family:var(--font); font-size:11px; font-weight:600; padding:6px 12px;
+                       border:1px solid var(--border); border-radius:999px; background:var(--surface);
+                       color:var(--ink-3); cursor:pointer; }
+    .eng-metric-btn.on { background:var(--green); color:#fff; border-color:var(--green); }
+
+    .mm-flag { background:var(--warn-light); border:1px solid #E3D7A8; border-radius:var(--r-xs);
+               padding:10px 14px; margin-bottom:14px; font-size:11px; color:var(--ink-2); line-height:1.6; }
+    .mm-flag p { margin:0 0 4px; }
+    .mm-flag p:last-child { margin-bottom:0; }
+
+    .mm-acc-tbl { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:18px; }
+    .mm-acc-tbl th, .mm-acc-tbl td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--border); }
+    .mm-acc-tbl th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em; }
+
+    table.mm-tbl, table.eng-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+    table.mm-tbl th, table.mm-tbl td, table.eng-tbl th, table.eng-tbl td {
+      padding:7px 10px; text-align:left; border-bottom:1px solid var(--border);
+    }
+    table.mm-tbl th, table.eng-tbl th { font-size:11px; font-weight:600; color:var(--ink-3);
+      text-transform:uppercase; letter-spacing:.03em; }
+    table.mm-tbl th.num, table.mm-tbl td.num, table.eng-tbl th.num, table.eng-tbl td.num {
+      text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
+    }
+    tr.eng-tom td { color:var(--ink-4); font-style:italic; }
+
+    /* Lille inline-soejlerække, ren CSS, ingen ny Chart.js-instans pr. raekke. */
+    .eng-spark { display:inline-flex; align-items:flex-end; gap:1px; height:20px; }
+    .eng-spark span { display:inline-block; width:3px; background:var(--green); border-radius:1px; opacity:.75; }
   </style>
 </head>
 <body>
@@ -85,27 +129,110 @@
           </div>
         </div>
 
-        <div class="kpis" id="kpis"></div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <h2>Porteføljen måned for måned</h2>
-            <p id="portefoelje-sub">Indlæser…</p>
-          </div>
-          <div class="panel-body">
-            <canvas id="portefoeljeChart" height="80"></canvas>
-            <div class="graf-note" id="portefoelje-note"></div>
-          </div>
+        <!-- Fanerne (sammenlægningen 2026-08-28, etape 2). hub.css's egne
+             .tab-bar/.tab-btn.on/.tab-pane.on genbruges uændret (budget_tool.html
+             bruger dem allerede) — IKKE perf_afdelingsleder.html's lokale
+             .tab-nav, som ville blive en tredje dialekt af samme mønster.
+             Fanevalget lægges i URL-hash, se scriptets bund. -->
+        <div class="tab-bar">
+          <button class="tab-btn on" data-tab="operationel" onclick="switchTab('operationel', this)">Operationel og diagnostisk</button>
+          <button class="tab-btn" data-tab="performance" onclick="switchTab('performance', this)">Performance og effekt</button>
         </div>
 
-        <div class="panel">
-          <div class="panel-header">
-            <h2>Churn-rate måned for måned</h2>
-            <p id="churn-sub">Indlæser…</p>
+        <div class="tab-pane on" id="tab-operationel">
+
+          <div class="kpis" id="kpis"></div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Porteføljen måned for måned</h2>
+              <p id="portefoelje-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <canvas id="portefoeljeChart" height="80"></canvas>
+              <div class="graf-note" id="portefoelje-note"></div>
+            </div>
           </div>
-          <div class="panel-body">
-            <canvas id="churnChart" height="60"></canvas>
-            <div class="graf-note" id="churn-note"></div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Churn-rate måned for måned</h2>
+              <p id="churn-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <canvas id="churnChart" height="60"></canvas>
+              <div class="graf-note" id="churn-note"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Måned mod måned pr. site</h2>
+              <p id="mm-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <div class="mm-controls">
+                <label>Måned A <select id="mm-maanedA"></select></label>
+                <label>Måned B <select id="mm-maanedB"></select></label>
+              </div>
+              <div class="mm-flag" id="mm-flag" style="display:none;"></div>
+              <div id="mm-accounts"></div>
+              <div class="tbl-wrap">
+                <table class="mm-tbl">
+                  <thead>
+                    <tr>
+                      <th>Site</th><th>Account</th>
+                      <th class="num">Aktive A</th><th class="num">Opsigelser A</th>
+                      <th class="num">Aktive B</th><th class="num">Opsigelser B</th>
+                      <th class="num">Forskel</th>
+                    </tr>
+                  </thead>
+                  <tbody id="mm-tbody"></tbody>
+                </table>
+              </div>
+              <div class="graf-note" id="mm-note"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Side- og artikelvisninger pr. site</h2>
+              <p id="eng-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <div class="eng-controls">
+                <button class="eng-metric-btn on" data-metric="page_views" onclick="engMetric('page_views', this)">Sidevisninger</button>
+                <button class="eng-metric-btn" data-metric="artikelvisninger" onclick="engMetric('artikelvisninger', this)">Artikelvisninger</button>
+              </div>
+              <div class="tbl-wrap">
+                <table class="eng-tbl">
+                  <thead>
+                    <tr>
+                      <th>Site</th><th>Familie</th>
+                      <th class="num">Måneder med data</th>
+                      <th class="num">Indeks, referencemåned</th>
+                      <th class="num">Ændring mod snit</th>
+                      <th>Trend</th>
+                    </tr>
+                  </thead>
+                  <tbody id="eng-tbody"></tbody>
+                </table>
+              </div>
+              <div class="graf-note" id="eng-note"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="tab-pane" id="tab-performance">
+          <div class="panel">
+            <div class="panel-body">
+              <div class="tom-tilstand">
+                <strong>Ingen samtaler er registreret endnu</strong>
+                dbo.RetentionConversations og dbo.RetentionOutcomes har 0 rækker.
+                Fanen fyldes når retention-specialisten begynder at registrere udfald — se etape 3.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -114,33 +241,91 @@
   </div>
 </div>
 <script>
+// ── Fælles hjælpere for hele siden (begge faner, alle fire paneler) ────────
+const el = (id) => document.getElementById(id);
+
+const nf  = new Intl.NumberFormat('da-DK');
+const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const nfC = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// '2026-07-01' → 'juli 2026'. Raa ISO stod indtil 2026-08-18 i underoverskriften
+// ('126 maaneder (2016-03-01 - 2026-08-01)'), og en ISO-streng ser ud som en
+// maskinvaerdi. Samme oversaettelse som de tre andre sider bruger.
+const MDR = ['januar','februar','marts','april','maj','juni',
+             'juli','august','september','oktober','november','december'];
+const maanedDK = (s) => {
+  const m = /^(\d{4})-(\d{2})/.exec(String(s || ''));
+  return m ? MDR[+m[2] - 1] + ' ' + m[1] : String(s || '?');
+};
+
+const cssVar = (name, fallback) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+
+// #RRGGBB → rgba(), så de to arealer kan lægges halvgennemsigtigt oven på hinanden.
+const rgba = (hex, alpha) => {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+};
+
+// ── Ét delt kald til /retention/monthly_active_counts. Både graf-IIFE'en og
+// "Måned mod måned"-panelet skal bruge listen af måneder, og et delt promise
+// betyder ét netværkskald i stedet for to, uden at de to dele skal kende
+// hinandens indre tilstand. ──
+let _monthlyRowsPromise = null;
+function monthlyRows() {
+  if (!_monthlyRowsPromise) {
+    _monthlyRowsPromise = fetch('/retention/monthly_active_counts').then(res => {
+      if (!res.ok) return res.json().catch(() => ({}))
+        .then(body => Promise.reject(new Error(body && body.detail || ('HTTP ' + res.status))));
+      return res.json();
+    });
+  }
+  return _monthlyRowsPromise;
+}
+
+// ── Faneskift. URL-hash er kilden til sandhed, så F5 og et delt link husker
+// fanen — samme mønster kunne ikke genbruges fra budget_tool.html, som ikke
+// har hash-synkronisering. ──
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+  el('tab-' + id).classList.add('on');
+  btn.classList.add('on');
+  history.replaceState(null, '', '#' + id);
+}
+function applyHashTab() {
+  const id = (location.hash || '').slice(1) === 'performance' ? 'performance' : 'operationel';
+  const btn = document.querySelector('.tab-btn[data-tab="' + id + '"]');
+  if (btn) switchTab(id, btn);
+}
+window.addEventListener('hashchange', applyHashTab);
+
+// DISPLAY-GRUPPERING for "Side- og artikelvisninger pr. site", IKKE en
+// autoritativ konto-tilknytning: der findes endnu ikke en site→account-tabel
+// i koden (Retention PD: "ARR pr. site er målt men ikke bygget"). Heuristikken
+// er sikker for netop de kanoniske sites der findes i dag (målt 2026-08-28,
+// hvert domænesuffiks/navnemønster er entydigt), men den regner ikke penge og
+// må ikke bruges til noget der gør. Churn-panellets "Account"-kolonne er
+// DERIMOD den rigtige konto fra dbo.retention og bruger ikke denne funktion.
+function siteFamilie(site) {
+  if (site.endsWith('.no')) return 'Watch NO';
+  if (site.endsWith('.se')) return 'Watch SE';
+  if (site.endsWith('.de')) return 'Watch DE';
+  if (site.indexOf('monitor') !== -1) return 'Monitor';
+  return 'Watch DK';
+}
+
+// Pakkeabonnementer (zones.PAKKE_SITES) måles på KUNDEN, ikke på sitet selv —
+// derfor har disse to næsten ingen egne rækker i forbrugsfilen (97 og 2,
+// målt 24-08-2026), og engagement-panelet skal vise dem TOMME MED FORKLARING.
+const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
+
+// ── Fane 1, del A: de fire nøgletal + de to grafer. UÆNDRET adfærd — kun
+// flyttet ind i en IIFE, der ikke længere erklærer sine egne kopier af
+// helperne ovenfor. ──
 (async function () {
-  const el = (id) => document.getElementById(id);
-
-  const nf  = new Intl.NumberFormat('da-DK');
-  const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const nf2 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  // '2026-07-01' → 'juli 2026'. Raa ISO stod indtil 2026-08-18 i underoverskriften
-  // ('126 maaneder (2016-03-01 - 2026-08-01)'), og en ISO-streng ser ud som en
-  // maskinvaerdi. Samme oversaettelse som de tre andre sider bruger.
-  const MDR = ['januar','februar','marts','april','maj','juni',
-               'juli','august','september','oktober','november','december'];
-  const maanedDK = (s) => {
-    const m = /^(\d{4})-(\d{2})/.exec(String(s || ''));
-    return m ? MDR[+m[2] - 1] + ' ' + m[1] : String(s || '?');
-  };
-
-  const cssVar = (name, fallback) =>
-    getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-
-  // #RRGGBB → rgba(), så de to arealer kan lægges halvgennemsigtigt oven på hinanden.
-  const rgba = (hex, alpha) => {
-    const h = hex.replace('#', '');
-    const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
-    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-  };
-
   const fail = (msg) => {
     el('portefoelje-sub').textContent = msg;
     el('churn-sub').textContent = 'Ingen data';
@@ -149,22 +334,13 @@
   };
 
   // Rolle-filtreringen i router.py svarer 403 med en forklaring i {"detail": ...}.
-  // Uden res.ok-tjekket ville res.json() give et objekt, og rows.map kaste en
-  // TypeError — resultatet var en blank graf uden antydning af årsagen.
+  // monthlyRows() afviser med netop den besked (se dens definition ovenfor),
+  // og deles nu med "Måned mod måned"-panelet, så der kun sker ét netværkskald.
   let rows;
   try {
-    const res = await fetch('/retention/monthly_active_counts');
-    if (!res.ok) {
-      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
-      try {
-        const body = await res.json();
-        if (body && body.detail) detail = body.detail;
-      } catch (e) { /* ikke-JSON fejlsvar — behold standardteksten */ }
-      return fail(detail);
-    }
-    rows = await res.json();
+    rows = await monthlyRows();
   } catch (e) {
-    return fail('Kunne ikke hente data — netværksfejl.');
+    return fail(e && e.message ? e.message : 'Kunne ikke hente data — netværksfejl.');
   }
 
   if (!Array.isArray(rows) || !rows.length) return fail('Ingen data');
@@ -232,7 +408,7 @@
   // hundrededele betyder noget: med én decimal blev 1,23 mod et snit på 1,39 vist
   // som "1,2 mod 1,4", og forskellen så større ud end den er. Akserne beholder én
   // decimal, hvor pladsen er knap og præcisionen ikke læses.
-  const nfC = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // nfC er nu delt fælles-helper foroven, samme formatering.
 
   const kort = (klasse, label, vaerdi, meta, maaned) =>
       '<div class="kcard' + (klasse ? ' ' + klasse : '') + '">'
@@ -524,6 +700,293 @@
     + 'måneden på et grundlag under 600, og linjen ville hoppe mellem 0 og 7 % uden '
     + 'at afspejle andet end afrunding.</p>';
 })();
+
+// ── Fane 1, del B: "Måned mod måned pr. site" ───────────────────────────────
+(async function () {
+  const sub = el('mm-sub');
+  const fail = (msg) => {
+    sub.textContent = msg;
+    el('mm-accounts').innerHTML = '';
+    el('mm-tbody').innerHTML = '';
+  };
+
+  let rows;
+  try {
+    rows = await monthlyRows();
+  } catch (e) {
+    return fail(e && e.message ? e.message : 'Kunne ikke hente måneder — netværksfejl.');
+  }
+  if (!Array.isArray(rows) || rows.length < 3) return fail('Ingen data');
+
+  const labels = rows.map(r => r.FirstDayOfMonth);
+  const nyesteMaaned = labels[labels.length - 1];
+  // Juni 2026: måneden EFTER bulk-importen i maj 2026 (se churn-grafens note).
+  // watch_medier har 242 opsigelser mod 121 i juli — et synkroniseringsartefakt.
+  const BULK_MAANED = '2026-06-01';
+  const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', marketwire: 'Marketwire' };
+
+  const selA = el('mm-maanedA'), selB = el('mm-maanedB');
+  // Nyeste først i listen — det er den man oftest vil sammenligne FRA.
+  labels.slice().reverse().forEach((l) => {
+    const optA = document.createElement('option');
+    optA.value = l; optA.textContent = maanedDK(l);
+    selA.appendChild(optA);
+    selB.appendChild(optA.cloneNode(true));
+  });
+  // Default: seneste ENDELIGE måned og måneden før den — samme valg som
+  // nøglekortene ovenfor, og af samme grund: den nyeste måneds churn er et
+  // maksimum der revideres nedad.
+  const defaultA = labels[labels.length - 2] || labels[labels.length - 1];
+  const defaultB = labels[labels.length - 3] || defaultA;
+  selA.value = defaultA;
+  selB.value = defaultB;
+
+  const rateCelle = (r) => {
+    if (!r) return '–';
+    if (r.churn_pct === null || r.churn_pct === undefined) return 'Kan ikke måles';
+    return nfC.format(r.churn_pct) + ' % (' + nf.format(r.churned) + ' af ' + nf.format(r.active_foer) + ')';
+  };
+
+  async function opdater() {
+    const maanedA = selA.value, maanedB = selB.value;
+    if (!maanedA || !maanedB) return;
+
+    let data;
+    try {
+      const res = await fetch('/retention/churn_pr_site?maaneder='
+        + encodeURIComponent(maanedA + ',' + maanedB));
+      if (!res.ok) {
+        let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+        try {
+          const body = await res.json();
+          if (body && body.detail) detail = body.detail;
+        } catch (e) { /* ikke-JSON fejlsvar — behold standardteksten */ }
+        return fail(detail);
+      }
+      data = await res.json();
+    } catch (e) {
+      return fail('Kunne ikke hente data — netværksfejl.');
+    }
+
+    sub.textContent = maanedDK(maanedA) + ' mod ' + maanedDK(maanedB);
+
+    // ── Advarsler: bulk-importen og et foreløbigt tal. Begge kan ramme
+    // samtidig, og begge skal så stå. ──
+    const advarsler = [];
+    if (maanedA === BULK_MAANED || maanedB === BULK_MAANED) {
+      advarsler.push('<strong>Juni 2026 er et synkroniseringsartefakt, ikke kundeadfærd.</strong> '
+        + 'Måneden efter bulk-importen har watch_medier 242 opsigelser mod 121 i juli — '
+        + 'sammenligningen her er ikke et signal om ændret adfærd.');
+    }
+    [maanedA, maanedB].forEach((m) => {
+      if (m === nyesteMaaned) {
+        advarsler.push('<strong>' + maanedDK(m) + ' er foreløbig og kan kun falde.</strong> '
+          + 'Et abonnement uden en efterfølgende række tælles som churn med det samme — '
+          + 'se churn-grafens note ovenfor.');
+      }
+    });
+    const flagEl = el('mm-flag');
+    if (advarsler.length) {
+      flagEl.style.display = '';
+      flagEl.innerHTML = advarsler.map((a) => '<p>' + a + '</p>').join('');
+    } else {
+      flagEl.style.display = 'none';
+      flagEl.innerHTML = '';
+    }
+
+    // ── Account-raten ──
+    const accRows = Array.isArray(data.accounts) ? data.accounts : [];
+    const byAccount = {};
+    accRows.forEach((r) => {
+      (byAccount[r.account] || (byAccount[r.account] = {}))[r.maaned] = r;
+    });
+    const accountsOrder = Object.keys(ACCOUNT_LABEL).filter((a) => byAccount[a]);
+    el('mm-accounts').innerHTML = !accountsOrder.length ? '' :
+      '<table class="mm-acc-tbl"><thead><tr><th>Account</th><th>' + maanedDK(maanedA)
+      + '</th><th>' + maanedDK(maanedB) + '</th></tr></thead><tbody>'
+      + accountsOrder.map((acc) => {
+          const r = byAccount[acc];
+          return '<tr><td>' + (ACCOUNT_LABEL[acc] || acc) + '</td><td>' + rateCelle(r[maanedA])
+               + '</td><td>' + rateCelle(r[maanedB]) + '</td></tr>';
+        }).join('')
+      + '</tbody></table>';
+
+    // ── Sites, absolutte tal. Kun de to VALGTE måneder — data.sites har også
+    // hver måneds forgænger med (kilden til account-raten), som ikke skal
+    // vises i denne tabel. ──
+    const bySite = {};
+    (Array.isArray(data.sites) ? data.sites : []).forEach((r) => {
+      if (r.FirstDayOfMonth !== maanedA && r.FirstDayOfMonth !== maanedB) return;
+      const key = r.account + '|' + r.sites;
+      const row = bySite[key] || (bySite[key] = { account: r.account, site: r.sites });
+      if (r.FirstDayOfMonth === maanedA) { row.aktivA = r.active_count; row.churnA = r.churned_count; }
+      if (r.FirstDayOfMonth === maanedB) { row.aktivB = r.active_count; row.churnB = r.churned_count; }
+    });
+    const siteRows = Object.values(bySite).map((r) => ({
+      account: r.account, site: r.site,
+      aktivA: r.aktivA || 0, churnA: r.churnA || 0,
+      aktivB: r.aktivB || 0, churnB: r.churnB || 0,
+    }));
+    // Sorteret på opsigelser i måned A, faldende — se panelnoten om hvorfor
+    // der ikke er en rate-kolonne pr. site.
+    siteRows.sort((a, b) => b.churnA - a.churnA);
+
+    el('mm-tbody').innerHTML = siteRows.length ? siteRows.map((r) => {
+      const forskel = r.churnB - r.churnA;
+      const forskelTxt = (forskel > 0 ? '+' : forskel < 0 ? '−' : '') + nf.format(Math.abs(forskel));
+      return '<tr><td>' + r.site + '</td><td>' + (ACCOUNT_LABEL[r.account] || r.account)
+           + '</td><td class="num">' + nf.format(r.aktivA) + '</td><td class="num">' + nf.format(r.churnA)
+           + '</td><td class="num">' + nf.format(r.aktivB) + '</td><td class="num">' + nf.format(r.churnB)
+           + '</td><td class="num">' + forskelTxt + '</td></tr>';
+    }).join('') : '<tr><td colspan="7">Ingen sites i de valgte måneder.</td></tr>';
+  }
+
+  selA.addEventListener('change', opdater);
+  selB.addEventListener('change', opdater);
+  await opdater();
+
+  el('mm-note').innerHTML =
+      '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af 35 danske sites har grundlag over '
+    + '1.000 aktive abonnementer. AdvokatWatch DK har 225 aktive og svinger fra 1 til 6 opsigelser på '
+    + 'syv måneder — faktor 7,5 — mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
+    + 'Raten vises derfor kun pr. account, i tabellen ovenfor.</p>';
+})();
+
+// ── Fane 1, del C: "Side- og artikelvisninger pr. site" ─────────────────────
+let _engData = null;
+let _engMetric = 'page_views';
+
+function engSparkline(serie) {
+  if (!serie.length) return '';
+  const maxV = Math.max.apply(null, serie.concat([1]));
+  return '<span class="eng-spark">' + serie.map((v) =>
+    '<span style="height:' + Math.max(2, Math.round((v / maxV) * 18)) + 'px"></span>'
+  ).join('') + '</span>';
+}
+
+function engRender() {
+  if (!_engData) return;
+  const prSite = _engData.pr_site || {};
+  const maaneder = _engData.maaneder || [];
+  const referencemaaned = _engData.referencemaaned;
+
+  const rows = Object.keys(prSite).sort().map((site) => {
+    if (PAKKE_SITES.has(site)) return { site, tom: true };
+
+    const serie = prSite[site];
+    // KUN de måneder sitet FAKTISK har — naturmonitor har 13, justitsmonitor 6,
+    // og et snit over det fulde 14-måneders vindue ville straffe dem for
+    // måneder der aldrig fandtes.
+    const egneMaaneder = maaneder.filter((m) => serie[m] !== undefined);
+    const vaerdier = egneMaaneder.map((m) => serie[m][_engMetric]);
+    const snit = vaerdier.length ? vaerdier.reduce((a, b) => a + b, 0) / vaerdier.length : 0;
+    const refVaerdi = (referencemaaned && serie[referencemaaned])
+      ? serie[referencemaaned][_engMetric] : null;
+    const indeks = (refVaerdi !== null && snit > 0) ? (refVaerdi / snit) * 100 : null;
+
+    // Ændring: referencemåneden mod snittet af de TRE FOREGÅENDE måneder —
+    // samme form som zonereglens fald-test (zones.py), så tallet læses ens to
+    // steder i modulet.
+    const refIdx = egneMaaneder.indexOf(referencemaaned);
+    let aendring = null;
+    if (refIdx >= 1) {
+      const foregaaende = egneMaaneder.slice(Math.max(0, refIdx - 3), refIdx);
+      const foregSnit = foregaaende.length
+        ? foregaaende.reduce((s, m) => s + serie[m][_engMetric], 0) / foregaaende.length : 0;
+      if (foregSnit > 0 && refVaerdi !== null) {
+        aendring = ((refVaerdi - foregSnit) / foregSnit) * 100;
+      }
+    }
+
+    return {
+      site, tom: false, familie: siteFamilie(site),
+      maanederMedData: egneMaaneder.length, indeks, aendring,
+      serie: egneMaaneder.map((m) => serie[m][_engMetric]),
+    };
+  });
+
+  rows.sort((a, b) => (b.tom ? -1 : b.indeks || 0) - (a.tom ? -1 : a.indeks || 0));
+
+  el('eng-tbody').innerHTML = rows.map((r) => {
+    if (r.tom) {
+      return '<tr class="eng-tom"><td>' + r.site + '</td><td colspan="5">'
+        + 'Pakkeabonnement — forbruget måles på kunden, ikke på sitet selv.</td></tr>';
+    }
+    return '<tr><td>' + r.site + '</td><td>' + r.familie + '</td>'
+      + '<td class="num">' + r.maanederMedData + '</td>'
+      + '<td class="num">' + (r.indeks !== null ? nf.format(Math.round(r.indeks)) : '–') + '</td>'
+      + '<td class="num">' + (r.aendring !== null
+          ? (r.aendring > 0 ? '+' : '') + nf1.format(r.aendring) + ' %' : '–') + '</td>'
+      + '<td>' + engSparkline(r.serie) + '</td></tr>';
+  }).join('');
+}
+
+function engMetric(key, btn) {
+  _engMetric = key;
+  document.querySelectorAll('.eng-metric-btn').forEach((b) => b.classList.remove('on'));
+  btn.classList.add('on');
+  engRender();
+}
+
+(async function () {
+  const sub = el('eng-sub');
+  try {
+    const res = await fetch('/retention/forbrug_pr_site');
+    if (!res.ok) {
+      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+      try {
+        const body = await res.json();
+        if (body && body.detail) detail = body.detail;
+      } catch (e) { /* ikke-JSON fejlsvar — behold standardteksten */ }
+      sub.textContent = detail;
+      return;
+    }
+    _engData = await res.json();
+  } catch (e) {
+    sub.textContent = 'Kunne ikke hente data — netværksfejl.';
+    return;
+  }
+
+  const maaneder = _engData.maaneder || [];
+  sub.textContent = maaneder.length
+    ? maaneder.length + ' måneder, ' + maanedDK(maaneder[0]) + ' til '
+      + maanedDK(maaneder[maaneder.length - 1])
+      + (_engData.referencemaaned ? ' · referencemåned ' + maanedDK(_engData.referencemaaned) : '')
+    : 'Ingen data';
+
+  engRender();
+
+  const teamNote = _engData.bruger_har_team_begraensning
+    ? '<p><strong>Dette panel viser hele porteføljen</strong>, uafhængigt af din team-afgrænsning: '
+      + 'forbrugsfilen har ingen ejer-kolonne, og der findes ingen vej fra et site til et team.</p>'
+    : '';
+
+  el('eng-note').innerHTML = teamNote
+    + '<p><strong>Populationen er bredere end resten af modulet.</strong> Dette panel tæller alle '
+    + 'rækker på sitet, også dem der ikke kan kobles til en kunde — i modsætning til risikolisten, '
+    + 'som kun regner på kunder der KAN kobles. Det er derfor <code>monitor</code> kan vises her, '
+    + 'selvom dens rækker mangler et pipedrive_id og derfor ikke altid kan kobles til en kunde i '
+    + 'risikobilledet.</p>'
+    + '<p><strong>Fire huller i signalet:</strong> site-match mod dbo.retention er 89,3 % af '
+    + 'abonnementerne (41 af 46 kanoniske sites). App-forbrug mangler for Watch. finans.dk er web '
+    + 'alene (app-grenen faldt fra ca. 150.000 til 45.237 rækker i juni 2026 og er afvist til '
+    + 'genovervejelse tidligst juli 2027). ".com"-udgaverne (shippingwatch.com, medwatch.com, '
+    + 'energywatch.com) er foldet ind i søster-sitet, ikke vist selvstændigt.</p>'
+    + '<p><strong>monitormedier.dk og watchmedier.dk vises tomme.</strong> Begge er '
+    + 'pakkeabonnementer, hvor forbruget måles på kunden og ikke på sitet selv — en tabel her ville '
+    + 'vise næsten ingenting og se ud som et datahul.</p>';
+})();
+
+// IKKE et bart applyHashTab()-kald: en canvas i en display:none-rude får
+// størrelse nul, og lander man direkte på #performance (delt link, F5), ville
+// et bart kald skjule fane 1 FØR Chart.js har konstrueret de to grafer —
+// begge ville forblive blanke, selv efter et senere faneskift tilbage. Ved i
+// stedet at hænge applyHashTab som en FORTSÆTTELSE på `monthlyRows()` køres
+// den efter del A og del B's egen `await monthlyRows()`-fortsættelse er kørt
+// færdig (samme promise, og løftets køere afvikles i den rækkefølge de blev
+// hængt på) — altså efter begge grafer er bygget, uanset hvilken fane
+// hashen peger på.
+monthlyRows().catch(() => {}).finally(applyHashTab);
 </script>
 </body>
 </html>
