@@ -27,7 +27,22 @@ import logging
 import logging.handlers
 import os
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+from env import load_env
+
+# .env indlæses HER og ikke kun i app.py: LOG_DIR beregnes når modulet
+# importeres, og app.py importerer log_setup FØR den kalder load_env(). Uden
+# dette ville HUB_LOG_DIR fra .env blive ignoreret (kun en rigtig
+# miljøvariabel ville virke). load_env() er idempotent.
+load_env()
+
+# Logmappen ligger som standard ved siden af koden. HUB_LOG_DIR kan pege den
+# et andet sted hen — nyttigt på serveren, hvor projektmappen kan være
+# skrivebeskyttet for tjenestekontoen, eller hvor logs skal ligge på et
+# datadrev der backes op.
+LOG_DIR = (
+    (os.getenv("HUB_LOG_DIR") or "").strip()
+    or os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+)
 
 _FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 

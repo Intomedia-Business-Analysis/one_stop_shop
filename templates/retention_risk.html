@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Churn-risiko — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+
+    /* Kundenavnet fører til kunde-detaljen (Kundeside). Understregning først på
+       hover: 200 understregede navne ville støje mere end de vejleder. */
+    .kundelink { color:inherit; text-decoration:none; border-bottom:1px solid transparent; }
+    .kundelink:hover { border-bottom-color:var(--ink-3); }
+    .kundelink:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+
+    /* Zone-kort. Kroner er det store tal; ANTAL ABONNEMENTER og ANTAL KUNDER
+       står begge nedenunder, fordi de svarer på to forskellige spørgsmål:
+       abonnementer er hvad der står på spil, kunder er hvor mange samtaler det
+       kræver (Churn-risiko). De er ikke ens — en kunde kan ligge i tre zoner. */
+    .zones { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:24px; }
+    /* Ét kort i et auto-fit-gitter ville strække sig over hele bredden og se
+       ud som en overskrift. Opsagt-rækken får derfor et loft. */
+    .zones.enkelt { grid-template-columns:repeat(auto-fit,minmax(190px,240px)); justify-content:start; }
+
+    /* Tre overgrupper over zonerne. Syv kort i én række er en liste, ikke en
+       prioritering: overskriften siger hvad man skal gøre, kortene hvor meget
+       der står på spil. Gruppen kommer fra vægten (zones.zone_gruppe), så den
+       ikke kan komme til at modsige kortets egen vægt-linje. */
+    .zgruppe { margin-bottom:6px; }
+    .ghead { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+    .ghead .glabel { font-size:13px; font-weight:700; color:var(--ink); }
+    .ghead .gmeta  { font-size:12px; color:var(--ink-3); }
+    .ghead .ghint  { font-size:11px; color:var(--ink-4); margin-left:auto; }
+    .zcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
+             border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
+    /* Farven følger GRUPPEN (Ring nu / Følg op), ikke zonens navn. gaaet_i_staa
+       og paa_vej_ned deler gul, fordi de begge ligger i Følg op (vægt 0,40-0,70)
+       — syv forskellige farver ville antyde en finere rangorden end modellen
+       kan bære. Vægten står på kortet, så grupperingen forklarer sig selv. */
+    .zcard.aldrig_i_gang { border-left-color:var(--danger); }
+    .zcard.gaaet_i_staa  { border-left-color:var(--warn); }
+    .zcard.paa_vej_ned   { border-left-color:var(--warn); }
+    .zcard.fast_laeser   { border-left-color:var(--win); }
+    .zcard.nystartet     { border-left-color:var(--taupe); }
+    .zcard.lukket_konto  { border-left-color:var(--ink-4); }
+    .zcard.ingen_data    { border-left-color:var(--ink-4); }
+    /* Opsagt er IKKE en zone. Kortet staar sidst og laaner ikke en zonefarve:
+       farven ville laeses som en risikograd, og der er ingen risiko tilbage naar
+       aftalen er opsagt. Det er en kendsgerning, ikke et signal. */
+    .zcard.opsagt        { border-left-color:var(--ink-2); }
+    .zcard .zlabel { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+    .zcard .zarr   { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
+    .zcard .zmeta  { font-size:11px; color:var(--ink-3); line-height:1.5; }
+    .zcard .zvaegt { font-size:10px; color:var(--ink-4); margin-top:5px; }
+
+    /* Kortene ER filteret. Separate knapper med samme tekster nedenunder ville
+       være dobbelt op — her står tallet og handlingen samme sted. */
+    .zcard { cursor:pointer; transition:box-shadow .12s, transform .12s; text-align:left;
+             font-family:inherit; width:100%; }
+    .zcard:hover  { box-shadow:0 5px 18px rgba(28,28,26,.14); transform:translateY(-1px); }
+    .zcard:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+    /* Valgt kort får sin EGEN zonefarve som baggrund, ikke en neutral grå, så man
+       kan se på farven alene hvilket udvalg man kigger på. ✕ i labelen er den
+       farveblinde-sikre markering af at et klik mere rydder filteret. */
+    .zcard.valgt { border-color:var(--border-strong); }
+    .zcard.aldrig_i_gang.valgt { background:var(--danger-light); }
+    .zcard.gaaet_i_staa.valgt  { background:var(--warn-light); }
+    .zcard.paa_vej_ned.valgt   { background:var(--warn-light); }
+    .zcard.fast_laeser.valgt   { background:var(--win-light); }
+    .zcard.nystartet.valgt     { background:var(--taupe-light); }
+    .zcard.lukket_konto.valgt  { background:var(--taupe-light); }
+    .zcard.ingen_data.valgt    { background:var(--taupe-light); }
+    .zcard.opsagt.valgt        { background:var(--taupe-light); }
+    .zcard.valgt .zlabel::after { content:' ✕'; color:var(--ink-3); }
+    .zcard .zhint { font-size:10px; color:var(--ink-4); margin-top:6px; }
+
+    .pager { display:flex; align-items:center; justify-content:space-between; gap:12px;
+             margin-top:14px; font-size:12px; color:var(--ink-3); flex-wrap:wrap; }
+    .pager .pbtns { display:flex; gap:6px; }
+    .pager button { font-family:inherit; font-size:12px; padding:5px 11px; cursor:pointer;
+                    background:var(--surface); color:var(--ink-2);
+                    border:1px solid var(--border-strong); border-radius:var(--r-sm); }
+    .pager button:hover:not(:disabled) { background:var(--bg); color:var(--ink); }
+    .pager button:disabled { opacity:.4; cursor:default; }
+    .pager select { font-family:inherit; font-size:12px; padding:4px 6px;
+                    border:1px solid var(--border-strong); border-radius:var(--r-sm); }
+
+    .note { font-size:11px; border-radius:var(--r-sm); padding:10px 12px; margin-bottom:14px; line-height:1.55; }
+    .note.warn   { background:var(--warn-light);   color:var(--ink-2); border:1px solid var(--border-strong); }
+    .note.danger { background:var(--danger-light); color:var(--ink-2); border:1px solid var(--border-strong); }
+
+    /* Forudsætninger og forbehold hører her: læsbare for den der spørger, uden at
+       stå i vejen for tallene. En gul kasse er forbeholdt noget der er i vejen. */
+    .fine { font-size:11px; color:var(--ink-3); line-height:1.6; margin:-10px 0 8px; }
+    .fine strong { color:var(--ink-2); font-weight:600; }
+
+    /* Foldet som standard: usynlig for den der bare skal ned i listen, ét klik væk
+       for den der bliver spurgt "kan vi stole på det her?". */
+    .daek { margin:0 0 24px; font-size:11px; color:var(--ink-3); }
+    .daek > summary { cursor:pointer; color:var(--ink-2); font-weight:600;
+                      padding:4px 0; user-select:none; width:max-content; }
+    .daek > summary:hover { color:var(--ink); }
+    .daek ul { margin:6px 0 0; padding-left:18px; line-height:1.7; }
+    .daek li strong { color:var(--ink-2); font-weight:600; }
+
+    .tbl-wrap { overflow-x:auto; }
+    /* table-layout:fixed + procentbredder gør at tabellen ALDRIG bliver bredere
+       end panelet. Kolonner med tekst må ombrydes; kun tal og zone-pillen holdes
+       på én linje. */
+    table.risk { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+    table.risk th, table.risk td { padding:8px 10px; text-align:left;
+                                   border-bottom:1px solid var(--border); vertical-align:top; }
+    table.risk th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em;
+                    cursor:pointer; user-select:none; position:sticky; top:0; background:var(--surface); }
+    table.risk th:hover { color:var(--ink); }
+    table.risk th .arrow { color:var(--ink-4); font-size:9px; }
+    table.risk th.num, table.risk td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    table.risk td.txt { overflow-wrap:anywhere; }
+    table.risk tbody tr:hover { background:var(--bg); }
+
+    .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; }
+    .pill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
+    .pill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
+    .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
+    .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
+    .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
+           background:var(--taupe-light); color:var(--ink-2); margin-left:6px; }
+    /* To grader af samme kendsgerning: lys = varslet loeber endnu, moerk =
+       aftalen er slut. Ingen af dem bruger zonefarverne, fordi en opsigelse
+       ikke er en risikograd. */
+    .tag.opsagt      { background:var(--taupe-light); color:var(--ink);
+                       border:1px solid var(--border-strong); }
+    .tag.opsagt.slut { background:var(--ink-2); color:var(--surface);
+                       border-color:var(--ink-2); }
+
+    .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .filters label { font-size:11px; color:var(--ink-2); display:flex; align-items:center; gap:5px; cursor:pointer; }
+    .filters input[type="search"] { font-family:var(--font); font-size:12px; padding:6px 10px;
+                                    border:1px solid var(--border-strong); border-radius:var(--r-sm); min-width:200px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention/risk_overview' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1680px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <a href="/category/retention" class="bc-link">Retention</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Churn-risiko</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Churn-risiko</h1>
+            <p>Aktive abonnementer rangeret efter score = årsværdi × risikovægt</p>
+          </div>
+        </div>
+
+        <div id="notes"></div>
+        <div class="zones" id="zones"></div>
+        <p class="fine" id="zones-note"></p>
+        <details class="daek" id="daekning">
+          <summary>Datadækning og forbehold</summary>
+          <div id="daekning-body"></div>
+        </details>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Abonnementer i risiko</h2>
+              <p id="tbl-sub">Indlæser…</p>
+            </div>
+            <div class="filters">
+              <input type="search" id="q" placeholder="Søg kunde, site eller ejer…" autocomplete="off">
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="tbl-wrap">
+              <table class="risk">
+                <thead><tr id="head"></tr></thead>
+                <tbody id="body"></tbody>
+              </table>
+            </div>
+            <div class="pager" id="pager"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  const nf0 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  // Egen formatter til vægte. nf1 har én decimal, og med den blev 0,15 vist som
+  // 0,2 — kortet påstod altså en vægt der ikke findes i modellen. Vægte er små
+  // tal hvor anden decimal er betydningsbærende, og 1,00 skal se ud som en
+  // bevidst værdi, ikke som et afrundet 1.
+  const nfv = new Intl.NumberFormat('da-DK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const notes   = document.getElementById('notes');
+  const zonesEl = document.getElementById('zones');
+  const sub     = document.getElementById('tbl-sub');
+  const head    = document.getElementById('head');
+  const body    = document.getElementById('body');
+  const q       = document.getElementById('q');
+  const pager   = document.getElementById('pager');
+
+  let page = 1;
+  let pageSize = 50;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // Kroner i millioner på kortene, hele kroner i tabellen. 208.000.000 er
+  // ulæseligt i en kolonne man skal skimme.
+  const mio = (v) => nf1.format((v || 0) / 1e6) + ' mio. kr.';
+
+  const fail = (msg) => {
+    sub.textContent = msg;
+    notes.innerHTML = '<div class="note danger">' + esc(msg) + '</div>';
+  };
+
+  // 403 fra rolle-vagten kommer som {"detail": ...}, og uden res.ok-tjekket
+  // ville koden fejle på et objekt der ikke har .rows.
+  let data;
+  try {
+    const res = await fetch('/retention/risk');
+    if (!res.ok) {
+      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+      try { const b = await res.json(); if (b && b.detail) detail = b.detail; } catch (e) {}
+      return fail(detail);
+    }
+    data = await res.json();
+  } catch (e) {
+    return fail('Kunne ikke hente data — netværksfejl.');
+  }
+
+  const rows  = data.rows  || [];
+  const meta  = data.meta  || {};
+  const zoner = data.zones || {};
+
+  // ── Noter. En kasse vises KUN når der faktisk er noget i vejen.
+  const n = [];
+  if (meta.usage_error) {
+    n.push('<div class="note danger"><strong>Der er intet forbrugssignal indlæst.</strong> '
+      + 'Alle abonnementer står derfor som “ingen data” — det betyder IKKE at ingen er i risiko. '
+      + esc(meta.usage_error).replace(/\n/g, '<br>') + '</div>');
+  } else if (meta.reference_alder != null && meta.reference_alder > 0) {
+    // Alderen måles i MÅNEDER, ikke dage. Et månedligt signal rådner ikke inden
+    // for måneden — det var hele grunden til at forlade dagsmodellen. Men er
+    // referencen en måned for gammel, er eksporten ikke kørt.
+    n.push('<div class="note danger"><strong>Forbrugsdata er '
+      + esc(meta.reference_alder) + ' måned' + (meta.reference_alder > 1 ? 'er' : '')
+      + ' bagud.</strong> Zonerne beskriver ' + esc(meta.reference_maaned)
+      + ' og kan være overhalet. Kør eksportet igen — se usage_trend.txt.</div>');
+  }
+  notes.innerHTML = n.join('');
+
+  // ── Zone-kort, som samtidig er filteret. null = standardvisningen (alle zoner
+  // med risikovægt over nul); ellers præcis én zone.
+  let zoneFilter = null;
+
+  // Zoner med vægt 0 er ikke en arbejdsliste. De er ét klik væk på kortene.
+  const iRisiko = (r) => (r.vaegt || 0) > 0;
+
+  // Opsagte aftaler. Egen gruppe og BEVIDST ikke en zone: zonen beskriver
+  // forbrug, mens en opsigelse er en kendsgerning om kontrakten. risiko.py
+  // sætter deres vægt til 0,00, og de falder derfor ud af standardvisningen.
+  // Uden dette kort ville de forsvinde uden spor.
+  //
+  // Målt 2026-08-19: 280 abonnementer, hvoraf de tolv største næsten alle
+  // ligger i zonen "fast_laeser". Energinets EnergiWatch DK til 260.356 kr. ophører
+  // 29-09-2026 og læser normalt indtil da, så den har aldrig kunnet ses på
+  // denne side. Det er dem kortet gør synlige.
+  const OPSAGT = '__opsagt';
+  const opsagte = rows.filter(r => r.opsagt_dato);
+
+  // '2026-10-31' bliver '31-10-2026'. ISO er en maskinværdi, og datoen står på
+  // en badge man skimmer.
+  const dkDato = (s) => String(s || '').split('-').reverse().join('-');
+
+  function opsagtKort() {
+    if (!opsagte.length) return '';
+    const arr    = opsagte.reduce((s, r) => s + (r.arr_dkk || 0), 0);
+    const kunder = new Set(opsagte.map(r => r.account + '|' + r.org_id)).size;
+    const slut   = opsagte.filter(r => r.opsagt).length;
+    const valgt  = zoneFilter === OPSAGT;
+    return '<button type="button" class="zcard opsagt' + (valgt ? ' valgt' : '')
+      + '" data-zone="' + OPSAGT + '" title="'
+      + esc(valgt ? 'Klik for at rydde filteret'
+                  : 'Vis kun abonnementer med en registreret opsigelse') + '">'
+      + '<div class="zlabel">Opsagt</div>'
+      + '<div class="zarr">' + mio(arr) + '</div>'
+      + '<div class="zmeta">' + nf0.format(opsagte.length) + ' abonnementer · '
+      + nf0.format(kunder) + ' kunder<br>'
+      + nf0.format(slut) + ' ophørt · '
+      + nf0.format(opsagte.length - slut) + ' i opsigelse</div>'
+      + '<div class="zvaegt">uden risikovægt</div>'
+      + (valgt ? '' : '<div class="zhint">klik for at vise</div>')
+      + '</button>';
+  }
+
+  function zoneKort(z) {
+      const b = zoner[z];
+      if (!b) return '';
+      const extra = [];
+      if (b.uden_arr)    extra.push(nf0.format(b.uden_arr) + ' uden årsværdi');
+      if (b.mikrokunder) extra.push(nf0.format(b.mikrokunder) + ' mikrokunder');
+      const valgt = zoneFilter === z;
+      return '<button type="button" class="zcard ' + z + (valgt ? ' valgt' : '')
+        + '" data-zone="' + z + '" title="'
+        + esc(valgt ? 'Klik for at rydde filteret' : 'Vis kun ' + b.label) + '">'
+        + '<div class="zlabel">' + esc(b.label) + '</div>'
+        + '<div class="zarr">' + mio(b.arr_dkk) + '</div>'
+        // Begge tal, jf. Churn-risiko: abonnementer er hvad der står på spil,
+        // kunder er hvor mange samtaler det kræver.
+        + '<div class="zmeta">' + nf0.format(b.abonnementer) + ' abonnementer · '
+        + nf0.format(b.kunder) + ' kunder'
+        + (extra.length ? '<br>' + extra.join(' · ') : '') + '</div>'
+        + '<div class="zvaegt">risikovægt ' + nfv.format(b.vaegt) + '</div>'
+        + (valgt ? '' : '<div class="zhint">klik for at vise</div>')
+        + '</button>';
+  }
+
+  // Rækkefølgen INDEN i en gruppe er fortsat zone_order, ikke en ny sortering.
+  // To rangordener ville kunne blive uenige, og zone_order er den modellen
+  // selv bruger til at bryde uafgjort (zones.zone_alvor).
+  function tegnZoner() {
+    const grupper = (data.gruppe_order || []).map(g => {
+      const zs = (data.zone_order || []).filter(z => zoner[z] && zoner[z].gruppe === g.id);
+      if (!zs.length) return '';
+      const abo = zs.reduce((s, z) => s + zoner[z].abonnementer, 0);
+      const arr = zs.reduce((s, z) => s + zoner[z].arr_dkk, 0);
+      return '<div class="zgruppe"><div class="ghead">'
+        + '<span class="glabel">' + esc(g.label) + '</span>'
+        + '<span class="gmeta">' + nf0.format(abo) + ' abonnementer · ' + mio(arr) + '</span>'
+        + '<span class="ghint">' + esc(g.hint) + '</span>'
+        + '</div><div class="zones">' + zs.map(zoneKort).join('') + '</div></div>';
+    }).join('');
+    // Opsagt står UDEN FOR grupperne. Den er ikke en zone og har ingen vægt,
+    // og "i opsigelse" er stadig et opkald værd, så den kan hverken ligge
+    // under Ring nu eller under Ingen handling uden at lyve.
+    const opsagt = opsagtKort();
+    zonesEl.innerHTML = grupper + (opsagt
+      ? '<div class="zgruppe"><div class="ghead">'
+        + '<span class="glabel">Opsagt</span>'
+        + '<span class="ghint">en kendsgerning, ikke et signal</span>'
+        + '</div><div class="zones enkelt">' + opsagt + '</div></div>'
+      : '');
+  }
+  tegnZoner();
+
+  zonesEl.addEventListener('click', (e) => {
+    const card = e.target.closest('.zcard');
+    if (!card) return;
+    zoneFilter = (zoneFilter === card.dataset.zone) ? null : card.dataset.zone;
+    page = 1;              // et nyt filter skal starte forfra, ikke på side 12
+    tegnZoner();
+    render();
+  });
+
+  // Forudsætningerne under kortene. Den ene der SKAL være synlig er at
+  // tærsklerne er gæt — uden den læses zonerne som fakta, og så prioriterer
+  // nogen en arbejdsdag efter et tal fra et oplæg.
+  const friskTxt = meta.usage_error
+    ? 'intet forbrugssignal indlæst'
+    : 'zoner målt på ' + esc(meta.reference_maaned) + ' (sidste hele måned)'
+      + (meta.usage_export_date ? ', eksport pr. ' + esc(meta.usage_export_date) : '');
+  document.getElementById('zones-note').innerHTML =
+    friskTxt + ' · abonnementer aktive i ' + esc(meta.abo_maaned) + ' · '
+    + (meta.thresholds_validated === false
+        ? '<strong>vægtene er kun DELVIST kalibreret mod faktisk churn</strong>'
+          + ' (aldrig i gang og gået i stå er målt, de øvrige er stadig gæt)'
+        : 'vægte kalibreret mod faktiske udfald')
+    + (opsagte.length
+        ? ' · <strong>' + nf0.format(opsagte.length) + ' abonnementer er opsagt</strong>'
+          + ' og taget ud af risikoscoren, de ligger på kortet til sidst'
+        : '');
+
+  // ── Tabel. Ni kolonner der tilsammen fylder 100%, så tabellen passer i
+  // panelet. `hint` bliver et tooltip på overskriften — definitioner hører der
+  // frem for i en fodnote: de er der for den der spørger, og i vejen for andre.
+  const COLS = [
+    { key:'org_name',        label:'Kunde',      w:'16%',
+      hint:'Handlingsenheden. Hold musen over navnet for kontonummer og antal abonnementer' },
+    { key:'site',            label:'Site',       w:'11%',
+      hint:'Måleenheden er abonnementet: account, org_id og site' },
+    { key:'zone',            label:'Zone',       w:'11%',
+      hint:'Beregnet på sidevisninger i sidste hele måned mod de 3 foregående' },
+    { key:'aktive_dage_12m', label:'Dage',       w:'7%', num:true,
+      hint:'Dage med aktivitet i de 12 måneder før referencen, lagt sammen pr. adgang. Over 20 = vanebruger, og først da vejer et stop fuldt' },
+    { key:'pv_reference',    label:'Forbrug',    w:'9%', num:true,
+      hint:'Sidevisninger i referencemåneden, og til højre snittet af de 3 foregående. Det er de to tal zonen er beregnet af' },
+    { key:'fornyelse_dage',  label:'Fornyelse',  w:'8%', num:true,
+      hint:'Dage til kundens NÆRMESTE fornyelse, fra Zuoras betalt_til. Den ligger på kunden og ikke på sitet, så alle kundens sites deler datoen. Den ganges IKKE på scoren: monitor og marketwire har 0 % dækning, og en faktor ville skubbe dem ned af en datagrund' },
+    { key:'score',           label:'Score',      w:'9%', num:true,
+      hint:'Årsværdi × risikovægt × timingfaktor. Timingfaktoren er fortsat 1,0 for alle: fornyelsesdatoen findes nu, men den kan ikke valideres bagud, fordi Zuora sætter betalt_til og auto_fornyes ved ophør' },
+    { key:'arr_dkk',         label:'Årsværdi kr.', w:'9%', num:true,
+      hint:'Abonnementets andel af kundens ARR, fordelt ligeligt på kundens sites. Lige deling er et valg, ikke en måling — ACV kan ikke brolægges til retentions site-vokabular' },
+    { key:'owner_name',      label:'Ejer',       w:'11%',
+      hint:'Kundens nuværende org-ejer i Pipedrive, ikke den der oprindeligt solgte. Samme definition som på trendgrafen' },
+    { key:'teams',           label:'Team',       w:'9%',
+      hint:'Ejerens aktive team-medlemskaber. Uden et team når kunden ingen afdelingsleder' },
+  ];
+
+  // "Team FINANS DK, Team Watch DK" -> "FINANS DK, Watch DK". Præfikset er ens på
+  // alle teams og koster en tredjedel af kolonnens bredde.
+  const teamShort = (t) => String(t || '').replace(/\bTeam\s+/g, '');
+
+  // Zonens alvor som tal, taget fra API'ets egen rækkefølge. Sorteres zonen som
+  // tekst, bliver den alfabetisk — altså nonsens for et risikomål.
+  const ZONE_RANK = {};
+  (data.zone_order || []).forEach((z, i) => { ZONE_RANK[z] = i; });
+
+  // Standard: score faldende, som Prioriteringsmodellen foreskriver. Serveren leverer listen
+  // sorteret sådan, men vi sætter det eksplicit, så en klik-sortering kan vendes
+  // tilbage til udgangspunktet.
+  let sortKey = 'score', sortDir = -1;
+
+  const value = (r, k) => {
+    if (k === 'zone') return ZONE_RANK[r.zone] === undefined ? 99 : ZONE_RANK[r.zone];
+    const v = r[k];
+    // null skal ALTID sortere nederst, uanset retning — ellers fylder rækker
+    // uden data toppen, og det er ikke dem man skal ringe til.
+    if (v === null || v === undefined || v === '') return null;
+    return v;
+  };
+
+  function visible() {
+    const term = q.value.trim().toLowerCase();
+    return rows.filter(r => {
+      if (zoneFilter === OPSAGT) {
+        // Egen gren og ikke en zone-sammenligning: de opsagte ligger spredt over
+        // alle syv zoner, fordi forbrug og opsigelse er to forskellige ting.
+        if (!r.opsagt_dato) return false;
+      } else if (zoneFilter === null) {
+        if (!iRisiko(r)) return false;
+      } else if (r.zone !== zoneFilter) {
+        return false;
+      }
+      if (!term) return true;
+      return (r.org_name || '').toLowerCase().includes(term)
+          || (r.site || '').toLowerCase().includes(term)
+          || (r.owner_name || '').toLowerCase().includes(term);
+    });
+  }
+
+  function render() {
+    head.innerHTML = COLS.map(c =>
+      '<th data-key="' + c.key + '" style="width:' + c.w + '"'
+      + (c.hint ? ' title="' + esc(c.hint) + '"' : '')
+      + (c.num ? ' class="num"' : '') + '>' + esc(c.label)
+      + (sortKey === c.key ? ' <span class="arrow">' + (sortDir === 1 ? '▲' : '▼') + '</span>' : '')
+      + '</th>').join('');
+
+    const list = visible().slice().sort((a, b) => {
+      const va = value(a, sortKey), vb = value(b, sortKey);
+      let cmp = 0;
+      if (va === null && vb === null)      cmp = 0;
+      else if (va === null)                cmp = 1;   // null altid nederst
+      else if (vb === null)                cmp = -1;
+      else if (typeof va === 'number' && typeof vb === 'number') cmp = (va - vb) * sortDir;
+      else cmp = String(va).localeCompare(String(vb), 'da') * sortDir;
+      if (cmp !== 0) return cmp;
+      // Andenprioritet er ALTID største score først, så samme zone præsenteres
+      // med de dyreste abonnementer øverst.
+      const aa = a.score == null ? -1 : a.score;
+      const bb = b.score == null ? -1 : b.score;
+      return bb - aa;
+    });
+
+    // Sidedeling. Listen er en KØ, ikke et dokument: sorteret efter score er
+    // side 1 arbejdslisten, og resten findes for fuldstændighedens skyld.
+    const sider = Math.max(1, Math.ceil(list.length / pageSize));
+    if (page > sider) page = sider;      // filter/søgning kan have gjort listen kortere
+    const fra = (page - 1) * pageSize;
+    const side = list.slice(fra, fra + pageSize);
+
+    body.innerHTML = side.map(r => {
+      const tags = [];
+      if (r.mikrokunde) {
+        tags.push('<span class="tag" title="Kundens samlede årsværdi er under 5.000 kr. '
+          + '— får aldrig et opkald">mikrokunde</span>');
+      }
+      // Den overtrumfer alt andet på rækken når den findes: zonen beskriver
+      // hvad kunden LÆSER, men aftalen er allerede slut eller på vej ud.
+      if (r.opsagt_dato) {
+        tags.push('<span class="tag opsagt' + (r.opsagt ? ' slut' : '') + '" title="'
+          + esc(r.opsagt
+                ? 'Aftalen ophørte ' + dkDato(r.opsagt_dato)
+                  + '. Der er ingen risiko at handle på, kun en registrering'
+                : 'Opsagt, men varslet løber til ' + dkDato(r.opsagt_dato)
+                  + '. Scoren er nul, fordi udfaldet er afgjort, men der er '
+                  + 'stadig tid til at ringe')
+          + '">' + (r.opsagt ? 'ophørt ' : 'opsagt ')
+          + esc(dkDato(r.opsagt_dato)) + '</span>');
+      }
+      const kundeTitel = [r.org_name, r.account,
+                          r.sites_i_alt ? r.sites_i_alt + ' abonnementer i alt' : '',
+                          r.kunde_arr_dkk != null
+                            ? 'kundens samlede årsværdi ' + nf0.format(r.kunde_arr_dkk) + ' kr.' : '',
+                         ].filter(Boolean).join(' · ');
+      const zoneFuld = (zoner[r.zone] || {}).label || r.zone;
+      const forbrug = r.pv_reference == null ? '–'
+        : nf0.format(r.pv_reference) + ' / '
+          // INGEN .replace('.', ',') her. Intl.NumberFormat('da-DK') formaterer
+          // allerede dansk, og replace'et ramte tusindtalsseparatoren: et snit
+          // på 6.991,3 blev vist som 6,991,3. Fejlen ramte netop de rækker med
+          // størst volumen, altså dem der betyder mest.
+          + (r.pv_snit_3 == null ? '–' : nf1.format(r.pv_snit_3));
+      return '<tr>'
+        // Kundenavnet er indgangen til Kundeside. Linket sidder på NAVNET og
+        // ikke på hele rækken: rækken er et abonnement, men man ringer til en
+        // kunde, og et klik hvor som helst ville skjule den forskel.
+        + '<td class="txt" title="' + esc(kundeTitel) + '">'
+          + '<a class="kundelink" href="/retention/kunde/'
+          + encodeURIComponent(r.account) + '/' + encodeURIComponent(r.org_id)
+          + '">' + esc(r.org_name) + '</a>' + tags.join('') + '</td>'
+        + '<td class="txt" title="' + esc('Første måned i dbo.retention: ' + (r.foerste_maaned || '?')) + '">'
+          + esc(r.site || '–') + '</td>'
+        + '<td><span class="pill ' + r.zone + '" title="'
+          + esc(zoneFuld + ' · risikovægt ' + nfv.format(r.vaegt)) + '">' + esc(zoneFuld) + '</span></td>'
+        + '<td class="num">' + (r.aktive_dage_12m == null ? '–' : nf0.format(r.aktive_dage_12m)) + '</td>'
+        + '<td class="num" title="' + esc('Referencemåned mod snittet af de 3 foregående') + '">'
+          + esc(forbrug) + '</td>'
+        + '<td class="num" title="' + esc(r.fornyelse_dato
+            ? 'Betalt til ' + dkDato(r.fornyelse_dato)
+            : 'Ingen aktiv Zuora-konto med en fremtidig dato') + '">'
+          + (r.fornyelse_dage == null ? '–' : nf0.format(r.fornyelse_dage) + ' dg')
+        + '</td>'
+        + '<td class="num">' + (r.score == null ? '–' : nf0.format(r.score)) + '</td>'
+        + '<td class="num">' + (r.arr_dkk == null ? '–' : nf0.format(r.arr_dkk)) + '</td>'
+        + '<td class="txt">' + (r.owner_name ? esc(r.owner_name) : '<em>(Ikke tilskrevet)</em>') + '</td>'
+        + '<td class="txt" title="' + esc(r.teams || '') + '">' + esc(teamShort(r.teams) || '–') + '</td>'
+        + '</tr>';
+    }).join('');
+
+    // Underteksten beskriver UDVALGET, ikke siden — ellers ser en leder
+    // "50 abonnementer i risiko" og tror det er hele problemet. Kunder tælles
+    // som mængde, fordi samme kunde kan have flere abonnementer i udvalget.
+    const arr = list.reduce((s, r) => s + (r.arr_dkk || 0), 0);
+    const kunder = new Set(list.map(r => r.account + '|' + r.org_id)).size;
+    const zoneNavn = zoneFilter === OPSAGT
+      ? 'opsagte aftaler'
+      : zoneFilter
+        ? ((zoner[zoneFilter] || {}).label || zoneFilter).toLowerCase()
+        : 'zoner med risikovægt';
+    sub.textContent = nf0.format(list.length) + ' abonnementer hos '
+      + nf0.format(kunder) + ' kunder i ' + zoneNavn
+      + (q.value.trim() ? ' der matcher søgningen' : '')
+      + ' · ' + mio(arr) + ' i udvalget · ' + mio(meta.arr_total) + ' i alt';
+
+    const til = Math.min(fra + pageSize, list.length);
+    pager.innerHTML =
+      '<span>' + (list.length ? 'Viser ' + nf0.format(fra + 1) + '–' + nf0.format(til)
+                                + ' af ' + nf0.format(list.length) : 'Ingen abonnementer i udvalget')
+      + (sider > 1 ? ' · side ' + page + ' af ' + nf0.format(sider) : '') + '</span>'
+      + '<span class="pbtns">'
+      + '<label style="margin-right:8px;">Pr. side '
+      + '<select id="psize">'
+      + [25, 50, 100, 250].map(n =>
+          '<option value="' + n + '"' + (n === pageSize ? ' selected' : '') + '>' + n + '</option>').join('')
+      + '</select></label>'
+      + '<button id="pfirst"' + (page === 1 ? ' disabled' : '') + '>« Første</button>'
+      + '<button id="pprev"'  + (page === 1 ? ' disabled' : '') + '>‹ Forrige</button>'
+      + '<button id="pnext"'  + (page >= sider ? ' disabled' : '') + '>Næste ›</button>'
+      + '<button id="plast"'  + (page >= sider ? ' disabled' : '') + '>Sidste »</button>'
+      + '</span>';
+
+    const gaaTil = (n) => { page = Math.min(Math.max(1, n), sider); render(); scrollTilTop(); };
+    document.getElementById('pfirst').onclick = () => gaaTil(1);
+    document.getElementById('pprev').onclick  = () => gaaTil(page - 1);
+    document.getElementById('pnext').onclick  = () => gaaTil(page + 1);
+    document.getElementById('plast').onclick  = () => gaaTil(sider);
+    document.getElementById('psize').onchange = (e) => {
+      pageSize = parseInt(e.target.value, 10);
+      page = 1;
+      render();
+    };
+  }
+
+  // Ved sideskift skal man se toppen af tabellen, ikke stå midt i den nye side.
+  function scrollTilTop() {
+    const p = document.querySelector('.panel-header');
+    if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Forbeholdene: foldet sammen, ikke fjernet. Ét klik væk for den der bliver
+  // spurgt "kan vi stole på det her?", usynlige for den der bare skal i listen.
+  const punkter = [];
+  punkter.push('<strong>Måleenheden er abonnementet</strong> (account, org_id, site), '
+    + 'ikke kunden. ' + nf0.format(meta.abonnementer) + ' abonnementer hos '
+    + nf0.format(meta.kunder) + ' kunder. Summen af zonekortenes kundetal er '
+    + 'derfor større end ' + nf0.format(meta.kunder) + ' — samme kunde kan ligge i '
+    + 'flere zoner med flere sites.');
+  if (meta.udenlandske_udeladt && meta.udenlandske_udeladt.length) {
+    punkter.push('<strong>Kun den danske portefølje.</strong> Retention-teamet er '
+      + 'dansk (aftalt 2026-08-20), så modulet viser hverken lister, historik '
+      + 'eller kundesider for ' + meta.udenlandske_udeladt.join(', ') + '. '
+      + 'Watch Medier (inkl. Finans DK og den internationale .com-sektion), '
+      + 'Monitor og Marketwire er upåvirkede.');
+  }
+  punkter.push('<strong>Forbrugssignal for ' + nf0.format(meta.med_signal) + ' af '
+    + nf0.format(meta.abonnementer) + ' abonnementer.</strong> De øvrige står som '
+    + '“ingen data”: enten et site uden kilde, eller en kunde vi ikke kan '
+    + 'oversætte til en organisation. '
+    + 'Et datahul er ikke bevis på sundhed, og de har derfor vægt 0,15 — ikke 0.');
+  if (meta.uden_aktiv_konto) {
+    const zonen = rows.filter(r => r.zone === 'lukket_konto').length;
+    punkter.push('<strong>' + nf0.format(meta.uden_aktiv_konto) + ' abonnementer har '
+      + 'ingen aktiv konto i Zuora.</strong> Pipedrive siger aktiv, Zuora siger ophørt. '
+      + nf0.format(zonen) + ' af dem har heller ikke læst en enkelt gang og står som '
+      + '“lukket konto” med vægt 0 — de er datahygiejne, ikke opkald. '
+      + 'De øvrige ' + nf0.format(meta.uden_aktiv_konto - zonen) + ' <strong>beholder '
+      + 'deres zone</strong>, fordi de faktisk læser, og læsningen er det stærkeste '
+      + 'bevis vi har: så er det konto-statussen der er forældet, ikke kunden der er '
+      + 'væk. Hele gruppen udgør 336.511 kr. af årsværdien, og kun 47 af dem har '
+      + 'overhovedet et beløb i ACV.');
+  }
+  if (meta.mikrokunder) {
+    punkter.push(nf0.format(meta.mikrokunder) + ' abonnementer hører til kunder under '
+      + '5.000 kr./år. De <strong>vises men får aldrig et opkald</strong>. '
+      + 'De er med, så kortenes tal summerer til den virkelige portefølje.');
+  }
+  // ÅRSVÆRDIEN ER IKKE LÆNGERE EN LIGE DELING. Punktet påstod indtil 2026-08-20
+  // at beløbet var kundens ARR delt ligeligt på hendes sites, og rådede til at
+  // bruge kundens samlede beløb i stedet. Broen mellem ACV's og dbo.retentions
+  // site-vokabular blev bygget 2026-08-18, så nu har hvert abonnement sit eget
+  // beløb, og det gamle råd var blevet det forkerte råd.
+  //
+  // Tallene regnes af rækkerne og ikke af meta: arr_kilde findes pr. række, og
+  // et hårdkodet tal i en skabelon rådner uden at nogen ser det.
+  const kilde = (v) => rows.filter(r => r.arr_kilde === v).length;
+  punkter.push('<strong>Årsværdien er abonnementets egen</strong>, hentet pr. site fra '
+    + 'ACV for ' + nf0.format(kilde('site')) + ' af ' + nf0.format(meta.abonnementer)
+    + ' abonnementer. ' + nf0.format(kilde('lige_deling')) + ' får i stedet kundens '
+    + 'samlede beløb delt ligeligt, fordi kunden intet beløb har på nogen af sine '
+    + 'sites. Kundens samlede årsværdi i tooltippet kan være <strong>højere</strong> '
+    + 'end summen af hendes abonnementer: ACV beholder beløbet efter en opsigelse, '
+    + 'i alt 7,0 mio. kr. fordelt på 276 kunder.');
+  if (meta.med_fornyelse) {
+    punkter.push('<strong>Fornyelsesdatoen ganges ikke på scoren.</strong> '
+      + nf0.format(meta.med_fornyelse) + ' af ' + nf0.format(meta.abonnementer)
+      + ' abonnementer har en dato, og ' + nf0.format(meta.fornyelse_60_dage)
+      + ' af dem fornyes inden 60 dage. Tre grunde til at den kun er en kolonne '
+      + 'og en tie-breaker: monitor og marketwire har <strong>0 % dækning</strong>, '
+      + 'fordi datamarten ikke indeholder de brands, så en faktor ville skubbe to '
+      + 'forretningsområder ned af en datagrund. Datoen ligger på kunden og ikke '
+      + 'på sitet. Og den kan ikke måles bagud: Zuora sætter både betalt_til og '
+      + 'auto_fornyes når et abonnement ophører, så en historisk test ville måle '
+      + 'sig selv. En ærlig prøve kræver et fremadrettet forsøg.');
+  }
+  punkter.push('<strong>Dage er en øvre grænse.</strong> Dagene lægges sammen pr. '
+    + 'adgang, så den samme dato tælles flere gange, når to medarbejdere læser samme '
+    + 'dag. En kunde med tre adgange på ét site kan derfor stå med over 500 dage på '
+    + 'et år. Eksporten aggregerer dags-opløsningen væk, så en præcis optælling kan '
+    + 'ikke laves. Fejlen peger mod at kalde noget en vane, altså mod at vise risiko '
+    + 'frem for at skjule den.');
+  punkter.push('<strong>Watch-appen kan ikke tilskrives.</strong> 566.190 skærmvisninger '
+    + 'i juli 2026 mangler adgangsaftale, så en kunde der læser alt i appen står som '
+    + 'tavs. Finans-appen sætter feltet korrekt og <strong>er med siden 24-08-2026</strong>: '
+    + 'finans.dk dækker app plus web, Watch-sitene dækker web alene. Volumen kan derfor '
+    + 'ikke sammenlignes på tværs af de to, kun udviklingen inden for det samme site.');
+  if (meta.uden_arr)  punkter.push(nf0.format(meta.uden_arr) + ' abonnementer har ingen årsværdi og kan derfor ikke få en score. De ligger nederst — de er uopgjorte, ikke risikofrie.');
+  if (meta.uden_ejer) punkter.push(nf0.format(meta.uden_ejer) + ' abonnementer har ingen tilskrevet ejer og ses kun i den firmabrede visning.');
+  if (meta.uden_team) punkter.push(nf0.format(meta.uden_team) + ' abonnementer har en ejer uden aktivt team-medlemskab og når derfor ingen afdelingsleder.');
+
+  document.getElementById('daekning-body').innerHTML =
+    '<ul><li>' + punkter.join('</li><li>') + '</li></ul>';
+
+  head.addEventListener('click', (e) => {
+    const th = e.target.closest('th');
+    if (!th) return;
+    const key = th.dataset.key;
+    // Nyt felt: start faldende for tal (størst først er det interessante) og
+    // stigende for tekst. Zonen starter stigende, fordi rang 0 er den værste.
+    // Samme felt igen: vend retningen.
+    if (key === sortKey) sortDir = -sortDir;
+    else if (key === 'zone') { sortKey = key; sortDir = 1; }
+    else { sortKey = key; sortDir = (COLS.find(c => c.key === key) || {}).num ? -1 : 1; }
+    page = 1;
+    render();
+  });
+  q.addEventListener('input', () => { page = 1; render(); });
+
+  render();
+})();
+</script>
+</body>
+</html>

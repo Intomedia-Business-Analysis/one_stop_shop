@@ -4,7 +4,7 @@ import os
 import secrets
 import time
 
-from dotenv import load_dotenv
+from env import load_env
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -49,7 +49,7 @@ from moduler.modul_admin_nysalg.router import router as admin_nysalg_router
 from moduler.modul_admin_nysalg.repo import init_admin_nysalg_db
 from usage_tracking import record_pageview, start_usage_worker
 
-load_dotenv()
+load_env()
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -103,13 +103,46 @@ from urllib.parse import quote, urlparse  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
 
+def _trusted_origins() -> set:
+    """Eksterne adresser der også må sende skrivende requests.
+
+    Bag Azure AD Application Proxy ser appen sin INTERNE host i Host-headeren
+    (proxyen oversætter den), mens browserens Origin er den EKSTERNE adresse.
+    De to matcher aldrig, og uden denne liste ville hvert eneste login blive
+    afvist med 403. HUB_TRUSTED_ORIGINS sættes i .env, adskilt med ; eller ,
+    og med eller uden skema:
+
+        HUB_TRUSTED_ORIGINS=https://jpbmdatawarehouse-jppol.msappproxy.net
+
+    Bemærk at det SKAL være en eksplicit liste. Alternativet — at stole på
+    X-Forwarded-Host — kan enhver der kan nå porten sætte selv, og så er
+    tjekket ikke længere værd at have.
+    """
+    raw = (os.getenv("HUB_TRUSTED_ORIGINS") or "").replace(",", ";")
+    ud = set()
+    for post in raw.split(";"):
+        post = post.strip()
+        if not post:
+            continue
+        netloc = urlparse(post if "//" in post else f"//{post}").netloc
+        if netloc:
+            ud.add(netloc.lower())
+    return ud
+
+
+TRUSTED_ORIGINS = _trusted_origins()
+if TRUSTED_ORIGINS:
+    logger.info("CSRF: betroede eksterne origins = %s", ", ".join(sorted(TRUSTED_ORIGINS)))
+
+
 @app.middleware("http")
 async def csrf_origin_check(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH", "DELETE"):
         source = request.headers.get("origin") or request.headers.get("referer")
         if source:
-            source_host = urlparse(source).netloc
-            if source_host and source_host != request.headers.get("host", ""):
+            source_host = urlparse(source).netloc.lower()
+            tilladte = {request.headers.get("host", "").lower()} | TRUSTED_ORIGINS
+            if source_host and source_host not in tilladte:
                 return JSONResponse(
                     {"detail": "Requesten kommer fra et andet site (CSRF-tjek)"},
                     status_code=403,

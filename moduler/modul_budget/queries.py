@@ -6,9 +6,9 @@ from datetime import date
 import pymssql
 import pandas as pd
 from fastapi import HTTPException
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()
 
 logger = logging.getLogger(__name__)
 

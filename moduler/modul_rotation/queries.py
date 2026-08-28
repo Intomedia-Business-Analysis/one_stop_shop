@@ -3,9 +3,9 @@ import os
 from datetime import date, timedelta
 
 import pymssql
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()
 
 logger = logging.getLogger(__name__)
 

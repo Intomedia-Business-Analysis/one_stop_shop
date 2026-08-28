@@ -5,7 +5,7 @@ så alle pymssql-connects fejler hurtigt, og app'en falder tilbage til sine
 default-roller. Login/adgang testes via FastAPI's dependency_overrides, så vi
 ikke behøver rigtige brugere i en DB.
 
-VIGTIGT: miljøvariablerne sættes FØR app importeres — load_dotenv() i app.py
+VIGTIGT: miljøvariablerne sættes FØR app importeres — env.load_env() i app.py
 og db.py overskriver ikke variabler, der allerede er sat i miljøet.
 """
 import os
@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Skal ske før `import app` (og før load_dotenv læser .env)
+# Skal ske før `import app` (og før load_env læser .env)
 os.environ["SECRET_KEY"]  = "testnoegle-ikke-til-produktion"
 os.environ["DEV_MODE"]    = "0"
 os.environ["DB_SERVER"]   = "db-findes-ikke.invalid"  # DNS-fejl = hurtig connect-fejl

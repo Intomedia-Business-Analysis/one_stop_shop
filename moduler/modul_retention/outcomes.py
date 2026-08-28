@@ -184,13 +184,21 @@ FORNYET_DAGE_FOER = 45      # fornyelsesdato MINUS dette
 FORNYET_UDEN_DATO = 180     # ingen fornyelsesdato kendt
 IKKE_KONTAKTBAR_DAGE = 90
 
-# db.py forbinder med tds_version="7.0", og TDS 7.0 kender ikke `date` og
-# `datetime2` — de kom i 7.3. SQL Server sender dem derfor som STRENGE
+# Datofelterne kan ankomme som BÅDE strenge og rigtige objekter, og det er
+# bevidst at normaliseringen tager begge.
+#
+# Historikken: med tds_version="7.0" kendte protokollen ikke `date` og
+# `datetime2` — de kom i 7.3 — så SQL Server sendte dem som STRENGE
 # ('2026-08-14' og '2026-08-14 15:04:05.1234567'), mens det gamle `datetime`
-# kommer tilbage som et rigtigt Python-objekt. Uden normalisering her sprang
-# opfoelgninger på `str <= date`, og Dagens opkald kan ikke markere en overskredet
-# opfølgning uden at kunne regne på datoen. Rettes ved kanten, én gang, i
-# stedet for i hver enkelt kalder.
+# kom tilbage som et rigtigt Python-objekt. Serveren kræver nu TLS, hvilket
+# kræver TDS 7.4, hvor alle tre er rigtige objekter — men db.py holder som
+# standard DATE-kolonner tilbage som strenge (DB_DATE_AS_STRING), så de 16
+# moduler ikke skiftede type på én gang. Begge former skal derfor kunne
+# håndteres her, uanset hvordan den indstilling står.
+#
+# Uden normalisering sprang opfoelgninger på `str <= date`, og Dagens opkald
+# kan ikke markere en overskredet opfølgning uden at kunne regne på datoen.
+# Rettes ved kanten, én gang, i stedet for i hver enkelt kalder.
 _DATO_FELTER = ("renewal_date", "expiry_date", "followup_date")
 _TIDSPUNKT_FELTER = ("contacted_at", "created_at")
 
@@ -293,10 +301,9 @@ def tilbage_paa_listen(raekke: dict) -> dt.date:
     og "har et udfald" følges altid, og de to grene kan ikke overlappe.
 
     UKENDTE VÆRDIER giver STRAKS og ikke ALDRIG. Fejlen skal pege mod at vise
-    for meget frem for for lidt, samme valg som zones.bestem_zone's
-    `har_aktiv_konto=True` og `har_zuora_kobling=True`. ALDRIG ville lade en
-    kunde forsvinde lydløst; STRAKS lader den dukke op for tidligt, og det
-    bliver set.
+    for meget frem for for lidt, samme valg som zone_vaegt's `vanebruger=True`.
+    ALDRIG ville lade en kunde forsvinde lydløst; STRAKS lader den dukke op for
+    tidligt, og det bliver set.
     """
     grundlag = raekke.get("created_at")
     # created_at er en datetime (se _TIDSPUNKT_FELTER), mens resten af regningen

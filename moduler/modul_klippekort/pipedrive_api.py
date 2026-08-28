@@ -25,19 +25,20 @@ import os
 import time
 
 import requests
-from dotenv import load_dotenv
+from env import load_env
+from os_trust import session
 
-load_dotenv()
+load_env()
 
 # Virksomhedsproxy (Zscaler) laver TLS-inspektion med eget root-cert, som ikke
-# ligger i certifi's bundle → SSL-fejl mod api.pipedrive.com. truststore bruger
-# OS'ets certifikatlager (hvor virksomhedens root ligger) og løser det globalt
-# for alle requests-kald i processen. Samme tilgang som modul_barsel/mail.py.
-try:
-    import truststore
-    truststore.inject_into_ssl()
-except Exception:
-    pass
+# ligger i certifi's bundle → SSL-fejl mod api.pipedrive.com. os_trust.session()
+# bygger en requests-session oven på OS'ets certifikatlager, hvor virksomhedens
+# root ligger.
+#
+# Her stod før truststore.inject_into_ssl(). Den udskiftede ssl.SSLContext
+# globalt — også den uvicorn bruger til at TERMINERE TLS — og fik serveren til
+# at afbryde hver eneste HTTPS-forbindelse med "Peer sent no certificates to
+# verify". Trust-storen hører til på de udgående kald, ikke på hele processen.
 
 BASE_URL = "https://api.pipedrive.com/api/v2"
 BASE_URL_V1 = "https://api.pipedrive.com/v1"
@@ -69,7 +70,7 @@ def _fetch_user_map(token: str) -> dict:
     """
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(
+            resp = session().get(
                 f"{BASE_URL_V1}/users", headers=_headers(token), timeout=60,
             )
             if resp.status_code == 429:
@@ -117,7 +118,7 @@ def fetch_org_owners(needed_ids) -> dict:
         if cursor:
             params["cursor"] = cursor
         try:
-            resp = requests.get(
+            resp = session().get(
                 f"{BASE_URL}/organizations",
                 headers=_headers(token),
                 params=params,
@@ -165,7 +166,7 @@ def fetch_org_owners_by_ids(ids) -> dict:
         url = f"{BASE_URL}/organizations/{oid}"
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = requests.get(url, headers=_headers(token), timeout=30)
+                resp = session().get(url, headers=_headers(token), timeout=30)
                 if resp.status_code == 429:
                     time.sleep(int(resp.headers.get("Retry-After", 5)))
                     continue
@@ -197,7 +198,7 @@ def fetch_used_clip_cards(pd_deal_id: int) -> int | None:
     url = f"{BASE_URL}/deals/{int(pd_deal_id)}"
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(url, headers=_headers(token), timeout=30)
+            resp = session().get(url, headers=_headers(token), timeout=30)
             if resp.status_code == 429:
                 time.sleep(int(resp.headers.get("Retry-After", 5)))
                 continue
@@ -259,7 +260,7 @@ def update_used_clip_cards(pd_deal_id: int, new_used: int) -> dict:
     last_err = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.patch(url, headers=_headers(token), json=payload, timeout=30)
+            resp = session().patch(url, headers=_headers(token), json=payload, timeout=30)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 5))
                 time.sleep(wait)

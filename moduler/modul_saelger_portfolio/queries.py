@@ -1,19 +1,16 @@
-import os
-import pymssql
-from dotenv import load_dotenv
+from env import load_env
 
-load_dotenv()
+load_env()
 
 def get_conn():
-    return pymssql.connect(
-        server=os.getenv("DB_SERVER"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        database=os.getenv("DB_NAME", "INTOMEDIA"),
-        tds_version="7.0",
-        login_timeout=5,
-        timeout=5,
-    )
+    """Egen forbindelse uden for poolen med korte timeouts (5 s / 5 s).
+
+    Forbindelsen defineres i db.new_connection(); her vælges kun grænserne.
+    Før stod tds_version="7.0" her, og TDS 7.0 kan ikke TLS.
+    """
+    from db import new_connection
+
+    return new_connection(login_timeout=5, timeout=5)
 
 def get_led_teams(user_id: int) -> list:
     """Teamnavne hvor brugeren har et AKTIVT medlemskab med rollen 'leader'.

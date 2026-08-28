@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dagens opkald — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+    .panel-body { padding:20px; }
+
+    /* Rækkefølgen af de to paneler er ikke til diskussion (Dagens opkald): et brudt
+       løfte til en kunde, der allerede overvejede at gå, er værre end en overset
+       risiko. Tallet foran overskriften siger det, så rækkefølgen ser bevidst ud
+       frem for tilfældig. */
+    .panel-header h2 .nr { color:var(--ink-4); font-weight:600; margin-right:7px; }
+
+    .kundelink { color:inherit; text-decoration:none; border-bottom:1px solid transparent; }
+    .kundelink:hover { border-bottom-color:var(--ink-3); }
+    .kundelink:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+
+    /* ── De to statuskort.
+       Her stod indtil 2026-08-17 månedens tre resultattal (kroner reddet, kroner
+       tabt, samtaler). De er flyttet til Målingsiden: de handler om hvad der ER
+       sket, mens denne side er en arbejdsliste om hvad der SKAL gøres, og de
+       ville i forvejen stå to steder, når Målingsiden bygges.
+       Datateamet 2026-08-14: overblik øverst, dybere ned pr. side.
+
+       Tilbage står to tal, som begge kvalificerer listerne nedenunder frem for at
+       måle noget: hvor fuld bunken er, og hvor friske forbrugsdataene er. */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin:0 0 20px; }
+    .kcard { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--ink-4);
+             border-radius:var(--r); box-shadow:var(--shadow-card); padding:14px 16px; }
+    /* Neutral som udgangspunkt. Ingen af de to kort er en præstation, og en farve
+       pr. kort ville gøre dem til noget man kan gøre det godt eller skidt i. De
+       skifter KUN farve, når der er noget i vejen. */
+    .kcard.taet     { border-left-color:var(--warn); }
+    .kcard.forsinket{ border-left-color:var(--danger); }
+    .kcard .klabel { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+    .kcard .kval   { font-size:22px; font-weight:700; color:var(--ink); margin:6px 0 2px; font-variant-numeric:tabular-nums; }
+    /* Loftet står i samme tal som bunken («12 af 40»), fordi et nøgent «12» ikke
+       siger hvor tæt man er på væggen. Med loftet med bliver kortet et
+       måleinstrument frem for en score, og «lavere er bedre» falder væk: nul er
+       ikke et mål, nul betyder at man ikke har lovet nogen noget. */
+    .kcard .kval .af { font-size:13px; font-weight:600; color:var(--ink-3); }
+    .kcard .kmeta  { font-size:11px; color:var(--ink-3); line-height:1.5; }
+    .kcard.taet     .kval { color:var(--warn); }
+    .kcard.forsinket .kval { color:var(--danger); }
+
+    /* De to måneder SKAL stå på siden. Skriver den dem ikke, spørger nogen hver
+       måned hvorfor listen er beregnet på en anden måned end den vi er i, og tror
+       at det ene modsiger det andet. */
+    .maaneder { display:flex; gap:18px; flex-wrap:wrap; font-size:11px; color:var(--ink-3);
+                margin:0 0 22px; line-height:1.6; }
+    .maaneder strong { color:var(--ink-2); font-weight:600; }
+
+    .note { font-size:11px; border-radius:var(--r-sm); padding:10px 12px; margin-bottom:14px; line-height:1.55; }
+    .note.warn   { background:var(--warn-light);   color:var(--ink-2); border:1px solid var(--border-strong); }
+    .note.danger { background:var(--danger-light); color:var(--ink-2); border:1px solid var(--border-strong); }
+
+    .fine { font-size:11px; color:var(--ink-3); line-height:1.6; margin:-6px 0 20px; }
+    .fine strong { color:var(--ink-2); font-weight:600; }
+
+    .tbl-wrap { overflow-x:auto; }
+    table.pri { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+    table.pri th, table.pri td { padding:8px 10px; text-align:left;
+                                 border-bottom:1px solid var(--border); vertical-align:top; }
+    table.pri th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em; }
+    table.pri th.num, table.pri td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    table.pri td.txt { overflow-wrap:anywhere; }
+    table.pri tbody tr:hover { background:var(--bg); }
+    table.pri tbody tr:last-child td { border-bottom:none; }
+
+    .pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; white-space:nowrap; }
+    .pill.aldrig_i_gang { background:var(--danger-light); color:var(--danger); }
+    .pill.gaaet_i_staa  { background:var(--warn-light);   color:var(--warn); }
+    .pill.paa_vej_ned   { background:var(--warn-light);   color:var(--warn); }
+    .pill.fast_laeser   { background:var(--win-light);    color:var(--win); }
+    .pill.nystartet     { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.lukket_konto  { background:var(--taupe-light);  color:var(--ink-2); }
+    .pill.ingen_data    { background:var(--taupe-light);  color:var(--ink-2); }
+
+    .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:var(--r-xs);
+           background:var(--taupe-light); color:var(--ink-2); margin-left:6px; white-space:nowrap; }
+    /* Et brudt løfte er den eneste ting på siden, der har fortjent rød. */
+    .tag.sen { background:var(--danger-light); color:var(--danger); font-weight:600; }
+    .tag.delvis { background:var(--warn-light); color:var(--warn); }
+
+    .sites { font-size:11px; color:var(--ink-3); line-height:1.5; margin-top:3px; }
+
+    /* ── Tomme tilstande. De fire årsager må IKKE se ens ud, selv om alle fire
+       giver en tom liste. `loft` er en INSTRUKS, `afgraensning_tom` er en fejl,
+       og de to sidste er tilstande — hvoraf `tom_bunke` er en GOD nyhed.
+       Ser de ens ud, læses de alle fire som "der er ikke mere at lave". */
+    .tom { font-size:12px; color:var(--ink-3); padding:26px 4px; text-align:center; line-height:1.65; }
+    .tom .stort { display:block; font-size:13px; font-weight:600; color:var(--ink-2); margin-bottom:4px; }
+    .tom.god .stort { color:var(--win); }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention/prioritering' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1680px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <a href="/category/retention" class="bc-link">Retention</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Dagens opkald</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Dagens opkald</h1>
+            <p>Dagens opkald: først de aftaler du har lovet, derefter de vigtigste nye risici</p>
+          </div>
+        </div>
+
+        <div id="notes"></div>
+
+        <div class="kpis" id="kpis"></div>
+        <p class="maaneder" id="maaneder"></p>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2><span class="nr">1</span>Aftaler du har lovet</h2>
+              <p id="sub1">Indlæser…</p>
+            </div>
+          </div>
+          <div class="panel-body" id="body1"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2><span class="nr">2</span>Nye risici</h2>
+              <p id="sub2">Indlæser…</p>
+            </div>
+          </div>
+          <div class="panel-body" id="body2"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(async function () {
+  // Zonernes navne kommer fra zones.py gennem ruten. Skrives de af her, kan de
+  // drive fra modellen, og en pille ville påstå en zone der ikke findes.
+  const ZONE_LABELS = {{ zone_labels | tojson }};
+
+  const nf0 = new Intl.NumberFormat('da-DK', { maximumFractionDigits: 0 });
+
+  const MDR = ['januar','februar','marts','april','maj','juni',
+               'juli','august','september','oktober','november','december'];
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // Hele kroner. Beløbene her er enkelte kunders årsværdi, ikke porteføljesummer,
+  // så millioner ville skjule forskellen mellem 90.000 og 900.000.
+  const kr = (v) => nf0.format(Math.round(v || 0)) + ' kr.';
+
+  // '2026-08' → 'august 2026'. En ISO-streng øverst på siden ser ud som en
+  // maskinværdi, og de to måneder skal netop LÆSES og sammenlignes.
+  const maanedDK = (s) => {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(s || ''));
+    return m ? MDR[+m[2] - 1] + ' ' + m[1] : String(s || '?');
+  };
+  // '2026-08-04' → '4. aug. 2026'.
+  const datoDK = (s) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+    if (!m) return String(s || '');
+    return (+m[3]) + '. ' + MDR[+m[2] - 1].slice(0, 3) + '. ' + m[1];
+  };
+
+  const el = (id) => document.getElementById(id);
+
+  const fail = (msg) => {
+    el('notes').innerHTML = '<div class="note danger">' + esc(msg) + '</div>';
+    el('sub1').textContent = el('sub2').textContent = 'Ingen data';
+    el('body1').innerHTML = el('body2').innerHTML = '';
+  };
+
+  // 403 fra rolle-vagten kommer som {"detail": ...}, og uden res.ok-tjekket ville
+  // koden fejle på et objekt der ikke har de felter siden læser.
+  let d;
+  try {
+    const res = await fetch('/retention/prioritering_data');
+    if (!res.ok) {
+      let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
+      try { const b = await res.json(); if (b && b.detail) detail = b.detail; } catch (e) {}
+      return fail(detail);
+    }
+    d = await res.json();
+  } catch (e) {
+    return fail('Kunne ikke hente data (netværksfejl).');
+  }
+
+  // `d.kpier` sendes stadig af ruten, men bruges IKKE her længere: månedens tre
+  // resultattal hører på Målingsiden. Feltet bliver liggende i svaret, fordi den
+  // side skal bruge det, og fordi maanedens_kpier() i forvejen beregnes én gang.
+  const meta  = d.meta || {};
+  const liste1 = d.opfoelgninger || [];
+  const nr     = d.nye_risici || {};
+  const poster = nr.poster || [];
+
+  // ── Noterne. Kun ÉN kasse ad gangen, og den værste vinder: er der intet signal
+  // indlæst, er alderen på det uinteressant.
+  //
+  // ADVARSLEN OM GAMLE DATA STOD IKKE PÅ DENNE SIDE FØR 2026-08-17. Den fandtes på
+  // churn-risiko og kundesiden, men manglede netop på den side specialisten starter
+  // paa hver dag: var eksporten to måneder gammel, sagde startsiden ingenting.
+  if (meta.usage_error) {
+    el('notes').innerHTML = '<div class="note danger"><strong>Der er intet forbrugssignal indlæst.</strong> '
+      + 'Alle abonnementer står derfor som “ingen data”, og listen nedenunder er '
+      + 'IKKE en fuld liste over hvem der er i risiko. '
+      + esc(meta.usage_error).replace(/\n/g, '<br>') + '</div>';
+  } else if (meta.reference_alder != null && meta.reference_alder > 0) {
+    // Alderen måles i MÅNEDER og ikke i dage. Et månedligt signal rådner ikke
+    // inden for måneden, og det var hele grunden til at dagsmodellen blev
+    // droppet. Men er referencen en måned for gammel, er udtrækket ikke lavet.
+    el('notes').innerHTML = '<div class="note danger"><strong>Forbrugsdata er '
+      + esc(meta.reference_alder) + ' måned'
+      + (meta.reference_alder > 1 ? 'er' : '') + ' bagud.</strong> '
+      + 'Zonerne beskriver ' + esc(maanedDK(meta.reference_maaned))
+      + ' og kan være overhalet, så listen nedenunder kan mangle kunder. '
+      + 'Et nyt udtræk fra Redshift mangler.</div>';
+  }
+
+  // ── De to statuskort. Ingen af dem er en præstation: de siger hvor fuld bunken
+  // er, og om tallene er friske. Begge kvalificerer listerne nedenunder.
+  const sager = nr.aabne_sager || 0;
+  // Loftet kommer FRA serveren og skrives ikke af her: står 40 to steder, driver
+  // de fra hinanden, og kortet ville påstå en grænse der ikke gælder. Mangler
+  // feltet, vises tallet uden loft frem for med et gættet loft.
+  const loft = d.maks_aabne_sager;
+  const taet = nr.aarsag === 'loft';
+
+  // Nedtællingen tæller til den første HVERDAG i måneden og ikke til den 1.:
+  // den 1. kan falde på en lørdag eller en helligdag, og en frist der ikke kan
+  // efterleves er ingen frist. Datoen regnes i Python, hvor helligdagskalenderen
+  // bor. Mangler felterne, falder kortet tilbage til kun at vise friskheden.
+  const dageTil = d.dage_til_udtraek;
+  const naeste  = d.naeste_udtraek;
+  const forsinket = !meta.usage_error
+                 && meta.reference_alder != null && meta.reference_alder > 0;
+
+  // UDTRÆKKET LAVES AF DATATEAMET, ikke af specialisten. Teksten er derfor en
+  // STATUS og ikke en opgave: hun skal kunne se om tallene er friske, ikke få en
+  // besked om noget hun ikke kan udføre.
+  //
+  // KORTET SIGER OGSÅ HVAD MÅNEDEN DRIVER ("zonerne er beregnet på den"). Indtil
+  // 2026-08-17 stod den oplysning i linjen nedenunder, og så stod referencemåneden
+  // to gange på samme skærm — én gang som kortets tal og én gang i sætningen. Det
+  // er samme kendsgerning, fordi zonerne netop beregnes på forbrugsdataens
+  // referencemåned. Linjen nedenunder bærer nu KUN listens afgrænsning, som er en
+  // anden oplysning og ikke findes her.
+  let friskVal, friskMeta;
+  if (meta.usage_error) {
+    friskVal  = 'Mangler';
+    friskMeta = 'Der er ingen forbrugsfil indlæst, så alle abonnementer står som '
+              + '«ingen data». Se beskeden ovenfor.';
+  } else if (forsinket) {
+    friskVal  = maanedDK(meta.reference_maaned);
+    friskMeta = 'Zonerne er beregnet på den. '
+              + meta.reference_alder + ' måned'
+              + (meta.reference_alder > 1 ? 'er' : '') + ' bagud, '
+              + 'et nyt udtræk mangler.';
+  } else {
+    friskVal  = maanedDK(meta.reference_maaned);
+    friskMeta = 'Zonerne er beregnet på den, og det er sidste hele måned. Aktuel'
+      + (dageTil != null && naeste
+          ? ', næste udtræk ' + datoDK(naeste)
+            + (dageTil === 0 ? ' (i dag)'
+               : dageTil === 1 ? ' (i morgen)'
+               : ' (om ' + nf0.format(dageTil) + ' dage)')
+          : '')
+      + '.';
+  }
+
+  el('kpis').innerHTML =
+      '<div class="kcard' + (taet ? ' taet' : '') + '">'
+    + '<div class="klabel">Åbne sager i bunken</div>'
+    + '<div class="kval">' + nf0.format(sager)
+    + (loft != null ? ' <span class="af">af ' + nf0.format(loft) + '</span>' : '')
+    + '</div>'
+    + '<div class="kmeta">Kunder med et uindfriet løfte, altså forskudt eller '
+    + 'tilbud sendt. Er bunken fuld, vises der ingen nye risici, før du har '
+    + 'lukket nogle af dem.</div>'
+    + '</div>'
+    + '<div class="kcard' + (forsinket || meta.usage_error ? ' forsinket' : '') + '">'
+    + '<div class="klabel">Forbrugsdata</div>'
+    + '<div class="kval">' + esc(friskVal) + '</div>'
+    + '<div class="kmeta">' + esc(friskMeta) + '</div>'
+    + '</div>';
+
+  // ── Listens afgrænsning, og KUN den. Linjen nævnte indtil 2026-08-17 også
+  // referencemåneden, men den står nu på forbrugskortet, hvor den hører sammen med
+  // spørgsmålet om hvor friske tallene er. To måneder på samme skærm SKAL nævnes
+  // hver for sig og hver ét sted, ellers ser de ud som en modsigelse.
+  //
+  // Sætningen bliver liggende, fordi den svarer på noget kortene ikke gør: et
+  // abonnement der ophørte i juli er ikke på listen, uanset hvad dets zone var.
+  // TRE AFGRAENSNINGER, og ingen af dem kan ses i listen. Maaneden gaelder begge
+  // lister; de to andre gaelder KUN liste 2, og de skal staa her, fordi en
+  // bruger ellers venter paa en kunde der aldrig kommer:
+  //
+  //   opsagte    281 abonnementer med en registreret opsigelse (2026-08-20).
+  //              De er et faktum og ikke en risiko, se risiko.py.
+  //   udenlandske 2.173 abonnementer i watch_no, watch_se og watch_de. Teamet
+  //              er dansk, aftalt 2026-08-20. Filteret flyttede 2026-08-25 fra
+  //              prioritering.py til queries.UDENLANDSKE_ACCOUNTS/_KUN_DANSKE
+  //              og gaelder nu HELE modulet, ikke kun denne liste.
+  //
+  // Liste 1 er FORTSAT UDEN de to sidste: den bygger paa RetentionOutcomes og
+  // db_org_navne, som ingen af dem gaar gennem SQL-filteret. Et lovet opkald
+  // er en forpligtelse uanset land, og at skjule det ville tabe arbejde frem
+  // for at spare det.
+  el('maaneder').innerHTML =
+    '<span>Listerne viser kun abonnementer der er aktive i <strong>'
+    + esc(maanedDK(d.maaned)) + '</strong> (indeværende måned). '
+    + '<strong>Nye risici</strong> udelader desuden opsagte abonnementer og '
+    + 'alt uden for Danmark, altså Watch NO, Watch SE og FinanzBusiness. '
+    + '<strong>Aftaler du har lovet</strong> vises uanset land.</span>';
+
+  // ── Liste 1: aftaler du har lovet.
+  el('sub1').textContent = liste1.length
+    ? nf0.format(liste1.length) + (liste1.length === 1 ? ' kunde' : ' kunder')
+      + ' med en aftale der er forfaldet til og med i dag'
+    : 'Ingen forfaldne aftaler';
+
+  if (!liste1.length) {
+    // Den gode tomme tilstand, og den skal se god ud: der ER ikke noget at
+    // rydde op i her.
+    el('body1').innerHTML = '<div class="tom god"><span class="stort">'
+      + 'Du har ingen udestående løfter.</span>'
+      + 'Alle aftalte opfølgninger er indfriet, eller de ligger længere ude i fremtiden.</div>';
+  } else {
+    el('body1').innerHTML = '<div class="tbl-wrap"><table class="pri">'
+      + '<thead><tr>'
+      + '<th style="width:34%">Kunde</th>'
+      + '<th style="width:20%">Aftalt senest</th>'
+      + '<th style="width:46%">Abonnementer i sagen</th>'
+      + '</tr></thead><tbody>'
+      + liste1.map(p => {
+          const sites = (p.abonnementer || [])
+            .map(a => esc(a.site || '(intet site)') + ' · ' + datoDK(a.followup_date))
+            .join('<br>');
+          return '<tr>'
+            + '<td class="txt"><a class="kundelink" href="/retention/kunde/'
+            + encodeURIComponent(p.account) + '/' + encodeURIComponent(p.org_id) + '">'
+            // Navnet kan mangle: RetentionOutcomes har ingen org_name-kolonne, og
+            // en kunde man har lovet at ringe til har ofte et ophørt abonnement,
+            // så navnet kan heller ikke komme fra risikolisten. Nøglen er stadig
+            // nok til at åbne kunden.
+            + esc(p.org_name || (p.account + '/' + p.org_id)) + '</a></td>'
+            + '<td class="txt">' + esc(datoDK(p.aeldste_opfoelgning))
+            + (p.overskredet ? '<span class="tag sen">overskredet</span>' : '')
+            + '</td>'
+            + '<td class="txt"><div class="sites">' + sites + '</div></td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+  }
+
+  // ── Liste 2: nye risici. Fire årsager, fire forskellige svar.
+  el('sub2').textContent = poster.length
+    ? nf0.format(poster.length) + ' af ' + nf0.format(nr.plads || 0)
+      + (nr.plads === 1 ? ' plads' : ' pladser') + ' brugt'
+    : 'Ingen nye risici at vise';
+
+  const TOMME = {
+    // FEJL. Kommer først, fordi den gør alle de andre svar usande — og fordi
+    // den ellers ville blive læst som "du er igennem bunken", mens tusinder af
+    // kunder står urørt.
+    afgraensning_tom: () => '<div class="note danger"><strong>Din dataadgang matcher ingen kunder.</strong><br>'
+      + 'Team-afgrænsningen på din bruger peger på et teamnavn, der ikke findes i ACV. '
+      + 'Navnene har præfikset «Team », fx «Team Watch DK» og ikke «Watch DK». '
+      + 'Det er ikke det samme som at der ingen risici er: listen kan ikke beregnes. '
+      + 'Kontakt en administrator, så HubUserTeamAccess kan rettes.</div>',
+    // INSTRUKS, ikke en tilstand. Skal se ud som noget man skal gøre noget ved.
+    loft: () => '<div class="note warn"><strong>Ryd op i bunken, før du tager nye kunder.</strong><br>'
+      + 'Der ligger ' + nf0.format(sager) + ' åbne sager, og grænsen er nået. '
+      + 'Nye risici vises igen, når du har lukket nogle af dem. De står i liste 1, '
+      + 'efterhånden som deres opfølgningsdato falder.</div>',
+    // Tilstand, og en helt normal en: dagen er fuld af aftaler du selv har lavet.
+    opfoelgninger_fylder: () => '<div class="tom"><span class="stort">'
+      + 'Dagens ti pladser er fyldt af dine egne aftaler.</span>'
+      + 'Liste 1 ovenfor er dagens arbejde. Nye risici kommer til, når du har '
+      + 'lukket nogle af dem.</div>',
+    // Tilstand, og en GOD en. Skal se anderledes ud end de tre andre.
+    tom_bunke: () => '<div class="tom god"><span class="stort">'
+      + 'Du er igennem bunken.</span>'
+      + 'Der er ikke flere kunder, der opfylder kriterierne for et opkald i dag.</div>',
+  };
+
+  let ud = '';
+  if (poster.length) {
+    ud = '<div class="tbl-wrap"><table class="pri">'
+      + '<thead><tr>'
+      + '<th style="width:32%">Kunde</th>'
+      // KOLONNEN HED "SCORE" INDTIL 2026-08-17. Tallet er kroner GANGE vægt, altså
+      // ikke kroner, men det så ud som et beløb: en kunde til 300.000 kr. i zonen
+      // "faldende" (0,40) stod som 120.000. Datateamet 2026-08-14: en ikke-datakyndig
+      // skal kunne tolke tallene. "Prioritet" kan ikke læses som penge, og
+      // hjælpeteksten er den samme som churn-risiko-siden bruger om samme tal.
+      + '<th class="num" style="width:14%" title="Kundens årsværdi × zonens '
+      + 'risikovægt × timingfaktor, lagt sammen for kundens abonnementer. '
+      + 'Timingfaktoren er 1,0 for alle, indtil fornyelsesdatoer findes.">Prioritet</th>'
+      + '<th style="width:16%">Værste zone</th>'
+      + '<th class="num" style="width:16%">Kundens årsværdi</th>'
+      + '<th style="width:22%">Abonnementer</th>'
+      + '</tr></thead><tbody>'
+      + poster.map(p => {
+          const z = p.vaerste_zone || 'ingen_data';
+          const antal = p.antal_abonnementer || 0;
+          const medArr = p.abonnementer_med_arr || 0;
+          // TIER når de to tal er ens, og siger det kun når de IKKE er. En
+          // advarsel der fyrer på de fleste rækker bliver ignoreret, og det er
+          // værre end ingen advarsel.
+          const daek = medArr < antal
+            ? '<span class="tag delvis">scoren dækker ' + nf0.format(medArr)
+              + ' af ' + nf0.format(antal) + '</span>'
+            : '';
+          return '<tr>'
+            + '<td class="txt"><a class="kundelink" href="/retention/kunde/'
+            + encodeURIComponent(p.account) + '/' + encodeURIComponent(p.org_id) + '">'
+            + esc(p.org_name || (p.account + '/' + p.org_id)) + '</a></td>'
+            + '<td class="num">' + nf0.format(Math.round(p.score || 0)) + '</td>'
+            + '<td><span class="pill ' + esc(z) + '">'
+            + esc(ZONE_LABELS[z] || z) + '</span></td>'
+            + '<td class="num">' + (p.kunde_arr_dkk == null ? '—' : kr(p.kunde_arr_dkk)) + '</td>'
+            + '<td class="txt">' + nf0.format(antal) + daek + '</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+
+    // FORKLARINGEN STÅR UNDER TABELLEN, ikke kun som hjælpetekst på kolonnen: en
+    // title-attribut findes ikke på en telefon og opdages ikke af en der ikke
+    // ved at der er noget at opdage. Eksemplet er med, fordi det er det, der
+    // gør forskellen mellem "et beløb" og "et rangeringstal" konkret.
+    ud += '<p class="fine" style="margin:14px 0 0"><strong>Om «prioritet»:</strong> '
+      + 'kundens årsværdi gange zonens risikovægt, lagt sammen for kundens '
+      + 'abonnementer. Det er <strong>ikke et beløb</strong>, men et tal der kun '
+      + 'bruges til at rangere listen. En kunde til 300.000 kr. i zonen «på vej ned» '
+      + '(vægt 0,40) får prioritet 120.000, og en kunde i «aldrig i gang» til 150.000 kr. '
+      + '(vægt 1,00) får 150.000 og ligger dermed øverst.</p>';
+
+    // Er listen kortere end pladsen, er bunken tom OGSÅ selv om der står rækker.
+    // Sagt her frem for som tom tilstand, fordi listen jo ikke er tom.
+    if (nr.aarsag === 'tom_bunke') {
+      ud += '<p class="fine" style="margin:14px 0 0">Der var ikke flere kunder at '
+        + 'fylde de sidste pladser med, du er igennem bunken.</p>';
+    }
+  } else {
+    ud = (TOMME[nr.aarsag] || (() => '<div class="tom">Ingen nye risici at vise.</div>'))();
+  }
+  el('body2').innerHTML = ud;
+})();
+</script>
+</body>
+</html>

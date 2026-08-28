@@ -39,8 +39,7 @@ from moduler.modul_retention import cache  # noqa: E402
 from moduler.modul_retention import outcomes as o  # noqa: E402
 from moduler.modul_retention import prioritering as p  # noqa: E402
 from moduler.modul_retention import queries as q  # noqa: E402
-from moduler.modul_retention.zones import (  # noqa: E402
-    GRUPPE_ORDER, ZONE_ORDER, zone_alvor)
+from moduler.modul_retention.zones import ZONE_ORDER, zone_alvor  # noqa: E402
 
 I_DAG = dt.date(2026, 8, 11)
 
@@ -471,51 +470,6 @@ tjek("afgraensning_tom gaar FORUD for loftet",
                          afgraensning_tom=True)["aarsag"], "afgraensning_tom")
 
 
-print("--- 11b: fold_risici, kun_opkaldsklare=False markerer i stedet for at fjerne ---")
-# En spaerret raekke DROPPES ikke laengere, den faar et flag.
-flag_mikro = p.fold_risici([abo(mikro=True)], {}, I_DAG, kun_opkaldsklare=False)
-tjek("mikrokunde er MED i flag-tilstand, i stedet for fjernet", len(flag_mikro), 1)
-tjek("mikrokunden er IKKE opkaldsklar", flag_mikro[0]["opkaldsklar"], False)
-tjek("mikrokundens abonnement baerer sin egen aarsag",
-     flag_mikro[0]["abonnementer"][0]["spaerre"], "mikrokunde")
-tjek("mikrokundens score er 0, den har intet opkaldsklart abonnement",
-     flag_mikro[0]["score"], 0.0)
-
-# Raekkefoelgen paa aarsagerne er den SAMME som de tre continue-saetninger
-# havde foer parameteren fandtes: rammer en raekke flere aarsager, vinder
-# altid den samme ene, uanset tilstand.
-tjek("fast_laeser vinder over mikrokunde, som i den gamle if/or",
-     p.fold_risici([abo(zone="fast_laeser", mikro=True)], {}, I_DAG,
-                   kun_opkaldsklare=False)[0]["abonnementer"][0]["spaerre"],
-     "fast_laeser")
-tjek("mikrokunde vinder over opsagt, som i den gamle rækkefølge",
-     p.fold_risici([abo(mikro=True, opsagt="2026-10-31")], {}, I_DAG,
-                   kun_opkaldsklare=False)[0]["abonnementer"][0]["spaerre"],
-     "mikrokunde")
-
-# En kunde med ét spaerret og ét levende abonnement: scoren er KUN det
-# levendes, mens antallet taeller begge. Det er den samme regel som Deloitte-
-# maalingen ovenfor i fold_risici, nu proevet direkte.
-blandet_flag = p.fold_risici(
-    [abo(site="a.dk", score=500.0), abo(site="b.dk", score=300.0, mikro=True)],
-    {}, I_DAG, kun_opkaldsklare=False)
-tjek("blandet kunde foldes til én post", len(blandet_flag), 1)
-tjek("scoren er KUN det levende abonnements",
-     blandet_flag[0]["score"], 500.0)
-tjek("antal_abonnementer taeller BEGGE, ogsaa det spaerrede",
-     blandet_flag[0]["antal_abonnementer"], 2)
-tjek("kunden er opkaldsklar, fordi mindst ét abonnement er det",
-     blandet_flag[0]["opkaldsklar"], True)
-
-# Ingen af "mange"s 20 kunder er spaerret, saa de to tilstande maa give den
-# HELT SAMME raekkefoelge for dem. `mange` er defineret i afsnit 11 ovenfor.
-mange_flag = p.fold_risici(
-    [abo(org_id=str(i), score=float(100 - i), navn=f"K{i}") for i in range(20)],
-    {}, I_DAG, kun_opkaldsklare=False)
-tjek("samme raekkefoelge i begge tilstande, naar intet er spaerret",
-     [x["org_name"] for x in mange_flag], [x["org_name"] for x in mange])
-
-
 print("--- 12: maanedens_kpier ---")
 kpi_raekker = [
     kpi_raekke(1, vejen_ud="fornyet", foer=Decimal("100000"),
@@ -605,11 +559,7 @@ def saet_afgraensning(tilladte):
     cache.risiko = lambda teams, abo_maaned: {
         "rows": [r for r in risiko_rows
                  if not teams or p.kunde_noegle(r) in tilladte],
-        "meta": {"reference_maaned": "2026-07"},
-        # Tomme, ikke udeladt: prioriteringsdata() baerer dem videre uaendret
-        # i sit "risiko"-svar (Opkald og risiko, 2026-08-27), og de skal derfor
-        # kunne slaas op — testene her proever ikke selve zonekortene.
-        "zones": {}, "zone_order": [], "gruppe_order": []}
+        "meta": {"reference_maaned": "2026-07"}}
 
 
 try:
@@ -648,26 +598,6 @@ try:
     # cache.ejere svarer {} ovenfor, og listen er alligevel fuld.
     tjek("uden teams beholdes kunder uden ACV-raekke", len(nr["poster"]) > 0)
 
-    rl = {(x["account"], x["org_id"]): x for x in d["risikoliste"]}
-    tjek("risikoliste er den FULDE liste: alle 13 kunder, ingen afkortet",
-         len(d["risikoliste"]), 13)
-    tjek("risikoliste indeholder liste 1's kunde, nye_risici goer ikke",
-         A in rl and all((x["account"], x["org_id"]) != A for x in nr["poster"]))
-    tjek("Jyske Bank er markeret som aftale i dag i risikoliste",
-         rl[A]["aftale_i_dag"], True)
-    tjek("men fik ikke dagens_plads, hun staar jo allerede paa liste 1",
-         rl[A]["dagens_plads"], False)
-
-    K3_noegle = ("watch", "3")
-    tjek("K3 (udsat) staar i risikoliste med sit spaerre-flag paa abonnementet",
-         rl[K3_noegle]["abonnementer"][0]["spaerre"], "udsat")
-    tjek("K3 fik ikke dagens_plads, hun blev jo udsat i nye_risici ovenfor",
-         rl[K3_noegle]["dagens_plads"], False)
-
-    K1_noegle = ("watch", "1")
-    tjek("K1 (toppen af nye_risici) er markeret dagens_plads i risikoliste",
-         rl[K1_noegle]["dagens_plads"], True)
-
     print("  ..med en afgraensning der matcher ingenting:")
     forkert = p.prioriteringsdata(I_DAG, teams=["Watch DK"])  # hedder "Team Watch DK"
     tjek("forkert teamnavn siger afgraensning_tom",
@@ -705,14 +635,8 @@ print("--- 14: CSS-selectors for hver zone (den tavse faelde ved en omdoebning) 
 # test er spaerren, og skal opdateres naeste gang en zone faar et nyt id.
 _SKABELON_ROOT = REPO_ROOT / "templates"
 for _navn, _klasser in (
-        # De to sider blev lagt sammen 2026-08-27 til "Opkald og risiko" —
-        # begge klassesæt lever nu i samme skabelon. "zcard" er IKKE med for
-        # retention_opkald.html: zone-kortene fik 2026-08-27 et fladt gitter
-        # med et gruppe-farvet badge i stedet for en per-zone klasse paa selve
-        # kortet (se GRUPPE-tjekket nedenfor), men den udfoldede raekkes
-        # "pill" er stadig zone-keyed, ligesom retention_kunde.html's to
-        # klassesæt.
-        ("retention_opkald.html", ("pill",)),
+        ("retention_risk.html", ("zcard", "pill")),
+        ("retention_prioritering.html", ("pill",)),
         ("retention_kunde.html", ("abo", "zpill")),
 ):
     _tekst = (_SKABELON_ROOT / _navn).read_text(encoding="utf-8")
@@ -720,20 +644,6 @@ for _navn, _klasser in (
         for _klasse in _klasser:
             tjek(f"{_navn}: .{_klasse}.{_zid} findes",
                  f".{_klasse}.{_zid}" in _tekst, True)
-
-# Samme faelde, én taxonomi hoejere: "Kunder i risiko"s zone-kort farver nu
-# GRUPPEN (Ring nu/Foelg op/Ingen handling), ikke den enkelte zone. En
-# omdoebt gruppe-id uden en tilsvarende .zbadge-selector mister farven paa
-# ALLE zoner i gruppen paa én gang, stille.
-_opkald_tekst = (_SKABELON_ROOT / "retention_opkald.html").read_text(encoding="utf-8")
-for _gid in GRUPPE_ORDER:
-    tjek(f"retention_opkald.html: .zbadge.{_gid} findes",
-         f".zbadge.{_gid}" in _opkald_tekst, True)
-# Opsagt er ikke en zone og har intet gruppe-id fra ZONES-laget (se
-# fold_risici's "OPSAGT er egen gruppe og BEVIDST ikke en zone"), men har sin
-# egen badge-klasse, hardkodet i skabelonen frem for udledt af serveren.
-tjek("retention_opkald.html: .zbadge.opsagt findes",
-     ".zbadge.opsagt" in _opkald_tekst, True)
 
 
 print()
