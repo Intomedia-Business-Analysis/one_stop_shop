@@ -90,9 +90,11 @@
     }
     tr.eng-tom td { color:var(--ink-4); font-style:italic; }
 
-    /* Lille inline-soejlerække, ren CSS, ingen ny Chart.js-instans pr. raekke. */
-    .eng-spark { display:inline-flex; align-items:flex-end; gap:1px; height:20px; }
-    .eng-spark span { display:inline-block; width:3px; background:var(--green); border-radius:1px; opacity:.75; }
+    /* Lille inline-soejlerække, ren CSS, ingen ny Chart.js-instans pr. raekke.
+       20px/3px (foer 2026-08-28) var for lille til at skelne soejler over 14
+       maaneder, hoejden er nu 36px og bredden 5px. */
+    .eng-spark { display:inline-flex; align-items:flex-end; gap:1px; height:36px; }
+    .eng-spark span { display:inline-block; width:5px; background:var(--green); border-radius:1px; opacity:.75; }
   </style>
 </head>
 <body>
@@ -182,8 +184,8 @@
                   <thead>
                     <tr>
                       <th>Site</th><th>Account</th>
-                      <th class="num">Aktive A</th><th class="num">Opsigelser A</th>
-                      <th class="num">Aktive B</th><th class="num">Opsigelser B</th>
+                      <th class="num" id="mm-th-aktivA">Aktive A</th><th class="num" id="mm-th-churnA">Opsigelser A</th>
+                      <th class="num" id="mm-th-aktivB">Aktive B</th><th class="num" id="mm-th-churnB">Opsigelser B</th>
                       <th class="num">Forskel</th>
                     </tr>
                   </thead>
@@ -770,6 +772,13 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
 
     sub.textContent = maanedDK(maanedA) + ' mod ' + maanedDK(maanedB);
 
+    // Kolonneoverskrifterne viste indtil 2026-08-28 de statiske labels "A"/"B" —
+    // et bogstav siger ikke hvilken måned man ser på. Nu viser de den valgte måned.
+    el('mm-th-aktivA').textContent = 'Aktive ' + maanedDK(maanedA);
+    el('mm-th-churnA').textContent = 'Opsigelser ' + maanedDK(maanedA);
+    el('mm-th-aktivB').textContent = 'Aktive ' + maanedDK(maanedB);
+    el('mm-th-churnB').textContent = 'Opsigelser ' + maanedDK(maanedB);
+
     // ── Advarsler: bulk-importen og et foreløbigt tal. Begge kan ramme
     // samtidig, og begge skal så stå. ──
     const advarsler = [];
@@ -846,9 +855,11 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
   await opdater();
 
   el('mm-note').innerHTML =
-      '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af 35 danske sites har grundlag over '
+      '<p><strong>Forskel er opsigelser i måned B minus opsigelser i måned A.</strong> '
+    + 'Et positivt tal betyder flere opsigelser i B end i A, et negativt tal betyder færre.</p>'
+    + '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af 35 danske sites har grundlag over '
     + '1.000 aktive abonnementer. AdvokatWatch DK har 225 aktive og svinger fra 1 til 6 opsigelser på '
-    + 'syv måneder — faktor 7,5 — mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
+    + 'syv måneder (faktor 7,5), mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
     + 'Raten vises derfor kun pr. account, i tabellen ovenfor.</p>';
 })();
 
@@ -860,7 +871,7 @@ function engSparkline(serie) {
   if (!serie.length) return '';
   const maxV = Math.max.apply(null, serie.concat([1]));
   return '<span class="eng-spark">' + serie.map((v) =>
-    '<span style="height:' + Math.max(2, Math.round((v / maxV) * 18)) + 'px"></span>'
+    '<span style="height:' + Math.max(2, Math.round((v / maxV) * 34)) + 'px"></span>'
   ).join('') + '</span>';
 }
 
@@ -878,7 +889,14 @@ function engRender() {
     // og et snit over det fulde 14-måneders vindue ville straffe dem for
     // måneder der aldrig fandtes.
     const egneMaaneder = maaneder.filter((m) => serie[m] !== undefined);
-    const vaerdier = egneMaaneder.map((m) => serie[m][_engMetric]);
+    const refIdx = egneMaaneder.indexOf(referencemaaned);
+    // Snittet (og dermed indekset) skal KUN regnes til og med referencemåneden.
+    // egneMaaneder kan indeholde den indeværende, ufuldstændige måned bagefter —
+    // den trækker snittet kunstigt ned og fik indekset til at se højere ud end
+    // det er (målt 2026-08-28: policywatch.dk 126 mod korrekt 131). Findes
+    // referencemåneden ikke i sitets egne måneder, bruges hele listen som før.
+    const fuldfoerteMaaneder = refIdx >= 0 ? egneMaaneder.slice(0, refIdx + 1) : egneMaaneder;
+    const vaerdier = fuldfoerteMaaneder.map((m) => serie[m][_engMetric]);
     const snit = vaerdier.length ? vaerdier.reduce((a, b) => a + b, 0) / vaerdier.length : 0;
     const refVaerdi = (referencemaaned && serie[referencemaaned])
       ? serie[referencemaaned][_engMetric] : null;
@@ -886,8 +904,8 @@ function engRender() {
 
     // Ændring: referencemåneden mod snittet af de TRE FOREGÅENDE måneder —
     // samme form som zonereglens fald-test (zones.py), så tallet læses ens to
-    // steder i modulet.
-    const refIdx = egneMaaneder.indexOf(referencemaaned);
+    // steder i modulet. Bruger allerede kun måneder FØR refIdx, så den ufuldstændige
+    // måned var aldrig med her.
     let aendring = null;
     if (refIdx >= 1) {
       const foregaaende = egneMaaneder.slice(Math.max(0, refIdx - 3), refIdx);
@@ -901,7 +919,9 @@ function engRender() {
     return {
       site, tom: false, familie: siteFamilie(site),
       maanederMedData: egneMaaneder.length, indeks, aendring,
-      serie: egneMaaneder.map((m) => serie[m][_engMetric]),
+      // Samme grund som snittet ovenfor: sparklinen skal ikke tegne en søjle
+      // for den ufuldstændige indeværende måned, den ville se ud som et fald.
+      serie: fuldfoerteMaaneder.map((m) => serie[m][_engMetric]),
     };
   });
 
