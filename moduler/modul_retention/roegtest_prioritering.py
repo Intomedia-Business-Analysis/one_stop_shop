@@ -27,6 +27,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+import pandas as pd
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # FORREST i sys.path, ikke bagerst. Ligger der en anden kopi af repoet i stien —
 # og det gør der: worktrees under .claude/worktrees har deres egen
@@ -40,6 +42,9 @@ from moduler.modul_retention import outcomes as o  # noqa: E402
 from moduler.modul_retention import prioritering as p  # noqa: E402
 from moduler.modul_retention import queries as q  # noqa: E402
 from moduler.modul_retention.zones import ZONE_ORDER, zone_alvor  # noqa: E402
+from moduler.modul_retention import usage as u  # noqa: E402
+from moduler.modul_retention.zones import (  # noqa: E402
+    GRUPPE_ORDER, ZONE_ORDER, zone_alvor)
 
 I_DAG = dt.date(2026, 8, 11)
 
@@ -644,6 +649,65 @@ for _navn, _klasser in (
         for _klasse in _klasser:
             tjek(f"{_navn}: .{_klasse}.{_zid} findes",
                  f".{_klasse}.{_zid}" in _tekst, True)
+
+
+print("--- 15: Porteføljens to nye paneler (etape 2, site-opdelingen) ---")
+
+# usage._aggreger_pr_site: samme kontrol som for pandas-koden, kort en
+# fixture-DataFrame frem for de 183.000 rigtige rækker. Tre ting skal holde:
+# .com folder ind i .dk (kanonisk_site), to rækker på samme (site, måned)
+# lægges sammen, og de to talkolonner krydses ikke.
+_df_fix = pd.DataFrame({
+    "site": ["shippingwatch.dk", "shippingwatch.com", "kulturmonitor.dk", "kulturmonitor.dk"],
+    "maaned": ["2026-07", "2026-07", "2026-07", "2026-07"],
+    "page_views": [100, 50, 20, 5],
+    "artikelvisninger": [40, 10, 8, 2],
+})
+_pr_site = u._aggreger_pr_site(_df_fix)
+tjek("_aggreger_pr_site: .com folder ind i .dk (page_views)",
+     _pr_site.get("shippingwatch.dk", {}).get("2026-07", {}).get("page_views"), 150)
+tjek("_aggreger_pr_site: .com folder ind i .dk (artikelvisninger)",
+     _pr_site.get("shippingwatch.dk", {}).get("2026-07", {}).get("artikelvisninger"), 50)
+tjek("_aggreger_pr_site: .com-nøglen findes ikke selvstændigt",
+     "shippingwatch.com" in _pr_site, False)
+tjek("_aggreger_pr_site: to rækker paa samme (site, maaned) laegges sammen",
+     _pr_site.get("kulturmonitor.dk", {}).get("2026-07", {}).get("page_views"), 25)
+tjek("_aggreger_pr_site: de to talkolonner krydses ikke",
+     _pr_site.get("kulturmonitor.dk", {}).get("2026-07", {}).get("artikelvisninger"), 10)
+
+# queries.account_churn_rate: raten skal vaere None under MIN_AKTIVE_FOR_RATE,
+# ikke 0 — samme regel og samme grund som db_monthly_active_counts' churn_pct.
+# marketwire (32 aktive) er netop den konto der reelt rammer graensen i drift.
+_site_rows = [
+    {"FirstDayOfMonth": "2026-06-01", "account": "watch_medier", "sites": "a.dk", "active_count": 600, "churned_count": 3},
+    {"FirstDayOfMonth": "2026-06-01", "account": "watch_medier", "sites": "b.dk", "active_count": 500, "churned_count": 2},
+    {"FirstDayOfMonth": "2026-07-01", "account": "watch_medier", "sites": "a.dk", "active_count": 598, "churned_count": 5},
+    {"FirstDayOfMonth": "2026-07-01", "account": "watch_medier", "sites": "b.dk", "active_count": 499, "churned_count": 1},
+    {"FirstDayOfMonth": "2026-06-01", "account": "marketwire", "sites": "(intet site)", "active_count": 32, "churned_count": 0},
+    {"FirstDayOfMonth": "2026-07-01", "account": "marketwire", "sites": "(intet site)", "active_count": 32, "churned_count": 0},
+]
+_rate = q.account_churn_rate(_site_rows, ["2026-07-01"])
+_wm = next(r for r in _rate if r["account"] == "watch_medier")
+_mw = next(r for r in _rate if r["account"] == "marketwire")
+tjek("account_churn_rate: watch_medier active_foer summerer paa tvaers af sites",
+     _wm["active_foer"], 1100)
+tjek("account_churn_rate: watch_medier churned summerer paa tvaers af sites",
+     _wm["churned"], 6)
+tjek("account_churn_rate: watch_medier faar en rate over graensen",
+     _wm["churn_pct"], round(100 * 6 / 1100, 2))
+tjek("account_churn_rate: marketwire (32 aktive) er None, IKKE 0, under graensen",
+     _mw["churn_pct"], None)
+
+# Skabelon-vagt: JS'en skriver hash-strengene 'operationel' og 'performance'
+# (switchTab/applyHashTab i retention_overview.html) og slaar dem op som
+# id="tab-<hash>". Omdoebes den ene uden den anden, skifter fanen tavst til
+# ingenting — samme fælde som afsnit 14 vagter for zone-klasser.
+_overview_tekst = (_SKABELON_ROOT / "retention_overview.html").read_text(encoding="utf-8")
+for _tab_id in ("operationel", "performance"):
+    tjek(f"retention_overview.html: id=\"tab-{_tab_id}\" findes",
+         f'id="tab-{_tab_id}"' in _overview_tekst, True)
+    tjek(f"retention_overview.html: data-tab=\"{_tab_id}\" findes",
+         f'data-tab="{_tab_id}"' in _overview_tekst, True)
 
 
 print()
