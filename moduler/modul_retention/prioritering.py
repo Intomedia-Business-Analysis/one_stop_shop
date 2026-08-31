@@ -149,7 +149,8 @@ def antal_aabne_sager(seneste: dict) -> int:
                 if r["outcome"] in AABNE_UDFALD})
 
 
-def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
+def fold_risici(raekker: list, seneste: dict, i_dag: date,
+                kun_opkaldsklare: bool = True) -> list:
     """Nye risici foldet til én post pr. kunde, vigtigste først.
 
     Ind: `abonnementer_i_risiko()`s rækker — én pr. ABONNEMENT — og
@@ -173,6 +174,22 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
     og 4 holder op med at virke for dem, og de dukker op på listen igen dagen
     efter et opkald, uden at noget fejler. Samme opslag som kunde.py's
     detaljeside.
+
+    `kun_opkaldsklare` (default True) er den oprindelige og eneste adfærd fra
+    før parameteren fandtes, og den ændres ikke: et abonnement der rammer et af
+    de tre filtre udelukkes helt. Sat til False udelukkes intet. Hvert
+    abonnement får i stedet et felt `spaerre`, som er `None` når det er
+    opkaldsklart, og ellers en af `"fast_laeser"`, `"mikrokunde"`, `"opsagt"`
+    eller `"udsat"`, i den rækkefølge filtrene rammer. Kundens `score` summerer
+    stadig KUN de opkaldsklare abonnementer, så rangeringen af de kaldbare
+    kunder er den samme i begge tilstande. Feltet `opkaldsklar` på kunden er
+    sandt, hvis mindst ét af hendes abonnementer er det, ellers ligger hun i
+    bunden af listen med score 0, synlig men urørt.
+
+    De to tilstande findes side om side, fordi opkaldslistens rangering er
+    kalibreret (se MAKS_AABNE_SAGER) og skal kunne bevises uændret, mens den
+    samlede liste på "Opkald og risiko" har brug for at vise ALT, inklusive de
+    fem afgrænsninger, som slåbare valg i stedet for skjulte fravalg.
     """
     pr_kunde: dict = {}
     for r in raekker:
@@ -180,31 +197,43 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
         # queries._KUN_DANSKE og gaelder hele modulet, saa raekkerne der naar
         # hertil er allerede danske. Se queries.py.
         #
-        # Prioriteringsmodellen, filter 5 og 2.
-        if r["zone"] == "fast_laeser" or r["mikrokunde"]:
+        # De fem filtre er nu FIRE MULIGE AARSAGER plus "ingen". Raekkefoelgen
+        # er den samme som de tre continue-saetninger havde foer parameteren
+        # kun_opkaldsklare fandtes, saa en raekke der rammer flere aarsager
+        # faar den SAMME ene aarsag som tidligere, uanset hvilken tilstand
+        # funktionen koeres i.
+        if r["zone"] == "fast_laeser":
+            spaerre = "fast_laeser"
+        elif r["mikrokunde"]:
+            spaerre = "mikrokunde"
+        elif r["opsagt_dato"]:
+            # OPSAGTE HOERER IKKE PAA OPKALDSLISTEN. Et abonnement med en
+            # gaeldende opsigelse er ikke en risiko, det er et faktum, og et
+            # opkald der rangerer efter risiko kan ikke redde det. Det staar
+            # i stedet paa kundesiden med sin ophoersdato.
+            #
+            # Maalt 2026-08-19: Deloitte laa nummer to med 163.300. Syv af
+            # deres abonnementer er opsagt med ophoer fra 13-09 til
+            # 03-11-2026, og de faldt derfor til 123.700 og plads fire. De
+            # BLIVER paa listen med de tre der stadig loeber, og det er
+            # netop derfor filteret er pr. abonnement og ikke pr. kunde.
+            spaerre = "opsagt"
+        else:
+            # Filter 3 og 4. Findes der intet udfald, er der intet at
+            # udsaette paa.
+            u = seneste.get((r["account"], r["org_id"], r["site"] or INTET_SITE))
+            spaerre = ("udsat" if u is not None and tilbage_paa_listen(u) > i_dag
+                       else None)
+
+        if spaerre is not None and kun_opkaldsklare:
             continue
-        # OPSAGTE HOERER IKKE PAA OPKALDSLISTEN. Et abonnement med en gaeldende
-        # opsigelse er ikke en risiko, det er et faktum, og et opkald der
-        # rangerer efter risiko kan ikke redde det. Det staar i stedet paa
-        # kundesiden med sin ophoersdato, hvor varslet er den oplysning der
-        # betyder noget.
-        #
-        # FILTERET ER NOEDVENDIGT SELV OM SCOREN ALLEREDE ER NUL (risiko.py
-        # nulstiller vaegten): en kunde med ét opsagt og ét levende abonnement
-        # skal fortsat paa listen, men KUN med det levende. Ellers taelles det
-        # opsagte med i "scoren daekker X af Y" og staar i den udfoldede raekke.
-        #
-        # Maalt 2026-08-19: Deloitte laa nummer to med 163.300. Syv af deres
-        # abonnementer er opsagt med ophoer fra 13-09 til 03-11-2026, og de faldt
-        # derfor til 123.700 og plads fire. De BLIVER paa listen med de tre der
-        # stadig loeber, og det er netop derfor filteret er pr. abonnement og
-        # ikke pr. kunde.
-        if r["opsagt_dato"]:
-            continue
-        # Filter 3 og 4. Findes der intet udfald, er der intet at udsætte på.
-        u = seneste.get((r["account"], r["org_id"], r["site"] or INTET_SITE))
-        if u is not None and tilbage_paa_listen(u) > i_dag:
-            continue
+
+        # Kopi, ikke den delte raekke fra risiko_data["rows"]: samme liste
+        # sendes ind i BEGGE tilstande fra prioriteringsdata, og skrev vi
+        # "spaerre" direkte paa r, ville det andet kald overskrive det foerste
+        # kalds resultat paa de samme objekter.
+        abo = dict(r)
+        abo["spaerre"] = spaerre
 
         noegle = kunde_noegle(r)
         post = pr_kunde.get(noegle)
@@ -216,14 +245,17 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
                 "kunde_arr_dkk": r["kunde_arr_dkk"],
                 "score":         0.0,
                 "vaerste_zone":  r["zone"],
+                "opkaldsklar":   False,
                 "abonnementer":  [],
             }
             pr_kunde[noegle] = post
 
-        post["score"] += r["score"] or 0.0
+        if spaerre is None:
+            post["score"] += r["score"] or 0.0
+            post["opkaldsklar"] = True
         if zone_alvor(r["zone"]) < zone_alvor(post["vaerste_zone"]):
             post["vaerste_zone"] = r["zone"]
-        post["abonnementer"].append(r)
+        post["abonnementer"].append(abo)
 
     poster = list(pr_kunde.values())
     for p in poster:
@@ -249,16 +281,17 @@ def fold_risici(raekker: list, seneste: dict, i_dag: date) -> list:
     # ARR summerer til 0,0 og lander i bunden af sig selv.
     #
     # Der skelnes bevidst IKKE mellem "score 0 fordi vægten er 0" og "score 0
-    # fordi ARR er ukendt", selv om de betyder noget forskelligt. Med 5.033
-    # kunder over score 0 og en liste på ti ligger begge begravet, hvor ingen
-    # kan se dem — og en regel, ingen ser virke, er også en regel, ingen ser
-    # fejle. Skulle listen en dag blive lang nok til at nå derned, er det HER
-    # det skal ændres.
+    # fordi ARR er ukendt", selv om de betyder noget forskelligt, af samme
+    # grund som resten af funktionen: politik hoerer i skabelonen, ikke her.
+    # Dagen kom 2026-08-27, da den samlede liste fik paging: skabelonen
+    # (retention_opkald.html) grupperer nu kunder uden kendt aarsvaerdi i en
+    # egen bundgruppe nederst, beregnet over hendes SYNLIGE abonnementer, ikke
+    # over denne sortering. Denne funktion aendrer sig ikke, den kender stadig
+    # ikke forskellen.
     poster.sort(key=lambda p: (-p["score"],
                                zone_alvor(p["vaerste_zone"]),
                                -(p["kunde_arr_dkk"] or 0)))
     return poster
-
 
 def afkort_nye_risici(poster: list, antal_opfoelgninger: int,
                       aabne_sager: int, afgraensning_tom: bool = False) -> dict:
@@ -429,6 +462,33 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
     Begge sendes med, fordi siden SKAL skrive dem. Gør den ikke det, spørger
     nogen hver måned, hvorfor "kroner reddet" er lille, mens risikolisten er
     lang — og tror, at det ene modsiger det andet.
+
+    `risiko`-nøglen bærer HELE risikobilledet videre (alle rækker, zonerne,
+    rækkefølgen), ikke kun de folder-rester `fold_risici` selv har brug for.
+    Den findes, fordi "Opkald og risiko" (sammenlagt 2026-08-27 af Dagens
+    opkald og Churn-risiko) skal kunne tegne zonekortene og den fulde tabel af
+    ét og samme kald — kaldte siden `/retention/risk` derved selv, ville
+    `abonnementer_i_risiko()` (3,6 sekunder ukachet) køre igen oven på det
+    `cache.risiko()` allerede lige har regnet.
+
+    `nye_risici` og `risikoliste` er to LAG af samme fold, ikke to uafhaengige
+    beregninger. `nye_risici` er dagens arbejde: kaldbar-kun, liste 1
+    udelukket, afkortet til pladsen efter MAKS_AABNE_SAGER og LISTE_LAENGDE.
+    `risikoliste` er totalen bag "Opkald og risiko"s samlede liste (sammenlagt
+    af Nye risici og Abonnementer i risiko, 2026-08-27): ALLE kunder, ALLE
+    abonnementer, ingen af de fem afgraensninger fjernet, kun markeret via
+    `spaerre` (se fold_risici) og via `aftale_i_dag` og `dagens_plads`
+    herunder. `fold_risici` kaldes derfor TO gange, én gang i hver tilstand, i
+    stedet for at udlede den ene af den anden: `vaerste_zone` og
+    `antal_abonnementer` regnes over FORSKELLIGE maengder abonnementer i de to
+    tilstande (kun opkaldsklare mod alle), og en udledning ville aendre
+    `vaerste_zone` for `nye_risici`s poster.
+
+    `dagens_plads` paa en `risikoliste`-post er sandt for netop de
+    kundenoegler, som `nye_risici["poster"]` valgte ud. Den bruges IKKE til at
+    afkorte `risikoliste`, kun til at maerke de samme raekker med et tag i
+    skabelonen, saa "dagens arbejde" er synligt inde i den fulde liste i
+    stedet for at vaere en separat, kortere liste.
     """
     risiko_data = cache.risiko(teams, abo_maaned)
     navne = cache.navne()
@@ -455,6 +515,23 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
     rangeret = [p for p in fold_risici(risiko_data["rows"], seneste, i_dag)
                 if (p["account"], p["org_id"]) not in paa_liste1]
 
+    nye_risici = afkort_nye_risici(
+        rangeret, len(liste1), antal_aabne_sager(seneste),
+        # Sat men tom = afgrænsningen matchede ingen kunder. Se
+        # afkort_nye_risici for hvorfor det ikke må ligne en tom bunke.
+        afgraensning_tom=tilladte is not None and not tilladte)
+
+    # Den samlede liste til "Opkald og risiko". Se docstringen ovenfor for
+    # forskellen til nye_risici.
+    risikoliste = fold_risici(risiko_data["rows"], seneste, i_dag,
+                              kun_opkaldsklare=False)
+    dagens_plads_noegler = {(p["account"], p["org_id"])
+                            for p in nye_risici["poster"]}
+    for p in risikoliste:
+        noegle = (p["account"], p["org_id"])
+        p["aftale_i_dag"] = noegle in paa_liste1
+        p["dagens_plads"] = noegle in dagens_plads_noegler
+
     maaned = i_dag.strftime("%Y-%m")
     udtraek = naeste_udtraek(i_dag)
     return {
@@ -468,13 +545,19 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
         "kpier":            maanedens_kpier(db_maanedens_udfald(maaned),
                                             tilladte),
         "opfoelgninger":    liste1,
-        "nye_risici":       afkort_nye_risici(
-            rangeret, len(liste1), antal_aabne_sager(seneste),
-            # Sat men tom = afgrænsningen matchede ingen kunder. Se
-            # afkort_nye_risici for hvorfor det ikke må ligne en tom bunke.
-            afgraensning_tom=tilladte is not None and not tilladte),
+        "nye_risici":       nye_risici,
+        "risikoliste":      risikoliste,
         # Bæres med, så siden kan vise forbeholdet fra Churn-risiko: mangler
         # forbrugsfilen, står ALLE abonnementer som "intet signal", og en liste
         # der ser tom for risiko ud er den farligste visning siden kan lave.
         "meta":             risiko_data["meta"],
+        # Det UFOLDEDE risikobillede, pr. abonnement, til zonekortene på
+        # "Opkald og risiko". `rows` her er ALLE abonnementer; `risikoliste`
+        # ovenfor er den kundefoldede udgave af de samme rækker.
+        "risiko": {
+            "rows":         risiko_data["rows"],
+            "zones":        risiko_data["zones"],
+            "zone_order":   risiko_data["zone_order"],
+            "gruppe_order": risiko_data["gruppe_order"],
+        },
     }

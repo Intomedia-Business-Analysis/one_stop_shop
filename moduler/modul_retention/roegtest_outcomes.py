@@ -25,7 +25,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
-# .env findes nu via env.load_env(), der bruger en absolut sti — så det er ikke
+# .env findes nu via env.load_env(), der bruger en absolut sti, så det er ikke
 # længere derfor der skiftes mappe. Det gøres stadig, så scriptets øvrige
 # relative stier peger på repo-roden uanset hvor det kaldes fra.
 os.chdir(REPO_ROOT)
