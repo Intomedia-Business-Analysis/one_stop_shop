@@ -108,6 +108,14 @@ _FILE_DATE_RE = re.compile(r"_(\d{2})(\d{2})(\d{4})$")
 
 KUNDE_PREFIX = "usage_kunde"
 KOBLING_PREFIX = "dm_kobling"
+# MAA IKKE begynde med "usage_kunde": _find_latest globber "<praefiks>_*.csv"
+# og sorterer paa datoen i filnavnet, saa et navn som usage_kunde_dyb_... ville
+# MATCHE og VINDE over den rigtige maanedsfil, fordi dets dato er nyere. Den
+# koerende app ville dermed tavst skifte forbrugsvindue, og et abonnement der
+# laeste for over 13 maaneder siden og aldrig siden ville falde fra
+# aldrig_i_gang (vaegt 1,00) til gaaet_i_staa (0,70) uden at nogen opdagede
+# det. Samme begrundelse staar i kalibrering_usage.txt's header.
+KALIBRERING_PREFIX = "kalibrering_usage"
 # Kolonnernes raekkefoelge i eksportens SELECT er kontrakten. Filerne laeses
 # positionelt, saa flyttes en kolonne i SQL'en, skal listen her foelge med.
 USAGE_COLUMNS = [
@@ -190,6 +198,11 @@ def find_latest_usage_file(folder: Optional[Path] = None) -> Optional[Path]:
 def find_latest_kobling_file(folder: Optional[Path] = None) -> Optional[Path]:
     """Nyeste dm_kobling-eksport."""
     return _find_latest(KOBLING_PREFIX, folder)
+
+
+def find_latest_kalibrering_file(folder: Optional[Path] = None) -> Optional[Path]:
+    """Nyeste kalibrering_usage-eksport, eller None. Kun maalinger bruger den."""
+    return _find_latest(KALIBRERING_PREFIX, folder)
 
 
 def _date_from_path(p: Path) -> Optional[str]:
@@ -540,8 +553,12 @@ def serie_og_dage(forbrug: dict, kunde: tuple, site: str) -> tuple[dict, dict]:
             forbrug["dage_pr_abonnement"].get((kunde, site), {}))
 
 
-def forbrug_pr_abonnement() -> dict:
+def forbrug_pr_abonnement(path: Optional[Path] = None) -> dict:
     """Sidevisninger slået op på abonnement og på kunde.
+
+    `path` peger normalt på ingenting (None), og så læses den nyeste
+    usage_kunde-eksport, som er appens eneste adfærd. Sat af kohortemaaling.py
+    til et dybere kalibreringsudtræk, uden at det ændrer noget her.
 
     Returnerer:
         pr_abonnement      — {(kunde, kanonisk_site): {maaned: sidevisninger}}
@@ -594,7 +611,7 @@ def forbrug_pr_abonnement() -> dict:
 
     from .zones import kanonisk_site
 
-    usage = load_usage_kunde()
+    usage = load_usage_kunde(path)
     df = usage["frame"]
     grundlag = koblingsgrundlag()
     acc_til_kunde = grundlag["acc_til_kunde"]
