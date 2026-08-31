@@ -711,14 +711,25 @@ def _aggreger_pr_site(df) -> dict:
 
     Returnerer {site: {maaned: {"page_views": n, "artikelvisninger": n}}}.
     """
+    from moduler.modul_portfolio_alignment.queries import SCOPE_BY_ZUORA_BRAND
     from .zones import kanonisk_site
+
+    # Udenlandske rækker filtreres PR. RÆKKE, ikke pr. site: nordicdefencewatch.dk
+    # er blandet (16 rækker brand='Watch', 63 rækker brand='WatchMedierSE',
+    # målt 2026-08-28), så et site-niveau-filter ville enten beholde eller
+    # kassere begge grupper forkert. Rækker med tomt brand beholdes, de kan
+    # ikke placeres i en scope og skal ikke straffes for det.
+    UDENLANDSKE_SCOPES = {"watch_no", "watch_se", "watch_de"}
 
     pr_site: dict = {}
     # zip over de rå kolonner, ikke df.iterrows(): samme begrundelse som
     # forbrug_pr_abonnement — iterrows bygger en Series pr. række og tager
     # minutter på 183.000 rækker.
-    for site, maaned, pv, artikler in zip(
-            df["site"], df["maaned"], df["page_views"], df["artikelvisninger"]):
+    for site, maaned, pv, artikler, brand in zip(
+            df["site"], df["maaned"], df["page_views"], df["artikelvisninger"],
+            df["brand"]):
+        if SCOPE_BY_ZUORA_BRAND.get(brand) in UDENLANDSKE_SCOPES:
+            continue
         site_k = kanonisk_site(site)
         if site_k is None:
             # marketwire og de sitelose rækker har intet at aggregere PÅ —

@@ -742,14 +742,18 @@ tjek("retention_opkald.html: .zbadge.opsagt findes",
 print("--- 15: Porteføljens to nye paneler (etape 2, site-opdelingen) ---")
 
 # usage._aggreger_pr_site: samme kontrol som for pandas-koden, kort en
-# fixture-DataFrame frem for de 183.000 rigtige rækker. Tre ting skal holde:
+# fixture-DataFrame frem for de 183.000 rigtige rækker. Fire ting skal holde:
 # .com folder ind i .dk (kanonisk_site), to rækker på samme (site, måned)
-# lægges sammen, og de to talkolonner krydses ikke.
+# lægges sammen, de to talkolonner krydses ikke, og udenlandske rækker
+# (brand → watch_no/watch_se/watch_de) filtreres pr. RÆKKE (28-08-2026,
+# nordicdefencewatch.dk-fejlen: blandet brand på samme site).
 _df_fix = pd.DataFrame({
-    "site": ["shippingwatch.dk", "shippingwatch.com", "kulturmonitor.dk", "kulturmonitor.dk"],
-    "maaned": ["2026-07", "2026-07", "2026-07", "2026-07"],
-    "page_views": [100, 50, 20, 5],
-    "artikelvisninger": [40, 10, 8, 2],
+    "site": ["shippingwatch.dk", "shippingwatch.com", "kulturmonitor.dk", "kulturmonitor.dk",
+             "nordicdefencewatch.dk", "nordicdefencewatch.dk"],
+    "maaned": ["2026-07", "2026-07", "2026-07", "2026-07", "2026-07", "2026-07"],
+    "page_views": [100, 50, 20, 5, 10, 999],
+    "artikelvisninger": [40, 10, 8, 2, 3, 999],
+    "brand": ["Watch", "Watch", "Monitormedier", "Monitormedier", "", "WatchMedierSE"],
 })
 _pr_site = u._aggreger_pr_site(_df_fix)
 tjek("_aggreger_pr_site: .com folder ind i .dk (page_views)",
@@ -762,6 +766,10 @@ tjek("_aggreger_pr_site: to rækker paa samme (site, maaned) laegges sammen",
      _pr_site.get("kulturmonitor.dk", {}).get("2026-07", {}).get("page_views"), 25)
 tjek("_aggreger_pr_site: de to talkolonner krydses ikke",
      _pr_site.get("kulturmonitor.dk", {}).get("2026-07", {}).get("artikelvisninger"), 10)
+tjek("_aggreger_pr_site: watch_se-raekken (WatchMedierSE) er udelukket",
+     _pr_site.get("nordicdefencewatch.dk", {}).get("2026-07", {}).get("page_views"), 10)
+tjek("_aggreger_pr_site: raekken med tomt brand er beholdt",
+     _pr_site.get("nordicdefencewatch.dk", {}).get("2026-07", {}).get("artikelvisninger"), 3)
 
 # queries.account_churn_rate: raten skal vaere None under MIN_AKTIVE_FOR_RATE,
 # ikke 0 — samme regel og samme grund som db_monthly_active_counts' churn_pct.
