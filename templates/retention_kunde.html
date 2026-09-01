@@ -96,8 +96,12 @@
     .graf-plot { display:flex; gap:8px; }
     /* FEM maerker og ikke to. Med kun maks og nul skal man gaette hvad en soejle i
        halv hoejde er, og det var praecis indvendingen. */
+    /* 42px og ikke 38: skriftstoerrelserne under grafen blev haevet 2026-09-01,
+       og 'kr./v.' skal kunne staa i kolonnen uden at vokse ud af den. Aendres
+       tallet, SKAL spark-x, spark-kr .lbl og graf-note foelge med (38+8 = 46
+       blev til 42+8 = 50), ellers glider maerkerne vaek fra deres soejle. */
     .graf-y { display:flex; flex-direction:column; justify-content:space-between;
-              font-size:9px; color:var(--ink-4); text-align:right; min-width:38px;
+              font-size:10px; color:var(--ink-3); text-align:right; min-width:42px;
               line-height:1; flex:none; }
     /* Gitteret er et gentaget baggrundsmoenster og ikke fem elementer: linjerne skal
        ligge BAG soejlerne, og en baggrund kan ikke komme i vejen for dem. Perioden
@@ -120,10 +124,29 @@
        bredden. Aarstallet staar kun paa den foerste og paa januar, hvor det skifter,
        saa fjorten aarstal ikke drukner maanederne. Venstremargenen er y-aksens
        bredde plus gab, saa maerkerne staar under deres egen soejle. */
-    .spark-x { display:flex; gap:6px; font-size:9px; color:var(--ink-4); margin:5px 0 0 46px; }
+    .spark-x { display:flex; gap:6px; font-size:11px; color:var(--ink-3); margin:6px 0 0 50px; }
     .spark-x span { flex:1; min-width:0; text-align:center; }
-    .spark-x span.aar { color:var(--ink-3); font-weight:600; }
-    .graf-note { font-size:10px; color:var(--ink-4); margin:6px 0 0 46px; line-height:1.5; }
+    .spark-x span.aar { color:var(--ink-2); font-weight:600; }
+    /* Prisen pr. sidevisning: en TREDJE raekke under maanedsnavnene. Samme
+       gitter som soejlerne (38px venstrekolonne + 8px gab, derefter flex:1 pr.
+       maaned), saa tallet staar under sin EGEN soejle og ikke ved siden af.
+       Etiketten har FAST bredde og ikke min-width: voksede den, ville hele
+       raekken skubbe sig ud af flugt med soejlerne ovenover. */
+    .spark-kr { display:flex; gap:8px; margin-top:4px; font-size:11px; }
+    .spark-kr .lbl { width:42px; flex:none; text-align:right; white-space:nowrap;
+                     color:var(--ink-3); }
+    .spark-kr .rk  { display:flex; gap:6px; flex:1; min-width:0; }
+    .spark-kr .rk span { flex:1; min-width:0; text-align:center; color:var(--ink-2);
+                         font-weight:600; font-variant-numeric:tabular-nums; }
+    /* Maaneder uden visninger faar en streg, ikke et tal: divisionen er
+       udefineret, og et 0 ville laeses som "gratis", hvilket er det stik
+       modsatte af hvad der skete.
+       Klassen hedder 'ingen' og IKKE 'tom': .tom er sidens tomme tilstand
+       (linje 151) med font-size 12px og padding, og cellerne arvede den, saa
+       hele raekken blev 31px hoej i stedet for 11px. */
+    .spark-kr .rk span.ingen { color:var(--ink-4); font-weight:400; }
+
+    .graf-note { font-size:10px; color:var(--ink-4); margin:8px 0 0 50px; line-height:1.5; }
 
     .hist { border-left:2px solid var(--border); padding-left:16px; margin-left:4px; }
     .hist-item { margin-bottom:16px; }
@@ -400,6 +423,23 @@
     ? (n / 1000).toFixed(n < 10000 ? 1 : 0).replace('.', ',') + 't'
     : String(n);
 
+  // Pris pr. sidevisning. Spaendet er enormt (under en krone paa et site med
+  // 40.000 visninger, flere tusinde paa et med tolv), saa formatet skifter med
+  // stoerrelsen i stedet for at holde fast i samme antal decimaler: under 10 kr.
+  // baerer decimalen betydning, over 1.000 goer den ikke. 't' er samme
+  // tusindforkortelse som kortTal bruger over soejlerne.
+  //
+  // Under 1 kr. skiftes der til TO decimaler og til sidst til '<0,01'. Med én
+  // decimal hele vejen ned blev et site med 48.000 visninger paa en aarsvaerdi
+  // af 23.400 kr. vist som '0,0', og det laeses som gratis. Det er billigt, men
+  // det er ikke nul, og forskellen er hele pointen med raekken.
+  const kortKr = (v) => v >= 1000
+    ? (v / 1000).toFixed(v < 10000 ? 1 : 0).replace('.', ',') + 't'
+    : v >= 10 ? String(Math.round(v))
+    : v >= 1  ? v.toFixed(1).replace('.', ',')
+    : v >= 0.005 ? v.toFixed(2).replace('.', ',')
+                 : '<0,01';
+
   // Aksens loft rundet OP til et paent tal, saa gittermaerkerne bliver laesbare.
   // Med det raa maksimum ville de fire mellemmaerker hedde 17,5 og 52,5, og et
   // gitter man skal regne i er vaerre end intet gitter. Prisen er at soejlerne
@@ -520,7 +560,7 @@
   // paa hver graf, og hver soejle har sin vaerdi over sig. Prisen er at
   // soejlehoejder IKKE kan sammenlignes mellem to grafer, og det skal siden
   // skrive, ellers laeses to lige hoeje soejler som to lige store tal.
-  const sparkline = (trend, ref) => {
+  const sparkline = (trend, ref, arr, kilde) => {
     if (!trend || !trend.length) return '';
     const grafMax = Math.max(1, ...trend.map(t => t.sidevisninger));
     const loft = akseLoft(grafMax);
@@ -552,6 +592,62 @@
            + (visAar ? ' ' + esc(m[1].slice(2)) : '') + '</span>';
     }).join('');
 
+    // ── Pris pr. sidevisning pr. maaned.
+    //
+    // TAELLEREN ER DEN SAMME HVER MAANED, og det er ikke en forenkling, det er
+    // hvad kilden tillader. Maalt 2026-09-01: dbo.PipeDrive_ACV raekker kun fra
+    // 2026-05-11 til 2026-08-30 (fire maaneder mod grafens tolv), og beloebet
+    // aendrer sig ALDRIG for 18.796 af 22.329 abonnementer. En "aegte" ACV pr.
+    // maaned ville derfor vaere otte tomme felter og fire ens tal.
+    //
+    // Signalet ligger i NAEVNEREN, og det er ogsaa det man skal bruge i
+    // opkaldet: staar prisen stille mens forbruget falder, stiger prisen pr.
+    // visning, og det er kundens eget argument imod hende.
+    //
+    // Raekken udelades HELT ved ukendt eller nul aarsvaerdi. Et 0-beloeb (fx
+    // MedWatch hos DLA Piper) ville saette 0 kr. under hver maaned og ligne
+    // "gratis" i stedet for "beloebet kender vi ikke".
+    //
+    // Og raekken udelades ogsaa, hvis INGEN maaned har en visning: hos DLA Piper
+    // gaelder det 6 af 13 abonnementer, og de ville faa tolv streger paa stribe.
+    // Tolv streger er ikke et svar, det er stoej der skjuler de syv grafer hvor
+    // der faktisk staar noget. At abonnementet ligger stille, siger soejlerne
+    // og zonen allerede.
+    const harVisninger = trend.some(t => t.sidevisninger > 0);
+    const maanedsvaerdi = (arr === null || arr === undefined || arr <= 0 || !harVisninger)
+      ? null : arr / 12;
+    const maanedsKr = maanedsvaerdi === null ? '' : kr(Math.round(maanedsvaerdi));
+
+    let krRaekke = '', krNote = '';
+    if (maanedsvaerdi !== null) {
+      const celler = trend.map(t => {
+        if (!t.sidevisninger) {
+          return `<span class="ingen" title="${esc(maanedLang(t.maaned))}: ingen sidevisninger,`
+               + ` så en pris pr. visning findes ikke. Hele månedens ${esc(maanedsKr)}`
+               + ` er betalt uden at nogen læste">—</span>`;
+        }
+        const pris = maanedsvaerdi / t.sidevisninger;
+        return `<span title="${esc(maanedLang(t.maaned))}: ${esc(maanedsKr)} delt med`
+             + ` ${esc(nf0.format(t.sidevisninger))} sidevisninger`
+             + ` = ${esc(nfv.format(pris))} kr. pr. visning">${esc(kortKr(pris))}</span>`;
+      }).join('');
+      krRaekke = `<div class="spark-kr"><span class="lbl">kr./v.</span>`
+               + `<div class="rk">${celler}</div></div>`;
+
+      // Forbeholdet SKAL staa paa siden. Uden det laeses tallet under november
+      // som en kendsgerning om november, og det er det ikke: det er DAGENS
+      // aarsvaerdi holdt op mod november forbrug. Samme grund som at
+      // arrKildeTekst staar under beloebet oppe i hjoernet.
+      krNote = ` Rækken <strong>kr./v.</strong> er ${esc(maanedsKr)} pr. måned`
+             + ` (årsværdien delt med 12) divideret med månedens sidevisninger.`
+             + ` Årsværdien er den vi kender <strong>i dag</strong>, og den bruges`
+             + ` på alle måneder, fordi ACV ikke har historik at slå den op i.`
+             + (kilde === 'lige_deling'
+                 ? ` Beløbet er oven i købet et skøn (kundens ARR delt ligeligt`
+                   + ` mellem hendes sites), så prisen pr. visning er det også.`
+                 : ``);
+    }
+
     return `<div class="graf">
               <div class="graf-top">
                 <span>Sidevisninger pr. måned</span>
@@ -562,7 +658,8 @@
                 <div class="spark">${bars}</div>
               </div>
               <div class="spark-x">${xmaerker}</div>
-              <div class="graf-note">Den mørke søjle er ${esc(maanedLang(ref))}, som zonen er beregnet på.</div>
+              ${krRaekke}
+              <div class="graf-note">Den mørke søjle er ${esc(maanedLang(ref))}, som zonen er beregnet på.${krNote}</div>
             </div>`;
   };
 
@@ -610,7 +707,7 @@
           </div>
         </div>
         ${opsagtLinje(a, d.meta.abo_maaned)}
-        ${sparkline(a.trend, d.meta.reference_maaned)}
+        ${sparkline(a.trend, d.meta.reference_maaned, a.arr_dkk, a.arr_kilde)}
         ${u ? `<div class="hist-udfald">Seneste udfald: <strong>${esc(u.outcome || u.contact_result)}</strong>
                ${u.followup_date ? ' · opfølgning ' + dato(u.followup_date) : ''}
                ${u.note ? ' · ' + esc(u.note) : ''}</div>` : ''}
