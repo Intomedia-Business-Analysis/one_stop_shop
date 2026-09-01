@@ -50,6 +50,13 @@
     .graf-note p { margin:0 0 8px; }
     .graf-note p:last-child { margin-bottom:0; }
 
+    /* Henvisning fra Operationel-fanen til churn-grafen, der flyttede til
+       Performance-fanen 2026-09-01. Egen klasse og ikke .graf-note: den har
+       en topstreg, fordi den afslutter en graf, og den ville her lægge en
+       streg midt mellem noegletallene og foerste panel. */
+    .fane-henvisning { font-size:11px; color:var(--ink-3); margin:0 0 18px; }
+    .fane-henvisning a { color:var(--ink-2); font-weight:600; }
+
     /* ── Fane 2 (Performance og effekt): tom ramme, se etape 3. Ingen
        spinner og intet placeholder-tal — det ærlige svar i dag er "ingen
        samtaler registreret", og det skal se rigtigt ud, ikke midlertidigt. */
@@ -69,6 +76,16 @@
                        border:1px solid var(--border); border-radius:999px; background:var(--surface);
                        color:var(--ink-3); cursor:pointer; }
     .eng-metric-btn.on { background:var(--green); color:#fff; border-color:var(--green); }
+
+    /* Churn-grafens aarsfilter. EGEN KLASSE og ikke .eng-metric-btn, selv om
+       udseendet er identisk: engMetric() rydder `.on` paa ALLE
+       .eng-metric-btn i dokumentet, saa en delt klasse ville faa de to
+       knapgrupper til at slukke hinanden. Reglerne arves visuelt herunder,
+       saa der kun findes ét pille-udseende paa siden. */
+    .aar-btn { font-family:var(--font); font-size:11px; font-weight:600; padding:6px 12px;
+               border:1px solid var(--border); border-radius:999px; background:var(--surface);
+               color:var(--ink-3); cursor:pointer; }
+    .aar-btn.on { background:var(--danger); color:#fff; border-color:var(--danger); }
 
     .mm-flag { background:var(--warn-light); border:1px solid #E3D7A8; border-radius:var(--r-xs);
                padding:10px 14px; margin-bottom:14px; font-size:11px; color:var(--ink-2); line-height:1.6; }
@@ -147,6 +164,17 @@
 
           <div class="kpis" id="kpis"></div>
 
+          <!-- Churn-grafen laa her indtil 2026-09-01 og flyttede til
+               Performance-fanen: den viser et gennemsnit over HELE bogen i 69
+               maaneder, og der findes ingen vej fra en prik paa linjen til en
+               handling. Samme begrundelse som da "Portefoeljen maaned for
+               maaned" blev erstattet af "Opsigelser i varsel" nedenfor.
+               Noegletalskortet "Churn-rate" bliver, det beskriver NU. -->
+          <p class="fane-henvisning">
+            Churn-raten måned for måned ligger i
+            <a href="#performance">Performance og effekt</a>.
+          </p>
+
           <div class="panel">
             <div class="panel-header">
               <h2>Opsigelser i varsel</h2>
@@ -169,17 +197,6 @@
                 </table>
               </div>
               <div class="graf-note" id="varsel-note"></div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h2>Churn-rate måned for måned</h2>
-              <p id="churn-sub">Indlæser…</p>
-            </div>
-            <div class="panel-body">
-              <canvas id="churnChart" height="60"></canvas>
-              <div class="graf-note" id="churn-note"></div>
             </div>
           </div>
 
@@ -243,6 +260,26 @@
         </div>
 
         <div class="tab-pane" id="tab-performance">
+
+          <!-- Churn-grafen flyttede hertil fra Operationel-fanen 2026-09-01.
+               Trend over tid ER performance, og fanen ledte foer flytningen med
+               en tom tilstand. Panelet ligger FOERST, saa fanen aabner paa
+               indhold der findes, og tomheden staar under det. -->
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Churn-rate måned for måned</h2>
+              <p id="churn-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <!-- Aarsknapperne fyldes af scriptet, ikke af markup: hvilke aar
+                   der findes, afhaenger af data, og en hardkodet raekke ville
+                   vise 2027 tom eller mangle den, naar aaret skifter. -->
+              <div class="eng-controls" id="churn-aar"></div>
+              <canvas id="churnChart" height="60"></canvas>
+              <div class="graf-note" id="churn-note"></div>
+            </div>
+          </div>
+
           <div class="panel">
             <div class="panel-body">
               <div class="tom-tilstand">
@@ -333,12 +370,31 @@ function varselRows() {
 // ── Faneskift. URL-hash er kilden til sandhed, så F5 og et delt link husker
 // fanen — samme mønster kunne ikke genbruges fra budget_tool.html, som ikke
 // har hash-synkronisering. ──
+// Churn-grafens Chart.js-instans, sat af grafens IIFE nedenfor. Findes ALENE
+// for resize-kaldet i switchTab, se begrundelsen dér.
+let churnChartRef = null;
+
 function switchTab(id, btn) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
   el('tab-' + id).classList.add('on');
   btn.classList.add('on');
   history.replaceState(null, '', '#' + id);
+
+  // FLYTNINGEN 2026-09-01 VENDTE PROBLEMET PAA HOVEDET. Udskydelsen i bunden
+  // af scriptet sikrer, at graferne bygges FOER et faneskift — men den byggede
+  // dem i fane 1, som er synlig som standard. Churn-grafen ligger nu i fane 2,
+  // altsaa i en display:none-rude ved et almindeligt sideindlaes, og et
+  // 0x0-canvas retter sig ikke af sig selv paalideligt.
+  //
+  // Chart.js 4.4.0 har en ResizeObserver, der som regel fanger overgangen fra
+  // display:none, men "som regel" er ikke godt nok paa den ene graf brugeren
+  // kommer for. Kaldet her er billigt og deterministisk.
+  //
+  // Begge raekkefoelger er daekket: er grafen endnu ikke bygget, er ref'en
+  // null, og den bliver bygget i en fane der allerede er synlig. Er den bygget
+  // mens fanen var skjult, retter dette kald den, naar man skifter hertil.
+  if (id === 'performance' && churnChartRef) churnChartRef.resize();
 }
 function applyHashTab() {
   const id = (location.hash || '').slice(1) === 'performance' ? 'performance' : 'operationel';
@@ -372,10 +428,11 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
 // ovenfor. Hejst hertil 2026-09-01, så de to paneler ikke får hver sin kopi.
 const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', marketwire: 'Marketwire' };
 
-// ── Fane 1, del A: de fire nøgletal + churn-grafen. Porteføljekurven er
-// fjernet 2026-09-01 (se "Opsigelser i varsel" nedenfor for begrundelsen) —
-// resten er UÆNDRET adfærd, kun flyttet ind i en IIFE, der ikke længere
-// erklærer sine egne kopier af helperne ovenfor. ──
+// ── De fire nøgletal (fane 1) + churn-grafen (fane 2). Blokken spænder over
+// BEGGE faner efter flytningen 2026-09-01, og det er med vilje: de to dele
+// regner på samme ene fetch, og et opsplit ville koste et netværkskald mere
+// for at holde dem adskilt i kildekoden. Porteføljekurven er fjernet
+// 2026-09-01 (se "Opsigelser i varsel" for begrundelsen). ──
 (async function () {
   const fail = (msg) => {
     el('churn-sub').textContent = msg;
@@ -394,8 +451,47 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
 
   if (!Array.isArray(rows) || !rows.length) return fail('Ingen data');
 
-  const labels       = rows.map(r => r.FirstDayOfMonth);
-  const churn        = rows.map(r => r.churn_pct);
+  // ── FEM-AARS-VINDUET (2026-09-01) ────────────────────────────────────────
+  //
+  // Grafen tegnede 127 maaneder tilbage til marts 2016. Vinduet skaerer 58 af
+  // dem: 37 har slet ingen rate (grundlaget var under 1.000 aktive
+  // abonnementer, sidst i marts 2019), og de oevrige 21 er regnet paa en bog
+  // under 4.600 abonnementer. Maalt 2026-09-01: vinduet er 69 maaneder og har
+  // NUL huller, saa den takkede venstre ende forsvinder helt.
+  //
+  // `rows` MAA IKKE AFKORTES. Tre andre ting laeser den fulde raekke:
+  //   1. "Maaned mod maaned pr. site" faar samme array gennem monthlyRows()
+  //   2. `nyeste` og `endelig` til noegletalskortene skal vaere de faktisk
+  //      nyeste maaneder, ikke vinduets
+  //   3. tooltippets naevner er FORRIGE maaneds active_count, og for vinduets
+  //      foerste punkt ligger den uden for vinduet
+  // Derfor et vindue som OFFSET og ikke som en ny liste.
+  const VINDUE_START = '2021-01-01';
+  const startIndex = rows.findIndex(r => r.FirstDayOfMonth >= VINDUE_START);
+
+  // -1 = ingen maaned er inde i vinduet. Kan ikke ske med dagens data, men et
+  // slice(-1) ville tegne den SIDSTE maaned alene og se ud som et rigtigt svar.
+  if (startIndex === -1) return fail('Ingen data i vinduet fra januar 2021');
+
+  // ── AARSFILTERET (2026-09-01) ─────────────────────────────────────────────
+  //
+  // `visFra` og `vist` er MUTABLE og udgoer grafens aktuelle udsnit. Default er
+  // hele fem-aars-vinduet, altsaa uaendret fra foer filteret fandtes.
+  //
+  // ALT DER AFHAENGER AF UDSNITTET LAESER DISSE TO, ikke en kopi: tooltippet,
+  // stiplingen, noten og underoverskriften. Tages der en kopi et sted, holder
+  // netop det sted op med at foelge med, naar der skiftes aar — og det er den
+  // slags fejl der ikke ses, foer man klikker.
+  let visFra = startIndex;
+  let vist   = rows.slice(visFra);
+
+  // null = hele vinduet. Ellers '2021'...'2026'.
+  let valgtAar = null;
+
+  // Indekser INDE I `vist`. -1 betyder "ligger uden for udsnittet", og begge
+  // bruges af Chart.js-callbacks, der derfor skal taale -1.
+  let foreloebigIndex = -1;
+  let klippeIndex     = -1;
 
   // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. Definitioner (besluttet
   // 2026-08-17): et hul på én måned er en pause og tælles ikke som churn. Men et
@@ -410,7 +506,11 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   // den nyeste måned. Kun det sidste punkt skal altså markeres, ikke de to
   // sidste. Se `churn`-CTE'ens `WHERE h.FirstDayOfMonth < s.max_maaned` i
   // queries.db_monthly_active_counts.
-  const foreloebigIndex = churn.length - 1;
+  //
+  // MED AARSFILTERET ER DET IKKE LAENGERE "sidste punkt i grafen". Vaelger man
+  // 2023, er der INTET foreloebigt punkt, og en `laengde - 1` ville stiple
+  // december 2023, som har vaeret endelig i aarevis. Den foreloebige maaned er
+  // altid den NYESTE i datagrundlaget, og den findes derfor ved opslag.
 
   // ── De fire noegletal.
   //
@@ -435,11 +535,24 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   const abo_pr_kunde = nyeste.customer_count
     ? nyeste.active_count / nyeste.customer_count : null;
 
-  // `visteRater` er de måneder der faktisk HAR en rate, og den nyeste er MED.
-  // Den beskriver hvad grafen tegner, og bruges der et andet udsnit her, kommer
+  // Månederne i det AKTUELLE udsnit, der faktisk har en rate. Den nyeste er MED.
+  // Beskriver hvad grafen tegner, og bruges der et andet udsnit her, kommer
   // underoverskriften til at sige 88 måneder, mens grafen tegner 89 punkter. Det
   // var fejlen indtil den blev set i browseren.
-  const visteRater = rows.filter(r => r.churn_pct !== null && r.churn_pct !== undefined);
+  //
+  // En FUNKTION og ikke en konstant: `vist` skifter med årsfilteret, og en
+  // konstant beregnet her ville blive stående på fem-års-vinduet for evigt.
+  const visteRater = () =>
+    vist.filter(r => r.churn_pct !== null && r.churn_pct !== undefined);
+
+  // Nævneren for en vilkårlig måned: forrige måneds active_count. Slår op i den
+  // FULDE `rows`, fordi forgængeren til udsnittets første måned pr. definition
+  // ligger uden for udsnittet. Objekt-identitet, ikke dato-søgning: `vist` er et
+  // slice af `rows`, så rækkerne ER de samme objekter.
+  const grundlag = (r) => {
+    const i = rows.indexOf(r);
+    return i > 0 ? rows[i - 1].active_count : null;
+  };
 
   // TO DECIMALER paa churn-kortet, ikke én. Raten ligger mellem 0,39 og 2,37, så
   // hundrededele betyder noget: august 0,78 og september 0,83 ville begge blive
@@ -469,9 +582,14 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
     // (ca. 13.100). Augusts 102 opsigelser mod den gamle bogstoerrelse er 1,03 %,
     // ikke 0,78 %, saa nedgangen saa dobbelt saa stor ud som den er. Samme aarsag
     // som at siden bevidst ikke viser aar-til-aar, se kommentaren ved `netto`.
-    // Der findes ikke et aerligt tolvmaaneders grundlag foer maj 2027. Ankeret er
-    // churn-grafen nedenfor, som tegner hele historikken OG baerer majspring-noten,
-    // og et noegletalskort kan ikke baere det forbehold.
+    // Der findes ikke et aerligt tolvmaaneders grundlag foer maj 2027.
+    //
+    // ANKERET FLYTTEDE 2026-09-01. Foer den dato laa churn-grafen umiddelbart
+    // nedenfor og baerte majspring-noten, saa kortet kunne staa uden forbehold.
+    // Grafen ligger nu i fane 2, og erstatningen er linket "Churn-raten maaned
+    // for maaned ligger i Performance og effekt" under noegletalsraekken.
+    // Fjernes det link, staar kortet igen alene med et tal der ikke kan
+    // sammenlignes med noget.
     + kort('', 'Churn-rate',
            endelig.churn_pct === null ? '—' : nfC.format(endelig.churn_pct) + ' %',
            nf.format(endelig.churned_count) + ' abonnementer mistet',
@@ -482,43 +600,47 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
            + nf.format(endelig.churned_count) + ' churn',
            maanedDK(endelig.FirstDayOfMonth) + ', seneste endelige');
 
-  el('churn-sub').textContent = visteRater.length
-    ? 'Vises for ' + visteRater.length + ' måneder, fra '
-      + maanedDK(visteRater[0].FirstDayOfMonth)
-    : 'Kan ikke måles endnu';
-
-  // Bulk-importen i maj 2026: 3.426 abonnementer på én måned, hvoraf 1.776 var
-  // GENSKABTE abonnementer der allerede fandtes. Den er det mest iøjnefaldende på
-  // grafen, og den var indtil 2026-08-18 ikke forklaret noget sted på siden, selv
-  // om queries.py's docstring siger at den SKAL være det.
-  const klippeIndex = labels.indexOf('2026-05-01');
-
-  // Kun aarstal paa x-aksen. Chart.js' autoSkip glider ujaevnt over 126
-  // maaneder (11 og 13 mdr. ad gangen), og et aarstal pr. januar giver rene
-  // aarsskift.
+  // X-AKSEN SKIFTER MED UDSNITTET, og det er ikke pynt. Reglen "kun aarstal, ét
+  // pr. januar" findes, fordi Chart.js' autoSkip glider ujaevnt over mange
+  // maaneder (11 og 13 mdr. ad gangen). Men paa ét enkelt aar ville den samme
+  // regel give PRAECIS ÉT maerke paa hele aksen, og grafen ville se ud som om
+  // den manglede sin akse. Ét aar faar derfor maanedsnavne.
   const xAkse = {
     ticks: {
       autoSkip: false,
       maxRotation: 0,
       callback: function (val, index) {
-        const label = labels[index];
-        return label && label.slice(5, 7) === '01' ? label.slice(0, 4) : undefined;
+        const label = vist[index] && vist[index].FirstDayOfMonth;
+        if (!label) return undefined;
+        if (valgtAar) return MDR[+label.slice(5, 7) - 1].slice(0, 3);
+        return label.slice(5, 7) === '01' ? label.slice(0, 4) : undefined;
       },
     },
   };
 
   // ══════════ Churn-raten ══════════
   //
-  // Egen graf med egen akse. Alene bliver spaendet 0,39 til 2,37% laesbart, og de
-  // 37 maaneder uden rate bliver et synligt hul i stedet for et mysterium.
-  new Chart(el('churnChart'), {
+  // Egen graf med egen akse, saa spaendet 0,39 til 2,37% er laesbart.
+  //
+  // Den gamle begrundelse "de 37 maaneder uden rate bliver et synligt hul i
+  // stedet for et mysterium" er BORTFALDET 2026-09-01: alle 37 ligger foer
+  // vinduets start, saa hullet vises ikke laengere. Det er nu vinduet selv,
+  // noten skal forklare, ikke hullet.
+  //
+  // Instansen gemmes i churnChartRef, saa switchTab kan kalde resize() naar
+  // fane 2 bliver synlig. Se begrundelsen ved switchTab.
+  churnChartRef = new Chart(el('churnChart'), {
     type: 'line',
     data: {
-      labels: labels,
+      // Tomme ved oprettelsen. `tegn()` nedenfor fylder BEGGE, og den kaldes
+      // ogsaa foerste gang — saa der kun findes ÉT sted, der oversaetter et
+      // udsnit til en graf. Skrev vi startvaerdierne her, ville den kode findes
+      // to gange og kunne komme i utakt.
+      labels: [],
       datasets: [
         {
           label: 'Churn-rate',
-          data: churn,
+          data: [],
           borderColor: cssVar('--danger', '#8A2B2B'),
           backgroundColor: rgba(cssVar('--danger', '#8A2B2B'), 0.10),
           borderWidth: 1.5,
@@ -531,8 +653,14 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
             borderDash: (ctx) =>
               ctx.p1DataIndex === foreloebigIndex ? [4, 3] : undefined,
           },
-          // Et synligt punkt oven i stiplingen. Med 126 maaneder paa x-aksen er det
-          // sidste segment faa pixels bredt, og stipling alene kan ikke ses.
+          // Et synligt punkt oven i stiplingen. Over mange maaneder er det sidste
+          // segment faa pixels bredt, og stipling alene kan ikke ses.
+          //
+          // BEGGE callbacks laeser `foreloebigIndex` som VARIABEL og ikke som en
+          // indfanget vaerdi, saa de foelger aarsskiftet. Er den -1 (den nyeste
+          // maaned ligger uden for det valgte aar), matcher ingen dataIndex, og
+          // hverken stipling eller punkt tegnes. Det er den oenskede adfaerd:
+          // i 2023 er intet foreloebigt.
           pointRadius: (ctx) => (ctx.dataIndex === foreloebigIndex ? 3.5 : 0),
           pointStyle: 'circle',
           pointBackgroundColor: 'transparent',
@@ -551,12 +679,23 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
           callbacks: {
             labelColor: tooltipFarve,
             title: (items) => maanedDK(items[0].label),
+            // TO FORSKELLIGE ARRAYS I SAMME UDTRYK, og det er ikke en fejl.
+            // `ctx.dataIndex` er et indeks i UDSNITTET, saa den viste maaned
+            // hentes fra `vist`. Naevneren er FORRIGE maaneds active_count, og
+            // for udsnittets FOERSTE punkt ligger den pr. definition uden for
+            // udsnittet — den skal derfor hentes fra den fulde `rows` med
+            // offsettet `visFra` lagt til. Med `vist[ctx.dataIndex - 1]` ville
+            // januar i hvert eneste valgt aar vise "0 abonnementer" som
+            // grundlag, og fejlen ville se ud som et datahul.
+            //
+            // `visFra` og ikke `startIndex`: offsettet flytter sig med
+            // aarsfilteret, og startIndex er fem-aars-vinduets faste start.
             label: (ctx) => {
-              const r = rows[ctx.dataIndex];
+              const r = vist[ctx.dataIndex];
+              const forrige = rows[visFra + ctx.dataIndex - 1];
               return nfC.format(ctx.parsed.y) + ' % · '
                    + nf.format(r.churned_count) + ' af '
-                   + nf.format(rows[ctx.dataIndex - 1]
-                       ? rows[ctx.dataIndex - 1].active_count : 0)
+                   + nf.format(forrige ? forrige.active_count : 0)
                    + ' abonnementer';
             },
             // Stiplingen siger "noget er anderledes ved dette punkt", ikke HVAD.
@@ -584,30 +723,169 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   });
 
   // ══════════ Noten under churn-grafen ══════════
-  el('churn-note').innerHTML =
-      '<p><strong>Sådan regnes churn:</strong> et abonnement tælles som churn, når '
-    + 'det mangler i <strong>mindst to måneder i træk</strong>, og det tælles i den '
-    + 'første måned det manglede. Er det væk i kun én måned og tilbage igen, er det '
-    + 'en pause og tælles ikke. Raten er churn i måneden divideret med antal aktive '
-    + 'abonnementer måneden før.</p>'
-    + '<p><strong>Den stiplede ende er foreløbig.</strong> For den nyeste måned kan '
-    + 'vi endnu ikke se, om et manglende abonnement kommer tilbage, så det tælles '
-    + 'med indtil videre. Tallet kan derfor <strong>kun falde</strong>, aldrig '
-    + 'stige. En stigning i det sidste punkt er ikke et signal, og derfor peger '
-    + 'nøgletallet ovenfor på ' + maanedDK(endelig.FirstDayOfMonth) + '.</p>'
-    + '<p><strong>Hullet før ' + (visteRater.length
-        ? maanedDK(visteRater[0].FirstDayOfMonth) : 'april 2019')
-    + ' er med vilje.</strong> Raten vises ikke, når grundlaget er under 1.000 '
-    + 'aktive abonnementer i måneden før. I 2016 til 2018 er der 1 til 5 churn om '
-    + 'måneden på et grundlag under 600, og linjen ville hoppe mellem 0 og 7 % uden '
-    + 'at afspejle andet end afrunding.</p>'
-    + '<p><strong>Juni 2026 (2,37 %, det højeste punkt i hele linjen) er '
-    + 'et synkroniseringsartefakt, ikke kundeadfærd.</strong> Porteføljen fik et '
-    + 'lodret spring måneden før, fra 9.932 til 13.358 abonnementer på én måned, '
-    + 'og 1.776 af dem var abonnementer der allerede fandtes, forsvandt og kom '
-    + 'tilbage, mod 7 til 44 i en normal måned. Det er en synkronisering i '
-    + 'Pipedrive. Springet gør også, at en sammenligning med samme måned sidste '
-    + 'år ikke kan bruges før maj 2027.</p>';
+  //
+  // NOTEN BESKRIVER DET DER STAAR PAA SKAERMEN, ikke grafen i almindelighed.
+  // Derfor er den bygget af afsnit med betingelser: vaelger man 2023, er der
+  // intet foreloebigt punkt at forklare, ingen afskaarne maaneder at
+  // retfaerdiggoere og ingen majspring i sigte. Et fast notetekst ville
+  // forklare tre ting man ikke kan se, og det er vaerre end ingen note.
+  //
+  // Yderpunkterne LAESES AF DATA, de skrives ikke ind. Praecis den slags
+  // haardkodede tal er det, Retention PD'ens churn-afsnit blev forkert af.
+  const tegnNote = () => {
+    const rater = visteRater();
+    const efterRate = rater.slice().sort((a, b) => a.churn_pct - b.churn_pct);
+    const lavest  = efterRate[0];
+    const hoejest = efterRate[efterRate.length - 1];
+    const foerste = vist[0];
+    const sidste  = vist[vist.length - 1];
+
+    let ud =
+        '<p><strong>Sådan regnes churn:</strong> et abonnement tælles som churn, når '
+      + 'det mangler i <strong>mindst to måneder i træk</strong>, og det tælles i den '
+      + 'første måned det manglede. Er det væk i kun én måned og tilbage igen, er det '
+      + 'en pause og tælles ikke. Raten er churn i måneden divideret med antal aktive '
+      + 'abonnementer måneden før.</p>';
+
+    // Kun naar den nyeste maaned faktisk er i billedet.
+    if (foreloebigIndex >= 0) {
+      ud += '<p><strong>Den stiplede ende er foreløbig.</strong> For den nyeste måned kan '
+          + 'vi endnu ikke se, om et manglende abonnement kommer tilbage, så det tælles '
+          + 'med indtil videre. Tallet kan derfor <strong>kun falde</strong>, aldrig '
+          + 'stige. En stigning i det sidste punkt er ikke et signal, og derfor peger '
+          + 'nøgletallet på Operationel-fanen på ' + maanedDK(endelig.FirstDayOfMonth)
+          + '.</p>';
+    }
+
+    if (valgtAar) {
+      ud += '<p><strong>Du ser ' + valgtAar + ' måned for måned</strong>, '
+          + nf.format(vist.length) + ' af årets måneder'
+          + (vist.length < 12
+              ? ' (' + maanedDK(foerste.FirstDayOfMonth) + ' til '
+                + maanedDK(sidste.FirstDayOfMonth) + ', året er ikke omme)'
+              : '')
+          + '. Y-aksen skalerer efter det viste år, så to år ikke kan '
+          + 'sammenlignes ved at se på kurvens højde alene. Tryk '
+          + '<strong>2021 til nu</strong> for hele vinduet.</p>';
+      if (rater.length) {
+        ud += '<p><strong>Årets yderpunkter:</strong> lavest '
+            + nfC.format(lavest.churn_pct) + ' % i ' + maanedDK(lavest.FirstDayOfMonth)
+            + ' (' + nf.format(lavest.churned_count) + ' abonnementer af '
+            + nf.format(grundlag(lavest)) + '), højest '
+            + nfC.format(hoejest.churn_pct) + ' % i ' + maanedDK(hoejest.FirstDayOfMonth)
+            + ' (' + nf.format(hoejest.churned_count) + ' af '
+            + nf.format(grundlag(hoejest)) + ').</p>';
+      }
+    } else {
+      ud += '<p><strong>Grafen viser de seneste fem år, fra '
+          + maanedDK(foerste.FirstDayOfMonth) + '.</strong> Grundlaget går tilbage til '
+          + maanedDK(rows[0].FirstDayOfMonth) + ', men de ' + nf.format(startIndex)
+          + ' måneder før vinduet er skåret væk. 37 af dem har slet ingen rate, fordi '
+          + 'raten ikke vises når grundlaget er under 1.000 aktive abonnementer i '
+          + 'måneden før, sidst tilfældet i marts 2019. De øvrige 21 er regnet på en '
+          + 'bog under 4.600 abonnementer. <strong>Inden for vinduet er der ingen '
+          + 'huller.</strong></p>'
+          + '<p><strong>Bogen er næsten tredoblet inde i vinduet</strong>, fra '
+          + nf.format(foerste.active_count) + ' aktive abonnementer i '
+          + maanedDK(foerste.FirstDayOfMonth) + ' til ' + nf.format(nyeste.active_count)
+          + ' i ' + maanedDK(nyeste.FirstDayOfMonth) + '. Raten er en andel og kan '
+          + 'derfor sammenlignes hen over vinduet, men de tidlige punkter hviler på '
+          + 'langt færre abonnementer: linjens laveste punkt, '
+          + nfC.format(lavest.churn_pct) + ' % i ' + maanedDK(lavest.FirstDayOfMonth)
+          + ', er ' + nf.format(lavest.churned_count) + ' abonnementer af '
+          + nf.format(grundlag(lavest)) + ', mens ' + nfC.format(endelig.churn_pct)
+          + ' % i ' + maanedDK(endelig.FirstDayOfMonth) + ' er '
+          + nf.format(endelig.churned_count) + ' af ' + nf.format(grundlag(endelig))
+          + '. Et enkelt abonnement flytter raten mere i den venstre ende af grafen '
+          + 'end i den højre.</p>';
+    }
+
+    // Majspringet forklares kun, naar maj eller juni 2026 er synlig. Ligger de
+    // uden for udsnittet, ville afsnittet pege paa en klippe der ikke er der.
+    const harKlippe = vist.some(r => r.FirstDayOfMonth === '2026-05-01'
+                                  || r.FirstDayOfMonth === '2026-06-01');
+    if (harKlippe) {
+      ud += '<p><strong>Juni 2026 (2,37 %, det højeste punkt i hele linjen) er '
+          + 'et synkroniseringsartefakt, ikke kundeadfærd.</strong> Porteføljen fik et '
+          + 'lodret spring måneden før, fra 9.932 til 13.358 abonnementer på én måned, '
+          + 'og 1.776 af dem var abonnementer der allerede fandtes, forsvandt og kom '
+          + 'tilbage, mod 7 til 44 i en normal måned. Det er en synkronisering i '
+          + 'Pipedrive. Springet gør også, at en sammenligning med samme måned sidste '
+          + 'år ikke kan bruges før maj 2027.</p>';
+    }
+
+    el('churn-note').innerHTML = ud;
+  };
+
+  // ══════════ ÉT sted der oversaetter et udsnit til en graf ══════════
+  //
+  // Kaldes baade ved foerste tegning og ved hvert aarsskift. Alt udsnits-
+  // afhaengigt regnes HER, saa der ikke findes et andet sted der kan komme i
+  // utakt: indekserne, aksen, underoverskriften og noten.
+  const tegn = () => {
+    if (valgtAar) {
+      // Foerste og sidste maaned i aaret, fundet i den FULDE `rows`. Aaret kan
+      // ligge helt eller delvist uden for fem-aars-vinduet — det kan det ikke
+      // med dagens knapper, men reglen skal ikke afhaenge af det.
+      visFra = rows.findIndex(r => r.FirstDayOfMonth.slice(0, 4) === valgtAar);
+      let til = visFra;
+      while (til < rows.length && rows[til].FirstDayOfMonth.slice(0, 4) === valgtAar) til++;
+      vist = rows.slice(visFra, til);
+    } else {
+      visFra = startIndex;
+      vist   = rows.slice(visFra);
+    }
+
+    // OPSLAG, ikke `laengde - 1`: den foreloebige maaned er den nyeste i
+    // datagrundlaget, og den er kun i billedet nogle gange. -1 slaar begge
+    // Chart.js-callbacks fra, se dataset-kommentarerne ovenfor.
+    foreloebigIndex = vist.indexOf(nyeste);
+    klippeIndex     = vist.findIndex(r => r.FirstDayOfMonth === '2026-05-01');
+
+    churnChartRef.data.labels = vist.map(r => r.FirstDayOfMonth);
+    churnChartRef.data.datasets[0].data = vist.map(r => r.churn_pct);
+    churnChartRef.update();
+
+    const rater = visteRater();
+    el('churn-sub').textContent = !rater.length
+      ? 'Kan ikke måles for det valgte år'
+      : valgtAar
+        ? 'Vises for ' + rater.length + ' måneder i ' + valgtAar
+        : 'Vises for ' + rater.length + ' måneder, fra '
+          + maanedDK(rater[0].FirstDayOfMonth);
+
+    tegnNote();
+  };
+
+  // ══════════ Aarsknapperne ══════════
+  //
+  // Aarene UDLEDES AF DATA. En haardkodet raekke ville mangle 2027, naar aaret
+  // skifter, og ingen ville opdage det foer nogen savnede en knap.
+  const aarIVinduet = [...new Set(rows.slice(startIndex)
+                                      .map(r => r.FirstDayOfMonth.slice(0, 4)))];
+
+  const knapper = [{ vaerdi: null, tekst: '2021 til nu' }]
+    .concat(aarIVinduet.map(a => ({ vaerdi: a, tekst: a })));
+
+  el('churn-aar').innerHTML = knapper.map((k, i) =>
+      '<button type="button" class="aar-btn' + (i === 0 ? ' on' : '') + '"'
+    + ' data-aar="' + (k.vaerdi === null ? '' : k.vaerdi) + '">' + k.tekst + '</button>'
+  ).join('');
+
+  // addEventListener og IKKE onclick med en global funktion: `tegn` lever i
+  // denne closure sammen med `rows` og `vist`, og en global ville kraeve at
+  // begge blev hejst ud i vinduets navnerum. Delegeret paa containeren, saa der
+  // kun findes én lytter uanset antal aar.
+  el('churn-aar').addEventListener('click', (e) => {
+    const btn = e.target.closest('.aar-btn');
+    if (!btn) return;
+    valgtAar = btn.dataset.aar || null;
+    el('churn-aar').querySelectorAll('.aar-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    tegn();
+  });
+
+  tegn();
 })();
 
 // ── Fane 1, del B: "Opsigelser i varsel" ────────────────────────────────────
@@ -1036,6 +1314,13 @@ function engMetric(key, btn) {
 // kørt færdig (samme to promises, og løfternes køer afvikles i den
 // rækkefølge de blev hængt på) — altså efter alle grafer er bygget, uanset
 // hvilken fane hashen peger på.
+//
+// UDSKYDELSEN DÆKKER IKKE LÆNGERE CHURN-GRAFEN. Den flyttede til fane 2
+// 2026-09-01, og fane 2 er skjult ved et almindeligt sideindlæs — altså det
+// modsatte tilfælde af det, denne linje blev skrevet for. Churn-grafen bygges
+// nu bevidst i en skjult rude, og det er switchTab's resize()-kald der retter
+// den, når brugeren skifter derhen. Udskydelsen her bevarer stadig sin værdi
+// for "Opsigelser i varsel"s graf på fane 1 ved et direkte #performance-link.
 Promise.allSettled([monthlyRows(), varselRows()]).finally(applyHashTab);
 </script>
 </body>
