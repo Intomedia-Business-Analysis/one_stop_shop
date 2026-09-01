@@ -9,7 +9,7 @@ Grupper (med direktørens ønskede navne):
   Finans         – FINANS DK (finans.dk)
   Monitor        – monitor-sites
   Norge          – Watch NO
-  FinansWatch SE – Watch SE (for sig selv)
+  FinansWatch SE – Watch SE + Nordic Defence Watch
   FinanzBusiness – Watch DE (for sig selv)
   Marketwire     – vises ALTID, også selvom det ikke er i Zuora-udtrækket
 """
@@ -29,12 +29,14 @@ GROUP_LABELS = {
     "watch_de":   "FinanzBusiness",
     "marketwire": "Marketwire",
     # Nordic Defence Watch har sin EGEN gruppe i constants.BRAND_GROUPS (bruges af
-    # perf-/forecast-dashboardet), men månedsrapporten skal indtil videre rapportere
-    # det under Watch DK, præcis som før gruppen fandtes (dengang faldt
-    # 'NordicDefenceWatch' igennem til Watch DK via 'watch'-nøgleordet i classify()).
-    # Skal NDW have sin egen række i rapporten, ændres labelet her — og så skal
-    # DISPLAY_ORDER, BRAND_GEO, BRAND_ACCOUNT og BUDGET_BRANDS udvides tilsvarende.
-    "nordic_defence": "Watch DK",
+    # perf-/forecast-dashboardet), men månedsrapporten rapporterer det under
+    # FinansWatch SE. Labelet findes allerede i DISPLAY_ORDER, BRAND_GEO,
+    # BRAND_CURRENCY, BRAND_ACCOUNT og BUDGET_BRANDS, så NDW arver Sverige,
+    # SEK og watch_se-kontoen — NB: NDW sælges tværnordisk, så org-navne på
+    # deals oprettet på watch_medier-/watch_no-kontoen slås op i den forkerte
+    # konto. Skal NDW have sin EGEN række, ændres labelet her — og så skal de
+    # fem tabeller udvides tilsvarende.
+    "nordic_defence": "FinansWatch SE",
 }
 
 # Fast visningsrækkefølge. Marketwire vises altid (selv uden bevægelser).
