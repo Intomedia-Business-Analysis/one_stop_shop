@@ -27,6 +27,11 @@ REQUIRED_COLUMNS = [
 ]
 _NUMERIC_COLUMNS = ["arr_local", "arr_dkk", "prev_arr", "net_diff", "gross_in", "gross_out"]
 
+# Valgfrie kolonner: medtages hvis de findes, men et udtræk uden dem afvises
+# IKKE — så gamle udtræk kan stadig køres igennem.
+#   contact_companyname – kundenavnet fra Zuora (primær navnekilde i rapporten)
+_OPTIONAL_COLUMNS = ["contact_companyname"]
+
 
 class ExtractError(ValueError):
     """Validerings-/indlæsningsfejl med brugervendt besked."""
@@ -135,6 +140,7 @@ def load_extract(path: Optional[str] = None, file_bytes: Optional[bytes] = None,
             gross_out=_to_float(rec.get("gross_out")),
             movement=_txt("movement"),
             administrativ=_adm(rec.get("administrativ")),
+            contact_companyname=_txt("contact_companyname"),
             row_index=i,
         ))
 

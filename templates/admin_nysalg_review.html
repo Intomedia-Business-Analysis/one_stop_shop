@@ -196,7 +196,7 @@
                 {% set partial = (m.gross_in or 0) - (m.adm_share or 0) > 0.5 %}
                 <tr data-match="{{ m.match_id }}">
                   <td>{{ m.site }}</td>
-                  <td>{{ m.matched_org_name or "—" }}{% if partial %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Kun den administrative andel trækkes fra — resten tæller som almindeligt nysalg">DELVIS</span>{% endif %}</td>
+                  <td>{{ m.kunde or "—" }}{% if partial %} <span style="background:var(--border);border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700" title="Kun den administrative andel trækkes fra — resten tæller som almindeligt nysalg">DELVIS</span>{% endif %}</td>
                   <td class="muted">{{ m.pipedrive_id }}</td>
                   <td class="muted">{{ m.account_number }}</td>
                   <td>{{ m.month_end }}</td>

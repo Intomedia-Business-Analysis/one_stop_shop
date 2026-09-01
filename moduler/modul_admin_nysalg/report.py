@@ -294,16 +294,13 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
     moves = sorted(
         [m for m in matches if (m.get("gross_in") or 0) or (m.get("gross_out") or 0)],
         key=lambda m: ((m.get("brand") or ""), (m.get("site") or "")))
-    from moduler.modul_admin_nysalg.brands import brand_account
+    from moduler.modul_admin_nysalg.repo import customer_name
     for m in moves:
         gi = effective_gross_in(m)
         go = effective_gross_out(m)
-        # Navn fra matchet deal, ellers slå op på org-id i brandets KONTO (org-id
-        # er ikke unikke på tværs af konti) — også for ikke-admin rækker.
-        acct = brand_account(m.get("brand") or "")
-        pid = str(m.get("pipedrive_id") or "").strip()
-        kunde = (m.get("matched_org_name")
-                 or (org_names.get(acct, {}).get(pid, "") if acct else ""))
+        # Zuora-navnet først, PipeDrive som fallback (og som PRIMÆR kilde på
+        # bureaurækker som Prenax) — se repo.customer_name.
+        kunde = customer_name(m, org_names)
         # Administrativ = matchede en administrativ deal (nysalg ELLER opsigelse)
         # eller bærer Zuoras administrativ-flag. "Partial" = kun en del af beløbet
         # er administrativt (deal-værdi mindre end gross, eller andel sat manuelt).

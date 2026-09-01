@@ -47,6 +47,7 @@ INIT_STMTS = [
            month_end         NVARCHAR(10)   NULL,
            account_number    NVARCHAR(100)  NULL,
            pipedrive_id      NVARCHAR(50)   NULL,
+           contact_companyname NVARCHAR(200) NULL,
            site              NVARCHAR(150)  NULL,
            brands            NVARCHAR(150)  NULL,
            brand             NVARCHAR(50)   NULL,
@@ -73,6 +74,13 @@ INIT_STMTS = [
        AND NOT EXISTS (SELECT * FROM sys.columns
            WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'matched_org_name')
        ALTER TABLE admin_nysalg_match ADD matched_org_name NVARCHAR(200) NULL""",
+    # Migration: kundenavn fra Zuora-udtrækket (primær navnekilde — PipeDrive
+    # bruges kun som fallback, og for Prenax-rækker hvor Zuora-navnet er
+    # bureauet i stedet for slutkunden. Se customer_name()).
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_match') AND name = 'contact_companyname')
+       ALTER TABLE admin_nysalg_match ADD contact_companyname NVARCHAR(200) NULL""",
     # Migrationer: brand-gruppe + gross_out + extract-administrativ flag
     # (bruges til per-brand-aggregering: penge ind/ud).
     """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
@@ -242,7 +250,7 @@ def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> Non
     conn = get_conn()
     cur = conn.cursor()
     total = len(rows)
-    row_sql = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    row_sql = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
     for start in range(0, total, _INSERT_BATCH):
         chunk = rows[start:start + _INSERT_BATCH]
         params: list = []
@@ -251,7 +259,7 @@ def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> Non
             params.extend((
                 run_id, r.row_index, r.month_end, r.account_number, r.pipedrive_id, r.site,
                 r.brands, r.brand, r.movement, r.net_diff, r.gross_in, r.gross_out,
-                1 if r.administrativ else 0, r.currency,
+                1 if r.administrativ else 0, r.currency, r.contact_companyname,
                 (m.deal_id if m else None),
                 (m.value if m else None),
                 (m.pipeline if m else None),
@@ -264,6 +272,7 @@ def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> Non
             """INSERT INTO admin_nysalg_match
                (run_id, row_index, month_end, account_number, pipedrive_id, site, brands,
                 brand, movement, net_diff, gross_in, gross_out, administrativ, currency,
+                contact_companyname,
                 matched_deal_id, matched_value, matched_pipeline, matched_org_name,
                 match_sign, is_admin, ambiguous)
                VALUES """ + ",".join([row_sql] * len(chunk)),
@@ -1450,6 +1459,50 @@ def _dk_advertising_by_month(cur, date_from: str | None, date_to: str | None,
                 "n_ambiguous": 0, "currency": "DKK", "subrows": subrows,
             })
     return out
+
+
+# Bureauer der køber abonnementer PÅ VEGNE AF slutkunden. Zuora fakturerer
+# bureauet, så contact_companyname er bureauets navn — ikke den kunde tallet
+# hører til. For dem springes Zuora-navnet over, og navnet hentes i PipeDrive,
+# hvor dealen ligger på den rigtige slutkunde. Matches på præfiks, så
+# 'Prenax AB', 'Prenax A/S' m.fl. også fanges.
+AGENCY_NAME_PREFIXES = ("prenax",)
+
+
+def is_agency_name(name: str) -> bool:
+    """True hvis navnet er et abonnementsbureau og ikke slutkunden."""
+    n = (name or "").strip().lower()
+    return bool(n) and n.startswith(AGENCY_NAME_PREFIXES)
+
+
+def customer_name(m: dict, org_names: dict | None = None) -> str:
+    """Kundenavn for en bevægelsesrække — '' hvis intet navn kan findes.
+
+    Kilderækkefølge:
+      1. contact_companyname fra Zuora-udtrækket (primær kilde)
+      2. org_name på den matchede PipeDrive-deal
+      3. opslag på org-id i brandets PipeDrive-KONTO (org-id er ikke unikke på
+         tværs af konti, så opslaget SKAL scopes — se brands.BRAND_ACCOUNT)
+
+    Bureaurækker (Prenax) springer trin 1 over: dér er Zuora-navnet bureauets,
+    mens PipeDrive-dealen ligger på slutkunden. Ældre runs har ingen
+    contact_companyname og falder derfor helt naturligt til trin 2/3.
+    """
+    from moduler.modul_admin_nysalg.brands import brand_account
+    zuora = (m.get("contact_companyname") or "").strip()
+    if zuora and not is_agency_name(zuora):
+        return zuora
+    hit = (m.get("matched_org_name") or "").strip()
+    if hit:
+        return hit
+    acct = brand_account(m.get("brand") or "")
+    if acct and org_names:
+        pid = str(m.get("pipedrive_id") or "").strip()
+        hit = (org_names.get(acct, {}).get(pid, "") or "").strip()
+        if hit:
+            return hit
+    # Bureaunavnet er bedre end ingenting, hvis PipeDrive ikke kender kunden.
+    return zuora
 
 
 def pipedrive_org_names() -> dict:

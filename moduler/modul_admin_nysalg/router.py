@@ -220,7 +220,7 @@ def _brand_movements(matches: list[dict], org_names: dict | None = None) -> list
     opslag som Excel-"Movements"-arket. Returneres i DISPLAY_ORDER.
     org_names kan gives med, hvis kalderen allerede har hentet dem (parallelt).
     """
-    from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER, brand_account
+    from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER
     if org_names is None:
         org_names = repo.pipedrive_org_names()
     groups: dict[str, list[dict]] = {}
@@ -230,10 +230,8 @@ def _brand_movements(matches: list[dict], org_names: dict | None = None) -> list
         if not gi_raw and not go_raw:
             continue
         label = _match_brand(m)
-        acct = brand_account(label)
         pid = str(m.get("pipedrive_id") or "").strip()
-        customer = (m.get("matched_org_name")
-                    or (org_names.get(acct, {}).get(pid, "") if acct else ""))
+        customer = repo.customer_name(dict(m, brand=label), org_names)
         gi_ov, go_ov = m.get("gross_in_override"), m.get("gross_out_override")
         ai_ov, ao_ov = m.get("adm_in_override"), m.get("adm_out_override")
         is_adm_in = repo.effective_is_admin(m)
@@ -511,7 +509,8 @@ def review(run_id: int, request: Request, user=Depends(get_current_user)):
                                    brand_comments, budgets, prefetched=prefetched)
     # adm_share = det der faktisk trækkes fra Actual Sale (deal-værdien ved
     # delvist administrative rækker, ellers hele gross in).
-    admin_rows = [dict(m, adm_share=repo.effective_adm_in(dict(m, total_excluded=False)))
+    admin_rows = [dict(m, adm_share=repo.effective_adm_in(dict(m, total_excluded=False)),
+                       kunde=repo.customer_name(m, org_names))
                   for m in matches if repo.effective_is_admin(m)]
     # Brand-tabellen viser ALLE brands (også skjulte, så de kan klikkes tilbage),
     # men topkortene afspejler skjulningen. Måneds-opdelingen (mange per-måned-

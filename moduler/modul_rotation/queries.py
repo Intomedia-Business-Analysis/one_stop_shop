@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # ── Genbrugte konstanter fra modul_perf ─────────────────────────────────────
 
 # Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
-from constants import (SUBSCRIPTION_BRANDS, CANCELLATION_PIPELINES,  # noqa: E402,F401
+from constants import (SUBSCRIPTION_BRANDS, CANCELLATION_PIPELINES, BRAND_GROUPS,  # noqa: E402,F401
                       MONTH_NAMES_DA, deal_value_sql)
 
 _SUB_PH = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
@@ -259,7 +259,14 @@ def _revenue_kpis(cur, today: date, pipeline_filter: str, date_col: str = "won_t
 # hver sælger i én række pr. kategori, så samme sælger kan ligge i top på den ene
 # og bund på den anden. Kategorien udledes af budgettets Brand og af deal-sites.
 _FINANS_SET  = set(FINANS_SITES)
-_WATCH_SET   = set(WATCH_DK_SITES) | set(WATCH_INT_SITES)
+# Nordic Defence Watch hører til Watch-kategorien her, ikke Øvrige. Brandet
+# sælges både af danske og internationale sælgere, og budgettet ligger enten
+# under 'Watch DK' eller 'Watch Int' — begge falder til kategorien "Watch" i
+# _sales_category_for_brand, så sælgerens tilvækst måles mod dét budget hun
+# faktisk har. NDW står med vilje IKKE i WATCH_INT_SITES: den liste bruges
+# også af _SITE_TO_BRAND og af månedsrapportens DK-annoncerækker, som ikke
+# skal ændre sig.
+_WATCH_SET   = set(WATCH_DK_SITES) | set(WATCH_INT_SITES) | set(BRAND_GROUPS["nordic_defence"])
 _MONITOR_SET = set(MONITOR_SITES)
 
 
