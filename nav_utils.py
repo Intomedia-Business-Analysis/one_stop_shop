@@ -116,8 +116,14 @@ CATEGORIES = [
             # Rækkefølgen i listen ER den viste rækkefølge, så lå den nederst,
             # ville arbejdsgangen være forkert fra første klik. Id'et er
             # UÆNDRET (retention-risk), se RES_RISIKO i router.py for hvorfor.
-            {"id": "retention-risk",     "title": "Opkald og risiko", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
-            {"id": "retention-overview", "title": "Porteføljen",     "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
+            {"id": "retention-risk",     "title": "Opkald og risiko",           "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/risk_overview"},
+            # Hed "Porteføljen" til 2026-09-01. Det nye navn indkapsler sidens
+            # TO faner ("Operationel og diagnostisk" og "Performance og
+            # effekt"), hvor det gamle kun beskrev fane 1. Id'et er UÆNDRET af
+            # samme grund som ved retention-risk ovenfor. Ordet "porteføljen"
+            # står stadig i panel-overskriften inde på siden, og dér er det
+            # rigtigt: dér betyder det bogen af abonnementer, ikke sidenavnet.
+            {"id": "retention-overview", "title": "Operationel og Performance", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention/overview"},
         ],
     },
     {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Porteføljen — Intomedia Hub</title>
+  <title>Operationel og Performance — Intomedia Hub</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -79,13 +79,15 @@
     .mm-acc-tbl th, .mm-acc-tbl td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--border); }
     .mm-acc-tbl th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em; }
 
-    table.mm-tbl, table.eng-tbl { width:100%; border-collapse:collapse; font-size:12px; }
-    table.mm-tbl th, table.mm-tbl td, table.eng-tbl th, table.eng-tbl td {
+    table.mm-tbl, table.eng-tbl, table.ops-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+    table.mm-tbl th, table.mm-tbl td, table.eng-tbl th, table.eng-tbl td,
+    table.ops-tbl th, table.ops-tbl td {
       padding:7px 10px; text-align:left; border-bottom:1px solid var(--border);
     }
-    table.mm-tbl th, table.eng-tbl th { font-size:11px; font-weight:600; color:var(--ink-3);
+    table.mm-tbl th, table.eng-tbl th, table.ops-tbl th { font-size:11px; font-weight:600; color:var(--ink-3);
       text-transform:uppercase; letter-spacing:.03em; }
-    table.mm-tbl th.num, table.mm-tbl td.num, table.eng-tbl th.num, table.eng-tbl td.num {
+    table.mm-tbl th.num, table.mm-tbl td.num, table.eng-tbl th.num, table.eng-tbl td.num,
+    table.ops-tbl th.num, table.ops-tbl td.num {
       text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
     }
     tr.eng-tom td { color:var(--ink-4); font-style:italic; }
@@ -121,13 +123,13 @@
           <span class="bc-sep">/</span>
           <a href="/category/retention" class="bc-link">Retention</a>
           <span class="bc-sep">/</span>
-          <span class="bc-current">Porteføljen</span>
+          <span class="bc-current">Operationel og Performance</span>
         </div>
 
         <div class="summary-bar">
           <div>
-            <h1>Porteføljen</h1>
-            <p>Porteføljens udvikling måned for måned, og hvor mange der falder fra</p>
+            <h1>Operationel og Performance</h1>
+            <p>Porteføljens udvikling og frafald måned for måned, og effekten af retention-indsatsen</p>
           </div>
         </div>
 
@@ -147,12 +149,26 @@
 
           <div class="panel">
             <div class="panel-header">
-              <h2>Porteføljen måned for måned</h2>
-              <p id="portefoelje-sub">Indlæser…</p>
+              <h2>Opsigelser i varsel</h2>
+              <p id="varsel-sub">Indlæser…</p>
             </div>
             <div class="panel-body">
-              <canvas id="portefoeljeChart" height="80"></canvas>
-              <div class="graf-note" id="portefoelje-note"></div>
+              <div class="kpis" id="varsel-tal"></div>
+              <canvas id="varselChart" height="70"></canvas>
+              <div class="tbl-wrap">
+                <table class="ops-tbl">
+                  <thead>
+                    <tr>
+                      <th>Site</th><th>Account</th>
+                      <th class="num">I varsel</th>
+                      <th class="num">Ophører inden 30 dage</th>
+                      <th class="num">Årsværdi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="varsel-tbody"></tbody>
+                </table>
+              </div>
+              <div class="graf-note" id="varsel-note"></div>
             </div>
           </div>
 
@@ -271,6 +287,17 @@ const rgba = (hex, alpha) => {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 };
 
+// Delt mellem churn-grafen og "Opsigelser i varsel"s søjlegraf. Hejst hertil
+// 2026-09-01: den lå lokalt i churn-grafens IIFE, og en reference til den fra
+// varsel-panelets EGEN IIFE var en ReferenceError, fordi de to er adskilte
+// funktionsscopes — chartens options-objekt kunne aldrig bygges, og alt efter
+// new Chart(...) (tabel, note) forblev tomt uden en fejlbesked nogen steder.
+const tooltipFarve = (ctx) => ({
+  borderColor: ctx.dataset.borderColor,
+  backgroundColor: ctx.dataset.borderColor,
+  borderWidth: 0,
+});
+
 // ── Ét delt kald til /retention/monthly_active_counts. Både graf-IIFE'en og
 // "Måned mod måned"-panelet skal bruge listen af måneder, og et delt promise
 // betyder ét netværkskald i stedet for to, uden at de to dele skal kende
@@ -285,6 +312,22 @@ function monthlyRows() {
     });
   }
   return _monthlyRowsPromise;
+}
+
+// ── Samme mønster, "Opsigelser i varsel"-panelets eget kald. Ingen anden del
+// af fanen bruger disse data, men promiset skal STADIG kunne ventes på
+// nedenfor (se applyHashTab-fortsættelsen for hvorfor): panelet bygger sin
+// egen Chart.js-graf, og den må ikke konstrueres i en display:none-rude. ──
+let _varselPromise = null;
+function varselRows() {
+  if (!_varselPromise) {
+    _varselPromise = fetch('/retention/opsigelser_varsel').then(res => {
+      if (!res.ok) return res.json().catch(() => ({}))
+        .then(body => Promise.reject(new Error(body && body.detail || ('HTTP ' + res.status))));
+      return res.json();
+    });
+  }
+  return _varselPromise;
 }
 
 // ── Faneskift. URL-hash er kilden til sandhed, så F5 og et delt link husker
@@ -324,14 +367,18 @@ function siteFamilie(site) {
 // målt 24-08-2026), og engagement-panelet skal vise dem TOMME MED FORKLARING.
 const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
 
-// ── Fane 1, del A: de fire nøgletal + de to grafer. UÆNDRET adfærd — kun
-// flyttet ind i en IIFE, der ikke længere erklærer sine egne kopier af
-// helperne ovenfor. ──
+// Delt mellem "Måned mod måned pr. site" og "Opsigelser i varsel" — begge
+// viser dbo.retentions rigtige account-kolonne, ikke siteFamilie-heuristikken
+// ovenfor. Hejst hertil 2026-09-01, så de to paneler ikke får hver sin kopi.
+const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', marketwire: 'Marketwire' };
+
+// ── Fane 1, del A: de fire nøgletal + churn-grafen. Porteføljekurven er
+// fjernet 2026-09-01 (se "Opsigelser i varsel" nedenfor for begrundelsen) —
+// resten er UÆNDRET adfærd, kun flyttet ind i en IIFE, der ikke længere
+// erklærer sine egne kopier af helperne ovenfor. ──
 (async function () {
   const fail = (msg) => {
-    el('portefoelje-sub').textContent = msg;
-    el('churn-sub').textContent = 'Ingen data';
-    el('portefoeljeChart').remove();
+    el('churn-sub').textContent = msg;
     el('churnChart').remove();
   };
 
@@ -348,9 +395,6 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
   if (!Array.isArray(rows) || !rows.length) return fail('Ingen data');
 
   const labels       = rows.map(r => r.FirstDayOfMonth);
-  const attributed   = rows.map(r => r.attributed_count);
-  const unattributed = rows.map(r => r.active_count - r.attributed_count);
-  const customers    = rows.map(r => r.customer_count);
   const churn        = rows.map(r => r.churn_pct);
 
   // PRÆCIS ÉN MÅNED ER FORELØBIG, og det er den nyeste. Definitioner (besluttet
@@ -391,25 +435,16 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
   const abo_pr_kunde = nyeste.customer_count
     ? nyeste.active_count / nyeste.customer_count : null;
 
-  // TO TÆLLINGER, og de er forskellige med vilje.
-  //
-  // `endeligeRater` er UDEN den nyeste måned og bruges til SNITTET, så et
-  // foreløbigt tal ikke trækker sammenligningsgrundlaget.
-  //
-  // `visteRater` er MED den nyeste og beskriver hvad grafen faktisk tegner. Brugte
-  // man den første til begge, ville underoverskriften sige 88 måneder, mens grafen
-  // tegnede 89 punkter. Det var fejlen indtil den blev set i browseren.
-  const endeligeRater = rows.slice(0, -1).map(r => r.churn_pct)
-                            .filter(v => v !== null && v !== undefined).map(Number);
+  // `visteRater` er de måneder der faktisk HAR en rate, og den nyeste er MED.
+  // Den beskriver hvad grafen tegner, og bruges der et andet udsnit her, kommer
+  // underoverskriften til at sige 88 måneder, mens grafen tegner 89 punkter. Det
+  // var fejlen indtil den blev set i browseren.
   const visteRater = rows.filter(r => r.churn_pct !== null && r.churn_pct !== undefined);
-  const snit12 = endeligeRater.length
-    ? endeligeRater.slice(-12).reduce((a, b) => a + b, 0)
-      / Math.min(12, endeligeRater.length) : null;
 
   // TO DECIMALER paa churn-kortet, ikke én. Raten ligger mellem 0,39 og 2,37, så
-  // hundrededele betyder noget: med én decimal blev 1,23 mod et snit på 1,39 vist
-  // som "1,2 mod 1,4", og forskellen så større ud end den er. Akserne beholder én
-  // decimal, hvor pladsen er knap og præcisionen ikke læses.
+  // hundrededele betyder noget: august 0,78 og september 0,83 ville begge blive
+  // vist som "0,8", og to måneder der er forskellige ville se ens ud. Akserne
+  // beholder én decimal, hvor pladsen er knap og præcisionen ikke læses.
   // nfC er nu delt fælles-helper foroven, samme formatering.
 
   const kort = (klasse, label, vaerdi, meta, maaned) =>
@@ -427,10 +462,19 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
     + kort('', 'Kunder', nf.format(nyeste.customer_count),
            abo_pr_kunde ? nf2.format(abo_pr_kunde) + ' abonnementer pr. kunde' : '',
            maanedDK(nyeste.FirstDayOfMonth))
+    // INTET 12-MAANEDERS SNIT paa churn-kortet, fjernet 2026-09-01. Det stod som
+    // "Snit 12 mdr.: 1,46 %" ved siden af augusts 0,78 % og sammenlignede TO
+    // FORSKELLIGE BOEGER: ni af de tolv maaneder er regnet paa bogen foer
+    // bulk-importen i maj 2026 (ca. 9.900 aktive), de sidste tre paa bogen efter
+    // (ca. 13.100). Augusts 102 opsigelser mod den gamle bogstoerrelse er 1,03 %,
+    // ikke 0,78 %, saa nedgangen saa dobbelt saa stor ud som den er. Samme aarsag
+    // som at siden bevidst ikke viser aar-til-aar, se kommentaren ved `netto`.
+    // Der findes ikke et aerligt tolvmaaneders grundlag foer maj 2027. Ankeret er
+    // churn-grafen nedenfor, som tegner hele historikken OG baerer majspring-noten,
+    // og et noegletalskort kan ikke baere det forbehold.
     + kort('', 'Churn-rate',
            endelig.churn_pct === null ? '—' : nfC.format(endelig.churn_pct) + ' %',
-           nf.format(endelig.churned_count) + ' abonnementer mistet'
-           + (snit12 !== null ? '. Snit 12 mdr.: ' + nfC.format(snit12) + ' %' : ''),
+           nf.format(endelig.churned_count) + ' abonnementer mistet',
            maanedDK(endelig.FirstDayOfMonth) + ', seneste endelige')
     + kort(netto < 0 ? 'ned' : netto > 0 ? 'op' : '', 'Nettoændring',
            (netto > 0 ? '+' : netto < 0 ? '−' : '') + nf.format(Math.abs(netto)),
@@ -438,11 +482,6 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
            + nf.format(endelig.churned_count) + ' churn',
            maanedDK(endelig.FirstDayOfMonth) + ', seneste endelige');
 
-  const sidsteUn = nyeste.active_count - nyeste.attributed_count;
-  const sidstePct = nyeste.active_count ? (sidsteUn / nyeste.active_count) * 100 : 0;
-  el('portefoelje-sub').textContent =
-    rows.length + ' måneder, ' + maanedDK(labels[0]) + ' til '
-    + maanedDK(labels[labels.length - 1]);
   el('churn-sub').textContent = visteRater.length
     ? 'Vises for ' + visteRater.length + ' måneder, fra '
       + maanedDK(visteRater[0].FirstDayOfMonth)
@@ -454,14 +493,9 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
   // om queries.py's docstring siger at den SKAL være det.
   const klippeIndex = labels.indexOf('2026-05-01');
 
-  const brand = cssVar('--green', '#1C1C1A');
-  // --warn frem for --taupe: paletten er monokrom, og de ikke-tilskrevne kunder
-  // er netop en "vær opmærksom"-post, ikke en neutral baggrundsserie.
-  const warn  = cssVar('--warn', '#8A6D1F');
-
-  // Faelles for de to grafer: kun aarstal paa x-aksen. Chart.js' autoSkip glider
-  // ujaevnt over 126 maaneder (11 og 13 mdr. ad gangen), og et aarstal pr. januar
-  // giver rene aarsskift.
+  // Kun aarstal paa x-aksen. Chart.js' autoSkip glider ujaevnt over 126
+  // maaneder (11 og 13 mdr. ad gangen), og et aarstal pr. januar giver rene
+  // aarsskift.
   const xAkse = {
     ticks: {
       autoSkip: false,
@@ -473,124 +507,7 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
     },
   };
 
-  // Legendens farvefirkanter skal vise LINJEfarven. Arealernes fyld er for
-  // gennemsigtigt til at kunne ses i en 10px swatch (0,12 alpha bliver naesten
-  // hvid). datasetIndex + hidden bevarer klik-til-skjul.
-  const legendeFarver = (chart) => chart.data.datasets.map((ds, i) => ({
-    text: ds.label,
-    fillStyle: ds.borderColor,
-    strokeStyle: ds.borderColor,
-    lineWidth: 1,
-    hidden: !chart.isDatasetVisible(i),
-    datasetIndex: i,
-  }));
-
-  const tooltipFarve = (ctx) => ({
-    borderColor: ctx.dataset.borderColor,
-    backgroundColor: ctx.dataset.borderColor,
-    borderWidth: 0,
-  });
-
-  // ══════════ GRAF 1: porteføljen ══════════
-  //
-  // CHURN-RATEN ER FLYTTET UD I SIN EGEN GRAF (2026-08-18). Den laa her paa en
-  // hoejre akse, og en serie paa 0,39 til 2,37% mod en akse til 16.000 abonnementer
-  // er en flad krusning man ikke kan laese. Dertil var fire serier i en monokrom
-  // palet umulige at skelne: "Tilskrevet en saelger" og "Kunder" var begge sorte.
-  // Kundelinjen er derfor ogsaa skiftet til taupe her.
-  new Chart(el('portefoeljeChart'), {
-    type: 'line',
-    data: {
-      labels: labels,
-      // Stablet areal: nederste lag er de tilskrevne, oeverste de ikke-tilskrevne,
-      // saa stakkens overkant er totalen.
-      datasets: [
-        {
-          label: 'Tilskrevet en sælger',
-          data: attributed,
-          borderColor: brand,
-          backgroundColor: rgba(brand, 0.12),
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0.15,
-          fill: true,
-        },
-        {
-          label: '(Ikke tilskrevet)',
-          data: unattributed,
-          borderColor: warn,
-          backgroundColor: rgba(warn, 0.35),
-          borderWidth: 2,
-          tension: 0.15,
-          fill: true,
-          // Et synligt punkt ved maj 2026, saa klippen kan peges paa med musen.
-          // Punktet sidder paa stakkens overkant, altsaa paa totalen.
-          pointRadius: (ctx) => (ctx.dataIndex === klippeIndex ? 4 : 0),
-          pointStyle: 'circle',
-          pointBackgroundColor: 'transparent',
-          pointBorderColor: warn,
-          pointBorderWidth: 2,
-        },
-        {
-          // Egen stak, saa linjen IKKE lægges oven paa abonnementsarealet.
-          // Kontrollen er triviel: kundelinjen skal ligge UNDER stakkens overkant.
-          // Staar den omkring 22.800, blev den stakket alligevel.
-          stack: 'kunder',
-          label: 'Kunder',
-          data: customers,
-          borderColor: cssVar('--taupe', '#8A857C'),
-          borderWidth: 2,
-          borderDash: [5, 3],
-          pointRadius: 0,
-          tension: 0.15,
-          fill: false,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { boxWidth: 10, boxHeight: 10, font: { size: 11 },
-                    generateLabels: legendeFarver },
-        },
-        tooltip: {
-          callbacks: {
-            labelColor: tooltipFarve,
-            title: (items) => maanedDK(items[0].label),
-            // Chart.js viser kun hvert lags egen vaerdi i en stak, saa totalen
-            // tilfoejes eksplicit. Kun de STAKKEDE serier taeller med:
-            // kundelinjen er en anden enhed og ville goere summen meningsloes.
-            footer: (items) => 'Abonnementer i alt: ' + nf.format(
-              items.filter(i => i.dataset.stack !== 'kunder')
-                   .reduce((s, i) => s + i.parsed.y, 0)),
-            afterBody: (items) =>
-              items.some(i => i.dataIndex === klippeIndex)
-                ? ['Bulk-import: 3.426 abonnementer på én måned,',
-                   'hvoraf 1.776 allerede fandtes. Ikke salg.']
-                : [],
-          },
-        },
-      },
-      scales: {
-        x: xAkse,
-        // AKSEN HAR ET NAVN. Datateamet 2026-08-14: graferne manglede vaerdier paa
-        // begge akser. Aksen baerer BEGGE enheder, abonnementer i stakken og kunder
-        // som linje, og derfor staar begge ord i titlen.
-        y: {
-          beginAtZero: true,
-          stacked: true,
-          title: { display: true, text: 'Antal abonnementer og kunder',
-                   font: { size: 10 }, color: cssVar('--ink-3', '#6B6862') },
-          ticks: { callback: (v) => nf.format(v) },
-        },
-      },
-    },
-  });
-
-  // ══════════ GRAF 2: churn-raten ══════════
+  // ══════════ Churn-raten ══════════
   //
   // Egen graf med egen akse. Alene bliver spaendet 0,39 til 2,37% laesbart, og de
   // 37 maaneder uden rate bliver et synligt hul i stedet for et mysterium.
@@ -666,24 +583,7 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
     },
   });
 
-  // ══════════ Noterne, hver under sin egen graf ══════════
-  el('portefoelje-note').innerHTML =
-      '<p><strong>Tilskrivningen bruger kundens nuværende ejer</strong>, ikke den der '
-    + 'oprindeligt solgte abonnementet. Derfor viser linjen "min bogs historie", og '
-    + 'de tidlige år har en større ikke-tilskrevet andel, fordi kunder der siden er '
-    + 'holdt op ikke har en nuværende ejer. I ' + maanedDK(nyeste.FirstDayOfMonth)
-    + ' er ' + nf.format(sidsteUn) + ' abonnementer ikke tilskrevet, altså '
-    + nf1.format(sidstePct) + ' %. Det er grunden til at summen af sælgernes '
-    + 'visninger ikke rammer firmatotalen.</p>'
-    + '<p><strong>Det lodrette spring i maj 2026 er ikke salg.</strong> Porteføljen '
-    + 'gik fra 9.932 til 13.358 abonnementer på én måned, og 1.776 af dem var '
-    + 'abonnementer der allerede fandtes, forsvandt og kom tilbage, mod 7 til 44 i '
-    + 'en normal måned. Det er en synkronisering i Pipedrive. Springet gør også, at '
-    + 'en sammenligning med samme måned sidste år ikke kan bruges før maj 2027.</p>'
-    + '<p><strong>Linjen må ikke bruges til at vurdere en sælgers præstation.</strong> '
-    + 'Ejerskabet er et nutidsbillede trukket bagud over hele historikken, så en '
-    + 'sælger ansat i 2024 får en linje tilbage til 2016 med kunder hun har arvet.</p>';
-
+  // ══════════ Noten under churn-grafen ══════════
   el('churn-note').innerHTML =
       '<p><strong>Sådan regnes churn:</strong> et abonnement tælles som churn, når '
     + 'det mangler i <strong>mindst to måneder i træk</strong>, og det tælles i den '
@@ -700,10 +600,141 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
     + ' er med vilje.</strong> Raten vises ikke, når grundlaget er under 1.000 '
     + 'aktive abonnementer i måneden før. I 2016 til 2018 er der 1 til 5 churn om '
     + 'måneden på et grundlag under 600, og linjen ville hoppe mellem 0 og 7 % uden '
-    + 'at afspejle andet end afrunding.</p>';
+    + 'at afspejle andet end afrunding.</p>'
+    + '<p><strong>Juni 2026 (2,37 %, det højeste punkt i hele linjen) er '
+    + 'et synkroniseringsartefakt, ikke kundeadfærd.</strong> Porteføljen fik et '
+    + 'lodret spring måneden før, fra 9.932 til 13.358 abonnementer på én måned, '
+    + 'og 1.776 af dem var abonnementer der allerede fandtes, forsvandt og kom '
+    + 'tilbage, mod 7 til 44 i en normal måned. Det er en synkronisering i '
+    + 'Pipedrive. Springet gør også, at en sammenligning med samme måned sidste '
+    + 'år ikke kan bruges før maj 2027.</p>';
 })();
 
-// ── Fane 1, del B: "Måned mod måned pr. site" ───────────────────────────────
+// ── Fane 1, del B: "Opsigelser i varsel" ────────────────────────────────────
+// Erstatter 2026-09-01 "Porteføljen måned for måned": den viste en
+// beholdning (bogens størrelse), ikke noget der kan handles på. Data kommer
+// fra varsel.opsigelser_i_varsel via /retention/opsigelser_varsel, som
+// genbruger queries.abonnementer_med_ejer + queries.db_opsigelser — SAMME to
+// opslag som "Opkald og risiko"s Opsagt-kort, så de to sider ikke kan blive
+// uenige om hvem der har sagt op.
+(async function () {
+  const sub = el('varsel-sub');
+  // Kun DEN SAMLEDE sum er stor nok til "mio. kr." — pr. site helt ned til
+  // 4.000 kr. og pr. måned helt ned til 10.000 kr. (målt 2026-09-01), og
+  // "mio. kr." ville vise næsten alle rækker som "0,0 mio. kr.".
+  const mio = (v) => nf1.format((v || 0) / 1e6) + ' mio. kr.';
+  const kr  = (v) => nf.format(Math.round(v || 0)) + ' kr.';
+  const fail = (msg) => {
+    sub.textContent = msg;
+    el('varsel-tal').innerHTML = '';
+    el('varselChart').remove();
+    el('varsel-tbody').innerHTML = '';
+  };
+
+  let data;
+  try {
+    data = await varselRows();
+  } catch (e) {
+    return fail(e && e.message ? e.message : 'Kunne ikke hente data — netværksfejl.');
+  }
+
+  if (!data || !Array.isArray(data.pr_maaned)) return fail('Ingen data');
+
+  sub.textContent = data.i_alt
+    ? nf.format(data.i_alt) + ' abonnementer, ' + nf.format(data.kunder) + ' kunder'
+    : 'Ingen opsigelser i varsel lige nu';
+
+  const kort = (klasse, label, vaerdi, meta) =>
+      '<div class="kcard' + (klasse ? ' ' + klasse : '') + '">'
+    + '<div class="klabel">' + label + '</div>'
+    + '<div class="kval">' + vaerdi + '</div>'
+    + '<div class="kmeta">' + meta + '</div>'
+    + '</div>';
+
+  el('varsel-tal').innerHTML =
+      kort('ned', 'Abonnementer i varsel', nf.format(data.i_alt),
+           'Ophør registreret, endnu ikke indtruffet')
+    + kort('', 'Kunder', nf.format(data.kunder), '')
+    + kort('', 'Årsværdi', mio(data.arr_dkk),
+           data.uden_arr
+             ? nf.format(data.uden_arr) + ' abonnementer uden kendt beløb — minimum'
+             : '');
+
+  // ══════════ Søjlegraf: abonnementer pr. ophørsmåned ══════════
+  //
+  // type: 'bar', ikke 'line' — hver søjle er en selvstændig måned man skal
+  // kunne pege på for sig, ikke et forløb der glider fra én værdi til den
+  // næste. INGEN xAkse-genbrug: den akse er bygget til 126 måneder og skjuler
+  // alt uden om januar. Her er der under et år med data, og hver eneste
+  // måned skal have sit eget mærke.
+  new Chart(el('varselChart'), {
+    type: 'bar',
+    data: {
+      labels: data.pr_maaned.map(m => m.maaned),
+      datasets: [{
+        label: 'Abonnementer i varsel',
+        data: data.pr_maaned.map(m => m.antal),
+        backgroundColor: rgba(cssVar('--danger', '#8A2B2B'), 0.55),
+        borderColor: cssVar('--danger', '#8A2B2B'),
+        borderWidth: 1,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            labelColor: tooltipFarve,
+            title: (items) => maanedDK(items[0].label),
+            label: (ctx) => {
+              const m = data.pr_maaned[ctx.dataIndex];
+              return nf.format(m.antal) + ' abonnementer · ' + kr(m.arr_dkk);
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { callback: (v, i) => maanedDK(data.pr_maaned[i].maaned) } },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Abonnementer i varsel',
+                   font: { size: 10 }, color: cssVar('--ink-3', '#6B6862') },
+          // precision:0 og ikke stepSize:1 — værdierne spænder fra 1 til 60,
+          // og et fast trin på 1 ville tegne 60 gitterlinjer. precision
+          // sikrer bare at Chart.js' egen auto-skala ikke lander på halve
+          // abonnementer.
+          ticks: { callback: (v) => nf.format(v), precision: 0 },
+        },
+      },
+    },
+  });
+
+  // ══════════ Tabel pr. site ══════════
+  el('varsel-tbody').innerHTML = data.pr_site.length
+    ? data.pr_site.map(s =>
+        '<tr><td>' + s.site + '</td><td>' + (ACCOUNT_LABEL[s.account] || s.account)
+        + '</td><td class="num">' + nf.format(s.antal)
+        + '</td><td class="num">' + (s.haster ? nf.format(s.haster) : '–')
+        + '</td><td class="num">' + kr(s.arr_dkk) + '</td></tr>'
+      ).join('')
+    : '<tr><td colspan="5">Ingen opsigelser i varsel lige nu.</td></tr>';
+
+  el('varsel-note').innerHTML =
+      '<p><strong>Sådan tælles en opsigelse:</strong> en vundet opsigelse '
+    + 'dateret efter det seneste livstegn på aftalen. Har kunden genforhandlet, '
+    + 'eller er kommet tilbage efter at have sagt op, tæller den ikke.</p>'
+    + '<p><strong>Datoen er ophørsdatoen, ikke registreringsdatoen.</strong> '
+    + 'Varslet er typisk 32 til 200 dage, så en opsigelse i tabellen kan være '
+    + 'registreret for måneder siden.</p>'
+    + '<p><strong>Kroner er ACV pr. abonnement.</strong>'
+    + (data.uden_arr
+        ? ' ' + nf.format(data.uden_arr) + ' af ' + nf.format(data.i_alt)
+          + ' mangler et kendt beløb, så summen er et minimum.'
+        : '') + '</p>';
+})();
+
+// ── Fane 1, del C: "Måned mod måned pr. site" ───────────────────────────────
 (async function () {
   const sub = el('mm-sub');
   const fail = (msg) => {
@@ -725,7 +756,6 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
   // Juni 2026: måneden EFTER bulk-importen i maj 2026 (se churn-grafens note).
   // watch_medier har 242 opsigelser mod 121 i juli — et synkroniseringsartefakt.
   const BULK_MAANED = '2026-06-01';
-  const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', marketwire: 'Marketwire' };
 
   const selA = el('mm-maanedA'), selB = el('mm-maanedB');
   // Nyeste først i listen — det er den man oftest vil sammenligne FRA.
@@ -863,7 +893,7 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
     + 'Raten vises derfor kun pr. account, i tabellen ovenfor.</p>';
 })();
 
-// ── Fane 1, del C: "Side- og artikelvisninger pr. site" ─────────────────────
+// ── Fane 1, del D: "Side- og artikelvisninger pr. site" ─────────────────────
 let _engData = null;
 let _engMetric = 'page_views';
 
@@ -999,14 +1029,14 @@ function engMetric(key, btn) {
 
 // IKKE et bart applyHashTab()-kald: en canvas i en display:none-rude får
 // størrelse nul, og lander man direkte på #performance (delt link, F5), ville
-// et bart kald skjule fane 1 FØR Chart.js har konstrueret de to grafer —
-// begge ville forblive blanke, selv efter et senere faneskift tilbage. Ved i
-// stedet at hænge applyHashTab som en FORTSÆTTELSE på `monthlyRows()` køres
-// den efter del A og del B's egen `await monthlyRows()`-fortsættelse er kørt
-// færdig (samme promise, og løftets køere afvikles i den rækkefølge de blev
-// hængt på) — altså efter begge grafer er bygget, uanset hvilken fane
-// hashen peger på.
-monthlyRows().catch(() => {}).finally(applyHashTab);
+// et bart kald skjule fane 1 FØR Chart.js har konstrueret graferne — de ville
+// forblive blanke, selv efter et senere faneskift tilbage. Ved i stedet at
+// hænge applyHashTab som en FORTSÆTTELSE på BEGGE promises køres den først
+// efter del A, del B og "Opsigelser i varsel"s egne `await`-fortsættelser er
+// kørt færdig (samme to promises, og løfternes køer afvikles i den
+// rækkefølge de blev hængt på) — altså efter alle grafer er bygget, uanset
+// hvilken fane hashen peger på.
+Promise.allSettled([monthlyRows(), varselRows()]).finally(applyHashTab);
 </script>
 </body>
 </html>

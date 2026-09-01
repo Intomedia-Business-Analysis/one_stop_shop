@@ -27,6 +27,7 @@ import time
 from .queries import db_acv_ejere, db_org_navne
 from .risiko import abonnementer_i_risiko
 from .usage import forbrug_pr_abonnement, forbrug_pr_site
+from .varsel import opsigelser_i_varsel
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,17 @@ def forbrug_site():
     læser samme fil men returnerer forskellige ting. Én ryd_cache rammer
     stadig begge, fordi den tømmer hele _cache."""
     return cachet(("forbrug_site",), forbrug_pr_site)
+
+
+def varsel(teams, maaned):
+    """"Opsigelser i varsel"-panelet, cachet.
+
+    4,9 sekunder koldt (abonnementer_med_ejer + db_opsigelser), samme
+    team-nøgle-mønster som ejere() ovenfor. `maaned` er med i nøglen, så et
+    månedsskift ikke serverer forrige måneds bog i op til ti minutter.
+    """
+    noegle = ("varsel", maaned, tuple(sorted(teams)) if teams else None)
+    return cachet(noegle, lambda: opsigelser_i_varsel(teams=teams, maaned=maaned))
 
 
 def ejere(teams):
