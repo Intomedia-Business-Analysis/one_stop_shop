@@ -770,6 +770,13 @@ a { text-decoration: none; color: inherit; }
   --danger-light:#FDEDF0;
   --warn:        #8A6D1F;   /* amber/gul status */
   --warn-light:  #F6EFD9;
+  /* Blaa status: "set, men ingen handling nu". Bevidst ikke groen (groen
+     ville sige "sundt") og ikke gul (gul betyder foelg op). Brugt af
+     retention-zonerne paa vej ned, fast laeser, nystartet og lukket konto.
+     Uden disse to tokens faldt de fire badges tilbage til ingen baggrund
+     og arvet moerk tekst, hvilket var fejlen. */
+  --info:        #2B5C8A;   /* blaa status */
+  --info-light:  #E9F1F8;
 }
 
 /* ── Page scaffolding for tools ──────────────────────────────── */
