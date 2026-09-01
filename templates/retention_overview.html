@@ -63,10 +63,8 @@
     .tom-tilstand { padding:32px 20px; text-align:center; color:var(--ink-3); font-size:12px; line-height:1.6; }
     .tom-tilstand strong { display:block; color:var(--ink-2); font-size:13px; margin-bottom:6px; }
 
-    /* ── "Måned mod måned pr. site" og "Side- og artikelvisninger pr. site".
-       Egne, lokale tabelklasser — IKKE table.risk/.pill fra retention_opkald.html:
-       de er zone-farvede og hører til risikobilledet, disse to er flade
-       datatabeller uden zonefarver. */
+    /* ── Kontroller og indpakning for panelernes tabeller. Selve tabellerne
+       bruger hub.css's .v-table, se nederst i denne blok. */
     .tbl-wrap { overflow-x:auto; }
     .mm-controls, .eng-controls { display:flex; gap:16px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
     .mm-controls label { font-size:11px; color:var(--ink-3); font-weight:600; display:flex; align-items:center; gap:6px; }
@@ -92,21 +90,23 @@
     .mm-flag p { margin:0 0 4px; }
     .mm-flag p:last-child { margin-bottom:0; }
 
-    .mm-acc-tbl { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:18px; }
-    .mm-acc-tbl th, .mm-acc-tbl td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--border); }
-    .mm-acc-tbl th { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em; }
+    /* ── TABELDESIGN: hub.css's .v-table (skiftet 2026-09-01) ───────────
+       Siden havde FIRE lokale tabelklasser (.mm-acc-tbl, .mm-tbl, .ops-tbl,
+       .eng-tbl) med graa 11px-overskrifter, mens resten af appen (Deal
+       Source Dashboard, Manager Dashboard, Portefoelje-alignment, Budget)
+       bruger hub.css's moerke header med hvid 9px-tekst. De fire klasser er SLETTET,
+       ikke omdoebt: tabeldesignet skal have én definition og ét sted at
+       rette. Tom-tilstanden er hub.css's .v-table .empty / .v-table-empty.
 
-    table.mm-tbl, table.eng-tbl, table.ops-tbl { width:100%; border-collapse:collapse; font-size:12px; }
-    table.mm-tbl th, table.mm-tbl td, table.eng-tbl th, table.eng-tbl td,
-    table.ops-tbl th, table.ops-tbl td {
-      padding:7px 10px; text-align:left; border-bottom:1px solid var(--border);
-    }
-    table.mm-tbl th, table.eng-tbl th, table.ops-tbl th { font-size:11px; font-weight:600; color:var(--ink-3);
-      text-transform:uppercase; letter-spacing:.03em; }
-    table.mm-tbl th.num, table.mm-tbl td.num, table.eng-tbl th.num, table.eng-tbl td.num,
-    table.ops-tbl th.num, table.ops-tbl td.num {
-      text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
-    }
+       Den eneste lokale tilfoejelse er ombrydning i header-cellerne.
+       Site-tabellens fire kolonneoverskrifter faar maanedsnavnet paa (fx
+       "Opsigelser august 2026"), og hub.css's white-space:nowrap ville
+       skubbe syv kolonner ud i vandret scroll. Tal-kolonnerne skal STADIG
+       ikke brydes, derfor undtagelsen paa .num. Deal Source og
+       Portefoelje-alignment overskriver praecis samme regel lokalt, saa det
+       er appens egen konvention og ikke en femte dialekt. */
+    .v-table th { white-space:normal; overflow-wrap:anywhere; }
+    .v-table th.num, .v-table td.num { overflow-wrap:normal; white-space:nowrap; }
     tr.eng-tom td { color:var(--ink-4); font-style:italic; }
 
     /* Lille inline-soejlerække, ren CSS, ingen ny Chart.js-instans pr. raekke.
@@ -184,7 +184,7 @@
               <div class="kpis" id="varsel-tal"></div>
               <canvas id="varselChart" height="70"></canvas>
               <div class="tbl-wrap">
-                <table class="ops-tbl">
+                <table class="v-table">
                   <thead>
                     <tr>
                       <th>Site</th><th>Account</th>
@@ -200,6 +200,29 @@
             </div>
           </div>
 
+          <!-- SPLITTET 2026-09-01. Account-raten og site-tabellen laa i ÉT panel med
+               ÉT faelles maanedsvalg. De besvarer to forskellige spoergsmaal, hvor
+               slemt er det (raten) og hvor sker det (sitene), og med et delt filter
+               kunne man ikke se raten for august mod juli og sitene for juni mod maj
+               samtidig. Hvert panel har nu sit eget, uafhaengige maanedsvalg.
+               Begge vaelgere er BEVIDST identiske i udseende og opfoersel, se
+               mmPanel() i scriptet: der findes én implementering, ikke to. -->
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Churn-rate pr. account</h2>
+              <p id="accm-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <div class="mm-controls">
+                <label>Måned A <select id="accm-maanedA"></select></label>
+                <label>Måned B <select id="accm-maanedB"></select></label>
+              </div>
+              <div class="mm-flag" id="accm-flag" style="display:none;"></div>
+              <div class="tbl-wrap" id="accm-tabel"></div>
+              <div class="graf-note" id="accm-note"></div>
+            </div>
+          </div>
+
           <div class="panel">
             <div class="panel-header">
               <h2>Måned mod måned pr. site</h2>
@@ -211,9 +234,8 @@
                 <label>Måned B <select id="mm-maanedB"></select></label>
               </div>
               <div class="mm-flag" id="mm-flag" style="display:none;"></div>
-              <div id="mm-accounts"></div>
               <div class="tbl-wrap">
-                <table class="mm-tbl">
+                <table class="v-table">
                   <thead>
                     <tr>
                       <th>Site</th><th>Account</th>
@@ -240,7 +262,7 @@
                 <button class="eng-metric-btn" data-metric="artikelvisninger" onclick="engMetric('artikelvisninger', this)">Artikelvisninger</button>
               </div>
               <div class="tbl-wrap">
-                <table class="eng-tbl">
+                <table class="v-table">
                   <thead>
                     <tr>
                       <th>Site</th><th>Familie</th>
@@ -996,7 +1018,7 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
         + '</td><td class="num">' + (s.haster ? nf.format(s.haster) : '–')
         + '</td><td class="num">' + kr(s.arr_dkk) + '</td></tr>'
       ).join('')
-    : '<tr><td colspan="5">Ingen opsigelser i varsel lige nu.</td></tr>';
+    : '<tr><td colspan="5" class="empty">Ingen opsigelser i varsel lige nu.</td></tr>';
 
   el('varsel-note').innerHTML =
       '<p><strong>Sådan tælles en opsigelse:</strong> en vundet opsigelse '
@@ -1012,14 +1034,80 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
         : '') + '</p>';
 })();
 
-// ── Fane 1, del C: "Måned mod måned pr. site" ───────────────────────────────
-(async function () {
-  const sub = el('mm-sub');
-  const fail = (msg) => {
-    sub.textContent = msg;
-    el('mm-accounts').innerHTML = '';
-    el('mm-tbody').innerHTML = '';
-  };
+// ── Fane 1, del C: de to måned-mod-måned-paneler ───────────────────────────
+//
+// SPLITTET 2026-09-01. Account-raten og site-tabellen laa i ét panel med ÉT
+// fælles månedsvalg. Nu har hvert panel sit eget, og de to valg er helt
+// uafhængige. Alt det der IKKE er tabellen selv (månedslisten, defaultvalget,
+// advarslerne, fejlhåndteringen, netværkskaldet) er delt herunder, så
+// splittet ikke blev to næsten-ens kopier der driver fra hinanden.
+
+// Ét delt kald pr. månedspar. De to paneler starter på SAMME default, så uden
+// cachen ville hvert sideindlæs koste to identiske kald til samme endpoint.
+// Samme hensyn som monthlyRows() ovenfor, men nøglet på parret i stedet for på
+// endpointet, fordi svaret afhænger af de valgte måneder.
+const _mmCache = new Map();
+function mmData(maanedA, maanedB) {
+  const key = maanedA + ',' + maanedB;
+  if (!_mmCache.has(key)) {
+    _mmCache.set(key, fetch('/retention/churn_pr_site?maaneder=' + encodeURIComponent(key))
+      .then((res) => {
+        if (res.ok) return res.json();
+        // Rolle-filtreringen i router.py svarer 403 med en forklaring i
+        // {"detail": ...}; et ikke-JSON-svar falder tilbage på statuskoden.
+        return res.json().catch(() => ({})).then((body) => {
+          throw new Error((body && body.detail)
+            || ('Kunne ikke hente data (HTTP ' + res.status + ').'));
+        });
+      })
+      // Et AFVIST promise må ikke blive liggende i cachen. Ellers ville én
+      // netværksfejl gøre netop det månedspar permanent uhenteligt, også for
+      // det andet panel, som deler cachen.
+      .catch((e) => { _mmCache.delete(key); throw e; }));
+  }
+  return _mmCache.get(key);
+}
+
+// Juni 2026: måneden EFTER bulk-importen i maj 2026 (se churn-grafens note på
+// Performance-fanen). watch_medier har 242 opsigelser mod 121 i juli, et
+// synkroniseringsartefakt.
+const BULK_MAANED = '2026-06-01';
+
+// Advarslerne hænger på MÅNEDSVALGET, ikke på tabellen, og derfor har hvert
+// panel sit eget flag: står det ene på juni og det andet på august, er det kun
+// det første der skal advare.
+function mmFlag(praefiks, maanedA, maanedB, nyesteMaaned) {
+  const advarsler = [];
+  if (maanedA === BULK_MAANED || maanedB === BULK_MAANED) {
+    advarsler.push('<strong>Juni 2026 er et synkroniseringsartefakt, ikke kundeadfærd.</strong> '
+      + 'Måneden efter bulk-importen har watch_medier 242 opsigelser mod 121 i juli — '
+      + 'sammenligningen her er ikke et signal om ændret adfærd.');
+  }
+  [maanedA, maanedB].forEach((m) => {
+    if (m === nyesteMaaned) {
+      advarsler.push('<strong>' + maanedDK(m) + ' er foreløbig og kan kun falde.</strong> '
+        + 'Et abonnement uden en efterfølgende række tælles som churn med det samme — '
+        + 'se noten under churn-grafen på Performance og effekt.');
+    }
+  });
+  const flagEl = el(praefiks + '-flag');
+  if (advarsler.length) {
+    flagEl.style.display = '';
+    flagEl.innerHTML = advarsler.map((a) => '<p>' + a + '</p>').join('');
+  } else {
+    flagEl.style.display = 'none';
+    flagEl.innerHTML = '';
+  }
+}
+
+// Bygger ét af de to paneler. `praefiks` er id-præfikset ('accm' eller 'mm'),
+// `ryd` tømmer netop dette panels tabel ved fejl, og `tegn` får de hentede
+// data plus de to valgte måneder. Returnerer false hvis panelet endte i en
+// fejltilstand, så noten under det kan blive væk: en note der forklarer en
+// tabel man ikke kan se, læser som om tallene var der.
+async function mmPanel(praefiks, ryd, tegn) {
+  const sub = el(praefiks + '-sub');
+  const fail = (msg) => { sub.textContent = msg; ryd(); return false; };
 
   let rows;
   try {
@@ -1029,13 +1117,10 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   }
   if (!Array.isArray(rows) || rows.length < 3) return fail('Ingen data');
 
-  const labels = rows.map(r => r.FirstDayOfMonth);
+  const labels = rows.map((r) => r.FirstDayOfMonth);
   const nyesteMaaned = labels[labels.length - 1];
-  // Juni 2026: måneden EFTER bulk-importen i maj 2026 (se churn-grafens note).
-  // watch_medier har 242 opsigelser mod 121 i juli — et synkroniseringsartefakt.
-  const BULK_MAANED = '2026-06-01';
 
-  const selA = el('mm-maanedA'), selB = el('mm-maanedB');
+  const selA = el(praefiks + '-maanedA'), selB = el(praefiks + '-maanedB');
   // Nyeste først i listen — det er den man oftest vil sammenligne FRA.
   labels.slice().reverse().forEach((l) => {
     const optA = document.createElement('option');
@@ -1045,41 +1130,79 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   });
   // Default: seneste ENDELIGE måned og måneden før den — samme valg som
   // nøglekortene ovenfor, og af samme grund: den nyeste måneds churn er et
-  // maksimum der revideres nedad.
-  const defaultA = labels[labels.length - 2] || labels[labels.length - 1];
-  const defaultB = labels[labels.length - 3] || defaultA;
-  selA.value = defaultA;
-  selB.value = defaultB;
-
-  const rateCelle = (r) => {
-    if (!r) return '–';
-    if (r.churn_pct === null || r.churn_pct === undefined) return 'Kan ikke måles';
-    return nfC.format(r.churn_pct) + ' % (' + nf.format(r.churned) + ' af ' + nf.format(r.active_foer) + ')';
-  };
+  // maksimum der revideres nedad. Begge paneler åbner på samme par, så de to
+  // vælgere ikke ser ud som en uenighed om hvad "nu" er.
+  selA.value = labels[labels.length - 2] || labels[labels.length - 1];
+  selB.value = labels[labels.length - 3] || selA.value;
 
   async function opdater() {
     const maanedA = selA.value, maanedB = selB.value;
-    if (!maanedA || !maanedB) return;
+    if (!maanedA || !maanedB) return true;
 
     let data;
     try {
-      const res = await fetch('/retention/churn_pr_site?maaneder='
-        + encodeURIComponent(maanedA + ',' + maanedB));
-      if (!res.ok) {
-        let detail = `Kunne ikke hente data (HTTP ${res.status}).`;
-        try {
-          const body = await res.json();
-          if (body && body.detail) detail = body.detail;
-        } catch (e) { /* ikke-JSON fejlsvar — behold standardteksten */ }
-        return fail(detail);
-      }
-      data = await res.json();
+      data = await mmData(maanedA, maanedB);
     } catch (e) {
-      return fail('Kunne ikke hente data — netværksfejl.');
+      return fail(e && e.message ? e.message : 'Kunne ikke hente data — netværksfejl.');
     }
 
     sub.textContent = maanedDK(maanedA) + ' mod ' + maanedDK(maanedB);
+    mmFlag(praefiks, maanedA, maanedB, nyesteMaaned);
+    tegn(data, maanedA, maanedB);
+    return true;
+  }
 
+  selA.addEventListener('change', opdater);
+  selB.addEventListener('change', opdater);
+  return (await opdater()) !== false;
+}
+
+// ── Panel C1: "Churn-rate pr. account" ──
+const rateCelle = (r) => {
+  if (!r) return '–';
+  if (r.churn_pct === null || r.churn_pct === undefined) return 'Kan ikke måles';
+  return nfC.format(r.churn_pct) + ' % (' + nf.format(r.churned) + ' af ' + nf.format(r.active_foer) + ')';
+};
+
+mmPanel('accm',
+  () => { el('accm-tabel').innerHTML = ''; },
+  (data, maanedA, maanedB) => {
+    const byAccount = {};
+    (Array.isArray(data.accounts) ? data.accounts : []).forEach((r) => {
+      (byAccount[r.account] || (byAccount[r.account] = {}))[r.maaned] = r;
+    });
+    // Fast rækkefølge fra ACCOUNT_LABEL, ikke datas egen: rækkerne må ikke
+    // bytte plads mellem to månedsvalg.
+    const accountsOrder = Object.keys(ACCOUNT_LABEL).filter((a) => byAccount[a]);
+    el('accm-tabel').innerHTML = !accountsOrder.length
+      ? '<p class="v-table-empty">Ingen accounts i de valgte måneder.</p>'
+      : '<table class="v-table"><thead><tr><th>Account</th><th>' + maanedDK(maanedA)
+        + '</th><th>' + maanedDK(maanedB) + '</th></tr></thead><tbody>'
+        + accountsOrder.map((acc) => {
+            const r = byAccount[acc];
+            return '<tr><td>' + (ACCOUNT_LABEL[acc] || acc) + '</td><td>' + rateCelle(r[maanedA])
+                 + '</td><td>' + rateCelle(r[maanedB]) + '</td></tr>';
+          }).join('')
+        + '</tbody></table>';
+  }
+).then((ok) => {
+  if (!ok) return;
+  el('accm-note').innerHTML =
+      '<p><strong>Raten er opsigelser i måneden delt med aktive abonnementer måneden før.</strong> '
+    + 'Parentesen viser de to led, så 0,74 % (69 af 9.281) er 69 opsigelser i måneden mod '
+    + '9.281 aktive måneden før.</p>'
+    + '<p><strong>"Kan ikke måles" betyder for lille bog, ikke nul opsigelser.</strong> '
+    + 'Under 1.000 aktive abonnementer måneden før vises ingen rate: dér flytter en enkelt '
+    + 'opsigelse procenten så meget, at tallet ikke kan læses som et signal. Marketwire '
+    + 'ligger under grænsen.</p>'
+    + '<p><strong>Sitene bag raten ligger i panelet nedenfor</strong>, som har sit eget '
+    + 'månedsvalg og kan stå på et andet par end dette.</p>';
+});
+
+// ── Panel C2: "Måned mod måned pr. site" ──
+mmPanel('mm',
+  () => { el('mm-tbody').innerHTML = ''; },
+  (data, maanedA, maanedB) => {
     // Kolonneoverskrifterne viste indtil 2026-08-28 de statiske labels "A"/"B" —
     // et bogstav siger ikke hvilken måned man ser på. Nu viser de den valgte måned.
     el('mm-th-aktivA').textContent = 'Aktive ' + maanedDK(maanedA);
@@ -1087,50 +1210,8 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
     el('mm-th-aktivB').textContent = 'Aktive ' + maanedDK(maanedB);
     el('mm-th-churnB').textContent = 'Opsigelser ' + maanedDK(maanedB);
 
-    // ── Advarsler: bulk-importen og et foreløbigt tal. Begge kan ramme
-    // samtidig, og begge skal så stå. ──
-    const advarsler = [];
-    if (maanedA === BULK_MAANED || maanedB === BULK_MAANED) {
-      advarsler.push('<strong>Juni 2026 er et synkroniseringsartefakt, ikke kundeadfærd.</strong> '
-        + 'Måneden efter bulk-importen har watch_medier 242 opsigelser mod 121 i juli — '
-        + 'sammenligningen her er ikke et signal om ændret adfærd.');
-    }
-    [maanedA, maanedB].forEach((m) => {
-      if (m === nyesteMaaned) {
-        advarsler.push('<strong>' + maanedDK(m) + ' er foreløbig og kan kun falde.</strong> '
-          + 'Et abonnement uden en efterfølgende række tælles som churn med det samme — '
-          + 'se churn-grafens note ovenfor.');
-      }
-    });
-    const flagEl = el('mm-flag');
-    if (advarsler.length) {
-      flagEl.style.display = '';
-      flagEl.innerHTML = advarsler.map((a) => '<p>' + a + '</p>').join('');
-    } else {
-      flagEl.style.display = 'none';
-      flagEl.innerHTML = '';
-    }
-
-    // ── Account-raten ──
-    const accRows = Array.isArray(data.accounts) ? data.accounts : [];
-    const byAccount = {};
-    accRows.forEach((r) => {
-      (byAccount[r.account] || (byAccount[r.account] = {}))[r.maaned] = r;
-    });
-    const accountsOrder = Object.keys(ACCOUNT_LABEL).filter((a) => byAccount[a]);
-    el('mm-accounts').innerHTML = !accountsOrder.length ? '' :
-      '<table class="mm-acc-tbl"><thead><tr><th>Account</th><th>' + maanedDK(maanedA)
-      + '</th><th>' + maanedDK(maanedB) + '</th></tr></thead><tbody>'
-      + accountsOrder.map((acc) => {
-          const r = byAccount[acc];
-          return '<tr><td>' + (ACCOUNT_LABEL[acc] || acc) + '</td><td>' + rateCelle(r[maanedA])
-               + '</td><td>' + rateCelle(r[maanedB]) + '</td></tr>';
-        }).join('')
-      + '</tbody></table>';
-
-    // ── Sites, absolutte tal. Kun de to VALGTE måneder — data.sites har også
-    // hver måneds forgænger med (kilden til account-raten), som ikke skal
-    // vises i denne tabel. ──
+    // Kun de to VALGTE måneder — data.sites har også hver måneds forgænger med
+    // (kilden til account-raten), som ikke skal vises i denne tabel.
     const bySite = {};
     (Array.isArray(data.sites) ? data.sites : []).forEach((r) => {
       if (r.FirstDayOfMonth !== maanedA && r.FirstDayOfMonth !== maanedB) return;
@@ -1155,21 +1236,18 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
            + '</td><td class="num">' + nf.format(r.aktivA) + '</td><td class="num">' + nf.format(r.churnA)
            + '</td><td class="num">' + nf.format(r.aktivB) + '</td><td class="num">' + nf.format(r.churnB)
            + '</td><td class="num">' + forskelTxt + '</td></tr>';
-    }).join('') : '<tr><td colspan="7">Ingen sites i de valgte måneder.</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">Ingen sites i de valgte måneder.</td></tr>';
   }
-
-  selA.addEventListener('change', opdater);
-  selB.addEventListener('change', opdater);
-  await opdater();
-
+).then((ok) => {
+  if (!ok) return;
   el('mm-note').innerHTML =
       '<p><strong>Forskel er opsigelser i måned B minus opsigelser i måned A.</strong> '
     + 'Et positivt tal betyder flere opsigelser i B end i A, et negativt tal betyder færre.</p>'
     + '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af 35 danske sites har grundlag over '
     + '1.000 aktive abonnementer. AdvokatWatch DK har 225 aktive og svinger fra 1 til 6 opsigelser på '
     + 'syv måneder (faktor 7,5), mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
-    + 'Raten vises derfor kun pr. account, i tabellen ovenfor.</p>';
-})();
+    + 'Raten vises derfor kun pr. account, i panelet ovenfor.</p>';
+});
 
 // ── Fane 1, del D: "Side- og artikelvisninger pr. site" ─────────────────────
 let _engData = null;
