@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from log_setup import audit_log
 from nav_utils import register_nav_globals
-from .cache import forbrug_site, ryd_cache
+from .cache import forbrug_site, ryd_cache, varsel
 from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
@@ -181,6 +181,27 @@ def get_forbrug_pr_site(user=Depends(get_current_user)):
         "meta": data["meta"],
         "bruger_har_team_begraensning": teams is not None,
     }
+
+
+@router.get("/retention/opsigelser_varsel")
+def get_opsigelser_varsel(user=Depends(get_current_user)):
+    """"Opsigelser i varsel"-panelet: abonnementer med en gældende opsigelse,
+    hvis ophør endnu ikke er indtruffet.
+
+    TEAM-AFGRÆNSET, i modsætning til forbrugspanelet lige ovenfor:
+    varsel.opsigelser_i_varsel bygger på abonnementer_med_ejer, som allerede
+    understøtter `teams`. Flaget sendes alligevel med, af samme grund som i
+    get_forbrug_pr_site: to paneler der tavst er uenige om omfang er den
+    slags man opdager på et ledermøde.
+    """
+    owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
+    # Måneden regnes HER og ikke inde i cache.varsel, så den indgår i
+    # cache-nøglen: uden den ville et månedsskift blive ved med at ramme
+    # forrige måneds cache-post i op til CACHE_SEKUNDER efter midnat.
+    maaned = dt.date.today().strftime("%Y-%m")
+    data = varsel(teams, maaned)
+    data["meta"]["bruger_har_team_begraensning"] = teams is not None
+    return data
 
 
 @router.get("/retention/overview", response_class=HTMLResponse)
