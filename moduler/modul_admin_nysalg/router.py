@@ -230,6 +230,7 @@ def _brand_movements(matches: list[dict], org_names: dict | None = None) -> list
         if not gi_raw and not go_raw:
             continue
         label = _match_brand(m)
+        pid = str(m.get("pipedrive_id") or "").strip()
         customer = repo.customer_name(dict(m, brand=label), org_names)
         gi_ov, go_ov = m.get("gross_in_override"), m.get("gross_out_override")
         ai_ov, ao_ov = m.get("adm_in_override"), m.get("adm_out_override")
