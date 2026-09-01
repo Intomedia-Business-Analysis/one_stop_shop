@@ -245,6 +245,17 @@ def classify(site: str) -> str:
     if hit:
         return hit
 
+    # Nordic Defence Watch er juridisk et svensk selskab og rapporteres ALTID
+    # under Watch SE — også når salget er lavet af en dansk sælger. Udtrækket
+    # skriver sitet som domænet 'nordicdefencewatch.com', som ellers ville falde
+    # til Watch DK via 'watch'-nøgleordet nedenfor, så reglen skal stå FØRST
+    # blandt fallbacks. Tegnsætning strippes, så både 'NordicDefenceWatch',
+    # 'nordicdefencewatch.com' og 'Nordic Defence Watch' rammer — og amerikansk
+    # 'defense' tages med, fordi Zuora-rateplaner ikke er konsistente.
+    _letters = re.sub(r"[^a-z]", "", sl)
+    if "nordicdefencewatch" in _letters or "nordicdefensewatch" in _letters:
+        return GROUP_LABELS["nordic_defence"]
+
     if "marketwire" in sl:
         return "Marketwire"
     if "finanzbusiness" in sl or "finanz.business" in sl or _has_token(sl, "de"):

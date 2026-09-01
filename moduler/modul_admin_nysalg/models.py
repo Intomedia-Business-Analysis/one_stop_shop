@@ -49,6 +49,9 @@ class ExtractRow:
     gross_out: float
     movement: str
     administrativ: int      # 0/1 — allerede sat i udtrækket (opsigelsessiden)
+    # Kundenavnet fra Zuora. Valgfri kolonne — ældre udtræk har den ikke, og så
+    # står den tom, hvorefter navneopslaget falder tilbage til PipeDrive.
+    contact_companyname: str = ""
     row_index: int = 0      # rækkenummer i kildefilen (til reference/visning)
     brand: str = ""         # brand-gruppe (udfyldes af brands.classify ved run)
 
