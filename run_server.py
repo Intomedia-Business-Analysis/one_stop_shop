@@ -162,6 +162,7 @@ def main() -> None:
     force_utf8_output()
 
     host = (os.getenv("HUB_HOST") or "0.0.0.0").strip()
+    #"Ved test skriv 8001"
     port = _int_env("HUB_PORT", 8000)
     workers = _int_env("HUB_WORKERS", 1)
     access_log = _flag("HUB_ACCESS_LOG", False)
