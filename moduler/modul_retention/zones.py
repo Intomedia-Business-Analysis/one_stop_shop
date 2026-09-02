@@ -247,6 +247,31 @@ def kanonisk_site(site: Optional[str]) -> Optional[str]:
     return BRAND_FAMILIE.get(normaliseret, normaliseret)
 
 
+def site_stamme(site: Optional[str]) -> Optional[str]:
+    """Sitet uden topdomæne: 'finanswatch.dk' -> 'finanswatch'.
+
+    GROVERE END kanonisk_site med vilje, og kun til ét formål: at afgøre om
+    et site i Snowplow-eksporten hører til et brand vi følger.
+
+    Why: de to vokabularer er IKKE enige om topdomænet. dbo.retention har
+    'Nordic Defence Watch' (som normalize_site gør til
+    'nordicdefencewatch', uden TLD), mens forbrugsfilen har
+    'nordicdefencewatch.dk'. Et rent mængde-opslag ville derfor smide netop
+    det site ud af forbrugspanelet, uden at noget fejlede. Målt 2026-09-02:
+    med stammen overlever 19 af 34 sites, og de 15 der falder ud er 12
+    monitor-sites, monitormedier.dk, techwatch.no og nordicdefencewatch.dk
+    (sidstnævnte er nu MED, netop takket være stammen).
+
+    Grovheden er ufarlig her: den kan kun slå to sites sammen, der deler navn
+    før punktummet, og de to hører pr. definition til samme brand
+    (medwatch.dk og medwatch.com).
+    """
+    kanonisk = kanonisk_site(site)
+    if kanonisk is None:
+        return None
+    return kanonisk.split(".", 1)[0]
+
+
 def er_trackbare(site: Optional[str], har_zuora_kobling: bool) -> bool:
     """Kan dette abonnement overhovedet få et forbrugssignal?
 

@@ -548,7 +548,33 @@ const PAKKE_SITES = new Set(['watchmedier.dk', 'monitormedier.dk']);
 // Delt mellem "Måned mod måned pr. site" og "Opsigelser i varsel" — begge
 // viser dbo.retentions rigtige account-kolonne, ikke siteFamilie-heuristikken
 // ovenfor. Hejst hertil 2026-09-01, så de to paneler ikke får hver sin kopi.
-const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', marketwire: 'Marketwire' };
+//
+// RÆKKEFØLGEN HER ER TABELLENS rækkefølge i "Churn-rate pr. account"
+// (accountsOrder læser Object.keys), så den må ikke sorteres om ved et
+// tilfælde.
+//
+// monitor og marketwire er UDKOMMENTERET 2026-09-02, ikke slettet — se
+// queries.DEAKTIVEREDE_ACCOUNTS, hvor hele genaktiverings-opskriften står.
+// De to linjer er den femte og sidste ting der skal afkommenteres.
+const ACCOUNT_LABEL = {
+  watch_medier: 'Watch Medier',
+  finans:       'Finans',
+  // monitor:      'Monitor',
+  // marketwire:   'Marketwire',
+};
+
+// FINANS DK ligger på watch_medier-KONTOEN i Pipedrive, men følges som sit
+// eget brand. Splittet er rent visning — data beholder 'watch_medier', se
+// queries.visnings_account, som er den funktion her SKAL svare det samme som.
+// Bliver de to uenige, står FINANS DK under 'Watch Medier' i site-tabellen og
+// under 'Finans DK' i raten lige ovenfor, uden at noget fejler.
+const FINANS_SITE = 'FINANS DK';
+const visAccount = (account, site) =>
+  (account === 'watch_medier' && site === FINANS_SITE) ? 'finans' : account;
+const accountLabel = (account, site) => {
+  const a = visAccount(account, site);
+  return ACCOUNT_LABEL[a] || a;
+};
 
 // ── De fire nøgletal (fane 1) + churn-grafen (fane 2). Blokken spænder over
 // BEGGE faner efter flytningen 2026-09-01, og det er med vilje: de to dele
@@ -1128,7 +1154,7 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   // ══════════ Tabel pr. site ══════════
   el('varsel-tbody').innerHTML = data.pr_site.length
     ? data.pr_site.map(s =>
-        '<tr><td>' + s.site + '</td><td>' + (ACCOUNT_LABEL[s.account] || s.account)
+        '<tr><td>' + s.site + '</td><td>' + accountLabel(s.account, s.site)
         + '</td><td class="num">' + nf.format(s.antal)
         + '</td><td class="num">' + (s.haster ? nf.format(s.haster) : '–')
         + '</td><td class="num">' + kr(s.arr_dkk) + '</td></tr>'
@@ -1583,12 +1609,27 @@ mmPanel('accm',
   if (!ok) return;
   el('accm-note').innerHTML =
       '<p><strong>Raten er opsigelser i måneden delt med aktive abonnementer måneden før.</strong> '
-    + 'Parentesen viser de to led, så 0,74 % (69 af 9.281) er 69 opsigelser i måneden mod '
-    + '9.281 aktive måneden før.</p>'
+    + 'Parentesen viser de to led, så 0,74 % (60 af 8.118) er 60 opsigelser i måneden mod '
+    + '8.118 aktive måneden før.</p>'
+    + '<p><strong>Finans står for sig selv.</strong> I Pipedrive er FINANS DK et site '
+    + 'under Watch Medier-kontoen, men de to følges som hver sit brand, så både tæller og '
+    + 'nævner er delt. Lægger man de to rækkers opsigelser sammen, får man kontoens '
+    + 'samlede antal.</p>'
+    + '<p><strong>Begge rækker rummer både DK og Int.</strong> Watch Medier er Watch DK + '
+    + 'Watch Int, og Finans er FINANS DK + FINANS Int — samme gruppering som '
+    + 'afdelingsleder-dashboardet. De er IKKE delt videre, fordi begge Finans-halvdele '
+    + 'falder under målegrænsen: Finans DK har 955 aktive og Finans Int 111 (målt 2. '
+    + 'september 2026), så en firedeling ville bytte den ene rate vi har for to rækker '
+    + 'uden.</p>'
+    + '<p><strong>Kun Watch Medier og Finans vises.</strong> Monitor og Marketwire er '
+    + 'taget ud af hele modulet 2. september 2026, og de udenlandske konti (Watch NO, SE, '
+    + 'DE) har været ude siden 25. august. Tallene her kan derfor ikke sammenlignes med '
+    + 'en samlet husstotal.</p>'
     + '<p><strong>"Kan ikke måles" betyder for lille bog, ikke nul opsigelser.</strong> '
     + 'Under 1.000 aktive abonnementer måneden før vises ingen rate: dér flytter en enkelt '
-    + 'opsigelse procenten så meget, at tallet ikke kan læses som et signal. Marketwire '
-    + 'ligger under grænsen.</p>'
+    + 'opsigelse procenten så meget, at tallet ikke kan læses som et signal. Begge rækker '
+    + 'ligger i dag over grænsen (Finans DK omkring 1.165 aktive), så teksten dukker først '
+    + 'op, hvis en bog skrumper.</p>'
     + '<p><strong>Sitene bag raten ligger i panelet nedenfor</strong>, som har sit eget '
     + 'månedsvalg og kan stå på et andet par end dette.</p>';
 });
@@ -1626,7 +1667,7 @@ mmPanel('mm',
     el('mm-tbody').innerHTML = siteRows.length ? siteRows.map((r) => {
       const forskel = r.churnB - r.churnA;
       const forskelTxt = (forskel > 0 ? '+' : forskel < 0 ? '−' : '') + nf.format(Math.abs(forskel));
-      return '<tr><td>' + r.site + '</td><td>' + (ACCOUNT_LABEL[r.account] || r.account)
+      return '<tr><td>' + r.site + '</td><td>' + accountLabel(r.account, r.site)
            + '</td><td class="num">' + nf.format(r.aktivA) + '</td><td class="num">' + nf.format(r.churnA)
            + '</td><td class="num">' + nf.format(r.aktivB) + '</td><td class="num">' + nf.format(r.churnB)
            + '</td><td class="num">' + forskelTxt + '</td></tr>';
@@ -1637,10 +1678,12 @@ mmPanel('mm',
   el('mm-note').innerHTML =
       '<p><strong>Forskel er opsigelser i måned B minus opsigelser i måned A.</strong> '
     + 'Et positivt tal betyder flere opsigelser i B end i A, et negativt tal betyder færre.</p>'
-    + '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af 35 danske sites har grundlag over '
-    + '1.000 aktive abonnementer. AdvokatWatch DK har 225 aktive og svinger fra 1 til 6 opsigelser på '
-    + 'syv måneder (faktor 7,5), mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
-    + 'Raten vises derfor kun pr. account, i panelet ovenfor.</p>';
+    + '<p><strong>Ingen rate-kolonne pr. site.</strong> Kun 2 af de 19 sites i Watch Medier har '
+    + 'grundlag over 1.000 aktive abonnementer (FINANS DK og ShippingWatch DK, målt 2. september '
+    + '2026). AdvokatWatch DK har 225 aktive og svinger fra 1 til 6 opsigelser på syv måneder '
+    + '(faktor 7,5), mens hele porteføljen svinger 0,39 til 2,37 % over 126 måneder. '
+    + 'Raten vises derfor kun pr. account, i panelet ovenfor, hvor FINANS DK står som sin egen '
+    + 'række.</p>';
 });
 
 // ── Fane 1, del D: "Side- og artikelvisninger pr. site" ─────────────────────
@@ -1764,9 +1807,12 @@ function engMetric(key, btn) {
   el('eng-note').innerHTML = teamNote
     + '<p><strong>Populationen er bredere end resten af modulet.</strong> Dette panel tæller alle '
     + 'rækker på sitet, også dem der ikke kan kobles til en kunde — i modsætning til risikolisten, '
-    + 'som kun regner på kunder der KAN kobles. Det er derfor <code>monitor</code> kan vises her, '
-    + 'selvom dens rækker mangler et pipedrive_id og derfor ikke altid kan kobles til en kunde i '
-    + 'risikobilledet.</p>'
+    + 'som kun regner på kunder der KAN kobles. Et site kan derfor vise flere læsere her end der '
+    + 'er abonnenter i risikobilledet.</p>'
+    + '<p><strong>Kun sites vi selv sælger.</strong> Panelet viste indtil 2. september 2026 ALLE '
+    + 'sites i Snowplow-eksporten, også monitor og techwatch.no. Det følger nu samme afgrænsning '
+    + 'som resten af modulet: et site vises kun, hvis det findes i bogen for referencemåneden. '
+    + 'Afgrænsningen er udledt af bogen selv, så et nyt site kommer med uden en kodeændring.</p>'
     + '<p><strong>Fire huller i signalet:</strong> site-match mod dbo.retention er 89,3 % af '
     + 'abonnementerne (41 af 46 kanoniske sites). App-forbrug mangler for Watch. finans.dk er web '
     + 'alene (app-grenen faldt fra ca. 150.000 til 45.237 rækker i juni 2026 og er afvist til '

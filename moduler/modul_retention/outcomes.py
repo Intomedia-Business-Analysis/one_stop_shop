@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 # Samme sentinel som churn-beregningen i queries.py. dbo.retention.sites er
 # NULL for marketwires 35 rækker, og en nøgle med NULL i kan aldrig slås op
 # igen — NULL = NULL er ukendt, ikke sandt.
+#
+# STADIG I BRUG efter at marketwire blev deaktiveret 2026-09-02
+# (queries.DEAKTIVEREDE_ACCOUNTS). Marketwire var den oprindelige grund, men
+# watch_medier har SELV rækker uden site — 2 aktive abonnementer, målt
+# 2026-09-02 på august. Sentinellen er altså ikke blevet død kode og må ikke
+# ryddes op sammen med resten af marketwire-sporet.
 INTET_SITE = "(intet site)"
 
 # Udfald der holder sagen åben. Hvad Specialisten kan registrere: de kræver
@@ -515,6 +521,51 @@ def registrer_samtale(samtale: dict, udfald: list) -> int | None:
             conn.close()
 
 
+def gem_pipedrive_aktivitet(conversation_id: int, aktivitet_id) -> bool:
+    """Skriv Pipedrive-aktivitetens id tilbage på samtalen. KASTER ALDRIG.
+
+    EN SELVSTÆNDIG UPDATE og ikke en del af registrer_samtale, fordi id'et
+    ikke findes endnu når samtalen skrives: Pipedrive kaldes FØRST efter at
+    databasen har committet (se pipedrive.py om hvorfor rækkefølgen ikke må
+    byttes om). Der er derfor et vindue hvor rækken står uden id.
+
+    False betyder at aktiviteten ER oprettet i Pipedrive, men at vi ikke fik
+    skrevet nummeret ned. Det er en degraderet tilstand, ikke en fejl:
+    registreringen er gemt, aktiviteten er i CRM'et, og det eneste tabte er
+    sporet mellem dem. Præcis den tilstand modulet var i HELE tiden før
+    kolonnen fandtes (tilføjet 2026-09-02), så den må ikke vælte noget.
+
+    HVORFOR KOLONNEN FINDES: uden den kan man ikke gå den anden vej. Da en
+    testregistrering skulle ryddes op 2026-09-02, fandtes koblingen mellem
+    samtale 109 og aktivitet 91519 kun i audit-loggen og i en chatbesked.
+
+    GRAINEN ER SAMTALEN og ikke udfaldet: der oprettes ÉN aktivitet pr.
+    samtale, uanset hvor mange abonnementer den dækkede.
+    """
+    if not conversation_id or not aktivitet_id:
+        return False
+    conn = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE dbo.RetentionConversations
+                  SET pipedrive_activity_id = %s
+                WHERE conversation_id = %s""",
+            (int(aktivitet_id), int(conversation_id)),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        logger.exception("gem_pipedrive_aktivitet fejlede "
+                         "(conversation_id=%s, aktivitet_id=%s)",
+                         conversation_id, aktivitet_id)
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def db_seneste_udfald() -> dict:
     """Seneste udfald pr. abonnement: {(account, org_id, site): række}.
 
@@ -579,7 +630,7 @@ def db_historik(account: str, org_id: int) -> list:
         cur = conn.cursor(as_dict=True)
         cur.execute(
             """SELECT c.conversation_id, c.contacted_at, c.channel, c.summary,
-                      c.created_by, c.created_at,
+                      c.created_by, c.created_at, c.pipedrive_activity_id,
                       o.outcome_id, o.site, o.contact_result, o.outcome,
                       o.arr_before_dkk, o.arr_before_kilde,
                       o.arr_after_dkk, o.arr_after_local,
@@ -612,6 +663,9 @@ def db_historik(account: str, org_id: int) -> list:
                  "channel": r["channel"], "summary": r["summary"],
                  "created_by": r["created_by"],
                  "created_at": _som_tidspunkt(r["created_at"]),
+                 # None for alt der er registreret før 2026-09-02, og for
+                 # samtaler hvor Pipedrive-kaldet ikke gik igennem.
+                 "pipedrive_activity_id": r["pipedrive_activity_id"],
                  "udfald": []}
             samtaler[cid] = s
         if r["outcome_id"] is not None:

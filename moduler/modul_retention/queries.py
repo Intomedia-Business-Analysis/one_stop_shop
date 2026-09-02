@@ -22,10 +22,15 @@ logger = logging.getLogger(__name__)
 # watch_de og marketwire står bevidst IKKE på listen: PipeDrive_ACV har ingen
 # rækker for dem (brand-kolonnen indeholder kun de fem værdier herunder), så de
 # kunder kan ikke få et ARR-tal og tælles alene firmabredt.
+#
+# 'Monitor' er UDKOMMENTERET 2026-09-02 sammen med resten af monitor-sporet, se
+# DEAKTIVEREDE_ACCOUNTS laengere nede. Uden linjen faar monitor-kunder ingen
+# ACV-ejer, hvilket er uden virkning saa laenge deres raekker alligevel skaeres
+# fra i SQL'en.
 ACV_BRAND_TO_ACCOUNT: dict[str, str] = {
     "Watch DK": "watch_medier",
     "Finans":   "watch_medier",
-    "Monitor":  "monitor",
+    # "Monitor":  "monitor",
     "Watch NO": "watch_no",
     "Watch SE": "watch_se",
 }
@@ -46,7 +51,7 @@ ACV_SITE_SUFFIKS: dict[str, str] = {
     "Watch DK": " DK",
     "Watch NO": " NO",
     "Watch SE": " SE",
-    "Monitor":  "monitor",
+    # "Monitor":  "monitor",   # udkommenteret 2026-09-02, se DEAKTIVEREDE_ACCOUNTS
 }
 
 # Undtagelserne er NAVNGIVNE og ikke regelbaserede med vilje. De tre
@@ -56,10 +61,11 @@ ACV_SITE_SUFFIKS: dict[str, str] = {
 ACV_SITE_UNDTAGELSER: dict[tuple[str, str], str] = {
     ("Watch DK", "WatchMedier"):   "Watch Medier DK",
     ("Watch NO", "Shifter"):       "Shifter",
-    ("Monitor",  "Monitormedier"): "Monitormedier",
-    ("Monitor",  "Idræt"):         "Idrætsmonitor",
-    ("Monitor",  "Uddannelse"):    "Uddannelsesmonitor",
-    ("Monitor",  "Sundhed"):       "Sundhedsmonitor",
+    # Udkommenteret 2026-09-02, se DEAKTIVEREDE_ACCOUNTS.
+    # ("Monitor",  "Monitormedier"): "Monitormedier",
+    # ("Monitor",  "Idræt"):         "Idrætsmonitor",
+    # ("Monitor",  "Uddannelse"):    "Uddannelsesmonitor",
+    # ("Monitor",  "Sundhed"):       "Sundhedsmonitor",
     ("Finans",   "Finans"):        "FINANS DK",
 }
 
@@ -151,6 +157,64 @@ UDENLANDSKE_ACCOUNTS = ("watch_no", "watch_se", "watch_de")
 # to ikke kan drive fra hinanden.
 _KUN_DANSKE = (" AND r.account NOT IN ("
                + ", ".join(f"'{a}'" for a in UDENLANDSKE_ACCOUNTS) + ") ")
+
+# Deaktiverede brands (besluttet 2026-09-02). Retention-modulet foelger kun
+# Watch Medier og FINANS DK. monitor og marketwire er DANSKE og slipper derfor
+# gennem _KUN_DANSKE ovenfor; de skaeres af her i stedet.
+#
+# TO LISTER OG IKKE EN, med vilje. _KUN_DANSKE er geografi, denne er hvilke
+# brands retention-teamet arbejder paa. De to beslutninger blev truffet af hver
+# sin grund og aendrer sig ikke sammen; slaaet sammen kunne man ikke laengere se
+# hvorfor en account var ude.
+#
+# UDKOMMENTERET OG IKKE SLETTET, saa sporet kan taendes igen. GENAKTIVERING af
+# fx monitor kraever samme haandgreb ALLE disse steder:
+#   1. saet '#' foran "monitor" i listen herunder (den ekskluderer)
+#   2. fjern '#' i ACV_BRAND_TO_ACCOUNT      ('Monitor': 'monitor')
+#   3. fjern '#' i ACV_SITE_SUFFIKS          ('Monitor': 'monitor')
+#   4. fjern '#' i ACV_SITE_UNDTAGELSER      (de fire Monitor-par)
+#   5. fjern '//' i ACCOUNT_LABEL i templates/retention_overview.html
+# Panelnoterne under "Churn-rate pr. account" og "Maaned mod maaned pr. site"
+# naevner tal for de AKTIVE brands og skal genlaeses samme dag.
+#
+# Maalt 2026-09-02 paa august 2026: monitor 3.757 aktive abonnementer,
+# marketwire 32. Tilbage staar Watch Medier med 9.282, heraf FINANS DK 1.168.
+DEAKTIVEREDE_ACCOUNTS = (
+    "monitor",
+    "marketwire",
+)
+
+# Samme literal-form som _KUN_DANSKE og af samme grund (se der). Tom streng naar
+# listen er tom, saa SQL'en ikke faar et haengende AND, hvis alt taendes igen.
+_KUN_AKTIVE_BRANDS = (
+    (" AND r.account NOT IN ("
+     + ", ".join(f"'{a}'" for a in DEAKTIVEREDE_ACCOUNTS) + ") ")
+    if DEAKTIVEREDE_ACCOUNTS else ""
+)
+
+
+def er_aktiv_account(account: str | None) -> bool:
+    """Skal rækker på denne account overhovedet vises i modulet?
+
+    Den samme prøve som _KUN_AKTIVE_BRANDS, men i Python, til de datakilder
+    SQL-fragmentet ikke rammer: læserne af dbo.RetentionOutcomes hentes
+    UFILTREREDE med vilje og afgrænses hos kalderen (se outcomes.py), fordi
+    afgrænsningen på ejer og team alligevel sker der.
+
+    HULLET DEN LUKKER, målt 2026-09-02: efter deaktiveringen stod præcis én
+    række tilbage på "Dagens opkald" (monitor/9842/Klimamonitor,
+    `tilbud_sendt` med frist 2026-08-11). Kunden kan ikke længere åbnes i
+    modulet, så løftet kunne ikke indfries, og rækken var et klik ud i en tom
+    kundeside. Der ligger i alt 6 udfaldsrækker på de to deaktiverede
+    accounts (5 monitor, 1 marketwire).
+
+    LANDEAFGRÆNSNINGEN GÆLDER IKKE HER, og det er med vilje. Et lovet opkald
+    er en forpligtelse uanset land, jf. UDENLANDSKE_ACCOUNTS-blokken, og
+    liste 1 er bevidst undtaget fra den. Brand-afgrænsningen er en ANDEN
+    beslutning: en monitor-kunde findes slet ikke i modulet mere, så
+    forpligtelsen kan alligevel ikke indfries herfra.
+    """
+    return account not in DEAKTIVEREDE_ACCOUNTS
 
 # Opsigelser bor i TRE pipelines. 'Opsigelser' er marketwires egen, og
 # dbo.retention-viewet kender kun de to foerste, saa marketwires opsigelser har
@@ -365,6 +429,7 @@ def db_monthly_active_counts(owner_name: str | None = None,
                 WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
                     {_KUN_B2B}
                     {_KUN_DANSKE}
+                    {_KUN_AKTIVE_BRANDS}
                     {clause}
             ),
             sidste AS (
@@ -509,6 +574,7 @@ def db_monthly_churn_pr_site(maaneder: list[str], owner_name: str | None = None,
                 WHERE r.FirstDayOfMonth <= EOMONTH(GETDATE())
                     {_KUN_B2B}
                     {_KUN_DANSKE}
+                    {_KUN_AKTIVE_BRANDS}
                     {clause}
             ),
             sidste AS (
@@ -573,6 +639,55 @@ def db_monthly_churn_pr_site(maaneder: list[str], owner_name: str | None = None,
 # account_churn_rate's docstring for hvorfor.
 MIN_AKTIVE_FOR_RATE = 1000
 
+# Finans som sin egen visnings-account (besluttet 2026-09-02). I Pipedrive er
+# FINANS DK et SITE under watch_medier-kontoen og ikke en account for sig, men
+# forretningen foelger det som sit eget brand, saa churn-raten skal vise Watch
+# Medier og Finans hver for sig.
+#
+# TO RAEKKER OG IKKE FIRE (besluttet 2026-09-02, efter maaling).
+# Afdelingsleder-dashboardet deler watch_medier paa TEAM i Watch DK, Watch Int,
+# FINANS DK og FINANS Int, og det var det oprindelige oenske her ogsaa. Maalingen
+# afgjorde det:
+#
+#   Watch DK    0,94 % (49 af 5.234)     Finans DK    9 af 955   UNDER GRAENSEN
+#   Watch Int   0,45 % ( 8 af 1.792)     Finans Int   0 af 111   UNDER GRAENSEN
+#
+# En firedeling ville altsaa bytte den ene Finans-rate vi HAR (0,77 % af 1.163)
+# for to raekker der begge siger "Kan ikke maales". Dertil har 12,8 % af bogen
+# (1.189 abonnementer) slet ingen ejer med et team og skulle have en femte
+# raekke. Begge visnings-accounts rummer derfor DK + Int, praecis som
+# afdelingsleder-dashboardets grupper "Watch Medier" og "Finans" goer.
+#
+# NB til en fremtidig deling: hver saelger sidder i BEGGE sin regions teams (de
+# 10 DK-saelgere er i baade Team Watch DK og Team FINANS DK, de 6 Int-saelgere
+# tilsvarende). Teamet giver derfor KUN DK mod Int - Watch mod Finans kommer
+# fra sitet. Et opslag der tror teamet siger brandet, rammer forkert.
+#
+# SPLITTET SKER I VISNINGEN, ikke i datagrundlaget. dbo.retention, ACV-koblingen
+# og alle noegler ((account, org_id, site)) beholder 'watch_medier'. Splittede
+# man grundlaget, ville der opstaa en account som Pipedrive ikke kender, og
+# kundelinks, adgangstjek og udfaldsregistrering ville pege paa en konto der
+# ikke svarer.
+#
+# Maalt 2026-09-02: FINANS DK har 1.163-1.169 aktive abonnementer om maaneden og
+# ligger dermed OVER MIN_AKTIVE_FOR_RATE, saa raten kan maales for begge
+# halvdele. August 2026 bliver Watch Medier 0,74 % (60 af 8.118) og Finans DK
+# 0,77 % (9 af 1.163), hvor de samlet var 0,74 % (69 af 9.281).
+FINANS_SITE = "FINANS DK"
+FINANS_ACCOUNT = "finans"
+
+
+def visnings_account(account: str, sites: str | None) -> str:
+    """(account, site) -> den account raekken skal VISES under.
+
+    Modstykket i UI'et er visAccount() i templates/retention_overview.html.
+    Bliver de to uenige, staar FINANS DK under hver sin overskrift i
+    account-raten og i site-tabellen lige under den.
+    """
+    if account == "watch_medier" and sites == FINANS_SITE:
+        return FINANS_ACCOUNT
+    return account
+
 
 def account_churn_rate(rows: list, maaneder: list[str]) -> list:
     """Ruller db_monthly_churn_pr_site's site-rækker op til en rate pr.
@@ -591,13 +706,22 @@ def account_churn_rate(rows: list, maaneder: list[str]) -> list:
     `rows`, fordi db_monthly_churn_pr_site selv henter hver måneds forgænger
     — se den funktions docstring.
 
+    FINANS DK tælles som sin EGEN account (`finans`) og ikke som en del af
+    watch_medier, se visnings_account. Både tæller og nævner deles, så de to
+    rater kan læses hver for sig, og summen af de to rækkers tællere er
+    fortsat kontoens samlede antal opsigelser.
+
     Returnerer én række pr. (account, maaned):
         account, maaned, active_foer, churned, churn_pct (None under grænsen)
     """
     aktive: dict[tuple, int] = {}
     churnet: dict[tuple, int] = {}
     for r in rows:
-        noegle = (r["account"], r["FirstDayOfMonth"])
+        # visnings_account og ikke r["account"]: FINANS DK rulles op som sin
+        # egen raekke i stedet for at forsvinde ind i Watch Medier. Se
+        # konstanten for hvorfor splittet ligger her og ikke i SQL'en.
+        noegle = (visnings_account(r["account"], r["sites"]),
+                  r["FirstDayOfMonth"])
         aktive[noegle] = aktive.get(noegle, 0) + r["active_count"]
         churnet[noegle] = churnet.get(noegle, 0) + r["churned_count"]
 
@@ -679,6 +803,7 @@ def db_customers_at_risk_base(owner_name: str | None = None,
                 WHERE r.FirstDayOfMonth = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
                   {_KUN_B2B}
                   {_KUN_DANSKE}
+                  {_KUN_AKTIVE_BRANDS}
                 GROUP BY r.account, r.org_id
             )
             SELECT a.account,
@@ -759,6 +884,7 @@ def db_abonnementer(maaned: str) -> list:
             WHERE r.FirstDayOfMonth <= %s
               {_KUN_B2B}
               {_KUN_DANSKE}
+              {_KUN_AKTIVE_BRANDS}
         )
         SELECT account, org_id, sites,
                MAX(org_name) AS org_name,
