@@ -8,6 +8,7 @@ from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from log_setup import audit_log
 from nav_utils import register_nav_globals
 from .cache import forbrug_site, ryd_cache, varsel
+from .effekt import effekt_cachet
 from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
@@ -200,6 +201,35 @@ def get_opsigelser_varsel(user=Depends(get_current_user)):
     # forrige måneds cache-post i op til CACHE_SEKUNDER efter midnat.
     maaned = dt.date.today().strftime("%Y-%m")
     data = varsel(teams, maaned)
+    data["meta"]["bruger_har_team_begraensning"] = teams is not None
+    return data
+
+
+@router.get("/retention/effekt_data")
+def get_effekt_data(user=Depends(get_current_user)):
+    """Performance-fanens to paneler: registrerede udfald og træfsikkerhed.
+
+    TEAM-AFGRÆNSET som varsel-panelet ovenfor, og af samme grund: begge bygger
+    på abonnementer_med_ejer, og to paneler på samme fane der tavst er uenige
+    om omfang er den slags man opdager på et ledermøde.
+
+    MÅNEDEN ER SIDSTE HELE MÅNED, ikke indeværende, og det er den ENESTE
+    forskel fra varsel-endpointet. Varsel handler om noget der ligger forude og
+    skal derfor spørge om i dag; effekt gør status på noget afsluttet.
+    Nøgletallene ville ellers stå på en måned der løber endnu, og Porteføljens
+    egen regel er at et foreløbigt tal aldrig må vises som om det var endeligt.
+
+    Regnet HER og ikke inde i effekt_cachet, så den indgår i cache-nøglen:
+    uden den ville et månedsskift blive ved med at ramme forrige måneds
+    cache-post i op til CACHE_SEKUNDER efter midnat.
+
+    Den 1. i en måned peger den på måneden før — altså den måned der lige er
+    afsluttet, hvilket er præcis den man vil se den dag.
+    """
+    owner_name, teams = _resolve_filters(user, RES_OVERBLIK)
+    foerste = dt.date.today().replace(day=1)
+    maaned = (foerste - dt.timedelta(days=1)).strftime("%Y-%m")
+    data = effekt_cachet(teams, maaned)
     data["meta"]["bruger_har_team_begraensning"] = teams is not None
     return data
 
