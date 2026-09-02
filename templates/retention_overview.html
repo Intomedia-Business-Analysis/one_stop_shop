@@ -57,11 +57,10 @@
     .fane-henvisning { font-size:11px; color:var(--ink-3); margin:0 0 18px; }
     .fane-henvisning a { color:var(--ink-2); font-weight:600; }
 
-    /* ── Fane 2 (Performance og effekt): tom ramme, se etape 3. Ingen
-       spinner og intet placeholder-tal — det ærlige svar i dag er "ingen
-       samtaler registreret", og det skal se rigtigt ud, ikke midlertidigt. */
-    .tom-tilstand { padding:32px 20px; text-align:center; color:var(--ink-3); font-size:12px; line-height:1.6; }
-    .tom-tilstand strong { display:block; color:var(--ink-2); font-size:13px; margin-bottom:6px; }
+    /* .tom-tilstand er FJERNET 2026-09-02 sammen med den tomme ramme paa fane
+       2. Fanen har nu rigtige paneler, og de baerer selv deres tomme tilstand
+       i `.v-table .empty` fra hub.css plus en note. En ubrugt klasse med en
+       kommentar om "etape 3" ville pege paa noget der ikke findes. */
 
     /* ── Kontroller og indpakning for panelernes tabeller. Selve tabellerne
        bruger hub.css's .v-table, se nederst i denne blok. */
@@ -283,10 +282,62 @@
 
         <div class="tab-pane" id="tab-performance">
 
-          <!-- Churn-grafen flyttede hertil fra Operationel-fanen 2026-09-01.
-               Trend over tid ER performance, og fanen ledte foer flytningen med
-               en tom tilstand. Panelet ligger FOERST, saa fanen aabner paa
-               indhold der findes, og tomheden staar under det. -->
+          <!-- "Registrerede udfald" og "Naaede vi dem i tide" er fanens
+               EGENTLIGE emne og ligger derfor foerst, tilfoejet 2026-09-02.
+               Churn-grafen laa oeverst fra 2026-09-01, dengang med
+               begrundelsen "saa fanen aabner paa indhold der findes, og
+               tomheden staar under det". Den tomhed er vaek: de to tabeller
+               har raekker nu, og churn-grafen er den brede baggrund man laeser
+               EFTER de to paneler, ikke foer. -->
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Registrerede udfald</h2>
+              <p id="eff-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <div class="kpis" id="eff-tal"></div>
+              <canvas id="effektChart" height="70"></canvas>
+              <div class="tbl-wrap">
+                <table class="v-table">
+                  <thead>
+                    <tr>
+                      <th>Udfald</th>
+                      <th class="num">Antal</th>
+                      <th class="num">Årsværdi på spil</th>
+                    </tr>
+                  </thead>
+                  <tbody id="eff-tbody"></tbody>
+                </table>
+              </div>
+              <div class="graf-note" id="eff-note"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Nåede vi dem i tide</h2>
+              <p id="traef-sub">Indlæser…</p>
+            </div>
+            <div class="panel-body">
+              <div class="kpis" id="traef-tal"></div>
+              <div class="tbl-wrap">
+                <table class="v-table">
+                  <thead>
+                    <tr>
+                      <th>Kunde</th><th>Site</th>
+                      <th>Talt med</th>
+                      <th>Kendsgerning</th>
+                      <th class="num">Dage</th>
+                      <th class="num">Årsværdi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="traef-tbody"></tbody>
+                </table>
+              </div>
+              <div class="graf-note" id="traef-note"></div>
+            </div>
+          </div>
+
           <div class="panel">
             <div class="panel-header">
               <h2>Churn-rate måned for måned</h2>
@@ -302,15 +353,6 @@
             </div>
           </div>
 
-          <div class="panel">
-            <div class="panel-body">
-              <div class="tom-tilstand">
-                <strong>Ingen samtaler er registreret endnu</strong>
-                dbo.RetentionConversations og dbo.RetentionOutcomes har 0 rækker.
-                Fanen fyldes når retention-specialisten begynder at registrere udfald — se etape 3.
-              </div>
-            </div>
-          </div>
         </div>
 
       </div>
@@ -389,12 +431,64 @@ function varselRows() {
   return _varselPromise;
 }
 
+// ── Samme mønster igen, Performance-fanens to paneler. ÉT kald til begge:
+// effekt.effektdata henter abonnementer_med_ejer én gang og bruger den til
+// både nøgletallene og træfsikkerheden, så to fetch her ville betyde to
+// gange det samme tunge opslag — og de to paneler kunne blive uenige om
+// populationen mellem to cache-udløb. ──
+let _effektPromise = null;
+function effektRows() {
+  if (!_effektPromise) {
+    _effektPromise = fetch('/retention/effekt_data').then(res => {
+      if (!res.ok) return res.json().catch(() => ({}))
+        .then(body => Promise.reject(new Error(body && body.detail || ('HTTP ' + res.status))));
+      return res.json();
+    });
+  }
+  return _effektPromise;
+}
+
 // ── Faneskift. URL-hash er kilden til sandhed, så F5 og et delt link husker
 // fanen — samme mønster kunne ikke genbruges fra budget_tool.html, som ikke
 // har hash-synkronisering. ──
 // Churn-grafens Chart.js-instans, sat af grafens IIFE nedenfor. Findes ALENE
 // for resize-kaldet i switchTab, se begrundelsen dér.
 let churnChartRef = null;
+
+// ── Graferne paa fane 2 bygges FOERST naar ruden er synlig. ───────────────
+//
+// MAALT 2026-09-02, og det aendrer hvad man tror om resize(): laegger Chart.js
+// 4.4.0 sine elementer ud i en display:none-rude, bliver geometrien forkert
+// PERMANENT, og instansen kan ikke rettes bagefter. Maalt paa den synlige
+// fane efter et faneskift: effekt-grafens tre soejler stod alle paa x=0, og
+// churn-grafens 69 punkter laa 878 px fra hinanden i et omraade paa 878 px.
+// Aksen og chartArea var derimod rigtige, saa grafen SER ud som om den virker,
+// lige indtil man ser paa selve soejlerne.
+//
+// Hverken resize(), resize(bredde, hoejde), update('none') eller en
+// nulstilling af de inline maal retter det -- alle fire er afproevet i siden.
+// Et forsoeg paa at give ruden layout i konstruktionsoejeblikket
+// (display:block + visibility:hidden) var heller ikke nok.
+//
+// Det ramte churn-grafen fra den flyttede til fane 2 (2026-09-01) og indtil i
+// dag. Kommentaren ved switchTab troede resize() kunne redde den.
+//
+// Derfor udskydes byggeriet i stedet. Naar ruden aldrig har vaeret synlig, er
+// der heller ingen der har set en forkert graf, og bygges den foerst ved
+// faneskiftet, maaler Chart.js en rude med rigtig bredde. Bivirkningen er en
+// gevinst: gaar brugeren aldrig til fane 2, bygges graferne slet ikke.
+//
+// .tab-pane { display:none } ligger i hub.css og bruges ogsaa af
+// budget_tool.html, saa hide-mekanismen kunne ikke laves om i CSS uden at
+// roere en anden side.
+const _venterPaaRude = [];
+function naarRudenErSynlig(paneId, byg) {
+  if (el(paneId).classList.contains('on')) {
+    byg();
+  } else {
+    _venterPaaRude.push(byg);
+  }
+}
 
 function switchTab(id, btn) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
@@ -403,20 +497,26 @@ function switchTab(id, btn) {
   btn.classList.add('on');
   history.replaceState(null, '', '#' + id);
 
-  // FLYTNINGEN 2026-09-01 VENDTE PROBLEMET PAA HOVEDET. Udskydelsen i bunden
-  // af scriptet sikrer, at graferne bygges FOER et faneskift — men den byggede
-  // dem i fane 1, som er synlig som standard. Churn-grafen ligger nu i fane 2,
-  // altsaa i en display:none-rude ved et almindeligt sideindlaes, og et
-  // 0x0-canvas retter sig ikke af sig selv paalideligt.
+  // RETTET 2026-09-02, og den gamle kommentar her var forkert. Den paastod at
+  // resize() kunne redde en graf bygget i en display:none-rude. Det kan den
+  // ikke -- se den fulde maaling ved naarRudenErSynlig. Churn-grafen var
+  // derfor forkert paa fane 2 fra 2026-09-01 til i dag.
   //
-  // Chart.js 4.4.0 har en ResizeObserver, der som regel fanger overgangen fra
-  // display:none, men "som regel" er ikke godt nok paa den ene graf brugeren
-  // kommer for. Kaldet her er billigt og deterministisk.
+  // KOEEN TOEMMES HER, og raekkefoelgen er reglen: klasserne ovenfor er sat
+  // FOERST, saa ruden allerede er synlig naar byggefunktionerne kaldes. Bygges
+  // de foer, er vi tilbage i den fejl de findes for at undgaa.
   //
-  // Begge raekkefoelger er daekket: er grafen endnu ikke bygget, er ref'en
-  // null, og den bliver bygget i en fane der allerede er synlig. Er den bygget
-  // mens fanen var skjult, retter dette kald den, naar man skifter hertil.
-  if (id === 'performance' && churnChartRef) churnChartRef.resize();
+  // shift() i en while, og ikke forEach over en kopi: en byggefunktion maa
+  // gerne laegge en ny i koeen (churn-grafen tegner sin note bagefter), og de
+  // skal ogsaa koere.
+  if (id === 'performance') {
+    while (_venterPaaRude.length) _venterPaaRude.shift()();
+    // Ikke laengere REDNINGEN, men de bliver: aendrer vinduet stoerrelse mens
+    // fane 2 er skjult, ser Chart.js' ResizeObserver det ikke, og saa staar
+    // grafen i den gamle bredde til naeste rigtige resize.
+    if (churnChartRef) churnChartRef.resize();
+    if (effektChartRef) effektChartRef.resize();
+  }
 }
 function applyHashTab() {
   const id = (location.hash || '').slice(1) === 'performance' ? 'performance' : 'operationel';
@@ -649,8 +749,15 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
   // vinduets start, saa hullet vises ikke laengere. Det er nu vinduet selv,
   // noten skal forklare, ikke hullet.
   //
-  // Instansen gemmes i churnChartRef, saa switchTab kan kalde resize() naar
-  // fane 2 bliver synlig. Se begrundelsen ved switchTab.
+  // KONSTRUKTIONEN ER OGSAA UDSKUDT, ikke kun tegn(). Foerste forsoeg lod den
+  // ligge her med den begrundelse at et Chart.js-objekt uden data ikke har
+  // elementer at laegge forkert ud. Det holdt ikke: maalt 2026-09-02 blev
+  // chartArea "6..6" med hoejde 0 og alle 69 punkter paa x=0, selv efter at
+  // tegn() havde koert i en synlig rude. Canvassens 0x0 bages ind ved
+  // KONSTRUKTIONEN, og et senere update() kan ikke komme ud af den.
+  //
+  // Derfor pakket i en funktion, som kaldes sammen med tegn() nede i bunden.
+  const byggChurnGraf = () => {
   churnChartRef = new Chart(el('churnChart'), {
     type: 'line',
     data: {
@@ -743,6 +850,7 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
       },
     },
   });
+  };
 
   // ══════════ Noten under churn-grafen ══════════
   //
@@ -907,7 +1015,14 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
     tegn();
   });
 
-  tegn();
+  // UDSKUDT til fane 2 er synlig: BAADE konstruktionen og den foerste tegn().
+  // Raekkefoelgen er givet -- tegn() skriver i churnChartRef, som byggChurnGraf
+  // opretter. Aarsknapperne ovenfor kalder tegn() direkte, og det er rigtigt:
+  // man kan kun trykke paa dem, naar fanen er fremme, og saa ER grafen bygget.
+  naarRudenErSynlig('tab-performance', () => {
+    byggChurnGraf();
+    tegn();
+  });
 })();
 
 // ── Fane 1, del B: "Opsigelser i varsel" ────────────────────────────────────
@@ -1032,6 +1147,285 @@ const ACCOUNT_LABEL = { watch_medier: 'Watch Medier', monitor: 'Monitor', market
         ? ' ' + nf.format(data.uden_arr) + ' af ' + nf.format(data.i_alt)
           + ' mangler et kendt beløb, så summen er et minimum.'
         : '') + '</p>';
+})();
+
+// ── PANEL: "Registrerede udfald" (fane 2) ─────────────────────────────────
+// Fra effekt.saml_effekt via /retention/effekt_data. Kroner reddet og tabt
+// kommer fra prioritering.maanedens_kpier, den SAMME funktion Dagens opkald
+// bruger — de to sider kan derfor ikke blive uenige om beløbet.
+//
+// Grafens Chart.js-instans gemmes, af samme grund som churnChartRef: panelet
+// ligger på fane 2, som er display:none ved et almindeligt sideindlæs, og et
+// 0x0-canvas retter sig ikke af sig selv pålideligt. Se switchTab.
+let effektChartRef = null;
+
+(async function () {
+  const sub = el('eff-sub');
+  const kr = (v) => nf.format(Math.round(v || 0)) + ' kr.';
+  const fail = (msg) => {
+    sub.textContent = msg;
+    el('eff-tal').innerHTML = '';
+    el('effektChart').remove();
+    el('eff-tbody').innerHTML = '';
+  };
+
+  let svar;
+  try {
+    svar = await effektRows();
+  } catch (e) {
+    return fail(e && e.message ? e.message : 'Kunne ikke hente data — netværksfejl.');
+  }
+  if (!svar || !svar.effekt || !Array.isArray(svar.effekt.serie)) return fail('Ingen data');
+
+  const d = svar.effekt;
+
+  // TOM TILSTAND, og den er en RIGTIG tilstand og ikke en fejl: indtil
+  // specialisten begynder at registrere, ER der ingen udfald. Panelet skal
+  // sige det med ord frem for at tegne en graf uden søjler.
+  if (!d.udfald_i_alt) {
+    el('eff-tal').innerHTML = '';
+    el('effektChart').remove();
+    el('eff-tbody').innerHTML =
+      '<tr><td colspan="3" class="empty">Ingen udfald er registreret endnu.</td></tr>';
+    sub.textContent = 'Ingen registreringer';
+    el('eff-note').innerHTML =
+        '<p>Panelet fyldes af de samtaler retention-specialisten registrerer på '
+      + 'kundesiden. Så længe der ikke er nogen, er der intet at måle — det er '
+      + 'ikke et datahul.</p>';
+    return;
+  }
+
+  sub.textContent = nf.format(d.samtaler_i_alt) + ' samtaler, '
+    + nf.format(d.udfald_i_alt) + ' udfald, ' + d.serie.length + ' måneder';
+
+  const kort = (klasse, label, vaerdi, meta) =>
+      '<div class="kcard' + (klasse ? ' ' + klasse : '') + '">'
+    + '<div class="klabel">' + label + '</div>'
+    + '<div class="kval">' + vaerdi + '</div>'
+    + '<div class="kmeta">' + meta + '</div>'
+    + '</div>';
+
+  // MÅNEDEN STÅR PÅ HVERT KORT. Kortene viser sidste HELE måned, mens graf og
+  // tabel dækker alle måneder — samme opdeling som Porteføljens nøgletal, og
+  // et kort kan ikke bære et forbehold, så måneden skrives i stedet.
+  const m = d.maanedens;
+  const mdrTekst = maanedDK(d.maaned + '-01');
+  el('eff-tal').innerHTML = m
+    ? kort('op', 'Kroner reddet', kr(m.reddet),
+           mdrTekst + (m.reddet_uden_beloeb
+             ? ' · ' + nf.format(m.reddet_uden_beloeb) + ' uden beløb, så tallet er et minimum'
+             : ''))
+    + kort('ned', 'Kroner tabt', kr(m.tabt), mdrTekst)
+    + kort('', 'Samtaler', nf.format(m.samtaler), mdrTekst + ' · distinkte opkald')
+    + kort('', 'Kontaktrate',
+           nf1.format(d.udfald_i_alt ? d.kontakt_opnaaet / d.udfald_i_alt * 100 : 0) + ' %',
+           nf.format(d.kontakt_opnaaet) + ' af ' + nf.format(d.udfald_i_alt)
+           + ' udfald, alle måneder')
+    // Ingen registreringer i referencemåneden er IKKE nul kroner, og de to må
+    // ikke se ens ud på et kort. Derfor en tekst og ikke fire nuller.
+    : kort('', 'Ingen registreringer i ' + mdrTekst, '–',
+           'Graf og tabel nedenfor dækker de måneder der findes');
+
+  // ══════════ Grupperet søjlegraf: reddet mod tabt pr. måned ══════════
+  //
+  // To datasæt side om side og IKKE stablet: reddet og tabt er modsatrettede
+  // størrelser, og en stak ville lægge dem sammen til en total ingen har brug
+  // for. Side om side kan man se hvilken af de to der er størst i en måned,
+  // og det er hele spørgsmålet.
+  // HELE konstruktionen er udskudt til ruden er synlig, i modsaetning til
+  // churn-grafen der bygges tom med det samme. Forskellen er at denne faar sin
+  // data ved konstruktionen, saa elementerne laegges ud med det samme -- og i
+  // en skjult rude stod alle tre soejler paa x=0 (maalt 2026-09-02).
+  //
+  // Bemaerk at grafen SAA korrekt ud i den allerfoerste maaling. Det var held:
+  // dens fetch blev tilfaeldigvis faerdig efter faneskiftet. En graf der er
+  // rigtig naar netvaerket er langsomt og forkert naar det er hurtigt, er
+  // vaerre end en der altid er forkert.
+  naarRudenErSynlig('tab-performance', () => {
+  effektChartRef = new Chart(el('effektChart'), {
+    type: 'bar',
+    data: {
+      labels: d.serie.map(s => s.maaned),
+      datasets: [
+        {
+          label: 'Reddet',
+          data: d.serie.map(s => s.reddet),
+          // --win og IKKE --green. --green er husets brand-token og er
+          // naer-sort (#1C1C1A), saa soejlerne ville staa sorte mod de roede
+          // og ikke laeses som "godt". --win (#1F8A5B) er den POSITIVE
+          // status-farve, og det er praecis den .kcard.op paa samme panel
+          // bruger til sin venstrekant — graf og kort skal sige det samme.
+          backgroundColor: rgba(cssVar('--win', '#1F8A5B'), 0.55),
+          borderColor: cssVar('--win', '#1F8A5B'),
+          borderWidth: 1,
+        },
+        {
+          label: 'Tabt',
+          data: d.serie.map(s => s.tabt),
+          backgroundColor: rgba(cssVar('--danger', '#8A2B2B'), 0.55),
+          borderColor: cssVar('--danger', '#8A2B2B'),
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+        tooltip: {
+          callbacks: {
+            labelColor: tooltipFarve,
+            title: (items) => maanedDK(items[0].label),
+            label: (ctx) => {
+              const s = d.serie[ctx.dataIndex];
+              const navn = ctx.dataset.label;
+              let t = navn + ': ' + kr(ctx.parsed.y);
+              if (navn === 'Reddet' && s.reddet_uden_beloeb) {
+                t += ' (' + nf.format(s.reddet_uden_beloeb) + ' uden beløb)';
+              }
+              return t;
+            },
+            afterBody: (items) => {
+              const s = d.serie[items[0].dataIndex];
+              return nf.format(s.samtaler) + ' samtaler';
+            },
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { callback: (v, i) => maanedDK(d.serie[i].maaned) } },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Kroner', font: { size: 10 },
+                   color: cssVar('--ink-3', '#6B6862') },
+          // Tusinder frem for fulde kroner: beløbene går til over en halv
+          // million, og syv cifre pr. gitterlinje gør aksen ulæselig.
+          ticks: { callback: (v) => nf.format(Math.round(v / 1000)) + 'k' },
+        },
+      },
+    },
+  });
+  });
+
+  // ══════════ Tabel: udfaldsfordeling ══════════
+  el('eff-tbody').innerHTML = d.fordeling.length
+    ? d.fordeling.map(f =>
+        '<tr><td>' + f.label + '</td><td class="num">' + nf.format(f.antal)
+        + '</td><td class="num">' + kr(f.arr_paa_spil)
+        + (f.uden_beloeb ? ' <span class="kmeta">(' + nf.format(f.uden_beloeb)
+                           + ' uden beløb)</span>' : '')
+        + '</td></tr>'
+      ).join('')
+    : '<tr><td colspan="3" class="empty">Ingen udfald med et resultat endnu.</td></tr>';
+
+  el('eff-note').innerHTML =
+      '<p><strong>Nøgletallene er ' + mdrTekst + ', graf og tabel er alle måneder.</strong> '
+    + 'Kortene viser sidste hele måned, fordi en måned der løber endnu ville se '
+    + 'endelig ud.</p>'
+    + '<p><strong>«Kroner reddet» er årsværdien EFTER samtalen</strong> på de abonnementer '
+    + 'der blev fornyet eller nedgraderet, og «kroner tabt» er værdien FØR på dem der '
+    + 'blev opsagt. Blev en fornyelse registreret uden beløb, tæller den som 0 kr., '
+    + 'og antallet står på kortet — summen er derfor et minimum.</p>'
+    + '<p><strong>En prisstigning kan ikke skelnes fra en flad fornyelse.</strong> '
+    + 'Udfaldet <code>opgraderet</code> findes ikke i databasen, så en fornyelse til '
+    + 'højere pris registreres som «fornyet». Beløbet tælles korrekt med, det er kun '
+    + 'evnen til at skille de to der mangler.</p>'
+    + '<p><strong>«Årsværdi på spil» er værdien FØR samtalen</strong> for alle udfaldstyper, '
+    + 'så rækkerne er sammenlignelige. Den er ikke det samme som reddet eller tabt.</p>';
+})();
+
+// ── PANEL: "Nåede vi dem i tide" (fane 2) ─────────────────────────────────
+// Fra effekt.saml_traefsikkerhed. Ingen graf, kun tal og tabel: der er tre
+// spande og en håndfuld rækker, og en graf over tre tal er pynt.
+(async function () {
+  const sub = el('traef-sub');
+  const kr = (v) => nf.format(Math.round(v || 0)) + ' kr.';
+  const fail = (msg) => {
+    sub.textContent = msg;
+    el('traef-tal').innerHTML = '';
+    el('traef-tbody').innerHTML = '';
+  };
+
+  let svar;
+  try {
+    svar = await effektRows();
+  } catch (e) {
+    return fail(e && e.message ? e.message : 'Kunne ikke hente data — netværksfejl.');
+  }
+  if (!svar || !svar.traefsikkerhed) return fail('Ingen data');
+
+  const t = svar.traefsikkerhed;
+  const mdrTekst = maanedDK(t.maaned + '-01');
+  const pct = (n) => t.i_alt ? nf1.format(n / t.i_alt * 100) + ' %' : '–';
+
+  if (!t.i_alt) {
+    el('traef-tal').innerHTML = '';
+    el('traef-tbody').innerHTML =
+      '<tr><td colspan="6" class="empty">Ingen abonnementer ophørte i ' + mdrTekst + '.</td></tr>';
+    sub.textContent = 'Ingen ophør i ' + mdrTekst;
+    return;
+  }
+
+  sub.textContent = nf.format(t.i_alt) + ' abonnementer ophørte i ' + mdrTekst;
+
+  const kort = (klasse, label, vaerdi, meta) =>
+      '<div class="kcard' + (klasse ? ' ' + klasse : '') + '">'
+    + '<div class="klabel">' + label + '</div>'
+    + '<div class="kval">' + vaerdi + '</div>'
+    + '<div class="kmeta">' + meta + '</div>'
+    + '</div>';
+
+  el('traef-tal').innerHTML =
+      kort('op', 'Nået i tide', nf.format(t.i_tide),
+           pct(t.i_tide) + ' · talt med inden opsigelsen var en kendsgerning')
+    + kort('ned', 'For sent', nf.format(t.for_sent),
+           pct(t.for_sent) + ' · talt med, men de havde allerede sagt op')
+    + kort('ned', 'Aldrig talt med', nf.format(t.aldrig),
+           pct(t.aldrig) + ' · ingen registreret samtale')
+    + kort('', 'Tabt på de for sene', kr(t.arr_for_sent),
+           t.uden_arr
+             ? nf.format(t.uden_arr) + ' uden kendt beløb — minimum'
+             : 'ACV pr. abonnement');
+
+  el('traef-tbody').innerHTML = t.raekker.length
+    ? t.raekker.map(r => {
+        // Fortegnet er regnet i effekt.py, så det kun defineres ét sted.
+        // Negativ = vi nåede dem, positiv = vi kom for sent.
+        const iTide = r.dage <= 0;
+        return '<tr><td>' + (r.org_name || '(uden navn)')
+          + '</td><td>' + r.site
+          + '</td><td>' + r.talt
+          + '</td><td>' + r.kendsgerning
+          + '</td><td class="num">' + (iTide
+              ? nf.format(-r.dage) + ' før'
+              : nf.format(r.dage) + ' efter')
+          + '</td><td class="num">' + (r.arr_dkk === null ? '–' : kr(r.arr_dkk))
+          + '</td></tr>';
+      }).join('')
+    : '<tr><td colspan="6" class="empty">Ingen af månedens ophør havde en registreret samtale.</td></tr>';
+
+  // FORBEHOLDET SKAL STÅ HER, ikke opdages. Med få registreringer er "aldrig
+  // talt med" tæt på 100 %, og det siger intet om operationen — kun at
+  // registreringen lige er begyndt.
+  const faaData = (svar.meta && svar.meta.udfald_i_alt || 0) < 200;
+  el('traef-note').innerHTML =
+      (faaData
+        ? '<p><strong>Læs ikke procenterne endnu.</strong> Der er '
+          + nf.format(svar.meta && svar.meta.udfald_i_alt || 0)
+          + ' registrerede udfald i alt, så «aldrig talt med» er nødvendigvis højt. '
+          + 'Et lavt tal betyder her «vi er lige begyndt at registrere», ikke '
+          + '«vi rammer aldrig».</p>'
+        : '')
+    + '<p><strong>Populationen er abonnementer der OPHØRTE i ' + mdrTekst + '</strong>, '
+    + 'afgrænset på <code>service_activation_date</code> — samme dato som churn-tællingen '
+    + 'og resten af hubben bruger.</p>'
+    + '<p><strong>«Kendsgerning» er den tidligste af beslutningsdatoen og ophørsdatoen.</strong> '
+    + 'Varslet er typisk 34 dage, så målte vi mod ophøret alene, ville et opkald midt i '
+    + 'varslet tælle som «i tide», selvom kunden allerede havde sagt op. Og '
+    + 'registreringsdatoen alene kan ikke bruges: i 7,5 % af opsigelserne er den tastet ind '
+    + 'EFTER abonnementet var ophørt.</p>'
+    + '<p><strong>Baren er vores eget system, ikke kundens hoved.</strong> Vi kan ikke vide '
+    + 'hvornår hun besluttede sig, kun hvornår det blev en kendsgerning hos os.</p>';
 })();
 
 // ── Fane 1, del C: de to måned-mod-måned-paneler ───────────────────────────
@@ -1399,7 +1793,14 @@ function engMetric(key, btn) {
 // nu bevidst i en skjult rude, og det er switchTab's resize()-kald der retter
 // den, når brugeren skifter derhen. Udskydelsen her bevarer stadig sin værdi
 // for "Opsigelser i varsel"s graf på fane 1 ved et direkte #performance-link.
-Promise.allSettled([monthlyRows(), varselRows()]).finally(applyHashTab);
+//
+// effektRows() ER MED, selvom dens graf ligger paa fane 2 og derfor er
+// daekket af switchTab's resize-kald. Grunden er den modsatte vej: lander man
+// paa #operationel (normaltilfaeldet), skifter man aldrig TIL performance, og
+// saa er der intet resize-kald. Uden effektRows her ville applyHashTab kunne
+// koere foer effekt-panelets `await` var faerdig, og fane 2 ville blive skjult
+// midt i konstruktionen. Med den paa er begge veje daekket.
+Promise.allSettled([monthlyRows(), varselRows(), effektRows()]).finally(applyHashTab);
 </script>
 </body>
 </html>

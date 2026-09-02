@@ -973,8 +973,27 @@ def db_acv_beloeb_pr_site() -> dict:
     return ud
 
 
-def db_opsigelser() -> dict:
-    """{(account, org_id, sites): 'YYYY-MM-DD'} - datoen for en GAELDENDE opsigelse.
+def db_opsigelsesdatoer() -> dict:
+    """{(account, org_id, sites): {'ophoer': 'YYYY-MM-DD', 'besluttet': ...}}.
+
+    BAERER BEGGE DATOER, og det er hele grunden til at den findes ved siden af
+    db_opsigelser nedenfor. Reglen for hvornaar en opsigelse GAELDER maa kun
+    staa eet sted, saa db_opsigelser er en projektion af denne og ikke en
+    query for sig.
+
+    `ophoer` er service_activation_date, altsaa hvornaar abonnementet stopper.
+    Det er den dato hele huset regner paa, og den afgoer hvilken MAANED en
+    opsigelse hoerer til.
+
+    `besluttet` er won_time, altsaa hvornaar opsigelsen blev en kendsgerning i
+    Pipedrive. Den er tilfoejet 2026-09-02 til Performance-fanens
+    traefsikkerhed, og den maa IKKE bruges til at afgoere hvornaar et
+    abonnement holdt op. Maalt paa 1.833 opsigelser med ophoer i 2026: 73,9 %
+    har won_time FOER ophoeret (median 34 dage, p90 97), 17,2 % samme dag og
+    8,9 % har won_time EFTER ophoeret, op til 160 dage. De sidste er
+    bagudregistreringer, og de er praecis derfor `besluttet` alene heller ikke
+    er beslutningsoejeblikket. Se effekt.saml_traefsikkerhed, hvor de to datoer
+    kombineres med MIN.
 
     Et abonnement er opsagt, naar der findes en vundet opsigelse dateret EFTER
     det seneste livstegn paa aftalen. Retningen ER reglen: ligger opsigelsen
@@ -990,8 +1009,9 @@ def db_opsigelser() -> dict:
     op og kommet tilbage aar senere. Uden datosammenligningen ville en
     fjerdedel af portefoeljen forsvinde tavst.
 
-    DATOEN ER service_activation_date, ikke won_time. won_time er hvornaar
-    opsigelsen blev REGISTRERET, sad er hvornaar abonnementet OPHOERER. Maalt
+    OPHOERSDATOEN ER service_activation_date, ikke won_time. won_time er
+    hvornaar opsigelsen blev REGISTRERET, sad er hvornaar abonnementet
+    OPHOERER. Maalt
     paa 12.755 vundne opsigelser ligger sad EFTER won_time i 69% af dem, typisk
     32 til 200 dage, altsaa varslet: Oersteds Klimamonitor blev opsagt
     2026-08-10 med ophoer 2027-08-20. Reserven COALESCE(..., won_time,
@@ -1028,6 +1048,11 @@ def db_opsigelser() -> dict:
         cur.execute(f"""
             WITH deals AS (
                 SELECT account, org_id, sites, pipeline_name, status,
+                       -- won_time baeres RAA videre ved siden af `dato`.
+                       -- `dato` er allerede en COALESCE hvor won_time er
+                       -- reserve nummer to, saa den kan ikke bruges til at
+                       -- svare paa "hvornaar blev det registreret".
+                       won_time,
                        COALESCE(
                            CASE WHEN service_activation_date = '2019-01-01'
                                 THEN NULL
@@ -1045,14 +1070,29 @@ def db_opsigelser() -> dict:
                 GROUP BY account, org_id, sites
             ),
             opsigelse AS (
-                SELECT account, org_id, sites, MAX(dato) AS opsigelsesdato
+                -- MAX paa BEGGE datoer, og de kan komme fra hver sin raekke.
+                -- Har et abonnement to vundne opsigelser, er den seneste
+                -- ophoersdato den gaeldende, og den seneste registrering er
+                -- det tidligste tidspunkt vi kan bevise at vi vidste det.
+                -- MIN-reglen i effekt.saml_traefsikkerhed taaler det: den
+                -- vaelger alligevel den tidligste af de to.
+                SELECT account, org_id, sites,
+                       MAX(dato)     AS opsigelsesdato,
+                       MAX(won_time) AS besluttet
                 FROM deals
                 WHERE status = 'won'
                   AND pipeline_name IN ({ph_ops})
                 GROUP BY account, org_id, sites
             )
             SELECT o.account, o.org_id, o.sites,
-                   CONVERT(char(10), o.opsigelsesdato, 23) AS opsigelsesdato
+                   CONVERT(char(10), o.opsigelsesdato, 23) AS opsigelsesdato,
+                   -- COALESCE til ophoeret: won_time er udfyldt paa alle 1.837
+                   -- opsigelser med ophoer i 2026 (maalt 2026-09-02), men en
+                   -- NULL her ville give None i Python og faa MIN-reglen til
+                   -- at kaste TypeError foerste gang den ramte -- altsaa i
+                   -- produktion og aldrig under udvikling.
+                   CONVERT(char(10), COALESCE(o.besluttet,
+                                              o.opsigelsesdato), 23) AS besluttet
             FROM opsigelse o
             JOIN livstegn l
               ON l.account = o.account AND l.org_id = o.org_id
@@ -1064,7 +1104,7 @@ def db_opsigelser() -> dict:
         raekker = cur.fetchall()
         conn.close()
     except Exception:
-        logger.exception("db_opsigelser fejlede")
+        logger.exception("db_opsigelsesdatoer fejlede")
         return {}
 
     ud: dict = {}
@@ -1073,8 +1113,29 @@ def db_opsigelser() -> dict:
         # CONVERT i SQL'en gav en streng med vilje. TDS 7.0 leverer date og
         # datetime2 som str alligevel, og resten af modulet sammenligner datoer
         # som tekst, saa 'YYYY-MM-DD' kan bruges direkte.
-        ud[(kunde[0], kunde[1], r["sites"])] = r["opsigelsesdato"]
+        ud[(kunde[0], kunde[1], r["sites"])] = {
+            "ophoer": r["opsigelsesdato"],
+            "besluttet": r["besluttet"],
+        }
     return ud
+
+
+def db_opsigelser() -> dict:
+    """{(account, org_id, sites): 'YYYY-MM-DD'} - ophoersdatoen, som foer.
+
+    PROJEKTION, ikke en query. Hele reglen staar i db_opsigelsesdatoer, og
+    denne funktion kaster kun `besluttet` vaek. Grunden til at den stadig
+    findes med praecis samme signatur og returform er kaldstederne:
+    risiko.py og varsel.py laeser en FLAD datostreng og sammenligner den
+    direkte med `<=` mod 'YYYY-MM-DD'.
+
+    FAELDEN, hvis nogen faar lyst til at returnere ordbogen herfra: begge
+    kaldsteder bruger .get(), og .get() ville stadig svare noget. En ordbog er
+    sand, saa `if not dato` ville vaere falsk, og `dato <= i_dag` ville kaste
+    TypeError paa varsel-panelet -- eller, vaerre, sammenligne noget der ikke
+    er en dato. Det ville ikke fejle ved import og ikke ved test uden DB.
+    """
+    return {noegle: v["ophoer"] for noegle, v in db_opsigelsesdatoer().items()}
 
 
 def abonnementer_med_ejer(maaned: str,

@@ -709,3 +709,52 @@ def db_maanedens_udfald(maaned: str) -> list:
     except Exception:
         logger.exception("db_maanedens_udfald(%s) fejlede", maaned)
         return []
+
+
+def db_alle_udfald() -> list:
+    """ALLE udfald med samtalens dato. Grundlaget for Performance-fanen.
+
+    HVORFOR IKKE db_maanedens_udfald I EN LOEKKE: Performance-fanen viser hver
+    maaned der findes en registrering i, og et kald pr. maaned er et
+    databaseopslag pr. maaned. Den anden grund vejer tungere: den funktion
+    returnerer ikke `site`, og traefsikkerheden SKAL noegles paa abonnementet
+    (account, org_id, site) for at kunne slaas op mod en opsigelse.
+
+    UFILTRERET, samme valg som db_seneste_udfald: afgraensningen paa team sker
+    i Python, fordi ACV's ejer-opslag er en query for sig med sine egne
+    faelder, og den hoerer ikke i skrivesiden. Raekkerne er faa -- en haandfuld
+    om dagen -- saa der er intet at spare ved at filtrere i SQL.
+
+    MAANEDEN GAAR PAA `contacted_at`, ikke `created_at`. Samme beslutning og
+    samme begrundelse som db_maanedens_udfald: et opkald taget 31. juli og
+    tastet ind 1. august hoerer i juli. Kalderen laeser maaneden af
+    `contacted_at` selv, saa reglen kun findes eet sted.
+
+    `conversation_id` baeres med, fordi "antal samtaler" er DISTINKTE samtaler
+    og ikke udfald: een samtale kan daekke syv abonnementer og er stadig eet
+    opkald.
+
+    Tom liste ved fejl, og det er en bevidst svaghed af samme slags som
+    db_historik's: fanen maa ikke gaa ned, fordi tallene ikke kan hentes. Men
+    en tom liste ser ud som "der er aldrig registreret noget", saa panelet skal
+    skelne de to paa `meta` -- derfor logges fejlen her.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            """SELECT o.account, o.org_id, o.site, o.conversation_id,
+                      o.outcome, o.contact_result,
+                      o.arr_before_dkk, o.arr_before_kilde, o.arr_after_dkk,
+                      o.followup_date, c.contacted_at
+               FROM dbo.RetentionOutcomes o
+               JOIN dbo.RetentionConversations c
+                    ON c.conversation_id = o.conversation_id
+               ORDER BY c.contacted_at, o.outcome_id;"""
+        )
+        rows = cur.fetchall()
+        conn.close()
+        return [_normaliser(r) for r in rows]
+    except Exception:
+        logger.exception("db_alle_udfald fejlede")
+        return []
