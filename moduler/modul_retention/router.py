@@ -3,20 +3,24 @@ import datetime as dt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
 from auth import allowed_data_teams, get_current_user, resolve_resource_access
 from log_setup import audit_log
 from nav_utils import register_nav_globals
-from .cache import forbrug_site, ryd_cache, varsel
+from .cache import bogens_site_stammer, forbrug_site, ryd_cache, varsel
 from .effekt import effekt_cachet
 from .kunde import kunde_detalje
 from .outcomes import (AABNE_UDFALD, ARR_KILDE_BEKRAEFTET, ARR_KILDE_DELING,
                        ARR_KILDER, KANALER, KONTAKT_OPNAAET, KONTAKTRESULTATER,
-                       UDFALD, registrer_samtale, valider_registrering)
+                       UDFALD, gem_pipedrive_aktivitet, registrer_samtale,
+                       valider_registrering)
+from .pipedrive import preview_opkalds_aktivitet, send_opkalds_aktivitet
 from .prioritering import prioriteringsdata
 from .queries import (account_churn_rate, db_monthly_active_counts,
                       db_monthly_churn_pr_site)
 from .usage import latest_complete_month
+from .zones import site_stamme
 
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)
@@ -175,11 +179,36 @@ def get_forbrug_pr_site(user=Depends(get_current_user)):
     """
     _, teams = _resolve_filters(user, RES_OVERBLIK)
     data = forbrug_site()
+    reference = latest_complete_month(data["maaneder"])
+
+    # Brand-afgrænsningen. Snowplow-eksporten kender kun domænenavne, så
+    # den rammes hverken af queries._KUN_AKTIVE_BRANDS eller af
+    # er_aktiv_account. Uden det her blev monitor og techwatch.no ved med
+    # at stå i panelet, efter at brandene var taget ud af resten af
+    # modulet (fundet 2026-09-02).
+    #
+    # HER OG IKKE I usage.forbrug_pr_site: den funktion læser en fil og
+    # kender ingen database. Sammenligningen sker på site-STAMMEN, se
+    # zones.site_stamme for hvorfor et rent navneopslag ville tabe
+    # Nordic Defence Watch.
+    #
+    # Tom mængde = vi ved det ikke, og så vises ALT. Et panel der bliver
+    # tomt, fordi en query fejlede, ville ligne et datahul.
+    stammer = bogens_site_stammer(reference)
+    pr_site = data["pr_site"]
+    if stammer:
+        pr_site = {s: v for s, v in pr_site.items()
+                   if site_stamme(s) in stammer}
+
+    meta = dict(data["meta"])
+    meta["sites_med_forbrug"] = len(pr_site)
+    meta["sites_udenfor_afgraensning"] = len(data["pr_site"]) - len(pr_site)
+
     return {
-        "pr_site": data["pr_site"],
+        "pr_site": pr_site,
         "maaneder": data["maaneder"],
-        "referencemaaned": latest_complete_month(data["maaneder"]),
-        "meta": data["meta"],
+        "referencemaaned": reference,
+        "meta": meta,
         "bruger_har_team_begraensning": teams is not None,
     }
 
@@ -360,25 +389,18 @@ def _kraev_kunde_i_raekkevidde(account: str, org_id: str, teams) -> None:
         raise HTTPException(403, "Kunden ligger uden for din dataadgang")
 
 
-@router.post("/retention/kunde/{account}/{org_id}/samtale")
-async def post_registrer_samtale(account: str, org_id: str, request: Request,
-                                 user=Depends(get_current_user)):
-    """Registrér én samtale og de udfald den gav (Kundeside).
+def _byg_registrering(account: str, org_id: str, body: dict, user) -> tuple:
+    """JSON-body → (samtale, udfald) i outcomes.py's vokabular.
 
-    Den ENESTE rute i modulet der skriver til produktion. Derfor:
-    valideringen kaldes server-side, selv om formularen validerer i forvejen —
-    browseren er ikke en sikkerhedsgrænse — og registreringen auditeres som de
-    øvrige skrivninger i hubben.
+    Trukket ud 2026-09-02, da Pipedrive-previewet kom til. De to ruter SKAL
+    bygge nøjagtig samme to dicts: previewet er kun sandt, hvis det er den
+    payload, skrivningen ville have sendt, og to kopier af den her blok ville
+    drive fra hinanden ved den første nye kolonne.
 
-    `account` og `org_id` tages fra STIEN og ikke fra body'en. Ligger de to
-    steder, kan de være uenige, og så ville et udfald kunne skrives på en anden
-    kunde end den, adgangen blev tjekket for.
+    `account` og `org_id` kommer fra STIEN, ikke fra body'en. Ligger de to
+    steder, kan de være uenige, og så ville et udfald kunne skrives på en
+    anden kunde end den, adgangen blev tjekket for.
     """
-    _, teams = _resolve_filters(user, RES_KUNDE)
-    _kraev_kunde_i_raekkevidde(account, org_id, teams)
-
-    body = await request.json()
-
     samtale = {
         "account":      account,
         "org_id":       org_id,
@@ -404,6 +426,56 @@ async def post_registrer_samtale(account: str, org_id: str, request: Request,
             "followup_date":      _dato(u.get("followup_date")),
             "note":               (str(u.get("note") or "").strip()[:4000] or None),
         })
+    return samtale, udfald
+
+
+@router.post("/retention/kunde/{account}/{org_id}/samtale/pipedrive_preview")
+async def post_pipedrive_preview(account: str, org_id: str, request: Request,
+                                 user=Depends(get_current_user)):
+    """Vis den Pipedrive-aktivitet en registrering VILLE give. Skriver intet.
+
+    Hverken i vores database eller i Pipedrive. Ruten findes, fordi den
+    rigtige afsendelse sker efter et opkald, hvor ingen kan se payloaden
+    igennem — og en integration, der først kan efterses når den har skrevet,
+    kan ikke efterses.
+
+    Samme adgangstjek som skrivningen: previewet afslører organisationens
+    ejer og kundens data, og det er lige så følsomt som selve registreringen.
+    """
+    _, teams = _resolve_filters(user, RES_KUNDE)
+    _kraev_kunde_i_raekkevidde(account, org_id, teams)
+
+    body = await request.json()
+    samtale, udfald = _byg_registrering(account, org_id, body, user)
+
+    # Valideres OGSÅ her. Et preview af en payload, som databasen ville have
+    # afvist, ville vise specialisten noget der aldrig kan blive til noget.
+    fejl = valider_registrering(samtale, udfald)
+    if fejl:
+        raise HTTPException(422, fejl)
+
+    return await run_in_threadpool(preview_opkalds_aktivitet, samtale, udfald)
+
+
+@router.post("/retention/kunde/{account}/{org_id}/samtale")
+async def post_registrer_samtale(account: str, org_id: str, request: Request,
+                                 user=Depends(get_current_user)):
+    """Registrér én samtale og de udfald den gav (Kundeside).
+
+    Den ENESTE rute i modulet der skriver til produktion. Derfor:
+    valideringen kaldes server-side, selv om formularen validerer i forvejen —
+    browseren er ikke en sikkerhedsgrænse — og registreringen auditeres som de
+    øvrige skrivninger i hubben.
+
+    `account` og `org_id` tages fra STIEN og ikke fra body'en. Ligger de to
+    steder, kan de være uenige, og så ville et udfald kunne skrives på en anden
+    kunde end den, adgangen blev tjekket for.
+    """
+    _, teams = _resolve_filters(user, RES_KUNDE)
+    _kraev_kunde_i_raekkevidde(account, org_id, teams)
+
+    body = await request.json()
+    samtale, udfald = _byg_registrering(account, org_id, body, user)
 
     fejl = valider_registrering(samtale, udfald)
     if fejl:
@@ -425,8 +497,31 @@ async def post_registrer_samtale(account: str, org_id: str, request: Request,
     # siders data, fordi der kun er én cache — se cache.py.
     ryd_cache()
 
+    # PIPEDRIVE TIL SIDST, og aldrig før commit. Registreringen er gemt nu, og
+    # send_opkalds_aktivitet kaster ikke: går CRM-kaldet galt, får specialisten
+    # det at vide i svaret, men udfaldet er stadig registreret. Byttede man om,
+    # kunne en API-timeout kaste et opkald væk, hun ikke kan tage om.
+    #
+    # run_in_threadpool, fordi requests er blokerende og ruten er async —
+    # samme mønster som modul_portfolio_alignment. Uden den ville ét langsomt
+    # Pipedrive-svar holde HELE event loopet, altså alle andres sider.
+    pipedrive = await run_in_threadpool(send_opkalds_aktivitet, samtale, udfald)
+
+    # Skriv aktivitetens id tilbage på samtalen, så koblingen kan findes
+    # igen. Egen UPDATE, fordi id'et først findes nu — se
+    # outcomes.gem_pipedrive_aktivitet. Fejler den, er ALT andet stadig i
+    # orden, og svaret siger det.
+    if pipedrive.get("sendt") and pipedrive.get("aktivitet_id"):
+        pipedrive["id_gemt"] = await run_in_threadpool(
+            gem_pipedrive_aktivitet, conversation_id,
+            pipedrive["aktivitet_id"])
+
     audit_log("retention_samtale_registreret", user=user, request=request,
               account=account, org_id=org_id,
-              conversation_id=conversation_id, udfald=len(udfald))
+              conversation_id=conversation_id, udfald=len(udfald),
+              pipedrive=pipedrive.get("aarsag") or
+                        ("sendt" if pipedrive.get("sendt") else "ikke_sendt"),
+              pipedrive_aktivitet_id=pipedrive.get("aktivitet_id"))
 
-    return {"ok": True, "conversation_id": conversation_id, "udfald": len(udfald)}
+    return {"ok": True, "conversation_id": conversation_id,
+            "udfald": len(udfald), "pipedrive": pipedrive}

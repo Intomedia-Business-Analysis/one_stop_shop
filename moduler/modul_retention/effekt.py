@@ -43,7 +43,8 @@ from . import cache
 from .outcomes import (AABNE_UDFALD, FORTSAT_KUNDE, KONTAKT_OPNAAET,
                        INTET_SITE, LUKKEDE_UDFALD, UDFALD)
 from .prioritering import maanedens_kpier
-from .queries import abonnementer_med_ejer, db_opsigelsesdatoer
+from .queries import (abonnementer_med_ejer, db_opsigelsesdatoer,
+                      er_aktiv_account)
 from .usage import customer_key
 
 logger = logging.getLogger(__name__)
@@ -301,6 +302,14 @@ def effektdata(teams: list | None = None, maaned: str | None = None) -> dict:
     maaned = maaned or date.today().strftime("%Y-%m")
     abonnementer = abonnementer_med_ejer(maaned, teams=teams)
     udfald = db_alle_udfald()
+    # Brand-afgraensningen. `tilladte` nedenfor daekker allerede alle TALLENE
+    # i panelet, fordi den bygges af abonnementer_med_ejer, som gaar gennem
+    # SQL-filtret. Men `meta.udfald_i_alt` taelles paa den RAA liste og bruges
+    # af skabelonen til "for lidt data"-advarslen (retention_overview.html):
+    # uden den her stod der 22 udfald, mens panelet regnede paa 16 (maalt
+    # 2026-09-02, de seks er 5 monitor + 1 marketwire). Se
+    # queries.er_aktiv_account.
+    udfald = [u for u in udfald if er_aktiv_account(u["account"])]
 
     # Samme afgraensning som listerne paa fanen, altsaa kundens ejer og team og
     # ikke `created_by`. Er de to forskellige, beskriver noegletallene en anden

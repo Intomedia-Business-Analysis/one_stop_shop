@@ -24,10 +24,11 @@ fælde, der venter på den næste, der lægger noget i den.
 import logging
 import time
 
-from .queries import db_acv_ejere, db_org_navne
+from .queries import db_abonnementer, db_acv_ejere, db_org_navne
 from .risiko import abonnementer_i_risiko
 from .usage import forbrug_pr_abonnement, forbrug_pr_site
 from .varsel import opsigelser_i_varsel
+from .zones import site_stamme
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,36 @@ def forbrug_site():
     læser samme fil men returnerer forskellige ting. Én ryd_cache rammer
     stadig begge, fordi den tømmer hele _cache."""
     return cachet(("forbrug_site",), forbrug_pr_site)
+
+
+def bogens_site_stammer(maaned):
+    """Site-stammerne i modulets EGEN bog for `maaned`, cachet.
+
+    Afgrænsningen af forbrugspanelet. Snowplow-eksporten er en TREDJE
+    datakilde ved siden af dbo.retention og dbo.RetentionOutcomes, og
+    hverken queries._KUN_AKTIVE_BRANDS eller queries.er_aktiv_account
+    rammer den: filen kender kun domænenavne, ikke accounts.
+
+    UDLEDT AF BOGEN, ikke en håndskrevet liste over monitor-domæner. En
+    liste skal vedligeholdes hver gang der kommer et site, og den fejler
+    tavst når nogen glemmer det. Bogen ved altid selv hvilke sites vi
+    sælger, så afgrænsningen følger med af sig selv, både når monitor
+    tændes igen og når et nyt Watch-site fødes.
+
+    Tom mængde betyder "jeg ved det ikke" (db_abonnementer svarer [] ved
+    fejl), og kalderen skal så vise ALT frem for ingenting — et tomt
+    panel ville ligne et datahul. Derfor cache_tomt=False: ét sekunds
+    databaseuheld må ikke låse panelet i ti minutter.
+    """
+    return cachet(("bogens_site_stammer", maaned),
+                  lambda: _bogens_site_stammer(maaned), cache_tomt=False)
+
+
+def _bogens_site_stammer(maaned) -> frozenset:
+    """Ucachet. `maaned` er 'YYYY-MM'."""
+    stammer = {site_stamme(r["sites"]) for r in db_abonnementer(maaned)}
+    stammer.discard(None)
+    return frozenset(stammer)
 
 
 def varsel(teams, maaned):

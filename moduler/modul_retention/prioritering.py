@@ -29,6 +29,7 @@ from .outcomes import (
     opfoelgninger,
     tilbage_paa_listen,
 )
+from .queries import er_aktiv_account
 from .usage import customer_key
 from .zones import zone_alvor
 
@@ -499,6 +500,17 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
     tilladte = set(cache.ejere(teams)) if teams else None
 
     seneste = db_seneste_udfald()
+    # Brand-afgrænsningen FØRST, og før team-filtret. RetentionOutcomes går
+    # uden om queries._KUN_AKTIVE_BRANDS (tabellen er vores egen, ikke
+    # dbo.retention), så uden den her overlever et lovet opkald på en
+    # deaktiveret account. Se queries.er_aktiv_account for den ene række det
+    # drejede sig om 2026-09-02, og for hvorfor landeafgrænsningen IKKE
+    # gælder samme sted.
+    #
+    # Her og ikke i db_seneste_udfald: de tre ting der læser `seneste`
+    # (liste 1, loftets tæller, filter 3 og 4) deler netop denne ene
+    # afgrænsning, se docstringen ovenfor.
+    seneste = {n: r for n, r in seneste.items() if er_aktiv_account(n[0])}
     if tilladte is not None:
         seneste = {n: r for n, r in seneste.items()
                    if kunde_noegle(r) in tilladte}
@@ -542,8 +554,13 @@ def prioriteringsdata(i_dag: date, teams: list | None = None,
         "maks_aabne_sager":  MAKS_AABNE_SAGER,
         "naeste_udtraek":    udtraek.isoformat(),
         "dage_til_udtraek":  (udtraek - i_dag).days,"reference_maaned": risiko_data["meta"]["reference_maaned"],
-        "kpier":            maanedens_kpier(db_maanedens_udfald(maaned),
-                                            tilladte),
+        # Samme afgrænsning som `seneste` ovenfor, af samme grund: uden den
+        # ville månedens tre tal tælle opkald på kunder, der ikke findes i
+        # modulet, og KPI'erne ville modsige listerne under sig.
+        "kpier":            maanedens_kpier(
+                                [r for r in db_maanedens_udfald(maaned)
+                                 if er_aktiv_account(r["account"])],
+                                tilladte),
         "opfoelgninger":    liste1,
         "nye_risici":       nye_risici,
         "risikoliste":      risikoliste,

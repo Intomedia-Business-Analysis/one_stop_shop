@@ -199,6 +199,17 @@
     .kvit { background:#eef7ee; border:1px solid var(--win); border-radius:var(--r);
             padding:10px 14px; font-size:12px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
     .reg-handling { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px; }
+    /* Gul og ikke rød: registreringen ER gemt, det er kun Pipedrive der
+       mangler. Rød ville få specialisten til at registrere igen. */
+    .halv { background:#fdf6e3; border:1px solid #d9b45b; border-radius:var(--r);
+            padding:10px 14px; font-size:12px; color:var(--ink-2); margin-bottom:16px; line-height:1.6; }
+    .pd-preview { margin-top:10px; border:1px solid var(--line); border-radius:var(--r);
+                  padding:10px 14px; font-size:12px; color:var(--ink-2); line-height:1.6; }
+    .pd-preview h4 { margin:0 0 6px; font-size:12px; }
+    .pd-preview dl { display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:0; }
+    .pd-preview dt { color:var(--ink-4); }
+    .pd-preview dd { margin:0; }
+    .pd-preview .pd-note { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
     .kraev { color:var(--danger); }
   </style>
 </head>
@@ -323,9 +334,14 @@
 
             <div class="reg-handling">
               <button type="button" class="btn-primary" id="reg-gem">Gem registrering</button>
+              <!-- Previewet skriver INTET, hverken i basen eller i Pipedrive. Det
+                   findes, fordi den rigtige afsendelse sker efter opkaldet, hvor
+                   ingen kan nå at se payloaden igennem. -->
+              <button type="button" class="btn-cancel" id="reg-pd-preview">Vis Pipedrive-aktivitet</button>
               <button type="button" class="btn-cancel" id="reg-annuller">Annullér</button>
               <span class="fine" id="reg-status"></span>
             </div>
+            <div id="reg-pd-boks"></div>
           </div>
         </div>
 
@@ -761,7 +777,7 @@
     ? `<div class="hist">` + d.historik.map(s => `
         <div class="hist-item">
           <div class="hist-head">${dato(s.contacted_at)} · ${esc(s.channel)}</div>
-          <div class="hist-meta">${esc(s.created_by)}${s.summary ? ' · ' + esc(s.summary) : ''}</div>
+          <div class="hist-meta">${esc(s.created_by)}${s.summary ? ' · ' + esc(s.summary) : ''}${s.pipedrive_activity_id ? ' · <span class=\'fine\'>Pipedrive-aktivitet nr. ' + esc(s.pipedrive_activity_id) + '</span>' : ''}</div>
           <div class="hist-udfald">${s.udfald.map(u =>
             `<div>${esc(u.site)}: <strong>${esc(u.outcome || u.contact_result)}</strong>
              ${u.arr_before_dkk !== null ? ' · før ' + kr(u.arr_before_dkk) : ''}
@@ -795,9 +811,27 @@
     sessionStorage.removeItem('retention_kvit');
     try {
       const q = JSON.parse(kvit);
+      // To adskilte beskeder. Registreringen er gemt uanset hvad, og den
+      // grønne kvittering må ikke blive gul, fordi et CRM-kald fejlede —
+      // så ville specialisten registrere opkaldet én gang til.
+      const pd = q.pipedrive || {};
+      let pdTekst = '';
+      if (pd.sendt) {
+        pdTekst = ' Lagt i Pipedrive som afsluttet aktivitet'
+                + (pd.aktivitet_id ? ` (nr. ${esc(pd.aktivitet_id)})` : '') + '.';
+      } else if (pd.aarsag === 'ingen_kontakt') {
+        pdTekst = ' Der blev ikke oprettet en Pipedrive-aktivitet: '
+                + 'det sker kun når kontakten blev opnået.';
+      }
       el('advarsler').insertAdjacentHTML('afterbegin',
         `<div class="kvit">Samtalen er registreret (nr. ${esc(q.id)}) med
-         ${q.udfald} udfald. Tallene på siden er hentet igen.</div>`);
+         ${q.udfald} udfald. Tallene på siden er hentet igen.${pdTekst}</div>`);
+      if (pd.aarsag === 'api_fejl' || pd.aarsag === 'mangler_token') {
+        el('advarsler').insertAdjacentHTML('afterbegin',
+          `<div class="halv"><strong>Udfaldet er gemt, men nåede ikke Pipedrive.</strong>
+           ${esc(pd.besked || '')}${pd.fejl ? ' (' + esc(pd.fejl) + ')' : ''}
+           Opret aktiviteten i hånden, eller bed en administrator se i loggen.</div>`);
+      }
     } catch (e) { /* en ulæselig kvittering må ikke spærre siden */ }
   }
 
@@ -1034,12 +1068,65 @@
         return;
       }
       sessionStorage.setItem('retention_kvit',
-        JSON.stringify({ id: svar.conversation_id, udfald: svar.udfald }));
+        JSON.stringify({ id: svar.conversation_id, udfald: svar.udfald,
+                         pipedrive: svar.pipedrive || null }));
       location.reload();
     } catch (e) {
       visFejl(['Registreringen kunne ikke sendes: ' + String(e) +
                '. Intet er gemt, prøv igen.']);
       el('reg-status').textContent = '';
+      knap.disabled = false;
+    }
+  });
+
+  // ── Preview af Pipedrive-aktiviteten ────────────────────────────────
+  // Samme body som Gem, samme validering på serveren, men ruten POSTer
+  // ikke videre til Pipedrive og skriver ikke i basen. Payloaden vises som
+  // felter og ikke som rå JSON: specialisten skal kunne genkende sin egen
+  // note, ikke læse et API-kald.
+  el('reg-pd-preview').addEventListener('click', async () => {
+    const knap = el('reg-pd-preview');
+    const boks = el('reg-pd-boks');
+    visFejl([]);
+    knap.disabled = true;
+    boks.innerHTML = '<div class="fine">Henter…</div>';
+    try {
+      const res = await fetch(
+        `/retention/kunde/${encodeURIComponent(ACCOUNT)}/${encodeURIComponent(ORG_ID)}/samtale/pipedrive_preview`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(byg()) });
+      const svar = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        boks.innerHTML = '';
+        const d = svar.detail;
+        visFejl(Array.isArray(d) ? d : [d || ('HTTP ' + res.status)]);
+        return;
+      }
+      const p = svar.payload;
+      if (!p) {
+        boks.innerHTML = `<div class="pd-preview">${esc(svar.besked || 'Intet ville blive sendt.')}</div>`;
+        return;
+      }
+      // Noten ER HTML og er escapet på serveren (html.escape i
+      // pipedrive.byg_note), så den kan vises som den vil se ud i
+      // Pipedrive. Alt ANDET escapes her.
+      boks.innerHTML =
+        `<div class="pd-preview">
+           <h4>Sådan kommer den til at se ud i Pipedrive</h4>
+           <dl>
+             <dt>Emne</dt><dd>${esc(p.subject)}</dd>
+             <dt>Type</dt><dd>${esc(p.type)} (afsluttet)</dd>
+             <dt>Tidspunkt</dt><dd>${esc(p.due_date)}${p.due_time ? ' ' + esc(p.due_time) : ''}</dd>
+             <dt>Organisation</dt><dd>${esc(p.org_id)}</dd>
+             <dt>Tilhører</dt><dd>${p.owner_id ? 'Pipedrive-bruger ' + esc(p.owner_id) + ' (kundens ejer)'
+                                                : 'API-brugeren (System Admin) — aktiviteten står på kundens tidslinje'}</dd>
+           </dl>
+           <div class="pd-note">${p.note}</div>
+           <div class="fine" style="margin-top:8px;">${esc(svar.besked || '')} Intet er sendt.</div>
+         </div>`;
+    } catch (e) {
+      boks.innerHTML = `<div class="pd-preview">Previewet kunne ikke hentes: ${esc(String(e))}</div>`;
+    } finally {
       knap.disabled = false;
     }
   });
