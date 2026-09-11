@@ -668,7 +668,15 @@ def db_department_performance(today: date):
         m_start, m_end = _month_range(today)
 
         monitor_rows = _dept_sub_panel(cur, m_start, m_end, MONITOR_SITES, ["Team Monitor"])
-        watch_rows   = _dept_sub_panel(cur, m_start, m_end, WATCH_DK_SITES + WATCH_INT_SITES,
+        # NordicDefenceWatch skal med i Watch-panelet: brandet sælges af Watch-
+        # teamene, og deres budget i SalespersonBudget dækker hele teamet — også
+        # NDW-salget. Uden det viste Watch DK -11t. her mod 73t. på Sales
+        # Performance (83.891 kr. NDW), og Watch Int 100t. mod 127t. (26.463 kr.).
+        # Sitet lægges bevidst IKKE i WATCH_DK_SITES/WATCH_INT_SITES — de lister
+        # driver også _SITE_TO_BRAND, MEDIA_BRAND_GROUPS og annoncepanelerne. Samme
+        # mønster som _WATCH_SET ovenfor.
+        watch_rows   = _dept_sub_panel(cur, m_start, m_end,
+                                       WATCH_DK_SITES + WATCH_INT_SITES + BRAND_GROUPS["nordic_defence"],
                                        ["Team Watch DK", "Team Watch Int", "Team Watch SE"])
         finans_rows  = _dept_sub_panel(cur, m_start, m_end, FINANS_SITES, ["Team FINANS DK", "Team FINANS Int"])
 
