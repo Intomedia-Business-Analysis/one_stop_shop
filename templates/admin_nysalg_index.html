@@ -6,15 +6,18 @@
 <title>Monthly performance report — Intomedia Hub</title>
 <link rel="stylesheet" href="/static/hub.css">
 <style>
-.tool-wrap{max-width:1000px;margin:0 auto}
+.tool-wrap{max-width:1280px;margin:0 auto}
 .dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
 .dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
 .dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table-wrap{overflow-x:auto}
+.v-table{width:100%;min-width:900px;border-collapse:collapse;font-size:12px}
 .v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;white-space:nowrap}
 .v-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--ink-2)}
 .v-table tr:hover td{background:var(--green-light,#f0f8f4)}
 .v-table .empty{text-align:center;padding:40px;color:var(--ink-4);font-style:italic}
+.v-table td.nowrap{white-space:nowrap}
+.cell-trunc{display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
 .badge.matched{background:#eef2f7;color:#516a86}
 .badge.in_review{background:#fff3df;color:#9a6a18}
@@ -60,6 +63,7 @@
 
         <div class="dash-card">
           <div class="dash-card-title"><span>Tidligere runs</span></div>
+          <div class="v-table-wrap">
           <table class="v-table">
             <thead>
               <tr>
@@ -73,13 +77,14 @@
               {% endif %}
               {% for r in runs %}
                 <tr>
-                  <td>#{{ r.run_id }}</td>
+                  <td class="nowrap">#{{ r.run_id }}</td>
                   <td>{{ "Monitor" if (r.report_scope or "business_media") == "monitor" else "Business Media" }}</td>
-                  <td>{{ r.period or "—" }}</td>
-                  <td>{{ r.source_filename or r.source_path or "—" }}</td>
-                  <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—" }}</td>
-                  <td>{{ r.created_by or "—" }}</td>
-                  <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+                  <td class="nowrap">{{ r.period or "—" }}</td>
+                  {% set src = r.source_filename or r.source_path or "—" %}
+                  <td><span class="cell-trunc" title="{{ src }}">{{ src }}</span></td>
+                  <td class="nowrap">{{ r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "—" }}</td>
+                  <td class="nowrap">{{ r.created_by or "—" }}</td>
+                  <td class="nowrap"><span class="badge {{ r.status }}">{{ r.status }}</span></td>
                   <td>
                     <div class="actions">
                       <a class="row-link" href="/tools/admin-nysalg/{{ r.run_id }}/review">Åbn →</a>
@@ -92,6 +97,7 @@
               {% endfor %}
             </tbody>
           </table>
+          </div>
         </div>
 
       </div>
