@@ -58,10 +58,11 @@ BRAND_GROUPS: dict[str, list[str]] = {
         "All Monitor Sites", "Monitormedier",
     ],
     "marketwire": ["MarketWire"],
-    # Nordic Defence Watch er et tværnordisk brand: det sælges af Team FINANS DK,
-    # Team FINANS Int, Team Watch NO og Team Watch SE, og deals ligger spredt
-    # over accounts (watch_medier/watch_no/watch_se). Derfor sin egen gruppe
-    # frem for at høre under ét land. Sælger-dashboardet scoper på [owner_name]
+    # Nordic Defence Watch er et tværnordisk brand: det sælges af Watch-teamene
+    # (Team Watch DK, Team Watch Int, Team Watch NO og Team Watch SE) — IKKE af
+    # FINANS-teamene, der kun sælger FINANS DK — og deals ligger spredt over
+    # accounts (watch_medier/watch_no/watch_se). Derfor sin egen gruppe frem for
+    # at høre under ét land. Sælger-dashboardet scoper på [owner_name]
     # (+ evt. [team]) og aldrig på [account], så hver sælger ser sit eget NDW-salg
     # uanset hvilken account deal'en er oprettet på.
     "nordic_defence": ["NordicDefenceWatch"],
