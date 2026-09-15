@@ -203,6 +203,52 @@ INIT_STMTS = [
            brand       NVARCHAR(50)   NOT NULL,
            CONSTRAINT UQ_admin_nysalg_brand_hidden UNIQUE (run_id, brand)
        )""",
+    # Migration: brand-labelet 'FinansWatch SE' hedder nu 'Watch SE' (resten af
+    # hubben kaldte det allerede det). Labelet ligger som TEKST i fire tabeller —
+    # baseline, brand-kommentarer, skjulte brands og hver matchet række — så uden
+    # den her ville fx ÅTD vise to rækker: den gamle med årets baseline og en ny
+    # med kun rapportmåneden.
+    #
+    # NB: SITE-navnet 'FinansWatch SE' (constants.BRAND_GROUPS) er uberørt — det
+    # er den værdi der står i Zuora/PipeDrive og bruges til at finde brandet.
+    #
+    # Statementet er idempotent: anden kørsel rammer nul rækker. DELETE'en først
+    # fjerner en gammel række, hvis der allerede findes en 'Watch SE' med samme
+    # nøgle — ellers ville UPDATE'en ryge på UNIQUE-constraintet og vælte HELE
+    # init'en (den kører alle statements i ét, uden commit ved fejl).
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_baseline' AND xtype='U')
+       BEGIN
+           DELETE b FROM admin_nysalg_baseline b
+            WHERE b.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_baseline x
+                           WHERE x.report_scope = b.report_scope AND x.ym = b.ym
+                             AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_baseline SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_comment' AND xtype='U')
+       BEGIN
+           DELETE c FROM admin_nysalg_brand_comment c
+            WHERE c.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_brand_comment x
+                           WHERE x.run_id = c.run_id AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_brand_comment SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_hidden' AND xtype='U')
+       BEGIN
+           DELETE h FROM admin_nysalg_brand_hidden h
+            WHERE h.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_brand_hidden x
+                           WHERE x.run_id = h.run_id AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_brand_hidden SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    # Match-rækker har ingen unik nøgle på brand — ren UPDATE. Uden den ville
+    # gamle runs stadig vise det gamle navn, fordi _match_brand bruger den
+    # gemte brand-kolonne før classify().
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
+       UPDATE admin_nysalg_match SET brand = 'Watch SE' WHERE brand = 'FinansWatch SE'""",
     # Site-mapping for de få afvigelser mellem Zuora og PipeDrive (kan udvides
     # uden kodeændring). Tom tabel => 1:1-matchning.
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_site_map' AND xtype='U')

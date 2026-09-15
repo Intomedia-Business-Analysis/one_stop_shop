@@ -1254,7 +1254,10 @@ def db_no_advertising_performance(today: date):
 # ════════════════════════════════════════════════════════════════════════════
 
 # Visningsrækkefølge for brand-chips i Media Performance (classify-labels).
-_MEDIA_BRAND_ORDER = ["Watch DK", "Finans", "Monitor", "Watch NO", "FinansWatch SE",
+# Værdierne SKAL være dem månedsrapportens classify() returnerer — se importen i
+# db_media_performance. Ændres et label dér (fx 'FinansWatch SE' → 'Watch SE'),
+# skal det rettes her, ellers falder brandet stille om bag de øvrige i sorteringen.
+_MEDIA_BRAND_ORDER = ["Watch DK", "Finans", "Monitor", "Watch NO", "Watch SE",
                       "FinanzBusiness", "Marketwire", "Øvrige"]
 
 

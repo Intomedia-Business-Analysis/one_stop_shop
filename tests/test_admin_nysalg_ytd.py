@@ -75,6 +75,63 @@ def test_forecast_labels_findes_i_display_order():
         assert brand in DISPLAY_ORDER
 
 
+# ── Brand-labels ─────────────────────────────────────────────────────────────
+# Labelet 'FinansWatch SE' hed noget andet end i resten af hubben og blev omdøbt
+# til 'Watch SE'. SITE-navnet 'FinansWatch SE' er derimod den værdi der står i
+# Zuora/PipeDrive og skal blive stående — forveksles de to, holder site→brand-
+# opslaget op med at virke, uden at noget fejler synligt.
+
+def test_svensk_label_hedder_watch_se():
+    from moduler.modul_admin_nysalg import brands as B
+    assert B.GROUP_LABELS["watch_se"] == "Watch SE"
+    assert "Watch SE" in B.DISPLAY_ORDER
+    assert "FinansWatch SE" not in B.DISPLAY_ORDER
+    for tabel in (B.BRAND_GEO, B.BUDGET_BRANDS, B.BRAND_CURRENCY, B.BRAND_ACCOUNT):
+        assert "FinansWatch SE" not in tabel, "gammelt label står stadig som nøgle"
+
+
+def test_svensk_site_klassificeres_som_watch_se():
+    """Sitet hedder stadig FinansWatch SE i data — rækken hedder Watch SE."""
+    from moduler.modul_admin_nysalg.brands import classify
+    assert classify("FinansWatch SE") == "Watch SE"
+
+
+def test_nordic_defence_rapporteres_under_watch_se():
+    """NDW er svensk og hører under Watch SE — også skrevet som domæne."""
+    from moduler.modul_admin_nysalg.brands import classify
+    assert classify("nordicdefencewatch.com") == "Watch SE"
+    assert classify("Nordic Defence Watch") == "Watch SE"
+
+
+def test_svensk_budget_slaar_stadig_op_paa_det_gamle_brand():
+    """BudgetsIntoMedia.[Brand] hedder stadig FinansWatch SE — værdien består."""
+    from moduler.modul_admin_nysalg.brands import BUDGET_BRANDS, brand_currency
+    assert "FinansWatch SE" in BUDGET_BRANDS["Watch SE"]
+    assert brand_currency("Watch SE") == "SEK"
+
+
+def test_svensk_raekke_ligger_i_sverige():
+    from moduler.modul_admin_nysalg.brands import brand_geo
+    assert brand_geo("Watch SE") == ("Sweden", "Subscription")
+
+
+def test_rotation_kender_alle_brand_labels():
+    """Media Performance sorterer på månedsrapportens classify-labels.
+
+    modul_rotation.db_media_performance importerer classify herfra og sorterer
+    chippene efter _MEDIA_BRAND_ORDER. Omdøbes et label uden at listen rettes,
+    fejler intet — brandet falder bare om bag de øvrige. Netop det skete ved
+    omdøbningen FinansWatch SE → Watch SE, så koblingen holdes fast her.
+    """
+    from moduler.modul_admin_nysalg.brands import GROUP_LABELS
+    from moduler.modul_rotation.queries import _MEDIA_BRAND_ORDER
+    labels = set(GROUP_LABELS.values()) | {"Øvrige"}
+    ukendte = sorted(l for l in labels if l not in _MEDIA_BRAND_ORDER)
+    assert not ukendte, (
+        f"_MEDIA_BRAND_ORDER i modul_rotation mangler {ukendte} — "
+        "brandene sorteres bagerst i Media Performance")
+
+
 # ── Baseline-konvertering ────────────────────────────────────────────────────
 
 def test_baseline_traekker_administrative_fra():
