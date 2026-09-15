@@ -64,7 +64,8 @@ rotationsdashboardene via en indbygget override.
 | **Klippekort Overblik** | `/tools/klippekort/` | Registrerer forbrugte klip på job-deals og skriver tilbage til Pipedrive | salesperson + hold |
 | **Deal Source (Marketing)** | `/tools/marketing/deal-source` | Lead-kilder og konvertering pr. konto | marketing |
 | **Retention** | `/retention/prioritering`, `/retention/overview`, `/retention/risk_overview` | Dagens opkaldsliste, porteføljeudvikling og churn-risiko pr. abonnement, med registrering af samtaleudfald | sales_operations |
-| **Monthly Performance Report** | `/tools/admin-nysalg/` | Matcher administrative nysalg mod Zuora-udtræk, review + direktørgodkendelse, Excel/PDF-rapport | management |
+| **Monthly Performance Report** | `/tools/admin-nysalg/` | Matcher administrative nysalg mod Zuora-udtræk, review + direktørgodkendelse, Excel/PDF-rapport. Valgfri ÅTD-tabel og forecast-kolonne | management |
+| **ÅTD-baseline** | `/tools/admin-nysalg/baseline` | Tidligere måneders færdigreviewede Actual Sale/Churn, som ÅTD-tabellen bygger på | management |
 | **Barselsplanlægger** | `/tool/barselsberegner` | Barselsberegning og godkendelsesflow med mailnotifikation | salesperson |
 | **Rotation** | `/tools/rotation/` | Fuldskærms-dashboards til kontorskærme: Sales, Department, Banner, Job, Media, NO Advertising — med autoplay og navngivne skærmopsætninger | salesperson / screen |
 | **Administration** | `/admin/users`, `/admin/roles`, `/admin/teams`, `/admin/usage` | Brugere, roller, hold, adgangs-overrides og forbrugsstatistik | admin |
@@ -195,6 +196,7 @@ Hvad dækkes:
 | `test_benchmark.py` | Benchmark-modulets beregninger og filtre |
 | `test_db_datokompat.py` | Datobroen: hvad der konverteres, hvad der ikke gør, alle fetch-veje, og at `DB_DATE_AS_STRING=0` slår den fra |
 | `test_admin_nysalg_*.py` | Matchning mod Zuora-udtrækket, delvist administrative deals, og at Python-logikken giver samme resultat som SQL'en |
+| `test_admin_nysalg_ytd.py` | Forecast-tallene, baseline-konverteringen og at ÅTD lægger baseline + rapportmåned rigtigt sammen |
 | `test_spejlkopier.py` | At alle moduler frasorterer den samme deal-dubletdefekt |
 | `test_valuta.py` | Valutaomregning |
 | `test_nav_recent.py` | Favoritter og senest besøgt, inkl. at et menupunkt man har mistet adgang til, falder ud |
@@ -395,7 +397,7 @@ sekunder.
 
 ## 9. Det man skal vide
 
-Fire ting i denne kode ser forkerte ud, indtil man kender grunden. De er alle
+Nogle ting i denne kode ser forkerte ud, indtil man kender grunden. De er alle
 bevidste, og de går i stykker, hvis nogen "rydder op".
 
 ### Datoer kommer som strenge — med vilje
@@ -464,6 +466,51 @@ en kryptisk login-fejl.
 De er ikke koblet sammen. Sættes navigationens krav lavere end routerens, får
 brugeren et menupunkt, der svarer 403. Kommentarerne i `nav_utils.py` markerer de
 steder, hvor det allerede er gået galt en gang.
+
+### Månedsrapportens ÅTD bygger på en gemt baseline — ikke på rådata
+
+ÅTD-tabellen i `/tools/admin-nysalg/` lægger **ikke** hele årets Zuora-bevægelser
+sammen. Den lægger gemte månedstal sammen. Grunden er reviewet: direktøren retter
+gross in/out, sætter administrative andele og udelader rækker, og de rettelser
+findes kun i det run hvor de blev lavet. Skulle ÅTD regnes forfra hver måned,
+skulle hele årets bevægelser rettes igennem igen hver gang.
+
+Derfor gemmer rapportgenereringen månedens Actual Sale og Actual Churn pr. brand
+i `admin_nysalg_baseline` (`source='run'`), og næste måneds ÅTD-tabel summerer
+dem. Tal man selv har tastet på `/tools/admin-nysalg/baseline` står som
+`source='manual'` og **overskrives aldrig** af en rapportkørsel — ellers ville en
+bevidst korrektion forsvinde, næste gang måneden blev kørt om.
+
+To følger, som ikke er til at se i koden:
+
+* **Måneder uden baseline tæller som 0.** De listes som en advarsel i reviewet og
+  i rapporten i stedet for at fejle — en rapport skal kunne laves, selvom januar
+  mangler. Første gang værktøjet bruges, skal årets tidligere måneder tastes ind
+  (eller hentes med «Hent fra database» og gemmes).
+* **Baseline overlever, at et run slettes.** Rækkerne peger på `run_id`, men
+  ryddes ikke med — det rapporterede tal står ved magt, også når kildekørslen er
+  væk. Skal de af, slettes måneden på baseline-siden.
+
+Budgettet går derimod **uden om** baseline: det hentes live fra
+`BudgetsIntoMedia` for hele ÅTD-perioden. Det er et fast tal pr. måned, kræver
+intet review, og skal følge med, hvis budgettet rettes bagudrettet.
+
+### Forecast-kolonnen er hardcodet — og står kun på månedstabellen
+
+Tallene i `moduler/modul_admin_nysalg/forecast.py` er ledelsens forecast og
+findes ingen steder i databasen. De er tastet ind én gang, pr. brand pr. måned.
+Skal de opdateres, er det den fil, der rettes; `_validate()` fejler ved import,
+hvis et brand-label er stavet forkert, så en tastefejl ikke bare giver en tom
+kolonne.
+
+Forecastet står bevidst **ikke** i ÅTD-tabellen. Det er kun aftalt for juli–
+december, så en ÅTD-periode fra januar ville sætte et helt års realiserede tal op
+mod et halvt års forecast. Kolonnen hører til den enkelte måned og står derfor
+kun i månedstabellen og i «Performance pr. måned».
+
+NB: ledelsens regneark opgiver Abo Watch DK til 2.470.000 for juli–december,
+mens månedstallene i filen summer til 2.500.000. Månedstallene er brugt som de
+står — afvigelsen på 30.000 er i kildearket.
 
 ### Øvrigt værd at vide
 

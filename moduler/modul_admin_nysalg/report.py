@@ -80,6 +80,21 @@ def _sum_metrics(rows: list[dict]) -> tuple[float, float, float, float, float]:
     return sale, churn, net, budget, net - budget
 
 
+def _sum_forecast(rows: list[dict]) -> float | None:
+    """Σ forecast over en gruppe rækker; None hvis ingen af dem har et forecast.
+
+    Subtotaler og landetotaler må kun vise et forecast for de rækker der faktisk
+    har ét — ellers ser en delvist dækket gruppe ud til at have et fuldt forecast.
+    """
+    vals = [b.get("forecast") for b in rows or [] if b.get("forecast") is not None]
+    return round(sum(float(v) for v in vals), 2) if vals else None
+
+
+def _has_forecast(brand_rows: list[dict] | None) -> bool:
+    """True hvis mindst én brand-række har et forecast (ellers udelades kolonnen)."""
+    return any(b.get("forecast") is not None for b in brand_rows or [])
+
+
 _HEAD_FILL = PatternFill("solid", fgColor="1C1C1A")  # hub-primær (nær-sort)
 _HEAD_FONT = Font(bold=True, color="FFFFFF", size=10)
 _TITLE_FONT = Font(bold=True, size=14)
@@ -124,9 +139,15 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                    pd_deals: list[dict] | None = None,
                    org_names: dict | None = None,
                    months_breakdown: list[dict] | None = None,
-                   site_rows: list[dict] | None = None) -> str:
+                   site_rows: list[dict] | None = None,
+                   ytd: dict | None = None,
+                   top_deals: list[dict] | None = None) -> str:
+    """ytd = repo.ytd_brand_rows-blokken (ÅTD-tabel, eget ark); top_deals =
+    repo.pipedrive_top_deals (største enkeltsalg pr. PipeDrive-brand, eget ark).
+    Begge valgfrie — udelades de, ser rapporten ud som før."""
     out_dir = out_dir or report_dir()
     org_names = org_names or {}
+    show_fc = _has_forecast(brand_rows)
     wb = Workbook()
 
     # ── Ark 1: Summary ────────────────────────────────────────────────────────
@@ -154,8 +175,12 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
     # type) og total pr. land. Beløb i lokal valuta (DKK/NOK/SEK/EUR).
     r += 1
     head_row = r
-    bcols = ["Brand", "Actual Sale", "Actual Churn", "Actual Net Growth",
-             "Budget Net Growth", "Deviation", "Comment"]
+    # Forecast står ved siden af budgettet (ledelsens faste månedstal). Kolonnen
+    # udelades helt, når der ikke er forecast for perioden — fx Monitor-rapporten.
+    bcols = (["Brand", "Actual Sale", "Actual Churn", "Actual Net Growth",
+              "Budget Net Growth"] + (["Forecast"] if show_fc else [])
+             + ["Deviation", "Comment"])
+    CCOL = len(bcols)          # kommentar-kolonnen (sidste)
     for i, h in enumerate(bcols, start=1):
         ws.cell(row=head_row, column=i, value=h)
     _style_header(ws, head_row, len(bcols))
@@ -191,38 +216,44 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                 ws.cell(row=r, column=1, value="    " + b["brand"])
                 has_budget = b.get("budget") is not None
                 _vals(r, [sale, churn, net,
-                          budget if has_budget else None,
-                          dev if has_budget else None], cf)
-                ws.cell(row=r, column=7, value=b.get("comment") or "")
+                          budget if has_budget else None]
+                      + ([b.get("forecast")] if show_fc else [])
+                      + [dev if has_budget else None], cf)
+                ws.cell(row=r, column=CCOL, value=b.get("comment") or "")
                 r += 1
                 for s in b.get("subrows") or []:
                     s_sale, s_churn, s_net, s_budget, s_dev = _row_metrics(s)
                     has_sb = s.get("budget") is not None
                     ws.cell(row=r, column=1, value="      ↳ " + s["brand"])
+                    # Underrækker har intet eget forecast — det ligger på brandet.
                     _vals(r, [s_sale, s_churn, s_net,
-                              s_budget if has_sb else None,
-                              s_dev if has_sb else None], cf)
+                              s_budget if has_sb else None]
+                          + ([None] if show_fc else [])
+                          + [s_dev if has_sb else None], cf)
                     if s.get("note"):
-                        ws.cell(row=r, column=7, value=s["note"]).font = Font(italic=True)
+                        ws.cell(row=r, column=CCOL, value=s["note"]).font = Font(italic=True)
                     r += 1
             ssale, schurn, snet, sbudget, sdev = _sum_metrics(tb["rows"])
             ws.cell(row=r, column=1,
                     value=f"  Subtotal {tb['type']}").font = Font(bold=True)
-            _vals(r, [ssale, schurn, snet, sbudget, sdev], cf, bold=True,
-                  fill=_SUBTOTAL_FILL)
+            _vals(r, [ssale, schurn, snet, sbudget]
+                  + ([_sum_forecast(tb["rows"])] if show_fc else []) + [sdev],
+                  cf, bold=True, fill=_SUBTOTAL_FILL)
             ws.cell(row=r, column=1).fill = _SUBTOTAL_FILL
-            ws.cell(row=r, column=7).fill = _SUBTOTAL_FILL
+            ws.cell(row=r, column=CCOL).fill = _SUBTOTAL_FILL
             r += 1
         # Total pr. land (på tværs af typer)
         all_rows = [b for tb in grp["types"] for b in tb["rows"]]
         tsale, tchurn, tnet, tbudget, tdev = _sum_metrics(all_rows)
         ws.cell(row=r, column=1, value=f"Total {grp['country']}").font = Font(bold=True, size=11)
-        _vals(r, [tsale, tchurn, tnet, tbudget, tdev], cf, bold=True, fill=_SECTION_FILL)
-        for i in (1, 7):
+        _vals(r, [tsale, tchurn, tnet, tbudget]
+              + ([_sum_forecast(all_rows)] if show_fc else []) + [tdev],
+              cf, bold=True, fill=_SECTION_FILL)
+        for i in (1, CCOL):
             ws.cell(row=r, column=i).fill = _SECTION_FILL
         r += 2
 
-    _autosize(ws, [26, 15, 15, 18, 18, 15, 40])
+    _autosize(ws, [26, 15, 15, 18, 18] + ([15] if show_fc else []) + [15, 40])
 
     # Overall comment
     r += 1
@@ -252,6 +283,37 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
             for col in (2, 3, 4):
                 wsn.cell(row=row, column=col).number_format = cf
         _autosize(wsn, [30, 16, 16, 18])
+
+    # ── Ark: ÅTD (år til dato) ────────────────────────────────────────────────
+    # Tidligere måneder kommer fra den gemte baseline, rapportmåneden fra dette
+    # run. Ingen forecast-kolonne: forecastet er aftalt pr. enkelt måned og ville
+    # være misvisende mod et helt års ÅTD-tal.
+    if ytd and ytd.get("rows"):
+        wsy = wb.create_sheet("YTD")
+        wsy["A1"] = f"Year to date — {ytd.get('label') or ''}"
+        wsy["A1"].font = _TITLE_FONT
+        yrow = 3
+        if ytd.get("missing"):
+            wsy.cell(row=yrow, column=1,
+                     value=("No baseline for: " + ", ".join(ytd["missing"])
+                            + " — these months count as 0.")).font = Font(italic=True)
+            yrow += 2
+        ycols = ["Brand", "Currency", "Actual Sale YTD", "Actual Churn YTD",
+                 "Actual Net Growth YTD", "Budget YTD", "Deviation"]
+        for i, h in enumerate(ycols, start=1):
+            wsy.cell(row=yrow, column=i, value=h)
+        _style_header(wsy, yrow, len(ycols))
+        yrow += 1
+        for b in ytd["rows"]:
+            sale, churn, net, budget, dev = _row_metrics(b)
+            cur = b.get("currency") or "DKK"
+            wsy.cell(row=yrow, column=1, value=b["brand"])
+            wsy.cell(row=yrow, column=2, value=cur)
+            for i, v in enumerate([sale, churn, net, budget, dev], start=3):
+                c = wsy.cell(row=yrow, column=i, value=v)
+                c.number_format = _num_fmt(cur)
+            yrow += 1
+        _autosize(wsy, [26, 10, 18, 18, 20, 18, 16])
 
     # ── Ark 2: Administrative nysalg (det der trækkes fra) ─────────────────────
     # "Adm. gross in" = den administrative ANDEL der faktisk trækkes fra Actual
@@ -354,7 +416,7 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
     if months_breakdown:
         ws6 = wb.create_sheet("Per month")
         mcols2 = ["Month", "Brand", "Actual Sale", "Actual Churn",
-                  "Actual Net Growth", "Budget Net Growth"]
+                  "Actual Net Growth", "Budget Net Growth", "Forecast"]
         ws6.append(mcols2)
         _style_header(ws6, 1, len(mcols2))
         for blk in months_breakdown:
@@ -362,12 +424,31 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
                 cf = _num_fmt(b.get("currency"))   # lokal valuta (NO/SE/DE)
                 sale, churn, net, budget, _ = _row_metrics(b)
                 ws6.append([blk["label"], b["brand"], sale, churn, net,
-                            budget if b.get("budget") is not None else None])
+                            budget if b.get("budget") is not None else None,
+                            b.get("forecast")])
                 row = ws6.max_row
-                for col in (3, 4, 5, 6):
+                for col in (3, 4, 5, 6, 7):
                     ws6.cell(row=row, column=col).number_format = cf
         ws6.auto_filter.ref = ws6.dimensions
-        _autosize(ws6, [16, 22, 15, 15, 18, 18])
+        _autosize(ws6, [16, 22, 15, 15, 18, 18, 15])
+
+    # ── Ark: Største enkeltsalg pr. PipeDrive-brand ───────────────────────────
+    # Modstykket til "Movements per brand" (Zuora) for de brands der kun findes i
+    # PipeDrive: Job, Banner, Norge og MarketWire. Største beløb først.
+    if top_deals:
+        ws7 = wb.create_sheet("Top PipeDrive deals")
+        tcols = ["Brand", "Customer", "Site", "Pipeline", "Service act. date",
+                 "Currency", "Value"]
+        ws7.append(tcols)
+        _style_header(ws7, 1, len(tcols))
+        for g in top_deals:
+            for d in g.get("deals") or []:
+                ws7.append([g["brand"], d.get("customer"), d.get("site"),
+                            d.get("pipeline"), d.get("date"),
+                            g.get("currency") or "DKK", d.get("value") or 0])
+                ws7.cell(row=ws7.max_row, column=7).number_format =                     _num_fmt(g.get("currency"))
+        ws7.auto_filter.ref = ws7.dimensions
+        _autosize(ws7, [16, 30, 26, 18, 18, 10, 16])
 
     path = os.path.join(out_dir, _base_filename(run) + ".xlsx")
     wb.save(path)
@@ -378,8 +459,11 @@ def generate_excel(run: dict, matches: list[dict], summary: dict,
 
 def generate_pdf(run: dict, matches: list[dict], summary: dict,
                  brand_rows: list[dict] | None = None, out_dir: str | None = None,
-                 months_breakdown: list[dict] | None = None) -> str:
+                 months_breakdown: list[dict] | None = None,
+                 ytd: dict | None = None) -> str:
+    """ytd = repo.ytd_brand_rows-blokken; udelades den, ser PDF'en ud som før."""
     out_dir = out_dir or report_dir()
+    show_fc = _has_forecast(brand_rows)
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
@@ -520,13 +604,17 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
     el.append(Paragraph("Performance by country &amp; type", s_h))
     # Egen Currency-kolonne pr. række (DKK/NOK/SEK/EUR); tallene står uden valuta-
     # endelse, så tabellen er ren. NET/DEV-indeks er efter Brand + Currency.
-    NET, DEV = 4, 6
+    # Forecast (ledelsens faste månedstal) står ved siden af budgettet og
+    # udelades helt, når perioden ikke har noget forecast.
+    NET = 4
+    DEV = 7 if show_fc else 6
 
     def num(v):
         return "" if v is None else f"{round(v or 0):,.0f}".replace(",", ".")
 
-    head = ["", "Cur.", "Actual Sale", "Actual Churn", "Actual Net Growth",
-            "Budget Net Growth", "Deviation"]
+    head = (["", "Cur.", "Actual Sale", "Actual Churn", "Actual Net Growth",
+             "Budget Net Growth"] + (["Forecast"] if show_fc else []) + ["Deviation"])
+    NCOL = len(head)
     data = [[Paragraph(h, s_hd) for h in head]]
     country_idx, type_idx, sub_idx, total_idx, gap_idx = [], [], [], [], []
     color_cells = []   # (col, rowidx, positive)
@@ -540,19 +628,21 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
         ci = len(data)
         country_idx.append(ci)
         data.append([Paragraph(f"{grp['country']} ({cur})",
-                               ParagraphStyle("ch", parent=s_hd, fontSize=8))] + [""] * 6)
+                               ParagraphStyle("ch", parent=s_hd, fontSize=8))]
+                    + [""] * (NCOL - 1))
         for tb in grp["types"]:
             type_idx.append(len(data))
             data.append([Paragraph(tb["type"],
                                    ParagraphStyle("ty", parent=s_cellb, textColor=MUTED))]
-                        + [""] * 6)
+                        + [""] * (NCOL - 1))
             for b in tb["rows"]:
                 sale, churn, net, budget, dev = _row_metrics(b)
                 has_b = b.get("budget") is not None
                 ri = len(data)
                 data.append(_row(Paragraph(b["brand"], s_cell),
-                                 [sale, churn, net,
-                                  budget if has_b else None, dev if has_b else None], cur))
+                                 [sale, churn, net, budget if has_b else None]
+                                 + ([b.get("forecast")] if show_fc else [])
+                                 + [dev if has_b else None], cur))
                 color_cells.append((NET, ri, net >= 0))
                 if has_b:
                     color_cells.append((DEV, ri, dev >= 0))
@@ -567,33 +657,39 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
                     data.append(_row(Paragraph(s_label,
                                                ParagraphStyle("sr", parent=s_cell, textColor=MUTED)),
                                      [s_sale, s_churn, s_net,
-                                      s_budget if has_sb else None,
-                                      s_dev if has_sb else None], cur))
+                                      s_budget if has_sb else None]
+                                     + ([None] if show_fc else [])
+                                     + [s_dev if has_sb else None], cur))
                     color_cells.append((NET, sri, s_net >= 0))
                     if has_sb:
                         color_cells.append((DEV, sri, s_dev >= 0))
             ssale, schurn, snet, sbudget, sdev = _sum_metrics(tb["rows"])
             sub_idx.append(len(data))
             data.append(_row(Paragraph(f"Subtotal {tb['type']}", s_cellb),
-                             [ssale, schurn, snet, sbudget, sdev], cur))
+                             [ssale, schurn, snet, sbudget]
+                             + ([_sum_forecast(tb["rows"])] if show_fc else [])
+                             + [sdev], cur))
             color_cells.append((NET, sub_idx[-1], snet >= 0))
             color_cells.append((DEV, sub_idx[-1], sdev >= 0))
         all_rows = [b for tb in grp["types"] for b in tb["rows"]]
         tsale, tchurn, tnet, tbudget, tdev = _sum_metrics(all_rows)
         total_idx.append(len(data))
         data.append(_row(Paragraph(f"Total {grp['country']}", s_cellb),
-                         [tsale, tchurn, tnet, tbudget, tdev], cur))
+                         [tsale, tchurn, tnet, tbudget]
+                         + ([_sum_forecast(all_rows)] if show_fc else [])
+                         + [tdev], cur))
         color_cells.append((NET, total_idx[-1], tnet >= 0))
         color_cells.append((DEV, total_idx[-1], tdev >= 0))
         # Tom afstandsrække mellem landeblokke (ikke efter sidste land), så landene
         # ikke støder op mod hinanden.
         if g_pos < len(groups) - 1:
             gap_idx.append(len(data))
-            data.append([""] * 7)
+            data.append([""] * NCOL)
 
     if len(data) > 1:
-        t = Table(data, colWidths=[34 * mm, 13 * mm, 26 * mm, 26 * mm, 26 * mm,
-                                   26 * mm, 27 * mm], repeatRows=1)
+        widths = ([30, 11, 23, 23, 24, 23, 22, 22] if show_fc
+                  else [34, 13, 26, 26, 26, 26, 27])     # Σ = 178 mm i begge
+        t = Table(data, colWidths=[w * mm for w in widths], repeatRows=1)
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), DARK),
             ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
@@ -643,6 +739,51 @@ def generate_pdf(run: dict, matches: list[dict], summary: dict,
             el.append(Spacer(1, 2 * mm))
             for i, note in enumerate(footnotes, start=1):
                 el.append(Paragraph(f"{'*' * i} {note}", s_note))
+        el.append(Spacer(1, 12 * mm))
+
+    # ── ÅTD (år til dato) ──────────────────────────────────────────────────────
+    # Tidligere måneder kommer fra den gemte baseline, rapportmåneden fra dette
+    # run. Bevidst UDEN forecast-kolonne — forecastet er aftalt pr. enkelt måned
+    # og dækker kun en del af året, så det ville være misvisende her.
+    if ytd and ytd.get("rows"):
+        el.append(Paragraph(f"Year to date — {ytd.get('label') or ''}", s_h))
+        if ytd.get("missing"):
+            el.append(Paragraph(
+                "No baseline for " + ", ".join(ytd["missing"])
+                + " — these months count as zero.",
+                ParagraphStyle("yw", fontName="Helvetica-Oblique", fontSize=7.5,
+                               textColor=MUTED, leading=10, spaceAfter=5)))
+        yhead = ["", "Cur.", "Actual Sale YTD", "Actual Churn YTD",
+                 "Net Growth YTD", "Budget YTD", "Deviation"]
+        ydata = [[Paragraph(h, s_hd) for h in yhead]]
+        ycolors = []   # (kolonne, rækkeindeks, positiv)
+        for b in ytd["rows"]:
+            sale, churn, net, budget, dev = _row_metrics(b)
+            cur = b.get("currency") or "DKK"
+            ri = len(ydata)
+            ydata.append([Paragraph(b["brand"], s_cell), cur,
+                          num(sale), num(churn), num(net), num(budget), num(dev)])
+            ycolors += [(4, ri, net >= 0), (6, ri, dev >= 0)]
+        yt = Table(ydata, colWidths=[36 * mm, 13 * mm, 27 * mm, 27 * mm, 26 * mm,
+                                     25 * mm, 24 * mm], repeatRows=1)
+        ystyle = [
+            ("BACKGROUND", (0, 0), (-1, 0), DARK),
+            ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+            ("FONTNAME", (1, 1), (-1, -1), "Helvetica"), ("FONTSIZE", (1, 1), (-1, -1), 7),
+            ("TEXTCOLOR", (1, 1), (-1, -1), INK),
+            ("TEXTCOLOR", (1, 1), (1, -1), MUTED),
+            ("ALIGN", (2, 0), (-1, -1), "RIGHT"), ("ALIGN", (1, 0), (1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, LIGHT]),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.4, BORDER),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 1), (-1, -1), 5), ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+        ]
+        for col, ri, pos in ycolors:
+            ystyle.append(("TEXTCOLOR", (col, ri), (col, ri), WIN if pos else RED))
+            ystyle.append(("FONTNAME", (col, ri), (col, ri), "Helvetica-Bold"))
+        yt.setStyle(TableStyle(ystyle))
+        el.append(yt)
         el.append(Spacer(1, 12 * mm))
 
     # ── Net growth pr. måned (kun Denmark/DKK) ─────────────────────────────────
@@ -714,10 +855,13 @@ def generate_report(run: dict, matches: list[dict], summary: dict,
                     out_dir: str | None = None, pd_deals: list[dict] | None = None,
                     org_names: dict | None = None,
                     months_breakdown: list[dict] | None = None,
-                    site_rows: list[dict] | None = None) -> str:
+                    site_rows: list[dict] | None = None,
+                    ytd: dict | None = None,
+                    top_deals: list[dict] | None = None) -> str:
     """fmt: 'xlsx' | 'pdf'. Returnerer stien til den genererede fil."""
     if fmt == "pdf":
         return generate_pdf(run, matches, summary, brand_rows, out_dir,
-                            months_breakdown=months_breakdown)
+                            months_breakdown=months_breakdown, ytd=ytd)
     return generate_excel(run, matches, summary, brand_rows, out_dir, pd_deals, org_names,
-                          months_breakdown=months_breakdown, site_rows=site_rows)
+                          months_breakdown=months_breakdown, site_rows=site_rows,
+                          ytd=ytd, top_deals=top_deals)
