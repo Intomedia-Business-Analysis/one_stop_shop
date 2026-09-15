@@ -1,0 +1,50 @@
+{# Største enkeltsalg pr. PipeDrive-brand — hentes asynkront af review-siden via
+   /tools/admin-nysalg/{run_id}/top-deals-fragment.
+
+   Modstykket til "Bevægelser pr. brand" (Zuora): Job, Banner, Norge og
+   MarketWire findes kun i PipeDrive, og her kan de enkelte won-deals bag tallet
+   ses, største beløb først. Ren visning — der er intet at rette, fordi tallene
+   kommer direkte fra PipeDrive og ikke gennem reviewet.
+
+   Forventer: deal_groups = [{brand, currency, deals:[…], note}]. #}
+<div class="dash-card-title"><span>Største salg — PipeDrive-brands</span></div>
+<p class="page-sub" style="margin:0 0 14px">
+  De enkelte vundne deals bag annonce-/PipeDrive-rækkerne i tabellen ovenfor, sorteret efter største beløb.
+  Samme filtre som totalerne (service-aktiveringsdato i perioden, status «won», administrative deals fraregnet).
+  MarketWire har rigtige opsigelser: de står som negative beløb nederst i listen, og gruppesummen er derfor netto.
+</p>
+
+{% for g in deal_groups %}
+  {% set cur = 'kr.' if (g.currency or 'DKK') == 'DKK' else g.currency %}
+  <details class="mv-group" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;padding:6px 10px">
+    <summary style="cursor:pointer;font-weight:700;padding:6px 0">
+      {{ g.brand }}
+      <span class="muted" style="font-weight:400">({{ g.deals|length }} deals ·
+        {{ "{:,.0f}".format(g.deals|sum(attribute="value"))|replace(",", ".") }} {{ cur }})</span>
+    </summary>
+    <div style="margin-top:8px">
+      {% if g.note %}
+        <p class="page-sub" style="margin:0 0 8px">{{ g.note }}</p>
+      {% endif %}
+      <table class="v-table">
+        <thead>
+          <tr>
+            <th>Kunde</th><th>Site</th><th>Pipeline</th><th>Aktiveret</th>
+            <th class="num">Beløb</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in g.deals %}
+            <tr>
+              <td style="font-weight:600">{{ d.customer }}</td>
+              <td class="muted">{{ d.site or "—" }}</td>
+              <td class="muted">{{ d.pipeline or "—" }}</td>
+              <td class="muted">{{ d.date or "—" }}</td>
+              <td class="num">{{ "{:,.0f}".format(d.value)|replace(",", ".") }} {{ cur }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+{% endfor %}
