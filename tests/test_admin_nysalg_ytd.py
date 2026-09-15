@@ -158,6 +158,80 @@ def test_ytd_uden_periode_giver_tom_blok(monkeypatch):
     assert repo.ytd_brand_rows("business_media", None, None, [], [])["rows"] == []
 
 
+# ── save_baseline: hvad en rapportkørsel må og ikke må overskrive ────────────
+# Reglen er hele sikkerheden bag "test bare rapporten": alt hvad direktøren selv
+# har tastet på baseline-siden gemmes med source='manual' og skal overleve, at
+# en rapport for samme måned køres igen. Testes mod en stub-forbindelse, så der
+# hverken kræves database eller skrives noget.
+
+class _FakeCursor:
+    """Cursor der svarer på SELECT'en og husker alle udførte statements."""
+
+    def __init__(self, eksisterende):
+        self._eksisterende = eksisterende
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        self.statements.append((" ".join(sql.split()), params))
+
+    def fetchall(self):
+        return [{"brand": b, "source": src} for b, src in self._eksisterende.items()]
+
+
+class _FakeConn:
+    def __init__(self, eksisterende):
+        self.cur = _FakeCursor(eksisterende)
+        self.committed = False
+
+    def cursor(self, **_kw):
+        return self.cur
+
+    def commit(self):
+        self.committed = True
+
+    def close(self):
+        pass
+
+
+def _koer_save(monkeypatch, eksisterende, rows, **kw):
+    conn = _FakeConn(eksisterende)
+    monkeypatch.setattr(repo, "get_conn", lambda *a, **k: conn)
+    n = repo.save_baseline("business_media", "2026-09", rows, **kw)
+    inserts = [p for sql, p in conn.cur.statements if sql.startswith("INSERT")]
+    deletes = [p for sql, p in conn.cur.statements if sql.startswith("DELETE")]
+    return n, inserts, deletes, conn
+
+
+def test_rapport_overskriver_ikke_manuelt_tastede_raekker(monkeypatch):
+    """Det man selv har rettet, skal stå uændret efter en ny rapportkørsel."""
+    n, inserts, deletes, _ = _koer_save(
+        monkeypatch,
+        {"Watch DK": "manual", "Job": "run"},
+        [{"brand": "Watch DK", "sale": 999.0, "churn": 0.0},
+         {"brand": "Job", "sale": 500.0, "churn": 0.0}],
+        source="run", keep_manual=True)
+    rørte = {p[2] for p in inserts} | {p[2] for p in deletes}
+    assert "Watch DK" not in rørte, "manuel række blev rørt af en rapportkørsel"
+    assert "Job" in rørte and n == 1
+
+
+def test_manuel_gem_overskriver_alt(monkeypatch):
+    """Retter man selv på baseline-siden, vinder man over en rapport-række."""
+    n, inserts, _, _ = _koer_save(
+        monkeypatch, {"Job": "run"},
+        [{"brand": "Job", "sale": 500.0, "churn": 0.0}], source="manual")
+    assert n == 1 and inserts[0][2] == "Job" and inserts[0][6] == "manual"
+
+
+def test_nulstillet_raekke_slettes_i_stedet_for_at_gemmes(monkeypatch):
+    """Tømmer man begge felter, skal rækken forsvinde fra ÅTD — ikke stå som 0."""
+    n, inserts, deletes, _ = _koer_save(
+        monkeypatch, {"Job": "manual"},
+        [{"brand": "Job", "sale": 0, "churn": 0}], source="manual")
+    assert n == 0 and not inserts
+    assert deletes and deletes[0][2] == "Job"
+
+
 # ── Standalone-runner (uden pytest) ──────────────────────────────────────────
 
 class _Monkey:

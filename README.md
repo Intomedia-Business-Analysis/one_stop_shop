@@ -197,6 +197,22 @@ Hvad dækkes:
 | `test_db_datokompat.py` | Datobroen: hvad der konverteres, hvad der ikke gør, alle fetch-veje, og at `DB_DATE_AS_STRING=0` slår den fra |
 | `test_admin_nysalg_*.py` | Matchning mod Zuora-udtrækket, delvist administrative deals, og at Python-logikken giver samme resultat som SQL'en |
 | `test_admin_nysalg_ytd.py` | Forecast-tallene, baseline-konverteringen og at ÅTD lægger baseline + rapportmåned rigtigt sammen |
+
+### Kontrol mod rigtige data
+
+`pytest` kører uden database og kan derfor ikke se, om ÅTD-tabellen stemmer med
+den baseline, der faktisk ligger i basen. Til det:
+
+```bash
+.venv\Scripts\python.exe check_ytd.py <run_id>
+```
+
+Scriptet **skriver ikke** — det kalder de samme funktioner som review-siden og
+rapporten, men gemmer hverken baseline eller rapportfiler, så det kan køres på et
+godkendt run uden at ændre noget. Det regner ÅTD efter brand for brand
+(baseline + rapportmåned skal give ÅTD-rækken), viser hvilke måneder der mangler
+baseline, og holder PipeDrive-topsalgene op mod brand-rækkerne. Exit-kode 0 =
+alt stemmer, 1 = mindst én afvigelse.
 | `test_spejlkopier.py` | At alle moduler frasorterer den samme deal-dubletdefekt |
 | `test_valuta.py` | Valutaomregning |
 | `test_nav_recent.py` | Favoritter og senest besøgt, inkl. at et menupunkt man har mistet adgang til, falder ud |
@@ -386,6 +402,7 @@ sekunder.
 | Login-rate-limiteren blokerer alle | `TRUST_PROXY=1` uden en rigtig proxy foran — alle ser ud som samme IP | Fjern `TRUST_PROXY` |
 | Blokeret efter for mange forsøg | 5 fejlede logins fra samme IP inden for 15 min. | Vent, eller genstart appen (tælleren er in-memory) |
 | Templates/static findes ikke | Tjenesten kører med forkert arbejdsmappe | Sæt "Startup directory"/"Start in" til projektmappen |
+| Én bestemt side giver 500 med `TemplateNotFound` efter en udrulning | En ny .html-fil kom ikke med — `git commit -am` tager kun ændrede, **sporede** filer med | `git status` på udviklingsmaskinen. `git add` de untrackede filer og udrul igen. `preflight.py` (§4) melder dem ved navn |
 | Task Scheduler viser `0x1`, intet i loggen | Næsten altid certifikatfilerne | Kør `run_server.py` manuelt — den skriver den konkrete fejl |
 | Porten lytter, men forbindelsen dør i håndtrykket | `truststore` er blevet injiceret globalt igen | Se §9 |
 | Sitet lukkede af sig selv efter et par dage | Task Schedulers "Stop the task if it runs longer than" | Slå den fra |
