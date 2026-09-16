@@ -431,6 +431,31 @@ async function loadFragment(cardId, contentId, url, onEmptyRemove){
 loadFragment('ytd-card', 'ytd-content', `/tools/admin-nysalg/${RUN}/ytd-fragment`, false);
 loadFragment('topdeals-card', 'topdeals-content', `/tools/admin-nysalg/${RUN}/top-deals-fragment`, true);
 
+// ÅTD = baseline for tidligere måneder + rapportmånedens egne tal. Retter man
+// bevægelser i reviewet, ændrer rapportmåneden sig, og så er ÅTD-kortet forældet
+// indtil siden genindlæses. Derfor genhentes fragmentet efter hver rettelse.
+//
+// Debounced, fordi man typisk retter flere rækker i træk og fragmentet laver
+// sine egne budget-queries. Ved fejl beholdes den viste tabel — et mislykket
+// baggrundskald må ikke erstatte korrekte tal med en fejlbesked.
+// (Topsalgs-listen har ikke samme problem: den kommer direkte fra PipeDrive på
+// runnets datointerval og påvirkes ikke af medtag/udeluk.)
+let ytdTimer = null;
+function refreshYtd(){
+  if(!document.getElementById('ytd-content')) return;
+  clearTimeout(ytdTimer);
+  ytdTimer = setTimeout(async () => {
+    const content = document.getElementById('ytd-content');
+    if(!content) return;
+    try {
+      const r = await fetch(`/tools/admin-nysalg/${RUN}/ytd-fragment`, {credentials:'include'});
+      if(!r.ok || r.status === 204) return;
+      const html = await r.text();
+      if(html.trim()) content.innerHTML = html;
+    } catch(e){ /* behold de viste tal */ }
+  }, 400);
+}
+
 // Brand-kommentarer (gemmes ved blur)
 document.querySelectorAll('textarea.bc').forEach(ta => {
   ta.addEventListener('blur', async () => {
@@ -452,6 +477,7 @@ document.querySelectorAll('button.toggle[data-state]').forEach(btn => {
       btn.textContent = next === 'exclude' ? 'Udeladt' : 'Medtaget';
       applySummary(resp.summary);
       applyBrands(resp.brands);
+      refreshYtd();
       toast('Opdateret');
     } catch(e){ toast('Fejl: '+e.message); }
     finally { btn.disabled = false; }
@@ -547,6 +573,7 @@ document.addEventListener('click', async e => {
     const tr = btn.closest('tr'); if(tr) tr.style.opacity = excluded ? '.55' : '';
     applySummary(resp.summary);
     applyBrands(resp.brands);   // genberegnet netto tilvækst pr. brand uden reload
+    refreshYtd();
     toast(excluded ? 'Udeladt' : 'Medtaget');
   } catch(e2){ toast('Fejl: '+e2.message); }
   finally { btn.disabled = false; }
@@ -567,6 +594,7 @@ document.addEventListener('change', async e => {
       });
       applySummary(resp.summary);   // genberegnede topkort uden reload
       applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
+      refreshYtd();
       toast('Værdi gemt');
     } catch(e2){ toast('Fejl: '+e2.message); }
   } else if(inp.matches('input.mv-adm')){
@@ -582,6 +610,7 @@ document.addEventListener('change', async e => {
       });
       applySummary(resp.summary);   // genberegnede topkort uden reload
       applyBrands(resp.brands);     // genberegnet netto tilvækst pr. brand uden reload
+      refreshYtd();
       toast('Administrativ andel gemt');
     } catch(e2){ toast('Fejl: '+e2.message); }
   }
