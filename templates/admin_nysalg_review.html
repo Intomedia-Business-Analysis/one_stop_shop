@@ -114,6 +114,7 @@
                 <th class="num">Bruttoopsigelser ekskl. adm</th>
                 <th class="num">Netto tilvækst</th>
                 <th class="num">Budget</th>
+                {% if show_forecast %}<th class="num" title="Ledelsens forecast for rapportmåneden (fast tal, ikke fra databasen)">Forecast</th>{% endif %}
                 <th>Kommentar</th>
                 <th>I rapport</th>
               </tr>
@@ -132,6 +133,7 @@
                   <td class="num" data-col="opsigelser_excl">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num" data-col="netto" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
                   <td class="num muted">{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} {{ cur }}</td>
+                  {% if show_forecast %}<td class="num muted">{% if b.forecast is not none %}{{ "{:,.0f}".format(b.forecast)|replace(",", ".") }} {{ cur }}{% else %}—{% endif %}</td>{% endif %}
                   <td><textarea class="bc" data-brand="{{ b.brand }}" {% if locked %}disabled{% endif %} placeholder="Kommentar til {{ b.brand }}…">{{ b.comment or "" }}</textarea></td>
                   <td>
                     <button class="brand-toggle toggle {% if is_hidden %}on{% endif %}"
@@ -153,6 +155,7 @@
                     <td class="num">{{ "{:,.0f}".format(s.opsigelser - s.adm_opsigelser)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num" style="color:{{ 'var(--win)' if s.netto >= 0 else 'var(--danger)' }}">{{ "{:,.0f}".format(s.netto)|replace(",", ".") }} {{ scur }}</td>
                     <td class="num muted">{% if s.budget is not none %}{{ "{:,.0f}".format(s.budget)|replace(",", ".") }} {{ scur }}{% else %}—{% endif %}</td>
+                    {% if show_forecast %}<td></td>{% endif %}
                     <td></td>
                     <td></td>
                   </tr>
@@ -173,6 +176,18 @@
             <p class="page-sub" style="margin:0">Indlæser måneds-opdeling…</p>
           </div>
         </div>
+
+        <!-- ÅTD (år til dato) — hentes asynkront: baseline for tidligere måneder +
+             dette runs tal for rapportmåneden, med ÅTD-budget hentet live. Kortet
+             vises kun for runs oprettet med ÅTD slået til. -->
+        {% if ytd_enabled %}
+        <div class="dash-card" id="ytd-card">
+          <div id="ytd-content">
+            <div class="dash-card-title"><span>ÅTD{% if ytd_label %} — {{ ytd_label }}{% endif %}</span></div>
+            <p class="page-sub" style="margin:0">Indlæser ÅTD-tal…</p>
+          </div>
+        </div>
+        {% endif %}
 
         <!-- Administrative nysalg -->
         <div class="dash-card">
@@ -282,6 +297,13 @@
           {% endfor %}
         </div>
 
+        <!-- Største salg pr. PipeDrive-brand — hentes asynkront (egne PipeDrive-
+             queries). Modstykket til bevægelses-listen ovenfor for de brands der
+             ikke findes i Zuora. Fjernes helt hvis der ingen deals er (204). -->
+        <div class="dash-card" id="topdeals-card" style="display:none">
+          <div id="topdeals-content"></div>
+        </div>
+
         <!-- Direktørens kommentar + godkend -->
         <div class="dash-card">
           <div class="dash-card-title"><span>Samlede kommentar</span></div>
@@ -385,6 +407,29 @@ document.addEventListener('click', e => {
     content.innerHTML = '<p class="page-sub" style="margin:0">Måneds-opdelingen kunne ikke indlæses — genindlæs siden for at prøve igen.</p>';
   }
 })();
+
+// ÅTD-tabellen og topsalgs-listen hentes i baggrunden som HTML-fragmenter, af
+// samme grund som måneds-opdelingen: de laver deres egne budget-/PipeDrive-
+// queries og skal ikke forsinke sideåbningen. 204 = intet at vise → fjern kortet.
+async function loadFragment(cardId, contentId, url, onEmptyRemove){
+  const card = document.getElementById(cardId);
+  const content = document.getElementById(contentId);
+  if(!card || !content) return;
+  try {
+    const r = await fetch(url, {credentials:'include'});
+    if(r.status === 204){ card.remove(); return; }
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const html = await r.text();
+    if(!html.trim()){ card.remove(); return; }
+    content.innerHTML = html;
+    card.style.display = '';
+  } catch(e){
+    if(onEmptyRemove){ card.remove(); return; }
+    content.innerHTML = '<p class="page-sub" style="margin:0">Kunne ikke indlæses — genindlæs siden for at prøve igen.</p>';
+  }
+}
+loadFragment('ytd-card', 'ytd-content', `/tools/admin-nysalg/${RUN}/ytd-fragment`, false);
+loadFragment('topdeals-card', 'topdeals-content', `/tools/admin-nysalg/${RUN}/top-deals-fragment`, true);
 
 // Brand-kommentarer (gemmes ved blur)
 document.querySelectorAll('textarea.bc').forEach(ta => {

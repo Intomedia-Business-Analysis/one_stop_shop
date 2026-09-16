@@ -23,6 +23,7 @@
           <th class="num">Bruttoopsigelser ekskl. adm</th>
           <th class="num">Netto tilvækst</th>
           <th class="num">Budget</th>
+          <th class="num" title="Ledelsens forecast for måneden (fast tal, ikke fra databasen)">Forecast</th>
         </tr>
       </thead>
       <tbody>
@@ -38,6 +39,7 @@
             <td class="num">{{ "{:,.0f}".format(b.opsigelser - b.adm_opsigelser)|replace(",", ".") }} {{ cur }}</td>
             <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
             <td class="num muted">{% if b.budget is not none %}{{ "{:,.0f}".format(b.budget)|replace(",", ".") }} kr.{% else %}—{% endif %}</td>
+            <td class="num muted">{% if b.forecast is not none %}{{ "{:,.0f}".format(b.forecast)|replace(",", ".") }} {{ cur }}{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

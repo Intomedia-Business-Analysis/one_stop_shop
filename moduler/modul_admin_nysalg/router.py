@@ -25,7 +25,7 @@ from constants import MONTH_NAMES_DA
 from log_setup import audit_log
 from nav_utils import register_nav_globals
 from moduler.modul_admin_nysalg import extract_loader, report, repo
-from moduler.modul_admin_nysalg.brands import classify
+from moduler.modul_admin_nysalg.brands import brand_currency, classify
 from moduler.modul_admin_nysalg.extract_loader import ExtractError
 from moduler.modul_admin_nysalg.matcher import build_index, match_rows
 from moduler.modul_admin_nysalg.pipedrive_source import get_default_source
@@ -115,11 +115,79 @@ def _month_label(ym: str) -> str:
         return ym
 
 
+def _parse_ytd_from(ytd_from: str, date_to: str | None) -> str:
+    """Validér ÅTD-startmåneden → ISO 'YYYY-MM-01'.
+
+    Feltet er en <input type=month> ('YYYY-MM'); en fuld ISO-dato accepteres
+    også. Tom værdi betyder januar i rapportmånedens år — kalenderåret er det
+    normale, men feltet kan sættes til fx juli for et forskudt regnskabsår.
+    ÅTD kan ikke starte efter rapportmåneden.
+    """
+    v = (ytd_from or "").strip()
+    if not v:
+        if not date_to:
+            raise ExtractError("ÅTD kræver en Til-dato, så rapportmåneden er kendt.")
+        return f"{date_to[:4]}-01-01"
+    ym = v[:7]
+    try:
+        start = _dt.date(int(ym[:4]), int(ym[5:7]), 1)
+    except (ValueError, IndexError):
+        raise ExtractError(f"Ugyldig ÅTD-startmåned: {v!r} — brug formatet ÅÅÅÅ-MM.")
+    if date_to and start > _dt.date.fromisoformat(date_to).replace(day=1):
+        raise ExtractError("ÅTD-startmåneden kan ikke ligge efter rapportmåneden.")
+    return start.isoformat()
+
+
+def _ytd_label(ytd_from: str | None, date_to: str | None) -> str:
+    """Læsbar ÅTD-periode til overskrifter ('Januar 2026 – September 2026')."""
+    if not ytd_from or not date_to:
+        return ""
+    a, b = _month_label(ytd_from[:7]), _month_label(date_to[:7])
+    return a if a == b else f"{a} – {b}"
+
+
+def _attach_forecast(run: dict, rows: list[dict]) -> list[dict]:
+    """Sæt forecast-kolonnen på månedstabellens brand-rækker.
+
+    Forecastet hører til den ENKELTE måned (se forecast.py) og lægges derfor kun
+    på månedstabellen — ÅTD-tabellen får det bevidst ikke.
+    """
+    from moduler.modul_admin_nysalg import forecast
+    return forecast.attach(rows, repo.run_months(run), repo.run_scope(run))
+
+
+def _ytd_block(run: dict, brand_rows: list[dict], brand_comments: dict,
+               hidden: set | None = None) -> dict | None:
+    """ÅTD-tabellen for et run (None når ÅTD ikke er slået til).
+
+    brand_rows er runnets egne (reviewede) brand-rækker for rapportmåneden;
+    resten af året kommer fra baseline. Skjulte brands pilles ud, så ÅTD viser
+    præcis de rækker rapporten i øvrigt viser.
+    """
+    ytd_from, ytd_to = repo.run_ytd_range(run)
+    if not ytd_from or not ytd_to:
+        return None
+    rows = [b for b in brand_rows if b["brand"] not in (hidden or set())]
+    block = repo.ytd_brand_rows(repo.run_scope(run), ytd_from, ytd_to, rows,
+                                repo.run_months(run), brand_comments)
+    if hidden:
+        block["rows"] = [b for b in block["rows"] if b["brand"] not in hidden]
+    block["label"] = _ytd_label(ytd_from, ytd_to)
+    block["missing_labels"] = [_month_label(ym) for ym in block.get("missing", [])]
+    return block
+
+
 def _months_breakdown(matches: list, date_from, date_to, comments: dict,
                       scope: str = "business_media") -> list[dict]:
-    """[{ym, label, rows}] pr. måned i intervallet (til review + rapport)."""
+    """[{ym, label, rows}] pr. måned i intervallet (til review + rapport).
+
+    Hver måneds rækker får månedens eget forecast med (forecast.py) — kolonnen
+    hører til den enkelte måned, så den kan stå både her og i månedstabellen.
+    """
+    from moduler.modul_admin_nysalg import forecast
     by_month = repo.brand_rows_by_month(matches, date_from, date_to, comments, scope=scope)
-    return [{"ym": ym, "label": _month_label(ym), "rows": rows}
+    return [{"ym": ym, "label": _month_label(ym),
+             "rows": forecast.attach(rows, [ym], scope)}
             for ym, rows in by_month.items()]
 
 
@@ -321,6 +389,193 @@ def index(request: Request, user=Depends(get_current_user)):
     })
 
 
+# ── ÅTD-baseline (admin) ─────────────────────────────────────────────────────
+# Baseline er de færdigreviewede tal for de måneder der ligger FØR den måned man
+# rapporterer. Uden dem skulle hele årets bevægelser rettes igennem igen for hver
+# ny månedsrapport. Siden her er stedet hvor de tastes ind første gang og rettes
+# bagefter; derefter skriver rapportgenereringen selv månedens tal ind
+# (source='run'), uden at røre de rækker der er rettet manuelt.
+#
+# Adgang: samme niveau som godkendelse (management+, admin passerer på rang) —
+# det er direktørens egne tal, og de styrer hvad ÅTD-tabellen viser.
+
+_BASELINE_MONTHS_BACK = 36       # måneder i månedsvælgeren
+
+
+def _baseline_month_choices(back: int = _BASELINE_MONTHS_BACK) -> list[dict]:
+    """[{ym, label}] for de seneste `back` måneder, nyeste først."""
+    today = _dt.date.today().replace(day=1)
+    out = []
+    y, m = today.year, today.month
+    for _ in range(back):
+        ym = f"{y:04d}-{m:02d}"
+        out.append({"ym": ym, "label": _month_label(ym)})
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return out
+
+
+def _baseline_labels(scope: str) -> list[str]:
+    """Rækkerne der som udgangspunkt kan udfyldes for et scope.
+
+    Business Media har en fast brand-liste (DISPLAY_ORDER). Monitor-rapportens
+    rækker er enkelt-sites og kan ikke listes på forhånd — dér kommer rækkerne
+    fra det der allerede er gemt, fra "Hent fra database", eller tastes ind.
+    """
+    from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER, EXCLUDED_BRANDS
+    if scope == "monitor":
+        return []
+    return [b for b in DISPLAY_ORDER if b not in EXCLUDED_BRANDS]
+
+
+def _computed_month_rows(scope: str, ym: str) -> tuple[list[dict], dict | None]:
+    """(brand-rækker, kilde-run) beregnet for én måned — "Hent fra database".
+
+    Annonce-/PipeDrive-rækkerne (Job, Banner, Norge, MarketWire) kan altid regnes
+    direkte fra databasen; de kræver intet review. Zuora-abonnementsbrandene kan
+    kun udfyldes, hvis der findes et GODKENDT run der dækker måneden — så bruges
+    dets reviewede bevægelser. Findes intet run, kommer abonnementsbrandene ud
+    som 0 og skal tastes.
+    """
+    date_from, date_to = repo._month_bounds(ym)
+    budgets = repo.brand_budgets(date_from, date_to) if scope != "monitor" else {}
+    prefetched = _scope_extra_rows(scope, date_from, date_to, {}, budgets)
+    src_run = None
+    for run in repo.list_runs(200):     # nyeste først
+        if repo.run_scope(run) != scope or run.get("status") not in ("approved", "reported"):
+            continue
+        if ym in repo.run_months(run):
+            src_run = run
+            break
+    matches = []
+    hidden: set = set()
+    if src_run:
+        matches = [m for m in _visible_matches(src_run)
+                   if (m.get("month_end") or "")[:7] == ym]
+        hidden = repo.get_hidden_brands(src_run["run_id"])
+    rows = _scope_brand_rows(scope, matches, date_from, date_to, {}, budgets,
+                             prefetched=prefetched)
+    return [b for b in rows if b["brand"] not in hidden], src_run
+
+
+def _baseline_view_rows(scope: str, ym: str) -> list[dict]:
+    """Rækkerne til indtastningstabellen: gemte værdier + tomme standardrækker."""
+    stored = repo.get_baseline(scope, ym, ym).get(ym, {})
+    labels = list(_baseline_labels(scope))
+    for brand in stored:
+        if brand not in labels:
+            labels.append(brand)
+    out = []
+    for brand in labels:
+        b = stored.get(brand)
+        out.append({
+            "brand": brand,
+            "sale": b["sale"] if b else "",
+            "churn": b["churn"] if b else "",
+            "netto": b["netto"] if b else 0.0,
+            "currency": (b["currency"] if b else brand_currency(brand)),
+            "source": b["source"] if b else "",
+            "updated_at": b["updated_at"] if b else None,
+            "updated_by": b["updated_by"] if b else "",
+        })
+    return out
+
+
+@router.get("/baseline", response_class=HTMLResponse)
+def baseline_page(request: Request, scope: str = "business_media",
+                  ym: str = "", user=Depends(get_current_user)):
+    """Indtastning/retning af ÅTD-baseline pr. måned."""
+    from moduler.modul_admin_nysalg.brands import VALID_SCOPES
+    _require_approve(user)
+    scope = scope if scope in VALID_SCOPES else "business_media"
+    months = _baseline_month_choices()
+    # Uden valgt måned: forrige måned — det er den man typisk skal have på plads
+    # inden denne måneds rapport køres.
+    ym = (ym or "")[:7] or (months[1]["ym"] if len(months) > 1 else months[0]["ym"])
+    return templates.TemplateResponse(request, "admin_nysalg_baseline.html", {
+        "user": user,
+        "scope": scope,
+        "ym": ym,
+        "ym_label": _month_label(ym),
+        "months": months,
+        "rows": _baseline_view_rows(scope, ym),
+        "saved_months": repo.baseline_months(scope),
+    })
+
+
+@router.post("/baseline/prefill")
+def baseline_prefill(body: dict = Body(...), user=Depends(get_current_user)):
+    """Beregn månedens tal fra databasen (gemmer IKKE — fylder kun felterne ud)."""
+    from moduler.modul_admin_nysalg.brands import VALID_SCOPES
+    _require_approve(user)
+    scope = (body.get("scope") or "business_media").strip()
+    if scope not in VALID_SCOPES:
+        raise HTTPException(400, f"Ugyldigt scope: {scope!r}")
+    ym = (body.get("ym") or "").strip()[:7]
+    if len(ym) != 7:
+        raise HTTPException(400, "ym påkrævet (ÅÅÅÅ-MM)")
+    rows, src_run = _computed_month_rows(scope, ym)
+    return JSONResponse({
+        "ok": True,
+        "rows": repo.baseline_rows_from_brand_rows(rows),
+        # Uden et godkendt run for måneden er kun annoncerækkerne rigtige —
+        # det skal brugeren have at vide, før tallene gemmes.
+        "source_run": src_run.get("run_id") if src_run else None,
+        "note": (f"Abonnementstal hentet fra run #{src_run['run_id']}."
+                 if src_run else
+                 "Der findes ikke et godkendt run for måneden — kun annonce-/"
+                 "PipeDrive-rækkerne er hentet. Abonnementstallene skal tastes."),
+    })
+
+
+@router.post("/baseline/save")
+def baseline_save(body: dict = Body(...), user=Depends(get_current_user)):
+    """Gem månedens baseline (manuelle tal — overskrives aldrig af et run)."""
+    from moduler.modul_admin_nysalg.brands import VALID_SCOPES
+    _require_approve(user)
+    scope = (body.get("scope") or "business_media").strip()
+    if scope not in VALID_SCOPES:
+        raise HTTPException(400, f"Ugyldigt scope: {scope!r}")
+    ym = (body.get("ym") or "").strip()[:7]
+    if len(ym) != 7:
+        raise HTTPException(400, "ym påkrævet (ÅÅÅÅ-MM)")
+
+    def _num(v):
+        if v in (None, "", "-"):
+            return 0.0
+        try:
+            return round(float(str(v).replace(".", "").replace(",", ".")), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"Ugyldig værdi: {v!r}")
+
+    rows = [{"brand": (r.get("brand") or "").strip(),
+             "sale": _num(r.get("sale")), "churn": _num(r.get("churn")),
+             "currency": (r.get("currency") or "").strip()}
+            for r in (body.get("rows") or []) if (r.get("brand") or "").strip()]
+    n = repo.save_baseline(scope, ym, rows, updated_by=user.get("name"), source="manual")
+    audit_log("admin_nysalg_baseline_gemt", user=user, scope=scope, maaned=ym, raekker=n)
+    return JSONResponse({"ok": True, "rows": n})
+
+
+@router.post("/baseline/delete")
+def baseline_delete(body: dict = Body(...), user=Depends(get_current_user)):
+    """Slet hele månedens baseline (fx hvis den blev gemt på den forkerte måned)."""
+    from moduler.modul_admin_nysalg.brands import VALID_SCOPES
+    _require_approve(user)
+    scope = (body.get("scope") or "business_media").strip()
+    if scope not in VALID_SCOPES:
+        raise HTTPException(400, f"Ugyldigt scope: {scope!r}")
+    ym = (body.get("ym") or "").strip()[:7]
+    if len(ym) != 7:
+        raise HTTPException(400, "ym påkrævet (ÅÅÅÅ-MM)")
+    n = repo.delete_baseline_month(scope, ym)
+    audit_log("admin_nysalg_baseline_slettet", user=user, scope=scope, maaned=ym, raekker=n)
+    return JSONResponse({"ok": True, "deleted": n})
+
+
+# NB: ruterne herunder skal blive stående FØR /{run_id}/… — ellers matcher
+# /baseline/delete mod /{run_id}/delete og fejler på run_id='baseline'.
 @router.post("/{run_id}/delete")
 def delete_run(run_id: int, user=Depends(get_current_user)):
     _require_admin(user)
@@ -373,7 +628,8 @@ def _set_job(job_id: str, **fields) -> None:
 
 def _run_worker(job_id, user, file_bytes, filename, src_path, src_name,
                 date_from, date_to, period_label,
-                report_scope="business_media") -> None:
+                report_scope="business_media",
+                ytd_enabled=False, ytd_from=None) -> None:
     """Kører matchningen i baggrunden og opdaterer job-state løbende."""
     try:
         _set_job(job_id, phase="Indlæser udtræk…", percent=8)
@@ -402,7 +658,8 @@ def _run_worker(job_id, user, file_bytes, filename, src_path, src_name,
 
         _set_job(job_id, phase="Gemmer resultat…", percent=45)
         run_id = repo.create_run(user.get("name"), src_path, src_name, period_label,
-                                 date_from, date_to, report_scope=report_scope)
+                                 date_from, date_to, report_scope=report_scope,
+                                 ytd_enabled=ytd_enabled, ytd_from=ytd_from)
 
         def _prog(i, n):
             _set_job(job_id, percent=(45 + int(50 * i / n)) if n else 95)
@@ -429,6 +686,8 @@ async def run_match(
     period_from: str = Form(""),
     period_to: str = Form(""),
     report_scope: str = Form("business_media"),
+    ytd_enabled: str = Form(""),
+    ytd_from: str = Form(""),
     user=Depends(get_current_user),
 ):
     """Start matchningen som baggrundsjob. Returnerer {job_id}; frontend poller
@@ -442,6 +701,8 @@ async def run_match(
     # Validér interval + kildevalg synkront, så brugeren får øjeblikkelig fejl.
     try:
         date_from, date_to, period_label = _parse_range(period_from, period_to)
+        want_ytd = str(ytd_enabled).strip().lower() in ("1", "true", "on", "yes")
+        ytd_start = _parse_ytd_from(ytd_from, date_to) if want_ytd else None
         file_bytes = filename = src_path = src_name = None
         if file is not None and file.filename:
             file_bytes = await file.read()
@@ -466,7 +727,8 @@ async def run_match(
     threading.Thread(
         target=_run_worker,
         args=(job_id, user, file_bytes, filename, src_path, src_name,
-              date_from, date_to, period_label, report_scope),
+              date_from, date_to, period_label, report_scope,
+              want_ytd, ytd_start),
         daemon=True,
     ).start()
     return JSONResponse({"job_id": job_id})
@@ -507,6 +769,9 @@ def review(run_id: int, request: Request, user=Depends(get_current_user)):
         prefetched = f_extra.result()
     brand_rows = _scope_brand_rows(scope, matches, date_from, date_to,
                                    brand_comments, budgets, prefetched=prefetched)
+    # Forecast er hardcodede ledelsestal pr. måned (forecast.py) og vises som en
+    # kolonne ved siden af budgettet i MÅNEDSTABELLEN — ikke i ÅTD.
+    brand_rows = _attach_forecast(run, brand_rows)
     # adm_share = det der faktisk trækkes fra Actual Sale (deal-værdien ved
     # delvist administrative rækker, ellers hele gross in).
     admin_rows = [dict(m, adm_share=repo.effective_adm_in(dict(m, total_excluded=False)),
@@ -527,6 +792,9 @@ def review(run_id: int, request: Request, user=Depends(get_current_user)):
         "hidden_brands": sorted(hidden),
         "admin_rows": admin_rows,
         "brand_movements": brand_movements,
+        "show_forecast": any(b.get("forecast") is not None for b in brand_rows),
+        "ytd_enabled": bool(run.get("ytd_enabled")),
+        "ytd_label": _ytd_label(*repo.run_ytd_range(run)),
         "can_approve": has_access(user, APPROVE_MIN_ROLE),
         "locked": run.get("status") in ("approved", "reported"),
     })
@@ -559,6 +827,54 @@ def months_fragment(run_id: int, request: Request, user=Depends(get_current_user
     return templates.TemplateResponse(request, "_admin_nysalg_months.html", {
         "months_breakdown": months_breakdown,
         "is_monitor": scope == "monitor",
+    })
+
+
+@router.get("/{run_id}/ytd-fragment", response_class=HTMLResponse)
+def ytd_fragment(run_id: int, request: Request, user=Depends(get_current_user)):
+    """ÅTD-tabellen som HTML-fragment — hentes asynkront af review-siden.
+
+    Bygger på baseline (tidligere måneder) + runnets egne tal, og henter ÅTD-
+    budgettet live for hele perioden. Tom body (204) når ÅTD ikke er slået til.
+    """
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    if not run.get("ytd_enabled"):
+        return HTMLResponse("", status_code=204)
+    scope = repo.run_scope(run)
+    date_from, date_to = repo.run_date_range(run)
+    brand_comments = repo.get_brand_comments(run_id)
+    budgets = repo.brand_budgets(date_from, date_to) if scope != "monitor" else {}
+    matches = _visible_matches(run)
+    brand_rows = _scope_brand_rows(scope, matches, date_from, date_to,
+                                   brand_comments, budgets)
+    block = _ytd_block(run, brand_rows, brand_comments,
+                       repo.get_hidden_brands(run_id))
+    if not block or not block["rows"]:
+        return HTMLResponse("", status_code=204)
+    return templates.TemplateResponse(request, "_admin_nysalg_ytd.html", {
+        "ytd": block,
+        "is_monitor": scope == "monitor",
+        "baseline_url": f"/tools/admin-nysalg/baseline?scope={scope}",
+    })
+
+
+@router.get("/{run_id}/top-deals-fragment", response_class=HTMLResponse)
+def top_deals_fragment(run_id: int, request: Request, user=Depends(get_current_user)):
+    """Største enkeltsalg pr. PipeDrive-brand — asynkront HTML-fragment.
+
+    Modstykket til "Bevægelser pr. brand" (Zuora): Job, Banner, Norge og
+    MarketWire kommer kun fra PipeDrive, og her kan de enkelte deals bag tallet
+    ses, største beløb først. 204 når der ingen deals er i perioden.
+    """
+    _require_view(user)
+    run = _get_run_or_404(run_id)
+    date_from, date_to = repo.run_date_range(run)
+    groups = repo.pipedrive_top_deals(date_from, date_to, repo.run_scope(run))
+    if not groups:
+        return HTMLResponse("", status_code=204)
+    return templates.TemplateResponse(request, "_admin_nysalg_top_deals.html", {
+        "deal_groups": groups,
     })
 
 
@@ -733,22 +1049,60 @@ def make_report(run_id: int, user=Depends(get_current_user)):
     if scope != "monitor":
         site_brands = tuple(b for b in ("Watch DK", "Watch NO") if b not in hidden)
         site_rows = repo.summarize_by_site(matches, site_brands) if site_brands else []
+    # Forecast-kolonnen (hardcodede månedstal) + ÅTD-tabellen. ÅTD bygges af
+    # baseline for de tidligere måneder og runnets egne tal for rapportmåneden,
+    # og får bevidst ingen forecast-kolonne — forecastet dækker kun enkeltmåneder.
+    brand_rows = _attach_forecast(run, brand_rows)
+    ytd = _ytd_block(run, brand_rows, brand_comments, hidden)
+    top_deals = repo.pipedrive_top_deals(date_from, date_to, scope)
     try:
         xlsx_path = report.generate_excel(run, matches, summary, brand_rows,
                                           pd_deals=pd_deals, org_names=org_names,
                                           months_breakdown=months_breakdown,
-                                          site_rows=site_rows)
+                                          site_rows=site_rows, ytd=ytd,
+                                          top_deals=top_deals)
         try:
             report.generate_pdf(run, matches, summary, brand_rows,
-                                 months_breakdown=months_breakdown)
+                                 months_breakdown=months_breakdown, ytd=ytd)
         except Exception:
             logger.exception("PDF-generering fejlede (run %s) — Excel blev gemt", run_id)
     except Exception:
         logger.exception("Rapportgenerering fejlede (run %s)", run_id)
         raise HTTPException(500, "Rapporten kunne ikke genereres")
     repo.set_report_path(run_id, xlsx_path)
-    audit_log("admin_nysalg_rapport", user=user, run_id=run_id)
-    return JSONResponse({"ok": True})
+    # Frys månedens resultat som ÅTD-baseline, så næste måneds rapport kan bruge
+    # det uden at reviewet skal laves om. Manuelt rettede rækker bevares
+    # (keep_manual), og en fejl her må ikke koste den netop gemte rapport.
+    try:
+        saved = _save_baseline_from_report(run, brand_rows, months_breakdown,
+                                           user.get("name"))
+    except Exception:
+        logger.exception("Kunne ikke gemme ÅTD-baseline for run %s", run_id)
+        saved = 0
+    audit_log("admin_nysalg_rapport", user=user, run_id=run_id, baseline_raekker=saved)
+    return JSONResponse({"ok": True, "baseline_rows": saved})
+
+
+def _save_baseline_from_report(run: dict, brand_rows: list[dict],
+                               months_breakdown: list[dict],
+                               updated_by: str | None) -> int:
+    """Gem rapportens tal som ÅTD-baseline pr. måned. Returnerer antal rækker.
+
+    Spænder runnet over flere måneder, gemmes hver måned for sig fra måneds-
+    opdelingen; ellers gemmes den samlede brand-tabel på runnets ene måned.
+    """
+    scope = repo.run_scope(run)
+    run_id = run.get("run_id")
+    months = repo.run_months(run)
+    blocks = ([(blk["ym"], blk.get("rows") or []) for blk in months_breakdown]
+              if months_breakdown else
+              ([(months[0], brand_rows)] if len(months) == 1 else []))
+    total = 0
+    for ym, rows in blocks:
+        total += repo.save_baseline(scope, ym, repo.baseline_rows_from_brand_rows(rows),
+                                    updated_by=updated_by, source="run", run_id=run_id,
+                                    keep_manual=True)
+    return total
 
 
 @router.get("/{run_id}/download")

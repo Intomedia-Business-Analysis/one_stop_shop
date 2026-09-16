@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ÅTD-baseline — Monthly performance report</title>
+<link rel="stylesheet" href="/static/hub.css">
+<style>
+.tool-wrap{max-width:1100px;margin:0 auto}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;position:relative;overflow:hidden;margin-bottom:20px}
+.dash-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--green);border-radius:var(--r) var(--r) 0 0}
+.dash-card-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--ink-4);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.v-table{width:100%;border-collapse:collapse;font-size:12px}
+.v-table th{background:var(--green);color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;padding:8px 10px;text-align:left;white-space:nowrap}
+.v-table th.num{text-align:right}
+.v-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--ink-2);vertical-align:middle}
+.v-table .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.v-table .muted{color:var(--ink-4)}
+.v-table .empty{text-align:center;padding:32px;color:var(--ink-4);font-style:italic}
+.v-table input.bl{width:100%;box-sizing:border-box;text-align:right;font-family:var(--font);font-size:12px;border:1px solid var(--border);border-radius:6px;padding:5px 7px}
+.v-table input.bl:focus{outline:none;border-color:var(--green)}
+.fld label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:6px}
+.fld select,.fld input[type=text]{font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;outline:none;box-sizing:border-box}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;background:var(--green);color:#fff;border:none;border-radius:var(--r-sm);padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none;background:var(--bg);cursor:pointer;font-family:var(--font)}
+.btn-danger{border-color:#F2C9D2;color:var(--danger);background:var(--danger-light)}
+.tb-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 14px;font-size:12px;color:var(--ink-2);text-decoration:none}
+.badge{display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:9px;text-transform:uppercase}
+.badge.man{background:var(--green-light);color:var(--green)}
+.badge.run{background:#EDEAE3;color:var(--ink-3)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.note{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;font-size:12px;color:var(--ink-2);margin-bottom:14px}
+.mchips{display:flex;gap:6px;flex-wrap:wrap}
+.mchip{font-size:11px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--ink-2);border-radius:6px;padding:5px 10px;text-decoration:none}
+.mchip.on{background:var(--green);border-color:var(--green);color:#fff}
+</style>
+</head>
+<body>
+<div class="shell">
+  {% with active_url='/tools/admin-nysalg/' %}{% include "_sidebar.html" %}{% endwith %}
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0"><div class="st-icon"></div><span class="st-text">Søg…</span></div>
+      <div class="tb-right"><a href="/tools/admin-nysalg/" class="tb-btn">← Tilbage til runs</a></div>
+    </div>
+    <div class="content-area">
+      <div class="tool-wrap">
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a><span class="bc-sep">/</span>
+          <a href="/tools/admin-nysalg/" class="bc-link">Monthly performance report</a><span class="bc-sep">/</span>
+          <span>ÅTD-baseline</span>
+        </div>
+
+        <h1 class="page-title" style="margin-bottom:4px">ÅTD-baseline</h1>
+        <p class="page-sub" style="margin-bottom:20px">
+          De færdigreviewede tal for tidligere måneder. ÅTD-tabellen i rapporten lægger disse måneder
+          sammen med rapportmånedens egne tal, så bevægelserne kun skal gennemgås én gang pr. måned.
+        </p>
+
+        <div class="dash-card">
+          <div class="dash-card-title"><span>Vælg måned</span></div>
+          <form method="get" action="/tools/admin-nysalg/baseline"
+                style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+            <div class="fld">
+              <label for="f-scope">Rapport-type</label>
+              <select id="f-scope" name="scope" onchange="this.form.submit()">
+                <option value="business_media" {% if scope == 'business_media' %}selected{% endif %}>Business Media</option>
+                <option value="monitor" {% if scope == 'monitor' %}selected{% endif %}>Monitor</option>
+              </select>
+            </div>
+            <div class="fld">
+              <label for="f-ym">Måned</label>
+              <select id="f-ym" name="ym" onchange="this.form.submit()">
+                {% for m in months %}
+                  <option value="{{ m.ym }}" {% if m.ym == ym %}selected{% endif %}>{{ m.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <noscript><button type="submit" class="btn-ghost">Skift</button></noscript>
+          </form>
+          {% if saved_months %}
+            <div style="margin-top:16px">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink-4);margin-bottom:8px">Måneder med baseline</div>
+              <div class="mchips">
+                {% for m in saved_months %}
+                  <a class="mchip {% if m.ym == ym %}on{% endif %}"
+                     href="/tools/admin-nysalg/baseline?scope={{ scope }}&ym={{ m.ym }}">{{ m.ym }} <span style="opacity:.7">({{ m.n }})</span></a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span>{{ ym_label }} — {{ "Monitor" if scope == 'monitor' else "Business Media" }}</span>
+            <span style="display:flex;gap:8px">
+              <button class="btn-ghost" id="btn-prefill" type="button">↻ Hent fra database</button>
+              <button class="btn-ghost btn-danger" id="btn-clear" type="button">Slet måned</button>
+            </span>
+          </div>
+          <div class="note">
+            <b>Actual Sale</b> og <b>Actual Churn</b> er tallene <i>ekskl.</i> administrative bevægelser —
+            altså præcis de to kolonner rapporten viser. Netto tilvækst udregnes som Sale − Churn.
+            Beløb i brandets egen valuta (Norge i NOK, Sverige i SEK, FinanzBusiness i EUR).
+            «Hent fra database» udfylder felterne uden at gemme: annoncerækkerne beregnes altid,
+            abonnementsrækkerne kun hvis der findes et godkendt run for måneden.
+            Rækker du gemmer her, markeres <span class="badge man">manuel</span> og overskrives aldrig af en rapportkørsel.
+          </div>
+          <div style="overflow-x:auto">
+          <table class="v-table" id="bl-table">
+            <thead>
+              <tr>
+                <th>{{ "Site" if scope == 'monitor' else "Brand" }}</th>
+                <th class="num" style="width:150px">Actual Sale</th>
+                <th class="num" style="width:150px">Actual Churn</th>
+                <th class="num" style="width:140px">Netto tilvækst</th>
+                <th style="width:70px">Valuta</th>
+                <th style="width:150px">Kilde</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if not rows %}
+                <tr id="bl-empty"><td colspan="6" class="empty">Ingen rækker endnu — tilføj en række eller hent fra databasen.</td></tr>
+              {% endif %}
+              {% for r in rows %}
+                <tr data-brand="{{ r.brand }}" data-cur="{{ r.currency }}">
+                  <td style="font-weight:700">{{ r.brand }}</td>
+                  <td><input class="bl" data-f="sale" type="number" step="1" value="{{ r.sale }}" placeholder="0"></td>
+                  <td><input class="bl" data-f="churn" type="number" step="1" value="{{ r.churn }}" placeholder="0"></td>
+                  <td class="num" data-netto>{{ "{:,.0f}".format(r.netto)|replace(",", ".") }}</td>
+                  <td class="muted">{{ r.currency }}</td>
+                  <td>
+                    {% if r.source == 'manual' %}<span class="badge man">manuel</span>
+                    {% elif r.source == 'run' %}<span class="badge run">rapport</span>
+                    {% else %}<span class="muted">—</span>{% endif %}
+                    {% if r.updated_at %}<span class="muted" style="font-size:10px;display:block;margin-top:2px">{{ r.updated_at.strftime("%Y-%m-%d") }}{% if r.updated_by %} · {{ r.updated_by }}{% endif %}</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:16px;flex-wrap:wrap">
+            <div class="fld" style="margin:0">
+              <label for="new-brand">Tilføj række</label>
+              <input type="text" id="new-brand" placeholder="{{ 'Site-navn' if scope == 'monitor' else 'Brand-navn' }}" autocomplete="off">
+            </div>
+            <button class="btn-ghost" id="btn-add" type="button">+ Tilføj</button>
+            <span style="flex:1"></span>
+            <button class="btn-primary" id="btn-save" type="button">Gem baseline</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+const SCOPE = {{ scope | tojson }};
+const YM = {{ ym | tojson }};
+const nfmt = n => Math.round(n||0).toLocaleString('da-DK');
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+
+async function postJSON(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                             credentials:'include', body:JSON.stringify(body||{})});
+  if(!r.ok){ let d={}; try{d=await r.json()}catch(e){}; throw new Error(d.detail||('HTTP '+r.status)); }
+  return r.json();
+}
+
+const tbody = document.querySelector('#bl-table tbody');
+
+// Netto (Sale − Churn) opdateres mens der tastes, så man kan se resultatet uden at gemme.
+function recalc(tr){
+  const get = f => parseFloat(tr.querySelector(`input[data-f="${f}"]`)?.value || 0) || 0;
+  const cell = tr.querySelector('[data-netto]');
+  if(cell) cell.textContent = nfmt(get('sale') - get('churn'));
+}
+tbody.addEventListener('input', e => {
+  const tr = e.target.closest('tr[data-brand]');
+  if(tr) recalc(tr);
+});
+
+function addRow(brand, currency){
+  const empty = document.getElementById('bl-empty');
+  if(empty) empty.remove();
+  const tr = document.createElement('tr');
+  tr.dataset.brand = brand;
+  tr.dataset.cur = currency || 'DKK';
+  tr.innerHTML = `<td style="font-weight:700"></td>
+    <td><input class="bl" data-f="sale" type="number" step="1" placeholder="0"></td>
+    <td><input class="bl" data-f="churn" type="number" step="1" placeholder="0"></td>
+    <td class="num" data-netto>0</td>
+    <td class="muted"></td>
+    <td><span class="muted">—</span></td>`;
+  tr.children[0].textContent = brand;
+  tr.children[4].textContent = tr.dataset.cur;
+  tbody.appendChild(tr);
+  return tr;
+}
+
+document.getElementById('btn-add').addEventListener('click', () => {
+  const input = document.getElementById('new-brand');
+  const brand = (input.value || '').trim();
+  if(!brand){ toast('Skriv et navn først'); return; }
+  const existing = tbody.querySelector(`tr[data-brand="${(window.CSS&&CSS.escape)?CSS.escape(brand):brand}"]`);
+  if(existing){ existing.querySelector('input')?.focus(); toast('Rækken findes allerede'); return; }
+  addRow(brand, 'DKK').querySelector('input')?.focus();
+  input.value = '';
+});
+
+document.getElementById('btn-prefill').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try {
+    const d = await postJSON('/tools/admin-nysalg/baseline/prefill', {scope:SCOPE, ym:YM});
+    for(const row of d.rows || []){
+      let tr = tbody.querySelector(`tr[data-brand="${(window.CSS&&CSS.escape)?CSS.escape(row.brand):row.brand}"]`);
+      if(!tr) tr = addRow(row.brand, row.currency);
+      tr.querySelector('input[data-f="sale"]').value = Math.round(row.sale || 0);
+      tr.querySelector('input[data-f="churn"]').value = Math.round(row.churn || 0);
+      recalc(tr);
+    }
+    toast(d.note || 'Hentet — husk at gemme');
+  } catch(err){ toast('Fejl: ' + err.message); }
+  finally { btn.disabled = false; }
+});
+
+document.getElementById('btn-save').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = 'Gemmer…';
+  try {
+    const rows = [...tbody.querySelectorAll('tr[data-brand]')].map(tr => ({
+      brand: tr.dataset.brand,
+      currency: tr.dataset.cur,
+      sale: tr.querySelector('input[data-f="sale"]').value,
+      churn: tr.querySelector('input[data-f="churn"]').value,
+    }));
+    const d = await postJSON('/tools/admin-nysalg/baseline/save', {scope:SCOPE, ym:YM, rows});
+    toast(`Gemt — ${d.rows} ${d.rows === 1 ? 'række' : 'rækker'}`);
+    setTimeout(() => window.location.reload(), 700);
+  } catch(err){ toast('Fejl: ' + err.message); btn.disabled = false; btn.textContent = 'Gem baseline'; }
+});
+
+document.getElementById('btn-clear').addEventListener('click', async (e) => {
+  if(!confirm(`Slet hele baseline for ${YM}? Månederne tæller derefter som 0 i ÅTD.`)) return;
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try {
+    const d = await postJSON('/tools/admin-nysalg/baseline/delete', {scope:SCOPE, ym:YM});
+    toast(`Slettet — ${d.deleted} rækker`);
+    setTimeout(() => window.location.reload(), 700);
+  } catch(err){ toast('Fejl: ' + err.message); btn.disabled = false; }
+});
+</script>
+</body>
+</html>

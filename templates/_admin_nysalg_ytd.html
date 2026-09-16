@@ -1,0 +1,57 @@
+{# ÅTD-tabel (år til dato) — hentes asynkront af review-siden via
+   /tools/admin-nysalg/{run_id}/ytd-fragment.
+
+   Tallene for månederne FØR rapportmåneden kommer fra den gemte baseline
+   (admin_nysalg_baseline); rapportmåneden selv kommer fra det run man sidder i,
+   så tabellen følger med hver gang en bevægelse rettes ovenfor (efter reload).
+   Ingen Forecast-kolonne: forecastet er aftalt pr. enkelt måned og dækker kun
+   jul–dec, så det ville være misvisende mod et helt års ÅTD-tal.
+
+   Forventer: ytd = {rows, label, missing_labels, months}, is_monitor, baseline_url. #}
+<div class="dash-card-title">
+  <span>ÅTD — {{ ytd.label }}</span>
+  <a href="{{ baseline_url }}" class="btn-ghost" style="font-size:11px;padding:5px 10px">Redigér baseline</a>
+</div>
+<p class="page-sub" style="margin:0 0 14px">
+  Tidligere måneder kommer fra den gemte baseline; {{ "rapportmånederne" if ytd.months|length > 1 else "rapportmåneden" }}
+  kommer fra dette run. Når rapporten genereres, gemmes månedens tal automatisk som baseline til næste rapport.
+</p>
+
+{% if ytd.missing_labels %}
+  <div style="background:#fff3df;border:1px solid #f0dcb4;color:#9a6a18;border-radius:var(--r-sm);padding:10px 14px;font-size:12px;font-weight:600;margin-bottom:14px">
+    ⚠ Ingen baseline for {{ ytd.missing_labels|join(", ") }} — disse måneder tæller som 0 i ÅTD.
+    <a href="{{ baseline_url }}" style="color:inherit;text-decoration:underline">Udfyld baseline</a>
+  </div>
+{% endif %}
+
+<div style="overflow-x:auto">
+<table class="v-table">
+  <thead>
+    <tr>
+      <th>{{ "Site" if is_monitor else "Brand" }}</th>
+      <th class="num">Actual Sale ÅTD</th>
+      <th class="num">Actual Churn ÅTD</th>
+      <th class="num">Netto tilvækst ÅTD</th>
+      <th class="num">Budget ÅTD</th>
+      <th class="num">Afvigelse</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if not ytd.rows %}
+      <tr><td colspan="6" class="empty">Ingen ÅTD-tal — hverken baseline eller bevægelser i perioden.</td></tr>
+    {% endif %}
+    {% for b in ytd.rows %}
+      {% set cur = 'kr.' if (b.currency or 'DKK') == 'DKK' else b.currency %}
+      {% set dev = b.netto - (b.budget or 0) %}
+      <tr>
+        <td style="font-weight:700">{{ b.brand }}</td>
+        <td class="num">{{ "{:,.0f}".format(b.brutto)|replace(",", ".") }} {{ cur }}</td>
+        <td class="num">{{ "{:,.0f}".format(b.opsigelser)|replace(",", ".") }} {{ cur }}</td>
+        <td class="num" style="color:{{ 'var(--win)' if b.netto >= 0 else 'var(--danger)' }};font-weight:700">{{ "{:,.0f}".format(b.netto)|replace(",", ".") }} {{ cur }}</td>
+        <td class="num muted">{{ "{:,.0f}".format(b.budget or 0)|replace(",", ".") }} {{ cur }}</td>
+        <td class="num" style="color:{{ 'var(--win)' if dev >= 0 else 'var(--danger)' }}">{{ "{:,.0f}".format(dev)|replace(",", ".") }} {{ cur }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>

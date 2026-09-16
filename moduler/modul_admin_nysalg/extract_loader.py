@@ -30,7 +30,8 @@ _NUMERIC_COLUMNS = ["arr_local", "arr_dkk", "prev_arr", "net_diff", "gross_in", 
 # Valgfrie kolonner: medtages hvis de findes, men et udtræk uden dem afvises
 # IKKE — så gamle udtræk kan stadig køres igennem.
 #   contact_companyname – kundenavnet fra Zuora (primær navnekilde i rapporten)
-_OPTIONAL_COLUMNS = ["contact_companyname"]
+#   report_currency     – brandets rapporteringsvaluta; se _row_currency nedenfor
+_OPTIONAL_COLUMNS = ["contact_companyname", "report_currency"]
 
 
 class ExtractError(ValueError):
@@ -55,6 +56,25 @@ def _to_float(v) -> float:
         return float(s)
     except ValueError as e:
         raise ExtractError(f"Kan ikke tolke tal: {v!r}") from e
+
+
+def _row_currency(rec: dict) -> str:
+    """Valutaen rækkens BELØB er opgjort i.
+
+    Udtrækket har to valutakolonner, og de er ikke det samme:
+      currency        – kundens kontraktvaluta (gælder kun arr_local)
+      report_currency – brandets rapporteringsvaluta, som arr_dkk, prev_arr,
+                        net_diff, gross_in og gross_out er omregnet til
+
+    Bevægelsestallene er dem rapporten regner på, så rækkens valuta SKAL være
+    report_currency. Ellers ville fx en EUR-betalende Watch SE-kunde stå med
+    "EUR" ud for et beløb i SEK. Ældre udtræk har ikke kolonnen og falder
+    tilbage til currency, som før.
+    """
+    def _txt(key):
+        v = rec.get(key)
+        return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v).strip()
+    return _txt("report_currency") or _txt("currency") or "DKK"
 
 
 def _read_dataframe(path: Optional[str], file_bytes: Optional[bytes],
@@ -131,7 +151,7 @@ def load_extract(path: Optional[str] = None, file_bytes: Optional[bytes] = None,
             site=_txt("site"),
             brands=_txt("brands"),
             account_type=_txt("account_type"),
-            currency=_txt("currency") or "DKK",
+            currency=_row_currency(rec),
             arr_local=_to_float(rec.get("arr_local")),
             arr_dkk=_to_float(rec.get("arr_dkk")),
             prev_arr=_to_float(rec.get("prev_arr")),

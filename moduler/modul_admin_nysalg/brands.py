@@ -9,7 +9,7 @@ Grupper (med direktørens ønskede navne):
   Finans         – FINANS DK (finans.dk)
   Monitor        – monitor-sites
   Norge          – Watch NO
-  FinansWatch SE – Watch SE + Nordic Defence Watch
+  Watch SE       – Watch SE + Nordic Defence Watch
   FinanzBusiness – Watch DE (for sig selv)
   Marketwire     – vises ALTID, også selvom det ikke er i Zuora-udtrækket
 """
@@ -25,23 +25,23 @@ GROUP_LABELS = {
     "finans":     "Finans",
     "monitor":    "Monitor",
     "watch_no":   "Watch NO",
-    "watch_se":   "FinansWatch SE",
+    "watch_se":   "Watch SE",
     "watch_de":   "FinanzBusiness",
     "marketwire": "Marketwire",
     # Nordic Defence Watch har sin EGEN gruppe i constants.BRAND_GROUPS (bruges af
     # perf-/forecast-dashboardet), men månedsrapporten rapporterer det under
-    # FinansWatch SE. Labelet findes allerede i DISPLAY_ORDER, BRAND_GEO,
+    # Watch SE. Labelet findes allerede i DISPLAY_ORDER, BRAND_GEO,
     # BRAND_CURRENCY, BRAND_ACCOUNT og BUDGET_BRANDS, så NDW arver Sverige,
     # SEK og watch_se-kontoen — NB: NDW sælges tværnordisk, så org-navne på
     # deals oprettet på watch_medier-/watch_no-kontoen slås op i den forkerte
     # konto. Skal NDW have sin EGEN række, ændres labelet her — og så skal de
     # fem tabeller udvides tilsvarende.
-    "nordic_defence": "FinansWatch SE",
+    "nordic_defence": "Watch SE",
 }
 
 # Fast visningsrækkefølge. Marketwire vises altid (selv uden bevægelser).
 # PipeDrive-rækkerne ligger efter abonnements-brandene.
-DISPLAY_ORDER = ["Watch DK", "Finans", "Watch NO", "FinansWatch SE",
+DISPLAY_ORDER = ["Watch DK", "Finans", "Watch NO", "Watch SE",
                  "FinanzBusiness", "Marketwire", "Job", "Banner",
                  "Norge Job", "Norge Banner", "Øvrige"]
 ALWAYS_SHOWN = ["Marketwire"]
@@ -69,7 +69,7 @@ BRAND_GEO = {
     "Watch NO":       ("Norway",  "Subscription"),
     "Norge Job":      ("Norway",  "Advertising"),
     "Norge Banner":   ("Norway",  "Advertising"),
-    "FinansWatch SE": ("Sweden",  "Subscription"),
+    "Watch SE":       ("Sweden",  "Subscription"),
     "FinanzBusiness": ("Germany", "Subscription"),
 }
 COUNTRY_ORDER = ["Denmark", "Norway", "Sweden", "Germany"]
@@ -163,11 +163,13 @@ AD_BUDGET_WHERE = {
 
 # BudgetsIntoMedia.[Brand]-værdier pr. gruppe (matches case-insensitivt).
 # SE/DE følger BRAND_GROUP_LABELS i perf-modulet ("Watch SE"/"Watch DE").
+# NB: 'FinansWatch SE' i VÆRDIlisten er en Brand-værdi i budgettabellen — ikke
+# et visningsnavn. Den skal blive stående, selvom rækken hedder Watch SE.
 BUDGET_BRANDS = {
     "Watch DK":       ["Watch DK", "Watch Int"],
     "Finans":         ["FINANS DK"],
     "Watch NO":       ["Watch NO"],
-    "FinansWatch SE": ["Watch SE", "FinansWatch SE"],
+    "Watch SE":       ["Watch SE", "FinansWatch SE"],
     "FinanzBusiness": ["Watch DE", "FinanzBusiness"],
     "Marketwire":     ["MarketWire", "marketwire"],
 }
@@ -179,7 +181,7 @@ BUDGET_BRANDS = {
 # BudgetsIntoMedia. DK/NO/SE-budget er allerede i lokal valuta.
 BRAND_CURRENCY = {
     "Watch NO":       "NOK",
-    "FinansWatch SE": "SEK",
+    "Watch SE":       "SEK",
     "FinanzBusiness": "EUR",
     "Norge Job":      "NOK",
     "Norge Banner":   "NOK",
@@ -200,7 +202,7 @@ BRAND_ACCOUNT = {
     "Finans":         "watch_medier",
     "Monitor":        "monitor",
     "Watch NO":       "watch_no",
-    "FinansWatch SE": "watch_se",
+    "Watch SE":       "watch_se",
     "FinanzBusiness": "watch_de",
 }
 
@@ -261,7 +263,7 @@ def classify(site: str) -> str:
     if "finanzbusiness" in sl or "finanz.business" in sl or _has_token(sl, "de"):
         return "FinanzBusiness"
     if _has_token(sl, "se"):
-        return "FinansWatch SE"
+        return "Watch SE"
     if _has_token(sl, "no") or "norge" in sl:
         return "Watch NO"
     if "monitor" in sl:

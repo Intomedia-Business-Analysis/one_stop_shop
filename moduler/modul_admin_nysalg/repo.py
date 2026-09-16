@@ -149,6 +149,41 @@ INIT_STMTS = [
        AND NOT EXISTS (SELECT * FROM sys.columns
            WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'report_scope')
        ALTER TABLE admin_nysalg_run ADD report_scope NVARCHAR(20) NULL""",
+    # Migration: ÅTD-rapportering pr. run. ytd_enabled=1 => review og rapport
+    # viser en ÅTD-tabel UNDER månedstabellen, bygget af gemte baseline-tal for
+    # månederne før rapportmåneden + runnets egne (reviewede) tal for selve
+    # rapportmåneden. ytd_from = første måned i ÅTD-perioden ('YYYY-MM-01'),
+    # valgbar fordi forskudt regnskabsår skal kunne starte fx 1. juli.
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_run' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'ytd_enabled')
+       ALTER TABLE admin_nysalg_run ADD ytd_enabled BIT NOT NULL DEFAULT 0""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_run' AND xtype='U')
+       AND NOT EXISTS (SELECT * FROM sys.columns
+           WHERE object_id = OBJECT_ID('admin_nysalg_run') AND name = 'ytd_from')
+       ALTER TABLE admin_nysalg_run ADD ytd_from NVARCHAR(10) NULL""",
+    # ÅTD-baseline: det færdigreviewede resultat pr. (scope, måned, brand), så
+    # tidligere måneders tilvækst ikke skal rettes igennem igen for hver ny
+    # rapport. Gemmes automatisk når en rapport genereres (source='run') og kan
+    # rettes/oprettes manuelt af direktøren (source='manual') — manuelle tal
+    # overskrives ALDRIG af et run, så en bevidst korrektion bliver stående.
+    # sale/churn er ekskl. administrative bevægelser (= Actual Sale/Actual Churn
+    # i rapporten); netto udledes som sale − churn.
+    """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_baseline' AND xtype='U')
+       CREATE TABLE admin_nysalg_baseline (
+           id            INT IDENTITY(1,1) PRIMARY KEY,
+           report_scope  NVARCHAR(20)   NOT NULL,
+           ym            NVARCHAR(7)    NOT NULL,
+           brand         NVARCHAR(80)   NOT NULL,
+           sale          DECIMAL(18,2)  NOT NULL DEFAULT 0,
+           churn         DECIMAL(18,2)  NOT NULL DEFAULT 0,
+           currency      NVARCHAR(10)   NULL,
+           source        NVARCHAR(20)   NULL,
+           run_id        INT            NULL,
+           updated_at    DATETIME       DEFAULT GETDATE(),
+           updated_by    NVARCHAR(100)  NULL,
+           CONSTRAINT UQ_admin_nysalg_baseline UNIQUE (report_scope, ym, brand)
+       )""",
     # Pr-brand-kommentar (direktøren kommenterer på den samlede brand-performance).
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_comment' AND xtype='U')
        CREATE TABLE admin_nysalg_brand_comment (
@@ -168,6 +203,52 @@ INIT_STMTS = [
            brand       NVARCHAR(50)   NOT NULL,
            CONSTRAINT UQ_admin_nysalg_brand_hidden UNIQUE (run_id, brand)
        )""",
+    # Migration: brand-labelet 'FinansWatch SE' hedder nu 'Watch SE' (resten af
+    # hubben kaldte det allerede det). Labelet ligger som TEKST i fire tabeller —
+    # baseline, brand-kommentarer, skjulte brands og hver matchet række — så uden
+    # den her ville fx ÅTD vise to rækker: den gamle med årets baseline og en ny
+    # med kun rapportmåneden.
+    #
+    # NB: SITE-navnet 'FinansWatch SE' (constants.BRAND_GROUPS) er uberørt — det
+    # er den værdi der står i Zuora/PipeDrive og bruges til at finde brandet.
+    #
+    # Statementet er idempotent: anden kørsel rammer nul rækker. DELETE'en først
+    # fjerner en gammel række, hvis der allerede findes en 'Watch SE' med samme
+    # nøgle — ellers ville UPDATE'en ryge på UNIQUE-constraintet og vælte HELE
+    # init'en (den kører alle statements i ét, uden commit ved fejl).
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_baseline' AND xtype='U')
+       BEGIN
+           DELETE b FROM admin_nysalg_baseline b
+            WHERE b.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_baseline x
+                           WHERE x.report_scope = b.report_scope AND x.ym = b.ym
+                             AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_baseline SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_comment' AND xtype='U')
+       BEGIN
+           DELETE c FROM admin_nysalg_brand_comment c
+            WHERE c.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_brand_comment x
+                           WHERE x.run_id = c.run_id AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_brand_comment SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_brand_hidden' AND xtype='U')
+       BEGIN
+           DELETE h FROM admin_nysalg_brand_hidden h
+            WHERE h.brand = 'FinansWatch SE'
+              AND EXISTS (SELECT 1 FROM admin_nysalg_brand_hidden x
+                           WHERE x.run_id = h.run_id AND x.brand = 'Watch SE');
+           UPDATE admin_nysalg_brand_hidden SET brand = 'Watch SE'
+            WHERE brand = 'FinansWatch SE';
+       END""",
+    # Match-rækker har ingen unik nøgle på brand — ren UPDATE. Uden den ville
+    # gamle runs stadig vise det gamle navn, fordi _match_brand bruger den
+    # gemte brand-kolonne før classify().
+    """IF EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_match' AND xtype='U')
+       UPDATE admin_nysalg_match SET brand = 'Watch SE' WHERE brand = 'FinansWatch SE'""",
     # Site-mapping for de få afvigelser mellem Zuora og PipeDrive (kan udvides
     # uden kodeændring). Tom tabel => 1:1-matchning.
     """IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='admin_nysalg_site_map' AND xtype='U')
@@ -213,19 +294,22 @@ def load_site_map() -> dict:
 def create_run(created_by: str, source_path: Optional[str], source_filename: Optional[str],
                period: Optional[str], period_from: Optional[str] = None,
                period_to: Optional[str] = None,
-               report_scope: str = "business_media") -> int:
+               report_scope: str = "business_media",
+               ytd_enabled: bool = False, ytd_from: Optional[str] = None) -> int:
     """period = læsbar label; period_from/period_to = ISO YYYY-MM-DD-interval (filter).
     report_scope: 'business_media' (alt undtagen Monitor) eller 'monitor' (kun
-    Monitor, pr. site)."""
+    Monitor, pr. site).
+    ytd_enabled/ytd_from: tilføj en ÅTD-tabel under månedstabellen, bygget af
+    baseline-tal fra ytd_from og frem til rapportmåneden."""
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO admin_nysalg_run
                (created_by, source_path, source_filename, period, period_from, period_to,
-                report_scope, status)
-           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, %s, %s, %s, 'matched')""",
+                report_scope, ytd_enabled, ytd_from, status)
+           OUTPUT INSERTED.run_id VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'matched')""",
         (created_by, source_path, source_filename, period, period_from, period_to,
-         report_scope),
+         report_scope, 1 if ytd_enabled else 0, ytd_from),
     )
     run_id = int(cur.fetchone()[0])
     conn.commit()
@@ -236,6 +320,31 @@ def create_run(created_by: str, source_path: Optional[str], source_filename: Opt
 def run_scope(run: dict) -> str:
     """Rapport-scope for et run — gamle runs (NULL) er Business Media."""
     return (run.get("report_scope") or "business_media").strip()
+
+
+def run_ytd_range(run: dict) -> tuple[str | None, str | None]:
+    """(ytd_from, ytd_to) som ISO-datoer for et run — (None, None) uden ÅTD.
+
+    ÅTD slutter ALTID hvor runnets egen periode slutter (rapportmåneden), og
+    starter i ytd_from. Mangler ytd_from på et ÅTD-run (fx en manuel DB-rettelse)
+    falder den tilbage til 1. januar i rapportårets år, så tabellen stadig kan
+    bygges.
+    """
+    if not run.get("ytd_enabled"):
+        return None, None
+    _, date_to = run_date_range(run)
+    if not date_to:
+        return None, None
+    yfrom = (run.get("ytd_from") or "").strip()
+    if not yfrom:
+        yfrom = f"{date_to[:4]}-01-01"
+    return yfrom[:10], date_to
+
+
+def run_months(run: dict) -> list[str]:
+    """Kalendermånederne ('YYYY-MM') runnets egen periode dækker."""
+    df, dt = run_date_range(run)
+    return months_in_range(df, dt)
 
 
 def insert_matches(run_id: int, rows: list[ExtractRow], progress_cb=None) -> None:
@@ -2098,3 +2207,358 @@ def summarize_sql(run_id: int, scope: str = "business_media",
                   exclude_brands=frozenset()) -> dict:
     """Topkort-tal for et run beregnet i SQL — SQL-udgaven af summarize."""
     return summarize_from_groups(aggregate_by_brand_sql(run_id, scope), exclude_brands)
+
+
+# ── ÅTD-baseline (tidligere måneders reviewede tilvækst) ─────────────────────
+# Reviewet af bevægelser koster tid: direktøren retter gross in/out, sætter
+# administrative andele og udelader rækker. Skal ÅTD-tabellen vise januar→denne
+# måned, må de rettelser ikke laves om for hver ny rapport. Derfor gemmes
+# RESULTATET pr. (scope, måned, brand) — Actual Sale og Actual Churn, altså
+# ekskl. administrative bevægelser — og ÅTD bygges af de gemte måneder plus det
+# igangværende runs egne tal for rapportmåneden.
+#
+# source='run'    – skrevet automatisk da rapporten for måneden blev genereret
+# source='manual' – tastet/rettet af direktøren. Et run overskriver ALDRIG en
+#                   manuel række: har man bevidst rettet en måned, skal en ny
+#                   kørsel af samme måned ikke smide rettelsen væk.
+
+BASELINE_SOURCES = ("manual", "run")
+
+
+def _baseline_row(r: dict) -> dict:
+    """DB-række → dict med afledt netto (sale − churn)."""
+    sale = float(r.get("sale") or 0.0)
+    churn = float(r.get("churn") or 0.0)
+    return {
+        "ym": (r.get("ym") or "").strip(),
+        "brand": (r.get("brand") or "").strip(),
+        "sale": round(sale, 2),
+        "churn": round(churn, 2),
+        "netto": round(sale - churn, 2),
+        "currency": (r.get("currency") or "DKK").strip() or "DKK",
+        "source": (r.get("source") or "manual").strip(),
+        "run_id": r.get("run_id"),
+        "updated_at": r.get("updated_at"),
+        "updated_by": (r.get("updated_by") or "").strip(),
+    }
+
+
+def get_baseline(scope: str = "business_media", ym_from: str | None = None,
+                 ym_to: str | None = None) -> dict[str, dict[str, dict]]:
+    """{'YYYY-MM': {brand: baseline-række}} for et scope, evt. afgrænset.
+
+    ym_from/ym_to er 'YYYY-MM' (inkl.). Returnerer {} ved DB-fejl — kalderen
+    behandler manglende måneder som "ingen baseline" og advarer i UI'et.
+    """
+    where = ["report_scope = %s"]
+    params: list = [(scope or "business_media").strip()]
+    if ym_from:
+        where.append("ym >= %s")
+        params.append(ym_from[:7])
+    if ym_to:
+        where.append("ym <= %s")
+        params.append(ym_to[:7])
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            "SELECT ym, brand, sale, churn, currency, source, run_id, updated_at, updated_by "
+            "FROM admin_nysalg_baseline WHERE " + " AND ".join(where) +
+            " ORDER BY ym, brand", tuple(params))
+        rows = cur.fetchall() or []
+        conn.close()
+    except Exception:
+        logger.exception("get_baseline fejlede")
+        return {}
+    out: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        b = _baseline_row(r)
+        out.setdefault(b["ym"], {})[b["brand"]] = b
+    return out
+
+
+def baseline_months(scope: str = "business_media") -> list[dict]:
+    """[{ym, n, updated_at}] for måneder med baseline-rækker, nyeste først."""
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(
+            "SELECT ym, COUNT(*) AS n, MAX(updated_at) AS updated_at "
+            "FROM admin_nysalg_baseline WHERE report_scope = %s "
+            "GROUP BY ym ORDER BY ym DESC", ((scope or "business_media").strip(),))
+        rows = cur.fetchall() or []
+        conn.close()
+    except Exception:
+        logger.exception("baseline_months fejlede")
+        return []
+    return [{"ym": (r["ym"] or "").strip(), "n": int(r["n"] or 0),
+             "updated_at": r.get("updated_at")} for r in rows]
+
+
+def save_baseline(scope: str, ym: str, rows: list[dict], updated_by: str | None = None,
+                  source: str = "manual", run_id: int | None = None,
+                  keep_manual: bool = False) -> int:
+    """Upsert baseline-rækker for én måned. Returnerer antal skrevne rækker.
+
+    rows = [{brand, sale, churn, currency}]. Rækker med både sale og churn på 0
+    slettes i stedet for at blive gemt, så en tømt linje forsvinder fra ÅTD.
+    keep_manual=True (bruges når en rapport gemmer sig selv) springer brands
+    over, hvor der allerede står en manuelt rettet række.
+    """
+    scope = (scope or "business_media").strip()
+    ym = (ym or "")[:7]
+    if not ym:
+        return 0
+    conn = get_conn()
+    cur = conn.cursor(as_dict=True)
+    cur.execute("SELECT brand, source FROM admin_nysalg_baseline "
+                "WHERE report_scope = %s AND ym = %s", (scope, ym))
+    existing = {(r["brand"] or "").strip(): (r["source"] or "").strip()
+                for r in cur.fetchall() or []}
+    written = 0
+    for r in rows or []:
+        brand = (r.get("brand") or "").strip()
+        if not brand:
+            continue
+        if keep_manual and existing.get(brand) == "manual":
+            continue
+        sale = round(float(r.get("sale") or 0.0), 2)
+        churn = round(float(r.get("churn") or 0.0), 2)
+        cur.execute("DELETE FROM admin_nysalg_baseline "
+                    "WHERE report_scope = %s AND ym = %s AND brand = %s",
+                    (scope, ym, brand))
+        if not sale and not churn:
+            continue
+        cur.execute(
+            """INSERT INTO admin_nysalg_baseline
+                   (report_scope, ym, brand, sale, churn, currency, source, run_id,
+                    updated_at, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, GETDATE(), %s)""",
+            (scope, ym, brand, sale, churn,
+             (r.get("currency") or "").strip() or None, source, run_id, updated_by))
+        written += 1
+    conn.commit()
+    conn.close()
+    return written
+
+
+def delete_baseline_month(scope: str, ym: str) -> int:
+    """Slet hele månedens baseline. Returnerer antal slettede rækker."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM admin_nysalg_baseline WHERE report_scope = %s AND ym = %s",
+                ((scope or "business_media").strip(), (ym or "")[:7]))
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return max(n, 0)
+
+
+def baseline_rows_from_brand_rows(brand_rows: list[dict]) -> list[dict]:
+    """Brand-rækker (rapportens format) → baseline-rækker (sale/churn).
+
+    Kun hovedrækkerne gemmes — underrækkerne (M24/KOM24/Watch DK-splittet) er en
+    drill-down af hovedrækken og ville dobbelttælle i ÅTD-summen.
+    """
+    out: list[dict] = []
+    for b in brand_rows or []:
+        sale = round((b.get("brutto") or 0.0) - (b.get("adm_nysalg") or 0.0), 2)
+        churn = round((b.get("opsigelser") or 0.0) - (b.get("adm_opsigelser") or 0.0), 2)
+        out.append({"brand": b.get("brand"), "sale": sale, "churn": churn,
+                    "currency": b.get("currency") or "DKK"})
+    return out
+
+
+def ytd_budgets(scope: str, date_from: str | None, date_to: str | None) -> dict:
+    """{brand-label: budget} for HELE ÅTD-perioden.
+
+    Budgettet hentes live fra BudgetsIntoMedia — det er et fast tal pr. måned og
+    kræver intet review, så det skal ikke gennem baseline. Annoncerækkerne har
+    deres eget WHERE-fragment (AD_BUDGET_WHERE / MONITOR_AD_BUDGET_WHERE);
+    abonnementsbrandene bruger det normale brand-budget. {} ved DB-fejl.
+    """
+    from moduler.modul_admin_nysalg.brands import (AD_BUDGET_WHERE,
+                                                   MONITOR_AD_BUDGET_WHERE)
+    scope = (scope or "business_media").strip()
+    out: dict = {}
+    try:
+        if scope == "monitor":
+            out.update(monitor_site_budgets(date_from, date_to))
+            frags = MONITOR_AD_BUDGET_WHERE
+        else:
+            out.update(brand_budgets(date_from, date_to))
+            frags = AD_BUDGET_WHERE
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        for label, frag in frags.items():
+            out[label] = round(_budget_for_where(cur, frag, date_from, date_to), 2)
+        conn.close()
+    except Exception:
+        logger.exception("ytd_budgets fejlede")
+    return out
+
+
+def ytd_brand_rows(scope: str, ytd_from: str | None, date_to: str | None,
+                   current_rows: list[dict], current_months: list[str],
+                   comments: dict | None = None) -> dict:
+    """ÅTD-tabellen: baseline for tidligere måneder + runnets egne tal for nu.
+
+    Returnerer {'rows': [...], 'months': [...], 'missing': [...], 'from', 'to'}
+    hvor rows har samme facon som brand_rows (brutto/adm_nysalg/opsigelser/
+    adm_opsigelser/netto/budget/currency), så rapport- og template-koden kan
+    genbruges uændret. adm-felterne er 0: baseline gemmer allerede tal EKSKL.
+    administrative bevægelser, så der er intet tilbage at trække fra.
+
+    current_rows er det igangværende runs (reviewede) brand-rækker og gælder for
+    current_months — de vinder altid over en evt. gemt baseline for de måneder,
+    så ÅTD afspejler det man kigger på lige nu. 'missing' er måneder i perioden
+    uden baseline; de tæller som 0 og vises som en advarsel i UI'et.
+    """
+    from moduler.modul_admin_nysalg.brands import DISPLAY_ORDER, brand_currency
+    comments = comments or {}
+    months = months_in_range(ytd_from, date_to)
+    if not months:
+        return {"rows": [], "months": [], "missing": [], "from": ytd_from, "to": date_to}
+    current = {ym for ym in (current_months or []) if ym}
+    stored = get_baseline(scope, months[0], months[-1])
+
+    groups: dict[str, dict] = {}
+
+    def _add(label: str, sale: float, churn: float, currency: str | None) -> None:
+        g = groups.setdefault(label, {
+            "brand": label, "brutto": 0.0, "adm_nysalg": 0.0,
+            "opsigelser": 0.0, "adm_opsigelser": 0.0, "netto": 0.0,
+            "budget": 0.0, "comment": comments.get(label, "") or "",
+            "n_ambiguous": 0, "currency": currency or brand_currency(label),
+        })
+        g["brutto"] += sale
+        g["opsigelser"] += churn
+
+    missing: list[str] = []
+    for ym in months:
+        if ym in current:
+            continue
+        rows = stored.get(ym)
+        if not rows:
+            missing.append(ym)
+            continue
+        for b in rows.values():
+            _add(b["brand"], b["sale"], b["churn"], b["currency"])
+
+    for b in baseline_rows_from_brand_rows(current_rows):
+        _add(b["brand"], b["sale"], b["churn"], b["currency"])
+
+    budgets = ytd_budgets(scope, ytd_from, date_to)
+    for label, g in groups.items():
+        g["brutto"] = round(g["brutto"], 2)
+        g["opsigelser"] = round(g["opsigelser"], 2)
+        g["netto"] = round(g["brutto"] - g["opsigelser"], 2)
+        g["budget"] = round(float(budgets.get(label, 0.0) or 0.0), 2)
+
+    def _order(label):
+        return DISPLAY_ORDER.index(label) if label in DISPLAY_ORDER else len(DISPLAY_ORDER)
+
+    rows = sorted(groups.values(), key=lambda x: (_order(x["brand"]), x["brand"]))
+    return {"rows": rows, "months": months, "missing": missing,
+            "from": ytd_from, "to": date_to}
+
+
+# ── Største enkeltsalg på PipeDrive-brands ───────────────────────────────────
+# Zuora-brandene kan gennemgås bevægelse for bevægelse i reviewet, men Job,
+# Banner, Norge og MarketWire kommer udelukkende fra PipeDrive og havde ingen
+# tilsvarende liste. Her hentes de enkelte won-deals bag hver PipeDrive-række,
+# sorteret efter største beløb, med præcis de samme filtre som totalerne —
+# ellers ville listen ikke summe til rækken ovenfor.
+#
+# NB: FINANS' programmatiske bannersalg kommer fra ProgrammaticSales (ikke
+# PipeDrive) og har derfor ingen deals at liste. Det er en kendt afvigelse mellem
+# "Banner"-rækkens total og summen af dens deals — vises som en note i UI'et.
+
+def _deal_rows(cur, where: list[str], params: tuple, limit: int) -> list[dict]:
+    """Enkelt-deals for et WHERE-sæt, største beløb først."""
+    val = f"CAST({deal_value_sql()} AS DECIMAL(18,2))"
+    cur.execute(
+        f"SELECT TOP {int(limit)} [pd_deal_id], [org_name], [sites], [pipeline_name], "
+        f"[currency], {val} AS value, "
+        "CONVERT(varchar(10), [service_activation_date], 23) AS sad "
+        f"FROM [dbo].[PipedriveDeals] WHERE {' AND '.join(where)} "
+        f"ORDER BY {val} DESC", params)
+    return [{
+        "deal_id": str(r.get("pd_deal_id") or ""),
+        "customer": (r.get("org_name") or "").strip() or "—",
+        "site": (r.get("sites") or "").strip(),
+        "pipeline": (r.get("pipeline_name") or "").strip(),
+        "date": r.get("sad") or "",
+        "currency": (r.get("currency") or "DKK").strip().upper() or "DKK",
+        "value": round(float(r.get("value") or 0), 2),
+    } for r in cur.fetchall() or []]
+
+
+def pipedrive_top_deals(date_from: str | None, date_to: str | None,
+                        scope: str = "business_media", limit: int = 50) -> list[dict]:
+    """[{brand, currency, deals, note}] — største enkeltsalg pr. PipeDrive-brand.
+
+    Filtrene spejler de rækker tallene kommer fra:
+      Job/Banner (DK)              – konto 'jppol_advertising' + Watch DK/FINANS-sites
+      Job/Banner (Monitor)         – samme konto, men Monitor-sites
+      Norge Job/Banner, MarketWire – PIPEDRIVE_ROWS-specs (konto/team + pipelines)
+    Returnerer [] ved DB-fejl — listen er et opslagsværk, ikke en del af totalerne,
+    så en fejl her må ikke vælte reviewet.
+    """
+    from moduler.modul_admin_nysalg.brands import PIPEDRIVE_ROWS, brand_currency
+    from moduler.modul_rotation.queries import (WATCH_DK_SITES, WATCH_INT_SITES,
+                                                FINANS_SITES, MONITOR_SITES,
+                                                _ADM_EXCLUDE)
+    scope = (scope or "business_media").strip()
+    dcl, dpar = _date_between("[service_activation_date]", date_from, date_to,
+                              cast_to_date=True)
+    # _ADM_EXCLUDE er ét færdigt "AND …"-fragment fra rotation-modulet; her
+    # sættes clauses sammen med ' AND ', så det indledende AND skal væk.
+    adm_clause = _ADM_EXCLUDE.strip()[len("AND "):]
+    out: list[dict] = []
+    conn = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+
+        # ── DK-/Monitor-annoncerækkerne (fælles annoncekonto, valgt på [sites]) ──
+        ad_sites = (list(MONITOR_SITES) if scope == "monitor"
+                    else list(WATCH_DK_SITES) + list(WATCH_INT_SITES) + list(FINANS_SITES))
+        ph = "(" + ",".join(["%s"] * len(ad_sites)) + ")"
+        for pipeline, label in (("job", "Job"), ("banner", "Banner")):
+            where = ["[status] = 'won'", "[account] = 'jppol_advertising'",
+                     "LOWER([pipeline_name]) = %s", f"[sites] IN {ph}",
+                     adm_clause] + dcl
+            deals = _deal_rows(cur, where,
+                               (pipeline,) + tuple(ad_sites) + tuple(dpar), limit)
+            note = ("FINANS' programmatiske bannersalg kommer fra ProgrammaticSales "
+                    "og har ingen enkelt-deals at vise."
+                    if label == "Banner" and scope != "monitor" else "")
+            out.append({"brand": label, "currency": "DKK", "deals": deals, "note": note})
+
+        # ── Norge-annonce + MarketWire (egne konti/teams) ───────────────────────
+        if scope != "monitor":
+            for spec in PIPEDRIVE_ROWS:
+                where = ["[status] = 'won'", "COALESCE([administrativ],'') <> 'ja'",
+                         "[service_activation_date] IS NOT NULL",
+                         f"LOWER(LTRIM(RTRIM(COALESCE([{spec['scope_col']}],'')))) = %s"]
+                params: list = [spec["scope_val"].lower()]
+                pipes = spec.get("pipelines")
+                if pipes:
+                    pipe_ph = "(" + ",".join(["%s"] * len(pipes)) + ")"
+                    where.append(
+                        f"LOWER(LTRIM(RTRIM(COALESCE([pipeline_name],'')))) IN {pipe_ph}")
+                    params += [p.lower() for p in pipes]
+                where += dcl
+                params += dpar
+                out.append({"brand": spec["label"],
+                            "currency": brand_currency(spec["label"]),
+                            "deals": _deal_rows(cur, where, tuple(params), limit),
+                            "note": ""})
+    except Exception:
+        logger.exception("pipedrive_top_deals fejlede")
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+    return [g for g in out if g["deals"]]

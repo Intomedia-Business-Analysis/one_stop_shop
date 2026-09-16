@@ -91,6 +91,26 @@
           </div>
 
           <div class="fld">
+            <label>År til dato (ÅTD)</label>
+            <label class="scope-opt" style="display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px;cursor:pointer;font-size:13px;color:var(--ink)">
+              <input type="checkbox" name="ytd_enabled" id="ytd-enabled" value="1" style="margin-top:2px">
+              <span><b>Vis også ÅTD-tabel</b><br>
+                <span class="hint" style="margin-top:2px;display:block">
+                  Rapporten får en ÅTD-tabel under månedstabellen. Bevægelserne du gennemgår er
+                  stadig kun rapportmånedens — de tidligere måneder kommer fra den gemte baseline,
+                  så de ikke skal rettes igen. Når rapporten er genereret, gemmes månedens tal
+                  automatisk som baseline til næste rapport.
+                </span>
+              </span>
+            </label>
+            <div id="ytd-from-wrap" style="margin-top:12px;display:none">
+              <input type="month" name="ytd_from" id="ytd-from" autocomplete="off" aria-label="ÅTD fra måned"
+                     style="width:100%;font-family:var(--font);font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 12px;box-sizing:border-box">
+              <div class="hint">ÅTD fra og med denne måned til og med rapportmåneden. Udfyldes automatisk med januar i rapportårets år — sæt den til fx juli ved forskudt regnskabsår.</div>
+            </div>
+          </div>
+
+          <div class="fld">
             <label>Upload udtræk (.xlsx / .csv)</label>
             <div class="upload-zone" id="dropzone">
               <input type="file" name="file" id="file-input" accept=".xlsx,.csv">
@@ -145,6 +165,28 @@
       input.dispatchEvent(new Event('change'));
     }
   });
+})();
+
+// ── ÅTD: vis startmåneden og forudfyld januar i rapportårets år ───────────────
+(function(){
+  const chk  = document.getElementById('ytd-enabled');
+  const wrap = document.getElementById('ytd-from-wrap');
+  const from = document.getElementById('ytd-from');
+  const to   = document.querySelector('input[name="period_to"]');
+  if(!chk || !wrap || !from) return;
+  // Kun hvis feltet ikke allerede er rørt — ellers overskrives brugerens valg,
+  // hver gang Til-datoen justeres.
+  let touched = false;
+  from.addEventListener('input', () => { touched = true; });
+  function defaultFrom(){
+    if(touched || !to || !to.value) return;
+    from.value = to.value.slice(0, 4) + '-01';
+  }
+  chk.addEventListener('change', () => {
+    wrap.style.display = chk.checked ? '' : 'none';
+    if(chk.checked) defaultFrom();
+  });
+  if(to) to.addEventListener('change', () => { if(chk.checked) defaultFrom(); });
 })();
 
 // ── Matchning som baggrundsjob med progress-bar ───────────────────────────────

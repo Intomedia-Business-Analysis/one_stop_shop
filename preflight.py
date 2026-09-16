@@ -15,6 +15,7 @@ Tjekkene er læse-only. Der oprettes ingen tabeller og skrives ingen filer
 (bortset fra at skrivbarheden af logs/ og data/ prøves med en midlertidig fil).
 """
 import os
+import re
 import socket
 import sys
 from pathlib import Path
@@ -227,7 +228,59 @@ def tjek_mapper() -> None:
         fejl(f"rapportmappen kan IKKE skrives: {sti}")
 
 
-# ── 4. Udgående forbindelser ────────────────────────────────────────────────
+# ── 4. Skabeloner ───────────────────────────────────────────────────────────
+# En manglende .html-fil fejler ikke ved opstart — Jinja slår den først op, når
+# nogen åbner siden, og så bliver det en 500 hos brugeren. Det sker typisk ved
+# udrulning: `git commit -am` tager KUN ændrede, sporede filer med, så en
+# splinterny skabelon bliver stående untracked og kommer aldrig med over på
+# serveren. Her læses routernes TemplateResponse-kald og skabelonernes egne
+# include/extends, og det tjekkes at filerne faktisk ligger i templates/.
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+# TemplateResponse(request, "x.html", …) og den ældre TemplateResponse("x.html", …)
+_RE_RESPONSE = re.compile(r"""TemplateResponse\(\s*(?:[^,()]+,\s*)?["']([^"']+\.html)["']""")
+# {% include "x.html" %} / {% extends "x.html" %}
+_RE_INCLUDE = re.compile(r"""\{%-?\s*(?:include|extends)\s+["']([^"']+\.html)["']""")
+
+
+def _skabelon_referencer() -> dict[str, set[str]]:
+    """{skabelonnavn: {filer der bruger den}} fra routere og skabeloner."""
+    rod = Path(__file__).resolve().parent
+    refs: dict[str, set[str]] = {}
+    kilder = [(rod / "app.py", _RE_RESPONSE)]
+    kilder += [(p, _RE_RESPONSE) for p in sorted(rod.glob("moduler/*/router.py"))]
+    kilder += [(p, _RE_INCLUDE) for p in sorted(_TEMPLATES_DIR.glob("*.html"))]
+    for sti, moenster in kilder:
+        try:
+            tekst = sti.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for navn in moenster.findall(tekst):
+            refs.setdefault(navn, set()).add(sti.name)
+    return refs
+
+
+def tjek_skabeloner() -> None:
+    overskrift("4. Skabeloner")
+    if not _TEMPLATES_DIR.is_dir():
+        fejl(f"templates/ findes ikke ({_TEMPLATES_DIR})")
+        return
+    refs = _skabelon_referencer()
+    if not refs:
+        advar("Fandt ingen skabelon-referencer at tjekke — er tjekket gået i stykker?")
+        return
+    manglende = {navn: brugt_af for navn, brugt_af in refs.items()
+                 if not (_TEMPLATES_DIR / navn).is_file()}
+    for navn in sorted(manglende):
+        fejl(f"templates/{navn} mangler — bruges af "
+             f"{', '.join(sorted(manglende[navn]))}. Siden svarer 500. "
+             f"Er filen ny, er den nok aldrig blevet 'git add'et.")
+    if not manglende:
+        ok(f"{len(refs)} refererede skabeloner findes alle")
+
+
+# ── 5. Udgående forbindelser ────────────────────────────────────────────────
 
 def _kan_naa(vaert: str, port: int, timeout: float = 5.0) -> str | None:
     """None hvis forbindelsen lykkedes, ellers en fejlbeskrivelse."""
@@ -281,6 +334,7 @@ def main() -> int:
     tjek_miljoe()
     tjek_database()
     tjek_mapper()
+    tjek_skabeloner()
     tjek_udgaaende()
 
     print("\n" + "=" * 66)
