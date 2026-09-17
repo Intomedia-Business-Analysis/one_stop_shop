@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datastatus — Intomedia Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hub.css">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <style>
+    .summary-bar { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; gap:1rem; flex-wrap:wrap; }
+    .summary-bar h1 { font-size:22px; font-weight:700; color:var(--ink); letter-spacing:-.5px; margin:0; }
+    .summary-bar p  { font-size:13px; color:var(--ink-3); margin:4px 0 0; }
+    .stamp { font-size:11px; color:var(--ink-4); text-align:right; line-height:1.6; }
+
+    .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-bottom:26px; }
+    .kpi-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); padding:18px 20px; }
+    .kpi-card.alarm { border-color:#B3261E; }
+    .kpi-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:var(--text-muted,var(--ink-3)); margin-bottom:8px; }
+    .kpi-value { font-size:28px; font-weight:700; color:var(--ink); line-height:1; }
+    .kpi-value.alarm { color:#B3261E; }
+    .kpi-sub   { font-size:12px; color:var(--ink-3); margin-top:6px; }
+
+    .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-card); margin-bottom:24px; overflow:hidden; }
+    .panel-header { padding:15px 20px; border-bottom:1px solid var(--border); }
+    .panel-header h2 { font-size:13px; font-weight:700; color:var(--ink); margin:0; }
+    .panel-header p  { font-size:11px; color:var(--ink-3); margin:3px 0 0; }
+
+    .notice { padding:14px 20px; font-size:12.5px; line-height:1.6; border-radius:var(--r);
+              border:1px solid var(--border-strong); background:var(--amber-light);
+              color:var(--ink-2); margin-bottom:24px; }
+    .notice strong { color:var(--ink); }
+
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; padding:11px 16px; font-size:9px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:1.5px; background:var(--green); white-space:nowrap; }
+    td { padding:13px 16px; font-size:12.5px; color:var(--ink-2); border-bottom:1px solid var(--border); vertical-align:top; }
+    tr:last-child td { border-bottom:none; }
+    .row-main { cursor:pointer; }
+    .row-main:hover td { background:var(--green-light); }
+    .row-caret { display:inline-block; width:12px; color:var(--ink-4); font-size:10px; }
+
+    .kilde-titel { font-weight:700; color:var(--ink); font-size:13px; }
+    .kilde-tabel { font-size:10.5px; color:var(--ink-4); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; margin-top:2px; }
+
+    /* Status-prikken bærer betydningen, så den har ALTID en tekst ved siden af:
+       farve alene er ikke læsbar for alle, og siden læses ofte i et skærmbillede. */
+    .status { display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:11.5px; white-space:nowrap; }
+    .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .st-ok        { color:#2E6B3E; } .st-ok .dot        { background:#2E6B3E; }
+    .st-forsinket { color:#8A6100; } .st-forsinket .dot { background:#C08A00; }
+    .st-fejl      { color:#B3261E; } .st-fejl .dot      { background:#B3261E; }
+    .st-haenger   { color:#B3261E; } .st-haenger .dot   { background:#B3261E; border-radius:2px; }
+    .st-ukendt    { color:var(--ink-3); } .st-ukendt .dot { background:var(--ink-4); }
+    .st-info      { color:var(--ink-3); } .st-info .dot   { background:var(--taupe); }
+
+    .tid { font-weight:600; color:var(--ink); white-space:nowrap; }
+    .tid-sub { font-size:10.5px; color:var(--ink-4); margin-top:2px; }
+    .forklaring { font-size:11.5px; color:var(--ink-3); line-height:1.5; max-width:34ch; }
+
+    .maerke { display:inline-block; padding:1px 7px; border-radius:99px; font-size:9px;
+              font-weight:700; letter-spacing:.6px; text-transform:uppercase; }
+    .maerke-faldback { background:var(--amber-light); color:#8A6100; border:1px solid #DCC9A0; }
+    .maerke-log      { background:var(--green-light); color:var(--ink-2); border:1px solid var(--border-strong); }
+
+    /* Tidslinje: én lodret streg pr. kørsel, nyeste til venstre. */
+    .detalje { background:var(--green-light); }
+    .detalje-inder { padding:16px 20px 18px 44px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px 28px; }
+    .felt-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1.4px; color:var(--ink-4); margin-bottom:5px; }
+    .felt-vaerdi { font-size:12px; color:var(--ink-2); line-height:1.6; }
+    .felt-vaerdi code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; background:var(--surface); padding:1px 5px; border-radius:var(--r-xs); border:1px solid var(--border); }
+
+    .spor { display:flex; gap:2px; align-items:flex-end; height:26px; margin-top:4px; }
+    .spor-streg { width:5px; height:100%; border-radius:1px; background:var(--ink-4); }
+    .spor-ok { background:#2E6B3E; } .spor-error { background:#B3261E; } .spor-running { background:#C08A00; }
+    .spor-tom { font-size:11px; color:var(--ink-4); }
+
+    .fejltekst { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px;
+                 color:#B3261E; background:var(--surface); border:1px solid #E4C3C0;
+                 border-radius:var(--r-sm); padding:9px 11px; margin-top:6px;
+                 white-space:pre-wrap; word-break:break-word; max-height:150px; overflow:auto; }
+    .bruges-liste { margin:0; padding-left:15px; }
+    .bruges-liste li { margin-bottom:2px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/tools/maintenance/' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search-trigger" role="button" tabindex="0">
+        <div class="st-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+        </div>
+        <span class="st-text">Søg i dashboards, tools og kategorier…</span>
+        <div class="st-right"><span class="st-k">⌘</span><span class="st-k">K</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-height:0;overflow-y:auto;">
+      <div style="padding:2rem;max-width:1300px;">
+
+        <div class="breadcrumb">
+          <a href="/" class="bc-link">Hub</a>
+          <span class="bc-sep">/</span>
+          <span class="bc-current">Datastatus</span>
+        </div>
+
+        <div class="summary-bar">
+          <div>
+            <h1>Datastatus</h1>
+            <p>Hvornår blev data sidst loadet ind — og burde de have været det?</p>
+          </div>
+          <div class="stamp">
+            Opdateret {{ data.nu.strftime('%d-%m-%Y %H:%M:%S') }}<br>
+            Siden genindlæses automatisk hvert 5. minut
+          </div>
+        </div>
+
+        {% if data.fejl %}
+        <div class="notice">
+          <strong>Databasen kunne ikke læses.</strong> Alle rækker står som ukendt, indtil
+          forbindelsen er tilbage. Fejlen var:
+          <div class="fejltekst">{{ data.fejl }}</div>
+        </div>
+        {% elif not data.log_tilgaengelig %}
+        <div class="notice">
+          <strong>Kørselsloggen <code>dbo.HubDataLoads</code> findes ikke endnu.</strong>
+          Tabellen oprettes af sig selv, første gang et af scriptene kører med
+          <code>dataloads.py</code> — eller ved næste genstart af hubben. Indtil da
+          bygger hver række på det bedste tidsstempel, tabellen selv har, og de
+          markerede rækker kan ikke skelne <em>“kørte, men fandt intet nyt”</em> fra
+          <em>“kørte ikke”</em>.
+        </div>
+        {% endif %}
+
+        <div class="kpi-grid">
+          <div class="kpi-card {% if data.antal.problem %}alarm{% endif %}">
+            <div class="kpi-label">Kræver handling</div>
+            <div class="kpi-value {% if data.antal.problem %}alarm{% endif %}">{{ data.antal.problem }}</div>
+            <div class="kpi-sub">fejlede eller hængende kørsler</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Forsinket</div>
+            <div class="kpi-value">{{ data.antal.forsinket }}</div>
+            <div class="kpi-sub">én kørsel mangler</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">I orden</div>
+            <div class="kpi-value">{{ data.antal.ok }}</div>
+            <div class="kpi-sub">inden for deres vindue</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Uden status</div>
+            <div class="kpi-value">{{ data.antal.ukendt }}</div>
+            <div class="kpi-sub">intet at måle på endnu</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Datakilder</h2>
+            <p>Klik på en række for detaljer: sidste kørsler, hvad kilden fodrer, og hvor den kommer fra.</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width:26px;"></th>
+                <th>Kilde</th>
+                <th>Status</th>
+                <th>Sidst loadet</th>
+                <th>Planlagt</th>
+                <th>Næste</th>
+                <th>Vurdering</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for r in data.raekker %}
+              <tr class="row-main" data-maal="d-{{ r.id }}">
+                <td><span class="row-caret">▸</span></td>
+                <td>
+                  <div class="kilde-titel">{{ r.titel }}</div>
+                  <div class="kilde-tabel">{% if r.tabel %}dbo.{{ r.tabel }}{% else %}fil på drevet{% endif %}</div>
+                </td>
+                <td>
+                  <span class="status st-{{ r.status }}">
+                    <span class="dot"></span>
+                    {% if r.status == 'ok' %}I orden
+                    {% elif r.status == 'forsinket' %}Forsinket
+                    {% elif r.status == 'fejl' %}Fejl
+                    {% elif r.status == 'haenger' %}Hænger
+                    {% elif r.status == 'info' %}Ingen plan
+                    {% else %}Ukendt{% endif %}
+                  </span>
+                </td>
+                <td>
+                  <div class="tid">{{ r.sidst_loadet_tekst }}</div>
+                  {% if r.alder_tekst %}<div class="tid-sub">{{ r.alder_tekst }} siden</div>{% endif %}
+                  {% if r.kilde_til_tid == 'faldback' %}
+                    <span class="maerke maerke-faldback" title="{{ r.faldback_tekst }}">faldback</span>
+                  {% elif r.kilde_til_tid == 'log' %}
+                    <span class="maerke maerke-log">kørselslog</span>
+                  {% endif %}
+                </td>
+                <td style="font-size:11.5px;">{{ r.plan_tekst }}</td>
+                <td class="tid" style="font-weight:600;">
+                  {% if r.naeste %}{{ r.naeste.strftime('%d-%m %H:%M') }}{% else %}—{% endif %}
+                </td>
+                <td><div class="forklaring">{{ r.forklaring }}</div></td>
+              </tr>
+              <tr class="detalje" id="d-{{ r.id }}" hidden>
+                <td colspan="7" style="padding:0;">
+                  <div class="detalje-inder">
+
+                    <div>
+                      <div class="felt-label">Scheduled task</div>
+                      <div class="felt-vaerdi">{{ r.opgave }}</div>
+                      <div class="felt-label" style="margin-top:12px;">Kommer fra</div>
+                      <div class="felt-vaerdi"><code>{{ r.repo }}</code></div>
+                    </div>
+
+                    <div>
+                      <div class="felt-label">Seneste kørsler (7 dage)</div>
+                      {% if r.historik %}
+                        <div class="spor">
+                          {% for k in r.historik %}
+                          <div class="spor-streg spor-{{ k.status }}"
+                               title="{{ k.startet.strftime('%d-%m %H:%M') }} — {{ k.status }}{% if k.raekker is not none %}, {{ k.raekker }} rækker{% endif %}"></div>
+                          {% endfor %}
+                        </div>
+                        <div class="felt-vaerdi" style="margin-top:6px;font-size:11px;color:var(--ink-4);">
+                          Nyeste til venstre. Grøn = ok, rød = fejl, gul = kørte da siden blev hentet.
+                        </div>
+                      {% else %}
+                        <div class="spor-tom">Ingen kørsler logget endnu.</div>
+                      {% endif %}
+                      {% if r.raekker_sidst is not none %}
+                      <div class="felt-label" style="margin-top:12px;">Rækker sidste kørsel</div>
+                      <div class="felt-vaerdi">{{ '{:,}'.format(r.raekker_sidst).replace(',', '.') }}</div>
+                      {% endif %}
+                      {% if r.data_through %}
+                      <div class="felt-label" style="margin-top:12px;">Data frem til</div>
+                      <div class="felt-vaerdi">{{ r.data_through }}</div>
+                      {% endif %}
+                    </div>
+
+                    <div>
+                      <div class="felt-label">Hvis den står stille, rammer det</div>
+                      <ul class="bruges-liste felt-vaerdi">
+                        {% for b in r.bruges_af %}<li>{{ b }}</li>{% endfor %}
+                      </ul>
+                    </div>
+
+                    {% if r.fil %}
+                    <div>
+                      <div class="felt-label">Nyeste eksport-fil</div>
+                      <div class="felt-vaerdi">
+                        {% if r.fil.fejl %}
+                          {{ r.fil.fejl }}<br>
+                          <code>{{ r.fil.mappe }}</code>
+                        {% else %}
+                          <code>{{ r.fil.filnavn }}</code><br>
+                          Ændret {{ r.fil.aendret.strftime('%d-%m-%Y %H:%M') }}<br>
+                          {{ (r.fil.stoerrelse / 1024) | round | int }} KB<br>
+                          <span style="color:var(--ink-4);">{{ r.fil.mappe }}</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    {% endif %}
+
+                    {% if r.kilde_til_tid == 'faldback' %}
+                    <div>
+                      <div class="felt-label">Tidsstemplet kommer fra</div>
+                      <div class="felt-vaerdi">
+                        {{ r.faldback_tekst }}<br>
+                        <span style="color:var(--ink-4);">Ikke kørselsloggen — så “kørte, men fandt
+                        intet nyt” og “kørte ikke” ser ens ud herfra.</span>
+                      </div>
+                    </div>
+                    {% endif %}
+
+                    {% if r.seneste and r.seneste.besked %}
+                    <div style="grid-column:1/-1;">
+                      <div class="felt-label">Besked fra seneste kørsel
+                        ({{ r.seneste.startet.strftime('%d-%m-%Y %H:%M') }}{% if r.seneste.host %} på {{ r.seneste.host }}{% endif %})</div>
+                      <div class="fejltekst">{{ r.seneste.besked }}</div>
+                    </div>
+                    {% endif %}
+
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Sådan læses siden</h2>
+          </div>
+          <div style="padding:18px 20px;font-size:12.5px;color:var(--ink-2);line-height:1.75;">
+            <p><strong>I orden</strong> betyder, at den seneste planlagte kørsel er landet i
+            databasen — ikke bare at der står rækker i tabellen.</p>
+            <p><strong>Forsinket</strong> betyder, at én kørsel mangler. Det retter sig selv
+            ved næste kørsel; kolonnen “Næste” siger hvornår.</p>
+            <p><strong>Fejl</strong> betyder, at kørslen fejlede, eller at mindst to kørsler i
+            træk er udeblevet. Detaljerne rummer fejlteksten fra scriptet.</p>
+            <p><strong>Hænger</strong> betyder, at en kørsel begyndte, men aldrig afsluttede —
+            typisk fordi processen døde undervejs. Den blokerer ikke næste kørsel, men den
+            forrige gav sandsynligvis ikke fuld data.</p>
+            <p style="margin-top:14px;color:var(--ink-3);">Planen i kolonnen “Planlagt” er
+            skrevet ind i <code>moduler/modul_maintenance/queries.py</code> og læses ikke fra
+            Task Scheduler. Flyttes en opgave på serveren, skal den rettes der — ellers måler
+            siden mod en forventning, der ikke længere gælder.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Udfold detaljerækken. Samme mønster som admin_usage.html's top-5.
+  document.querySelectorAll('.row-main').forEach(function (raekke) {
+    raekke.addEventListener('click', function () {
+      var maal = document.getElementById(raekke.dataset.maal);
+      if (!maal) return;
+      maal.hidden = !maal.hidden;
+      raekke.querySelector('.row-caret').textContent = maal.hidden ? '▸' : '▾';
+    });
+  });
+
+  // Auto-genindlæsning. Siden er statusinformation, og en åben fane på en
+  // kontorskærm skal ikke vise formiddagens billede om eftermiddagen.
+  // Genindlæsningen springes over, mens en detaljerække er foldet ud, så den
+  // ikke lukker sig midt i, at nogen læser en fejltekst.
+  setInterval(function () {
+    var aaben = document.querySelector('.detalje:not([hidden])');
+    if (!aaben) window.location.reload();
+  }, 300000);
+</script>
+</body>
+</html>

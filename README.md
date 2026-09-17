@@ -68,6 +68,7 @@ rotationsdashboardene via en indbygget override.
 | **ÅTD-baseline** | `/tools/admin-nysalg/baseline` | Tidligere måneders færdigreviewede Actual Sale/Churn, som ÅTD-tabellen bygger på | management |
 | **Barselsplanlægger** | `/tool/barselsberegner` | Barselsberegning og godkendelsesflow med mailnotifikation | salesperson |
 | **Rotation** | `/tools/rotation/` | Fuldskærms-dashboards til kontorskærme: Sales, Department, Banner, Job, Media, NO Advertising — med autoplay og navngivne skærmopsætninger | salesperson / screen |
+| **Datastatus** | `/tools/maintenance/` | Hvornår hver datakilde sidst blev loadet ind — tabeller målt mod serverens scheduled tasks, filbaserede eksporter mod deres forventede kadence | sales_operations |
 | **Administration** | `/admin/users`, `/admin/roles`, `/admin/teams`, `/admin/usage` | Brugere, roller, hold, adgangs-overrides og forbrugsstatistik | admin |
 
 Fælles på tværs af alle sider: favoritter (`/favorites`), senest besøgt
@@ -251,6 +252,14 @@ moduler/modul_<navn>/
     router.py        HTTP-endpoints, adgangstjek, rendering
     queries.py       SQL — al databaselæsning for modulet
     (øvrige)         modulspecifik logik, fx retention/risiko.py, klippekort/pipedrive_api.py
+
+moduler/modul_maintenance/
+    dataloads.py     Kørselsloggen. ORIGINALEN af en fil der ligger identisk i
+                     pipedrive_sync, ACV_updater_pipedrive, currencycollector og
+                     ProgrammaticFinansSales. Rettes den her, skal kopierne
+                     opdateres — tests/test_maintenance.py fejler ellers.
+    queries.py       Katalog over datakilder med deres planlagte køretider, plus
+                     vurderingen af om en kørsel er i hus.
 
 templates/           Jinja2-skabeloner. _sidebar.html er fælles for alle sider.
 static/              CSS og JavaScript. Ingen build — filerne serveres som de er.
@@ -484,6 +493,57 @@ De er ikke koblet sammen. Sættes navigationens krav lavere end routerens, får
 brugeren et menupunkt, der svarer 403. Kommentarerne i `nav_utils.py` markerer de
 steder, hvor det allerede er gået galt en gang.
 
+### Datastatus måler mod en plan, der står i koden — ikke i Task Scheduler
+
+`/tools/maintenance/` svarer på "kan jeg stole på tallet, jeg kigger på". Det
+kræver to oplysninger, der ligger hvert sit sted:
+
+| Hvad | Hvor |
+|---|---|
+| Hvornår data **skulle** have været der | `KILDER` i `moduler/modul_maintenance/queries.py` |
+| Hvornår de **faktisk** kom | `dbo.HubDataLoads`, én række pr. kørsel |
+
+Planen er skrevet af én gang fra Task Scheduler på serveren. Appen kan ikke
+læse Windows' opgavebibliotek, så **flytter nogen en opgave i Task Scheduler,
+skal `KILDER` rettes i samme ombæring** — ellers måler siden mod en forventning,
+der ikke længere gælder, og den fejl ser ud som et grønt felt.
+
+Det er valgt frem for slet ikke at have en forventning. Uden en planlagt
+køretid kan siden kun vise en alder, og en alder alene siger ikke, om 14 timer
+er for meget: for den frekvente Pipedrive-sync er det katastrofalt, for
+retention-snapshottet er det normalt.
+
+**Kørselsloggen er ikke pynt.** To af tabellerne — `valutakurser` og
+`ProgrammaticSales` — har ingen tidsstempelkolonne overhovedet, og `PipeDrive_ACV`
+skriver kun ændrings-rækker, så dens `updated_at` står stille på en dag uden
+ændringer. For dem alle tre kan "nyeste dato i tabellen" ikke skelne de tre
+tilstande, der betyder vidt forskellige ting:
+
+    scriptet kørte og hentede nye rækker        (alt er som det skal være)
+    scriptet kørte, men der var intet nyt       (helt normalt i en weekend)
+    scriptet kørte slet ikke, eller det fejlede (nogen skal kigge på det)
+
+Falder en række tilbage på tabellens eget tidsstempel, siger dashboardet det
+med mærket **faldback**. Den skelnen går tabt dér, og siden skjuler det ikke.
+
+### `dataloads.py` er den samme fil fem steder
+
+Kørselsloggen skrives af fire scripts, der hver har deres eget repo og deres
+egen `db.py`. Filen importerer kun `get_conn` (og valgfrit `_P`), som alle fem
+projekter har, så den kan lægges uændret over:
+
+```
+one_stop_shop/moduler/modul_maintenance/dataloads.py   ← originalen
+pipedrive_sync/dataloads.py
+ACV_updater_pipedrive/dataloads.py
+currencycollector/dataloads.py
+ProgrammaticFinansSales/dataloads.py
+```
+
+Rettes originalen, skal kopierne opdateres. `tests/test_maintenance.py` fejler,
+hvis de driver fra hinanden — men kun hvis sidemapperne er tjekket ud ved siden
+af dette repo; ellers springes tjekket over.
+
 ### Månedsrapportens ÅTD bygger på en gemt baseline — ikke på rådata
 
 ÅTD-tabellen i `/tools/admin-nysalg/` lægger **ikke** hele årets Zuora-bevægelser
@@ -555,6 +615,6 @@ står — afvigelsen på 30.000 er i kildearket.
 |---|---|
 | **Vedligeholdes af** | Business Analysis, Intomedia |
 | **Database** | `INTOMEDIA` i SQL Server (`DB_SERVER`) |
-| **Kilder** | Zuora (abonnementer/ARR), Pipedrive (deals), filbaserede snapshots |
+| **Kilder** | Zuora (abonnementer/ARR), Pipedrive (deals), filbaserede snapshots. Deres friskhed kan ses på `/tools/maintenance/` |
 | **Tests i CI** | GitHub Actions, `.github/workflows/tests.yml` |
 | **Status** | I drift på `172.29.11.31`. Migreringen fra den gamle netværksmappe-udgave er gennemført; datobroen (§9) er stadig aktiv og bør afvikles modul for modul |
