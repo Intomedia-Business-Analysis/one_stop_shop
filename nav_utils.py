@@ -139,6 +139,23 @@ CATEGORIES = [
         ],
     },
     {
+        "id": "drift",
+        "title": "Drift",
+        "description": "Status på de data, dashboardene bygger på",
+        "icon": "clock",
+        "color": "amber",
+        # sales_operations SKAL matche MIN_ROLLE i modul_maintenance/router.py.
+        # Sættes den lavere her, får fx en sales manager et menupunkt der
+        # svarer 403. Marketing (rang 4) og management (rang 5) ligger over
+        # sales_operations og kommer derfor med — det er med vilje: siden siger
+        # kun hvor friske data er, ikke hvad de indeholder.
+        "min_role": "sales_operations",
+        "subcategories": [],
+        "items": [
+            {"id": "maintenance-datastatus", "title": "Datastatus", "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "url": "/tools/maintenance/"},
+        ],
+    },
+    {
         "id": "hr",
         "title": "HR",
         "description": "HR-værktøjer",

@@ -46,6 +46,8 @@ from moduler.modul_benchmark.router import router as benchmark_router
 from moduler.modul_saelger_portfolio.router import router as saelger_portfolio_router
 from moduler.modul_klippekort.router import router as klippekort_router
 from moduler.modul_admin_nysalg.router import router as admin_nysalg_router
+from moduler.modul_maintenance.router import router as maintenance_router
+from moduler.modul_maintenance.dataloads import ensure_table as init_dataloads_db
 from moduler.modul_admin_nysalg.repo import init_admin_nysalg_db
 from usage_tracking import record_pageview, start_usage_worker
 
@@ -69,6 +71,13 @@ app = FastAPI(
 init_db()         # Opret hub-tabeller ved opstart (idempotent)
 init_barsel_db()  # Opret barseltabeller ved opstart (idempotent)
 init_admin_nysalg_db()  # Opret admin-nysalg-tabeller ved opstart (idempotent)
+# Kørselsloggen bag /tools/maintenance/. Oprettes her OGSÅ, selv om scriptene
+# opretter den selv: så viser datastatus-siden en tom log frem for en
+# manglende tabel, hvis hubben startes før noget script har kørt.
+try:
+    init_dataloads_db()
+except Exception as e:
+    logger.warning("HubDataLoads kunne ikke oprettes ved opstart: %s", e)
 personalization.init_personalization_db()  # Favoritter + senest besøgt (idempotent)
 start_usage_worker()  # Baggrundstråd der flusher usage-loggen til DB
 personalization.start_visit_worker()  # Baggrundstråd der flusher besøg til DB
@@ -193,6 +202,7 @@ app.include_router(benchmark_router)
 app.include_router(saelger_portfolio_router)
 app.include_router(klippekort_router)
 app.include_router(admin_nysalg_router)
+app.include_router(maintenance_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 register_nav_globals(templates)

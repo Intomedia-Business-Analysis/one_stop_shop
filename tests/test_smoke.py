@@ -77,6 +77,7 @@ def test_csrf_egen_origin_tillades(client):
     "/favorites",
     "/recent",
     "/tools/rotation/sales-performance-data",
+    "/tools/maintenance/",
 ])
 def test_kraever_login_redirect(client, path):
     r = client.get(path)
@@ -181,6 +182,30 @@ def test_admin_sider_kraever_admin(client, make_user, auth_override, role):
     auth_override(make_user(role=role))
     r = client.get("/admin/users")
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize("role", ["salesperson", "sales_manager"])
+def test_datastatus_kraever_sales_operations(client, make_user, auth_override, role):
+    """Siden viser hele firmaets datagrundlag og er ikke for sælgere.
+
+    Kravet skal matche MIN_ROLLE i modul_maintenance/router.py og min_role på
+    'drift' i nav_utils.py — se test_maintenance.py.
+    """
+    auth_override(make_user(role=role))
+    assert client.get("/tools/maintenance/").status_code == 403
+    assert client.get("/tools/maintenance/data").status_code == 403
+
+
+def test_datastatus_virker_uden_database(client, make_user, auth_override):
+    """Uden DB skal siden stadig svare 200.
+
+    Det er hele pointen: dashboardet skal kunne vise, at noget er galt, netop
+    når noget ER galt. Fejler den selv, findes der ingen side at kigge på.
+    """
+    auth_override(make_user(role="sales_operations"))
+    r = client.get("/tools/maintenance/")
+    assert r.status_code == 200
+    assert "Datastatus" in r.text
 
 
 def test_screen_bruger_uden_override_blokeres_fra_rotation(client, make_user, auth_override):

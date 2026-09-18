@@ -1,3 +1,4 @@
+import functools
 import logging
 import os
 import io
@@ -15,6 +16,36 @@ logger = logging.getLogger(__name__)
 
 # Fælles pooled DB-forbindelse — se db.py.
 from db import get_conn  # noqa: E402,F401
+
+# Kørselslog til datastatus-dashboardet (/tools/maintenance/).
+from moduler.modul_maintenance.dataloads import record_run  # noqa: E402
+
+
+def _logget(kilde: str, tabel: str):
+    """Skriv én række til kørselsloggen pr. budgetskrivning.
+
+    BudgetsIntoMedia og SalespersonBudget har INGEN tidsstempelkolonne, så
+    "hvornår blev budgettet sidst lagt ind" kan kun komme herfra. Uden den
+    ville datastatus-siden være henvist til MAX(BudgetDate), og det svarer på
+    et andet spørgsmål: hvor langt budgettet rækker FREM, ikke hvornår det
+    sidst blev rørt.
+
+    Kun de fire bulk-skrivninger er dækket — enkeltrettelser og sletninger af
+    én række er korrektioner, ikke et load, og ville drukne uploadene i
+    tidslinjen.
+
+    Den indpakkede funktion skal returnere enten et antal eller en tuple, hvor
+    første element er antallet.
+    """
+    def dekorator(fn):
+        @functools.wraps(fn)
+        def indpakket(*args, **kwargs):
+            with record_run(kilde, tabel) as log:
+                resultat = fn(*args, **kwargs)
+                log.rows(resultat[0] if isinstance(resultat, tuple) else resultat)
+                return resultat
+        return indpakket
+    return dekorator
 
 
 # ── Team-dataadgang ──────────────────────────────────────────────────────────
@@ -113,6 +144,7 @@ def db_get_distinct(table: str, column: str) -> list:
         return []
 
 
+@_logget("budget_upload", "BudgetsIntoMedia")
 def db_medie_upsert_rows(site, brand, deal_type, salestype, year, rows: dict):
     inserted = 0
     conn = get_conn()
@@ -134,6 +166,7 @@ def db_medie_upsert_rows(site, brand, deal_type, salestype, year, rows: dict):
     return inserted
 
 
+@_logget("budget_upload", "BudgetsIntoMedia")
 def db_medie_upload_df(df: pd.DataFrame):
     inserted = errors = 0
     error_rows = []
@@ -162,6 +195,7 @@ def db_medie_upload_df(df: pd.DataFrame):
     return inserted, errors, error_rows
 
 
+@_logget("saelgerbudget_upload", "SalespersonBudget")
 def db_saelger_upsert_rows(salesperson, site, team, year, rows: dict):
     inserted = 0
     conn = get_conn()
@@ -183,6 +217,7 @@ def db_saelger_upsert_rows(salesperson, site, team, year, rows: dict):
     return inserted
 
 
+@_logget("saelgerbudget_upload", "SalespersonBudget")
 def db_saelger_upload_df(df: pd.DataFrame):
     inserted = errors = 0
     error_rows = []
