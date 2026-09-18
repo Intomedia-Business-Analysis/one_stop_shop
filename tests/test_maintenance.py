@@ -11,6 +11,9 @@ Fredet adfærd:
   - en fejlet eller hængende kørsel vinder over "data er alligevel friske nok"
   - valutakurser må ikke melde fejl i en weekend, hvor Nationalbanken ikke
     offentliggør
+  - programmatic-salg leverer altid dagen før og må derfor ikke melde forsinket,
+    når nyeste dato er i går
+  - nyeste programmatic-dato med beløb 0 er en FEJL, ikke en stille nul-dag
   - adgangskravet i nav_utils skal matche routerens, ellers får brugeren et
     menupunkt der svarer 403
 """
@@ -156,23 +159,23 @@ def test_kilde_med_max_alder_alarmerer_naar_graensen_overskrides():
     assert q._vurder(kilde, None, gammel, None, nu)["status"] == "forsinket"
 
 
-def test_uden_baade_log_og_faldback_er_status_ukendt():
+def test_uden_baade_log_og_fallback_er_status_ukendt():
     kilde = _kilde("programmatic")
     assert q._vurder(kilde, None, None, None, datetime(2026, 9, 17, 9, 0))["status"] \
         == "ukendt"
 
 
 # ---------------------------------------------------------------------------
-# Dato-faldback
+# Dato-fallback
 # ---------------------------------------------------------------------------
 
-def test_datofaldback_maaler_i_hele_dage_ikke_i_klokkeslaet():
+def test_datofallback_maaler_i_hele_dage_ikke_i_klokkeslaet():
     """En DATE står på midnat og kan aldrig nå kl. 05:00 samme dag.
 
     Uden dagsammenligningen ville ProgrammaticSales stå permanent forsinket,
     fordi 2026-09-17 00:00 < 2026-09-17 05:00.
     """
-    kilde = _kilde("programmatic")              # dagligt 05:00, faldback_tz='dato'
+    kilde = _kilde("programmatic")              # dagligt 05:00, fallback_tz='dato'
     nu = datetime(2026, 9, 17, 9, 0)
     idag = datetime(2026, 9, 17, 0, 0)
     assert q._vurder(kilde, None, None, idag, nu)["status"] == "ok"
@@ -195,6 +198,105 @@ def test_valutakurser_melder_stadig_fejl_paa_en_hverdag():
     torsdag_aften = datetime(2026, 9, 17, 22, 0)      # 2026-09-17 er en torsdag
     mandagens_kurs = datetime(2026, 9, 14, 0, 0)
     assert q._vurder(kilde, None, None, mandagens_kurs, torsdag_aften)["status"] == "fejl"
+
+
+def test_programmatic_forventer_data_for_dagen_foer():
+    """Kørslen kl. 05:00 henter tal for I GÅR — save_rows() sorterer dagens fra.
+
+    Uden data_forsinkelse_dage ville rækken melde forsinket hver eneste dag,
+    selv om alt var i orden. Det er den slags falsk alarm, der lærer folk at
+    ignorere siden.
+    """
+    kilde = _kilde("programmatic")
+    assert kilde["data_forsinkelse_dage"] == 1
+    nu = datetime(2026, 9, 17, 9, 0)                 # efter dagens 05:00-kørsel
+    i_gaar = datetime(2026, 9, 16, 0, 0)
+    assert q._vurder(kilde, None, None, i_gaar, nu)["status"] == "ok"
+
+
+def test_programmatic_melder_stadig_forsinket_naar_en_dag_mangler():
+    """Forskydningen må ikke gøre rækken blind: to dage gammel er stadig galt."""
+    kilde = _kilde("programmatic")
+    nu = datetime(2026, 9, 17, 9, 0)
+    forrige = datetime(2026, 9, 15, 0, 0)            # én dag for gammel
+    assert q._vurder(kilde, None, None, forrige, nu)["status"] == "forsinket"
+
+
+def test_nul_paa_nyeste_dato_er_en_fejl():
+    """Scrapingen kan nå igennem uden fejl og alligevel hente en tom rapport.
+
+    Nullet er usynligt i alt, der summerer, så det skal stå rødt her — med den
+    handling, der skal til.
+    """
+    from datetime import date as _date
+    kilde = _kilde("programmatic")
+    nu = datetime(2026, 9, 17, 9, 0)
+    i_gaar = datetime(2026, 9, 16, 0, 0)
+    vurdering = q._vurder(kilde, None, None, i_gaar, nu,
+                          nulkontrol=(_date(2026, 9, 16), 0))
+    assert vurdering["status"] == "fejl"
+    assert "0" in vurdering["forklaring"]
+    assert "Trigger en ny kørsel" in vurdering["forklaring"]
+
+
+def test_nul_vinder_over_en_ellers_frisk_dato():
+    """Datoen er helt frisk — uden nulkontrollen ville rækken stå grøn."""
+    from datetime import date as _date
+    kilde = _kilde("programmatic")
+    nu = datetime(2026, 9, 17, 9, 0)
+    i_gaar = datetime(2026, 9, 16, 0, 0)
+    assert q._vurder(kilde, None, None, i_gaar, nu)["status"] == "ok"
+    assert q._vurder(kilde, None, None, i_gaar, nu,
+                     nulkontrol=(_date(2026, 9, 16), None))["status"] == "fejl"
+
+
+def test_et_rigtigt_beloeb_paavirker_ikke_statussen():
+    from datetime import date as _date
+    from decimal import Decimal
+    kilde = _kilde("programmatic")
+    nu = datetime(2026, 9, 17, 9, 0)
+    i_gaar = datetime(2026, 9, 16, 0, 0)
+    assert q._vurder(kilde, None, None, i_gaar, nu,
+                     nulkontrol=(_date(2026, 9, 16), Decimal("48211.50")))["status"] == "ok"
+
+
+def test_tom_tabel_giver_ikke_falsk_nul_alarm():
+    """Uden rækker er der ingen dato — og så er det 'ukendt', ikke 'beløb 0'."""
+    kilde = _kilde("programmatic")
+    nu = datetime(2026, 9, 17, 9, 0)
+    assert q._vurder(kilde, None, None, None, nu,
+                     nulkontrol=(None, None))["status"] == "ukendt"
+
+
+# ---------------------------------------------------------------------------
+# Grupperne
+# ---------------------------------------------------------------------------
+
+def test_gruppen_udledes_af_kilden():
+    """Scheduled tasks, filer og manuelle loads skal i hver sin tabel."""
+    forventet = {
+        "pipedrive_sync": "task", "acv_updater": "task",
+        "currencycollector": "task", "programmatic": "task",
+        "zuora_acv_fil": "fil", "usage_forbrug": "fil", "usage_kobling": "fil",
+        "zuora_retention": "manuel", "budget": "manuel",
+        "saelgerbudget": "manuel", "forecast": "manuel",
+    }
+    for kilde in q.KILDER:
+        assert q.gruppe_for(kilde) == forventet[kilde["id"]], kilde["id"]
+
+
+def test_hver_gruppe_i_kataloget_har_en_overskrift():
+    kendte = {g["id"] for g in q.GRUPPER}
+    for kilde in q.KILDER:
+        assert q.gruppe_for(kilde) in kendte, kilde["id"]
+
+
+def test_kun_scheduled_tasks_har_en_naeste_koersel():
+    """Kolonnen 'Næste' vises kun i task-tabellen, så den må ikke være tom dér
+    og heller ikke fyldt i de andre."""
+    for kilde in q.KILDER:
+        har_plan = bool(kilde.get("plan"))
+        assert har_plan == (q.gruppe_for(kilde) == "task"), kilde["id"]
 
 
 # ---------------------------------------------------------------------------

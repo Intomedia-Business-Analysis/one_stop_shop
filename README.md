@@ -524,7 +524,39 @@ tilstande, der betyder vidt forskellige ting:
     scriptet kørte slet ikke, eller det fejlede (nogen skal kigge på det)
 
 Falder en række tilbage på tabellens eget tidsstempel, siger dashboardet det
-med mærket **faldback**. Den skelnen går tabt dér, og siden skjuler det ikke.
+med mærket **fallback**. Den skelnen går tabt dér, og siden skjuler det ikke.
+
+Kilderne står i **tre tabeller**, fordi de tre slags ikke kan sammenlignes: en
+scheduled task måles mod et klokkeslæt, en fil mod en kadence, og en manuel
+upload mod ingenting. I én fælles tabel ville kolonnerne "Planlagt" og "Næste"
+stå tomme på over halvdelen af rækkerne — og et tomt felt ligner en fejl.
+Gruppen **udledes** af kilden (`gruppe_for()`), så katalog og gruppering ikke
+kan drive fra hinanden.
+
+### Programmatic-salg måles mod i går, og et nul er en fejl
+
+To ting gør netop den kilde anderledes, og begge er tavse fejl, hvis de glemmes:
+
+**Kørslen henter altid dagen før.** `save_rows()` sorterer dags dato og
+fremtidige datoer fra, fordi de tal ikke er komplette endnu. Nyeste `[Date]` =
+i går er derfor det RIGTIGE billede efter morgenens kørsel. Uden
+`data_forsinkelse_dage: 1` i `KILDER` ville rækken melde forsinket hver eneste
+dag — og en side, der råber hver dag uden grund, er en side, folk holder op med
+at kigge på.
+
+**Beløbet på nyeste dato må aldrig være 0.** Scrapingen kan nå igennem uden en
+eneste fejl og alligevel aflevere en tom rapport: Relevant Digital har ikke
+lukket dagen endnu, tabelvisningen skiftede, sessionen udløb. Så skrives et nul,
+der ser ud som en dag helt uden omsætning — usynligt i alt, der summerer.
+Derfor står nulkontrollen to steder, og de siger det samme:
+
+| Hvor | Hvad |
+|---|---|
+| `nulkontrol_sql` i `KILDER` | Dashboardet spørger databasen direkte og står rødt |
+| `save_rows()` i `ProgrammaticFinansSales` | Kørslen markerer sig selv som fejlet i loggen |
+
+Scriptets exitkode er uændret (`log.fail()` kaster ikke), så Task Scheduler ser
+det samme som før. Rettelsen er at trigge en ny kørsel.
 
 ### `dataloads.py` er den samme fil fem steder
 

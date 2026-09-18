@@ -30,13 +30,13 @@ databasen: selve kørslen plus lidt luft. Først når den er gået, tæller en
 manglende kørsel som forsinket. Sættes den for lavt, lyser dashboardet rødt
 hver dag midt i en helt normal kørsel.
 
-Faldback
+Fallback
 --------
 Indtil et script er opdateret til at skrive til HubDataLoads — og hvis loggen
 skulle være utilgængelig — falder dashboardet tilbage på det bedste
-tidsstempel, tabellen selv har (`faldback_sql`). Det er svagere, og UI'et siger
-det: en faldback kan ikke skelne "kørte, fandt intet nyt" fra "kørte ikke".
-Rækker, der bruger faldback, markeres med kilde='faldback'.
+tidsstempel, tabellen selv har (`fallback_sql`). Det er svagere, og UI'et siger
+det: en fallback kan ikke skelne "kørte, fandt intet nyt" fra "kørte ikke".
+Rækker, der bruger fallback, markeres med kilde='fallback'.
 """
 import importlib
 import logging
@@ -66,7 +66,7 @@ HAENGER_EFTER_TIMER = 6
 #   None         — ingen fast plan (manuelt eller eksternt loadet); så bruges
 #                  max_alder_dage i stedet for en planlagt køretid
 #
-# faldback_tz:
+# fallback_tz:
 #   'lokal'  — DATETIME skrevet med GETDATE() på serveren (dansk tid)
 #   'utc'    — DATETIME2 skrevet med SYSUTCDATETIME()
 #   'dato'   — kun en DATE; tolkes som midnat og siger noget om DATA, ikke om
@@ -86,9 +86,9 @@ KILDER = [
         # Den inkrementelle kørsel er hurtig; 25 minutter giver plads til en
         # enkelt overspringelse uden at melde fejl.
         "forsinkelse_min": 25,
-        "faldback_sql":  "SELECT MAX(last_run_at) FROM dbo.PipedriveSyncState",
-        "faldback_tekst": "MAX(last_run_at) i PipedriveSyncState",
-        "faldback_tz":   "lokal",
+        "fallback_sql":  "SELECT MAX(last_run_at) FROM dbo.PipedriveSyncState",
+        "fallback_tekst": "MAX(last_run_at) i PipedriveSyncState",
+        "fallback_tz":   "lokal",
         "data_sql":      "SELECT MAX(synced_at) FROM dbo.PipedriveDeals",
         "bruges_af":     ["Sælger- og Manager Dashboard", "Forecast",
                           "Medie Benchmark", "Deal Source", "Rotation",
@@ -106,12 +106,12 @@ KILDER = [
         "forsinkelse_min": 120,
         # updated_at er SYSUTCDATETIME() i ACV-updateren — derfor 'utc'.
         # ADVARSEL: kørslen skriver kun ÆNDRINGS-rækker, så et døgn uden
-        # ændringer flytter ikke tidsstemplet. Faldbacken kan altså se
+        # ændringer flytter ikke tidsstemplet. Fallbacken kan altså se
         # forsinket ud, selv om alt er i orden — kørselsloggen er det rigtige
         # signal for netop denne kilde.
-        "faldback_sql":  "SELECT MAX(updated_at) FROM dbo.PipeDrive_ACV",
-        "faldback_tekst": "MAX(updated_at) i PipeDrive_ACV (kun ændrings-rækker)",
-        "faldback_tz":   "utc",
+        "fallback_sql":  "SELECT MAX(updated_at) FROM dbo.PipeDrive_ACV",
+        "fallback_tekst": "MAX(updated_at) i PipeDrive_ACV (kun ændrings-rækker)",
+        "fallback_tz":   "utc",
         "data_sql":      "SELECT MAX(snapshot_date) FROM dbo.PipeDrive_ACV",
         "bruges_af":     ["Sælger Portefølje", "Retention", "Afdelingsleder Dashboard"],
     },
@@ -125,15 +125,15 @@ KILDER = [
         "plan_tekst":    "Dagligt kl. 16:45",
         "plan":          {"tider": ["16:45"]},
         "forsinkelse_min": 60,
-        # Tabellen har INGEN tidsstempelkolonne — kun kursdatoen. Faldbacken
+        # Tabellen har INGEN tidsstempelkolonne — kun kursdatoen. Fallbacken
         # siger derfor kun noget om, hvor nye kurserne er, ikke om scriptet kørte.
         # Nationalbanken offentliggør ikke i weekender og på helligdage, så
         # kursdatoen står stille fredag til mandag helt lovligt: derfor er
         # kun_hverdage sat, så weekenden ikke melder fejl.
-        "faldback_sql":  "SELECT MAX([date]) FROM dbo.valutakurser",
-        "faldback_tekst": "MAX([date]) — kursdato, ikke loadtidspunkt",
-        "faldback_tz":   "dato",
-        "faldback_kun_hverdage": True,
+        "fallback_sql":  "SELECT MAX([date]) FROM dbo.valutakurser",
+        "fallback_tekst": "MAX([date]) — kursdato, ikke loadtidspunkt",
+        "fallback_tz":   "dato",
+        "fallback_kun_hverdage": True,
         "data_sql":      None,
         "bruges_af":     ["value_dkk på alle Pipedrive-deals (via pipedrive_sync/fx.py)"],
     },
@@ -147,12 +147,27 @@ KILDER = [
         "plan_tekst":    "Dagligt kl. 05:00",
         "plan":          {"tider": ["05:00"]},
         "forsinkelse_min": 90,
-        # Som valutakurser: ingen tidsstempelkolonne. [Date] er salgsdatoen, og
-        # kilden leverer typisk et par dage bagud — derfor siger denne faldback
-        # mindre end de andre, og kørselsloggen er så meget desto vigtigere her.
-        "faldback_sql":  "SELECT MAX([Date]) FROM dbo.ProgrammaticSales",
-        "faldback_tekst": "MAX([Date]) — salgsdato, ikke loadtidspunkt",
-        "faldback_tz":   "dato",
+        # Kørslen henter ALTID tal for dagen før: save_rows() sorterer dags dato
+        # og fremtidige datoer fra, fordi de tal ikke er komplette endnu. Så er
+        # nyeste [Date] = i går det RIGTIGE billede efter en vellykket kørsel —
+        # uden denne linje ville rækken stå forsinket hver eneste dag.
+        "data_forsinkelse_dage": 1,
+        # Som valutakurser: ingen tidsstempelkolonne. [Date] er salgsdatoen, ikke
+        # loadtidspunktet — derfor siger denne fallback mindre end de andre, og
+        # kørselsloggen er så meget desto vigtigere her.
+        "fallback_sql":  "SELECT MAX([Date]) FROM dbo.ProgrammaticSales",
+        "fallback_tekst": "MAX([Date]) — salgsdato (altid dagen før kørslen)",
+        "fallback_tz":   "dato",
+        # Nulkontrol: nyeste dato må ALDRIG stå med beløb 0. Scrapingen kan nå
+        # igennem uden fejl og alligevel hente en tom rapport (Relevant Digital
+        # har ikke lukket dagen endnu, tabelvisningen skiftede, sessionen udløb),
+        # og så skrives et nul, der ser ud som en dag uden omsætning. Det er
+        # usynligt i alle rapporter, der summerer — derfor står det her.
+        "nulkontrol_sql": """SELECT TOP 1 [Date], SUM([Amount])
+                             FROM dbo.ProgrammaticSales
+                             GROUP BY [Date]
+                             ORDER BY [Date] DESC""",
+        "nulkontrol_handling": "Trigger en ny kørsel af ProgrammaticFinansSales.",
         "data_sql":      None,
         "bruges_af":     ["Monthly Performance Report", "Sælger Dashboard",
                           "Afdelingsleder Dashboard", "Rotation"],
@@ -169,9 +184,9 @@ KILDER = [
         # Snapshottet er månedligt. 40 dage giver plads til, at en måned lander
         # et par dage inde i den næste, uden at det melder fejl.
         "max_alder_dage": 40,
-        "faldback_sql":  "SELECT MAX(FirstDayOfMonth) FROM dbo.retention",
-        "faldback_tekst": "MAX(FirstDayOfMonth) — snapshottets måned",
-        "faldback_tz":   "dato",
+        "fallback_sql":  "SELECT MAX(FirstDayOfMonth) FROM dbo.retention",
+        "fallback_tekst": "MAX(FirstDayOfMonth) — snapshottets måned",
+        "fallback_tz":   "dato",
         "data_sql":      None,
         "bruges_af":     ["Opkald og risiko", "Operationel og Performance",
                           "Sælger Portefølje"],
@@ -189,7 +204,7 @@ KILDER = [
         # fejl med det samme.
         "max_alder_dage": 10,
         "fil":           True,
-        "faldback_tekst": "Nyeste ACV_snapshot_DDMMYYYY-fil i snapshot-mappen",
+        "fallback_tekst": "Nyeste ACV_snapshot_DDMMYYYY-fil i snapshot-mappen",
         "bruges_af":     ["Portfolio Alignment"],
     },
     {
@@ -209,7 +224,7 @@ KILDER = [
         # en værre zone helt af sig selv.
         "max_alder_dage": 35,
         "fil":           True,
-        "faldback_tekst": "Nyeste usage_kunde_DDMMYYYY-fil i Retention-mappen",
+        "fallback_tekst": "Nyeste usage_kunde_DDMMYYYY-fil i Retention-mappen",
         "bruges_af":     ["Opkald og risiko", "Operationel og Performance"],
     },
     {
@@ -226,7 +241,7 @@ KILDER = [
         # og det ville være usynligt i en fælles række.
         "max_alder_dage": 35,
         "fil":           True,
-        "faldback_tekst": "Nyeste dm_kobling_DDMMYYYY-fil i Retention-mappen",
+        "fallback_tekst": "Nyeste dm_kobling_DDMMYYYY-fil i Retention-mappen",
         "bruges_af":     ["Opkald og risiko", "Operationel og Performance"],
     },
     {
@@ -240,12 +255,12 @@ KILDER = [
         "plan":          None,
         "max_alder_dage": None,                     # ingen forventning = ingen alarm
         # Tabellen har ingen tidsstempelkolonne, så uploadtidspunktet kan KUN
-        # komme fra kørselsloggen (modul_budget skriver til den). Faldbacken
+        # komme fra kørselsloggen (modul_budget skriver til den). Fallbacken
         # viser i stedet, hvor langt budgettet rækker frem — også nyttigt, men
         # det er et andet spørgsmål.
-        "faldback_sql":  "SELECT MAX(BudgetDate) FROM dbo.BudgetsIntoMedia",
-        "faldback_tekst": "MAX(BudgetDate) — nyeste budgetperiode, ikke uploadtidspunkt",
-        "faldback_tz":   "dato",
+        "fallback_sql":  "SELECT MAX(BudgetDate) FROM dbo.BudgetsIntoMedia",
+        "fallback_tekst": "MAX(BudgetDate) — nyeste budgetperiode, ikke uploadtidspunkt",
+        "fallback_tz":   "dato",
         "data_sql":      None,
         "bruges_af":     ["Alle KPI-dashboards", "Forecast", "Rotation",
                           "Monthly Performance Report"],
@@ -260,9 +275,9 @@ KILDER = [
         "plan_tekst":    "Manuelt — typisk ved budgetlægning og korrektioner",
         "plan":          None,
         "max_alder_dage": None,
-        "faldback_sql":  "SELECT MAX(BudgetDate) FROM dbo.SalespersonBudget",
-        "faldback_tekst": "MAX(BudgetDate) — nyeste budgetperiode, ikke uploadtidspunkt",
-        "faldback_tz":   "dato",
+        "fallback_sql":  "SELECT MAX(BudgetDate) FROM dbo.SalespersonBudget",
+        "fallback_tekst": "MAX(BudgetDate) — nyeste budgetperiode, ikke uploadtidspunkt",
+        "fallback_tz":   "dato",
         "data_sql":      None,
         "bruges_af":     ["Sælger Dashboard", "Manager Dashboard", "Rotation"],
     },
@@ -276,13 +291,50 @@ KILDER = [
         "plan_tekst":    "Månedligt — brugerne gemmer selv",
         "plan":          None,
         "max_alder_dage": None,
-        "faldback_sql":  "SELECT MAX(updated_at) FROM dbo.HubForecasts",
-        "faldback_tekst": "MAX(updated_at) i HubForecasts",
-        "faldback_tz":   "lokal",
+        "fallback_sql":  "SELECT MAX(updated_at) FROM dbo.HubForecasts",
+        "fallback_tekst": "MAX(updated_at) i HubForecasts",
+        "fallback_tz":   "lokal",
         "data_sql":      None,
         "bruges_af":     ["Forecast", "Manager Dashboard", "Afdelingsleder Dashboard"],
     },
 ]
+
+
+# ---------------------------------------------------------------------------
+# Grupper
+# ---------------------------------------------------------------------------
+# Kilderne vises i hver sin tabel, fordi de tre slags ikke kan sammenlignes:
+# en scheduled task måles mod et klokkeslæt, en fil mod en kadence, og en
+# manuel upload mod ingenting. Blandes de i én tabel, kommer kolonnerne
+# "Planlagt" og "Næste" til at stå tomme på halvdelen af rækkerne, og et
+# tomt felt ligner en fejl.
+#
+# Gruppen UDLEDES af kilden i stedet for at stå som endnu et felt: har den en
+# plan, er den en scheduled task; er den en fil, er den filbaseret; ellers er
+# den manuel. Så kan katalog og gruppering ikke drive fra hinanden.
+
+GRUPPER = [
+    {"id": "task",
+     "titel": "Scheduled tasks på serveren",
+     "beskrivelse": "Kører af sig selv efter en plan i Windows Task Scheduler. "
+                    "Status måles mod den plan."},
+    {"id": "fil",
+     "titel": "Filbaserede eksporter",
+     "beskrivelse": "En fil lægges i en mappe på drevet — stierne står i .env. "
+                    "Status måles mod den forventede kadence."},
+    {"id": "manuel",
+     "titel": "Manuelt og eksternt loadet",
+     "beskrivelse": "Uploades i hubben eller loades af noget uden for vores "
+                    "scripts. Vises til orientering; der er ingen plan at måle mod."},
+]
+
+
+def gruppe_for(kilde: dict) -> str:
+    if kilde.get("plan"):
+        return "task"
+    if kilde.get("fil"):
+        return "fil"
+    return "manuel"
 
 
 # ---------------------------------------------------------------------------
@@ -419,7 +471,7 @@ def _historik(cur, dage: int = 7) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Faldback: det bedste tidsstempel tabellen selv har
+# Fallback: det bedste tidsstempel tabellen selv har
 # ---------------------------------------------------------------------------
 
 def _skalar(cur, sql: str):
@@ -433,12 +485,24 @@ def _skalar(cur, sql: str):
         raekke = cur.fetchone()
         return raekke[0] if raekke else None
     except Exception as e:
-        logger.warning("maintenance: faldback-query fejlede (%s): %s", sql, e)
+        logger.warning("maintenance: fallback-query fejlede (%s): %s", sql, e)
+        return None
+
+
+def _raekke(cur, sql: str) -> tuple | None:
+    """Som _skalar, men returnerer hele rækken. Til nulkontrollen, der skal
+    bruge både dato og beløb."""
+    try:
+        cur.execute(sql)
+        raekke = cur.fetchone()
+        return tuple(raekke) if raekke else None
+    except Exception as e:
+        logger.warning("maintenance: nulkontrol fejlede (%s): %s", sql, e)
         return None
 
 
 def _som_datetime(vaerdi, tz: str, nu: datetime) -> datetime | None:
-    """Normalisér en faldback-værdi til dansk lokaltid.
+    """Normalisér en fallback-værdi til dansk lokaltid.
 
     UTC-værdier flyttes med serverens aktuelle forskydning i stedet for en fast
     time. Danmark skifter sommertid, og en fast forskydning ville give en times
@@ -535,7 +599,8 @@ STATUS_RANG = {"fejl": 0, "haenger": 1, "forsinket": 2, "ukendt": 3, "ok": 4, "i
 
 
 def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
-            faldback: datetime | None, nu: datetime) -> dict:
+            fallback: datetime | None, nu: datetime,
+            nulkontrol: tuple | None = None) -> dict:
     """Sammenhold det, der skete, med det der burde ske. Returnér status + forklaring.
 
     Rækkefølgen er bevidst: en kørsel, der HÆNGER eller FEJLEDE lige nu, vises
@@ -563,20 +628,33 @@ def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
                            f"{_dk(seneste_ok['afsluttet'] or seneste_ok['startet'])}.")
         return {"status": "fejl", "forklaring": forklaring}
 
-    # 3. Hvornår landede data sidst?
+    # 3. Står nyeste dato med beløb 0? Se nulkontrol_sql i KILDER.
+    #    Tjekket ligger efter fejl/hænger (dér er årsagen kendt og mere
+    #    diagnostisk) men FØR friskheden: datoen er helt frisk, og rækken ville
+    #    ellers stå grøn oven på et nul, ingen opdager.
+    if nulkontrol:
+        kontrol_dato, kontrol_vaerdi = nulkontrol
+        if kontrol_dato is not None and not kontrol_vaerdi:
+            handling = kilde.get("nulkontrol_handling", "")
+            return {"status": "fejl",
+                    "forklaring": (f"Nyeste dato {_dato(kontrol_dato)} står med "
+                                   f"beløb 0. Kørslen nåede igennem, men hentede "
+                                   f"ingen tal. {handling}").strip()}
+
+    # 4. Hvornår landede data sidst?
     if seneste_ok:
         landet = seneste_ok["afsluttet"] or seneste_ok["startet"]
         log_kilde = "log"
     else:
-        landet = faldback
-        log_kilde = "faldback"
+        landet = fallback
+        log_kilde = "fallback"
 
     if landet is None:
         return {"status": "ukendt",
                 "forklaring": "Ingen kørsler logget endnu, og tabellen har intet "
                               "tidsstempel at falde tilbage på."}
 
-    # 4a. Kilder uden plan: kun en alder, og kun en alarm hvis der ER en grænse.
+    # 5a. Kilder uden plan: kun en alder, og kun en alarm hvis der ER en grænse.
     if not plan:
         graense = kilde.get("max_alder_dage")
         alder = nu - landet
@@ -592,16 +670,16 @@ def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
                 "forklaring": f"Opdateret for {_varighed(alder)} siden "
                               f"(inden for {graense} dage)."}
 
-    # 4b. Planlagte kilder: sammenlign med den seneste kørsel, der burde være i hus.
+    # 5b. Planlagte kilder: sammenlign med den seneste kørsel, der burde være i hus.
     forfaldne = _forfaldne_koersler(plan, kilde["forsinkelse_min"], nu, antal=2)
     if not forfaldne:
         return {"status": "ok", "forklaring": "Ingen planlagt kørsel er forfalden endnu."}
 
-    # Faldback på en ren DATE kan aldrig nå et klokkeslæt samme dag — den står
+    # Fallback på en ren DATE kan aldrig nå et klokkeslæt samme dag — den står
     # på midnat. Derfor sammenlignes den på DATO-niveau, ikke på tidspunkt;
-    # ellers ville en kilde med dato-faldback altid se forsinket ud.
-    if log_kilde == "faldback" and kilde.get("faldback_tz") == "dato":
-        return _vurder_datofaldback(kilde, landet, forfaldne, nu)
+    # ellers ville en kilde med dato-fallback altid se forsinket ud.
+    if log_kilde == "fallback" and kilde.get("fallback_tz") == "dato":
+        return _vurder_datofallback(kilde, landet, forfaldne, nu)
 
     if landet >= forfaldne[0]:
         return {"status": "ok",
@@ -616,17 +694,24 @@ def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
                           f"{_dk(landet)} ({_varighed(nu - landet)} siden)."}
 
 
-def _vurder_datofaldback(kilde: dict, landet: datetime,
+def _vurder_datofallback(kilde: dict, landet: datetime,
                          forfaldne: list[datetime], nu: datetime) -> dict:
     """Vurdér en kilde, hvor vi kun har en DATE at gå efter.
 
-    Her måles i hele dage: dagens dato er frisk, gårsdagens er grænsetilfældet.
-    `faldback_kun_hverdage` findes for valutakurserne — Nationalbanken
-    offentliggør ikke i weekenden, så en kursdato fra fredag er fuldt korrekt
-    søndag aften og må ikke melde fejl.
+    Her måles i hele dage mod den dato, kørslen SKULLE have leveret — ikke mod
+    kørslens egen dato. To ting flytter den:
+
+    `data_forsinkelse_dage` — kilden leverer tal for N dage før kørslen.
+    Programmatic-salget henter altid dagen før, så nyeste [Date] = i går ER det
+    rigtige billede efter morgenens kørsel. Uden forskydningen ville rækken stå
+    forsinket hver eneste dag.
+
+    `fallback_kun_hverdage` — Nationalbanken offentliggør ikke i weekenden, så
+    en kursdato fra fredag er fuldt korrekt søndag aften og må ikke melde fejl.
     """
-    forventet_dato = forfaldne[0].date()
-    if kilde.get("faldback_kun_hverdage"):
+    forventet_dato = forfaldne[0].date() - timedelta(
+        days=kilde.get("data_forsinkelse_dage", 0))
+    if kilde.get("fallback_kun_hverdage"):
         while forventet_dato.weekday() >= 5:           # 5=lørdag, 6=søndag
             forventet_dato -= timedelta(days=1)
 
@@ -670,6 +755,21 @@ def _dk(dt: datetime | None) -> str:
     return dt.strftime("%d-%m-%Y %H:%M")
 
 
+def _dato(v) -> str:
+    """En DATE som 'YYYY-MM-DD', uanset om den kom som date eller streng.
+
+    DB_DATE_AS_STRING=1 (standarden, se db.py) leverer DATE-kolonner som
+    strenge, så begge former forekommer i praksis.
+    """
+    if v is None:
+        return "—"
+    if isinstance(v, datetime):
+        return v.date().isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    return str(v)[:10]
+
+
 def _varighed(delta: timedelta) -> str:
     sekunder = int(delta.total_seconds())
     if sekunder < 0:
@@ -698,8 +798,9 @@ def db_maintenance_overblik() -> dict:
     log: dict = {}
     historik: dict = {}
     log_tilgaengelig = False
-    faldbacks: dict = {}
+    fallbacks: dict = {}
     datadatoer: dict = {}
+    nulkontroller: dict = {}
     fejl_besked = None
 
     try:
@@ -711,12 +812,14 @@ def db_maintenance_overblik() -> dict:
                 log = _seneste_koersler(cur)
                 historik = _historik(cur)
             for kilde in KILDER:
-                if kilde.get("faldback_sql"):
-                    faldbacks[kilde["id"]] = _som_datetime(
-                        _skalar(cur, kilde["faldback_sql"]),
-                        kilde.get("faldback_tz", "lokal"), nu)
+                if kilde.get("fallback_sql"):
+                    fallbacks[kilde["id"]] = _som_datetime(
+                        _skalar(cur, kilde["fallback_sql"]),
+                        kilde.get("fallback_tz", "lokal"), nu)
                 if kilde.get("data_sql"):
                     datadatoer[kilde["id"]] = _skalar(cur, kilde["data_sql"])
+                if kilde.get("nulkontrol_sql"):
+                    nulkontroller[kilde["id"]] = _raekke(cur, kilde["nulkontrol_sql"])
         finally:
             conn.close()
     except Exception as e:
@@ -731,14 +834,14 @@ def db_maintenance_overblik() -> dict:
 
         if kilde.get("fil"):
             fil = _fil_status(kilde["id"])
-            faldback = None
+            fallback = None
             if fil.get("dato"):
-                faldback = datetime.combine(fil["dato"], time(0, 0))
+                fallback = datetime.combine(fil["dato"], time(0, 0))
             elif fil.get("aendret"):
-                faldback = fil["aendret"]
+                fallback = fil["aendret"]
         else:
             fil = None
-            faldback = faldbacks.get(kilde["id"])
+            fallback = fallbacks.get(kilde["id"])
 
         # En død database gør kun de DB-baserede kilder ubestemmelige.
         # Zuora-snapshottet ligger som en fil på drevet og kan stadig vurderes —
@@ -753,15 +856,16 @@ def db_maintenance_overblik() -> dict:
             # HVOR der blev kigget, og det er typisk dér, fejlen er.
             vurdering = {"status": "ukendt", "forklaring": fil["fejl"]}
         else:
-            vurdering = _vurder(kilde, seneste, seneste_ok, faldback, nu)
+            vurdering = _vurder(kilde, seneste, seneste_ok, fallback, nu,
+                                nulkontroller.get(kilde["id"]))
 
         landet = None
         if seneste_ok:
             landet = seneste_ok["afsluttet"] or seneste_ok["startet"]
             landet_kilde = "log"
-        elif faldback:
-            landet = faldback
-            landet_kilde = "faldback"
+        elif fallback:
+            landet = fallback
+            landet_kilde = "fallback"
         else:
             landet_kilde = None
 
@@ -774,20 +878,28 @@ def db_maintenance_overblik() -> dict:
             "sidst_loadet_tekst": _dk(landet),
             "alder_tekst":    _varighed(nu - landet) if landet else None,
             "kilde_til_tid":  landet_kilde,
-            "faldback_tekst": kilde.get("faldback_tekst"),
+            "fallback_tekst": kilde.get("fallback_tekst"),
             "naeste":         _naeste_koersel(kilde["plan"], nu) if kilde.get("plan") else None,
             "seneste":        seneste,
             "raekker_sidst":  (seneste_ok or {}).get("raekker"),
             "data_through":   (seneste_ok or {}).get("data_through") or datadatoer.get(kilde["id"]),
             "historik":       historik.get(kilde["kilde"], []),
             "fil":            fil,
+            "gruppe":         gruppe_for(kilde),
+            "nulkontrol":     nulkontroller.get(kilde["id"]),
         })
 
     raekker.sort(key=lambda r: (STATUS_RANG.get(r["status"], 9), r["titel"]))
 
+    grupper = [
+        {**g, "raekker": [r for r in raekker if r["gruppe"] == g["id"]]}
+        for g in GRUPPER
+    ]
+
     return {
         "nu":               nu,
-        "raekker":          raekker,
+        "raekker":          raekker,          # flad liste — bruges af JSON-kaldet
+        "grupper":          [g for g in grupper if g["raekker"]],
         "log_tilgaengelig": log_tilgaengelig,
         "fejl":             fejl_besked,
         "antal": {

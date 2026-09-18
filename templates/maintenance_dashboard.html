@@ -61,7 +61,7 @@
 
     .maerke { display:inline-block; padding:1px 7px; border-radius:99px; font-size:9px;
               font-weight:700; letter-spacing:.6px; text-transform:uppercase; }
-    .maerke-faldback { background:var(--amber-light); color:#8A6100; border:1px solid #DCC9A0; }
+    .maerke-fallback { background:var(--amber-light); color:#8A6100; border:1px solid #DCC9A0; }
     .maerke-log      { background:var(--green-light); color:var(--ink-2); border:1px solid var(--border-strong); }
 
     /* Tidslinje: én lodret streg pr. kørsel, nyeste til venstre. */
@@ -80,6 +80,7 @@
                  color:#B3261E; background:var(--surface); border:1px solid #E4C3C0;
                  border-radius:var(--r-sm); padding:9px 11px; margin-top:6px;
                  white-space:pre-wrap; word-break:break-word; max-height:150px; overflow:auto; }
+    .nul-alarm { color:#B3261E; font-weight:700; }
     .bruges-liste { margin:0; padding-left:15px; }
     .bruges-liste li { margin-bottom:2px; }
   </style>
@@ -160,10 +161,15 @@
           </div>
         </div>
 
+        {# Én tabel pr. gruppe. De tre slags kilder måles mod vidt forskellige
+           ting — et klokkeslæt, en kadence, ingenting — så i én fælles tabel
+           ville "Planlagt" og "Næste" stå tomme på halvdelen af rækkerne, og et
+           tomt felt ligner en fejl. #}
+        {% for gruppe in data.grupper %}
         <div class="panel">
           <div class="panel-header">
-            <h2>Datakilder</h2>
-            <p>Klik på en række for detaljer: sidste kørsler, hvad kilden fodrer, og hvor den kommer fra.</p>
+            <h2>{{ gruppe.titel }}</h2>
+            <p>{{ gruppe.beskrivelse }} Klik på en række for detaljer.</p>
           </div>
           <table>
             <thead>
@@ -172,13 +178,13 @@
                 <th>Kilde</th>
                 <th>Status</th>
                 <th>Sidst loadet</th>
-                <th>Planlagt</th>
-                <th>Næste</th>
+                <th>{% if gruppe.id == 'task' %}Planlagt{% else %}Forventet kadence{% endif %}</th>
+                {% if gruppe.id == 'task' %}<th>Næste</th>{% endif %}
                 <th>Vurdering</th>
               </tr>
             </thead>
             <tbody>
-            {% for r in data.raekker %}
+            {% for r in gruppe.raekker %}
               <tr class="row-main" data-maal="d-{{ r.id }}">
                 <td><span class="row-caret">▸</span></td>
                 <td>
@@ -199,27 +205,39 @@
                 <td>
                   <div class="tid">{{ r.sidst_loadet_tekst }}</div>
                   {% if r.alder_tekst %}<div class="tid-sub">{{ r.alder_tekst }} siden</div>{% endif %}
-                  {% if r.kilde_til_tid == 'faldback' %}
-                    <span class="maerke maerke-faldback" title="{{ r.faldback_tekst }}">faldback</span>
+                  {% if r.kilde_til_tid == 'fallback' %}
+                    <span class="maerke maerke-fallback" title="{{ r.fallback_tekst }}">fallback</span>
                   {% elif r.kilde_til_tid == 'log' %}
                     <span class="maerke maerke-log">kørselslog</span>
                   {% endif %}
                 </td>
                 <td style="font-size:11.5px;">{{ r.plan_tekst }}</td>
+                {% if gruppe.id == 'task' %}
                 <td class="tid" style="font-weight:600;">
                   {% if r.naeste %}{{ r.naeste.strftime('%d-%m %H:%M') }}{% else %}—{% endif %}
                 </td>
+                {% endif %}
                 <td><div class="forklaring">{{ r.forklaring }}</div></td>
               </tr>
               <tr class="detalje" id="d-{{ r.id }}" hidden>
-                <td colspan="7" style="padding:0;">
+                <td colspan="{{ 7 if gruppe.id == 'task' else 6 }}" style="padding:0;">
                   <div class="detalje-inder">
 
                     <div>
-                      <div class="felt-label">Scheduled task</div>
+                      <div class="felt-label">{% if gruppe.id == 'task' %}Scheduled task{% else %}Sådan loades den{% endif %}</div>
                       <div class="felt-vaerdi">{{ r.opgave }}</div>
                       <div class="felt-label" style="margin-top:12px;">Kommer fra</div>
                       <div class="felt-vaerdi"><code>{{ r.repo }}</code></div>
+                      {% if r.nulkontrol and r.nulkontrol[0] is not none %}
+                      {# Nulkontrol: nyeste dato må aldrig stå med beløb 0 — se
+                         nulkontrol_sql i modul_maintenance/queries.py. #}
+                      <div class="felt-label" style="margin-top:12px;">Beløb på nyeste dato</div>
+                      <div class="felt-vaerdi{% if not r.nulkontrol[1] %} nul-alarm{% endif %}">
+                        {{ r.nulkontrol[0] }}:
+                        {% if r.nulkontrol[1] %}{{ '{:,.0f}'.format(r.nulkontrol[1]|float).replace(',', '.') }} kr.
+                        {% else %}0 — kørslen skal triggeres igen{% endif %}
+                      </div>
+                      {% endif %}
                     </div>
 
                     <div>
@@ -271,11 +289,11 @@
                     </div>
                     {% endif %}
 
-                    {% if r.kilde_til_tid == 'faldback' %}
+                    {% if r.kilde_til_tid == 'fallback' %}
                     <div>
                       <div class="felt-label">Tidsstemplet kommer fra</div>
                       <div class="felt-vaerdi">
-                        {{ r.faldback_tekst }}<br>
+                        {{ r.fallback_tekst }}<br>
                         <span style="color:var(--ink-4);">Ikke kørselsloggen — så “kørte, men fandt
                         intet nyt” og “kørte ikke” ser ens ud herfra.</span>
                       </div>
@@ -297,6 +315,7 @@
             </tbody>
           </table>
         </div>
+        {% endfor %}
 
         <div class="panel">
           <div class="panel-header">
@@ -307,8 +326,11 @@
             databasen — ikke bare at der står rækker i tabellen.</p>
             <p><strong>Forsinket</strong> betyder, at én kørsel mangler. Det retter sig selv
             ved næste kørsel; kolonnen “Næste” siger hvornår.</p>
-            <p><strong>Fejl</strong> betyder, at kørslen fejlede, eller at mindst to kørsler i
-            træk er udeblevet. Detaljerne rummer fejlteksten fra scriptet.</p>
+            <p><strong>Fejl</strong> betyder, at kørslen fejlede, at mindst to kørsler i træk er
+            udeblevet — eller at data landede, men er tomme. Programmatic-salget står rødt,
+            hvis beløbet på nyeste dato er 0: scrapingen kan nå igennem uden en eneste fejl og
+            alligevel aflevere en tom rapport, og et nul er usynligt i alt, der summerer.
+            Rettelsen er at trigge en ny kørsel. Detaljerne rummer fejlteksten fra scriptet.</p>
             <p><strong>Hænger</strong> betyder, at en kørsel begyndte, men aldrig afsluttede —
             typisk fordi processen døde undervejs. Den blokerer ikke næste kørsel, men den
             forrige gav sandsynligvis ikke fuld data.</p>
