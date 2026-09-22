@@ -531,12 +531,15 @@ def db_manager_data(today: date, team: str | None = None,
 
     # Budget pr. måned for valgt år + valgte teams
     # Bygges af SalespersonBudget for almindelige teams + BudgetsIntoMedia for Banner/Marketwire.
+    # Team Marketwire tælles IKKE med herfra: holdets budget står i BudgetsIntoMedia
+    # og dækker hele holdet, mens sælgerens eget budget er hans andel af netop det.
+    # Lagt sammen blev MarketWire-budgettet talt dobbelt (240t + 200t = 440t i Q3).
     budget_per_month = {m: 0.0 for m in range(1, 13)}
     if team:
         cur.execute("""
             SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
             FROM [dbo].[SalespersonBudget]
-            WHERE YEAR([BudgetDate]) = %s AND [Team] = %s
+            WHERE YEAR([BudgetDate]) = %s AND [Team] = %s AND [Team] <> 'Team Marketwire'
             GROUP BY MONTH([BudgetDate])
         """, (ref_year, team))
     elif multi_team:
@@ -544,14 +547,14 @@ def db_manager_data(today: date, team: str | None = None,
         cur.execute(f"""
             SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
             FROM [dbo].[SalespersonBudget]
-            WHERE YEAR([BudgetDate]) = %s AND [Team] IN {_teams_ph_b}
+            WHERE YEAR([BudgetDate]) = %s AND [Team] IN {_teams_ph_b} AND [Team] <> 'Team Marketwire'
             GROUP BY MONTH([BudgetDate])
         """, (ref_year,) + tuple(teams_list))
     else:
         cur.execute("""
             SELECT MONTH([BudgetDate]) AS m, SUM([BudgetAmount]) AS bud
             FROM [dbo].[SalespersonBudget]
-            WHERE YEAR([BudgetDate]) = %s
+            WHERE YEAR([BudgetDate]) = %s AND [Team] <> 'Team Marketwire'
             GROUP BY MONTH([BudgetDate])
         """, (ref_year,))
     for r in cur.fetchall():
@@ -798,9 +801,14 @@ def db_manager_data(today: date, team: str | None = None,
         """, tuple(_bp_params))
     budget_map  = {r["owner_name"]: float(r["budget"] or 0) for r in cur.fetchall()}
 
-    # Banner og Marketwire har ikke per-sælger budget — kun team-budget i BudgetsIntoMedia.
+    # Banner har ikke per-sælger budget, kun team-budget i BudgetsIntoMedia.
     # Tilføj til total budget når de relevante teams er valgt (single, multi eller alle).
+    # Marketwire har BEGGE dele: holdets budget i BudgetsIntoMedia, som dækker hele
+    # holdet (også teamlederen, der ikke har eget budget), og sælgerens personlige
+    # andel i SalespersonBudget. Kun holdets budget hører til i team-totalen, så
+    # andelen trækkes fra igen. Leaderboard-rækken beholder sælgerens eget budget.
     _team_budget_extra = 0.0
+    _mw_owner_budget   = 0.0
     _selected_team_names = (
         {team} if team else
         set(teams_list) if multi_team else
@@ -820,8 +828,14 @@ def db_manager_data(today: date, team: str | None = None,
             WHERE [Brand]='marketwire' AND {_bp_sql}
         """, tuple(_bp_params))
         _team_budget_extra += float((cur.fetchone() or {}).get("budget", 0) or 0)
+        cur.execute(f"""
+            SELECT ISNULL(SUM([BudgetAmount]),0) AS budget
+            FROM [dbo].[SalespersonBudget]
+            WHERE [Team]='Team Marketwire' AND {_bp_sql}
+        """, tuple(_bp_params))
+        _mw_owner_budget = float((cur.fetchone() or {}).get("budget", 0) or 0)
 
-    team_budget = round(sum(budget_map.values()) + _team_budget_extra, 2)
+    team_budget = round(sum(budget_map.values()) + _team_budget_extra - _mw_owner_budget, 2)
     netto_vs_budget_pct = round(netto_maaned / team_budget * 100, 1) if team_budget > 0 else None
 
     for row in leaderboard:
