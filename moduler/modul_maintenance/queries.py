@@ -598,7 +598,8 @@ def _fil_status(kilde_id: str) -> dict:
 STATUS_RANG = {"fejl": 0, "haenger": 1, "forsinket": 2, "ukendt": 3, "ok": 4, "info": 5}
 
 PLAUSIBEL_MAX = 500   # et loft mellem normalen (3) og en genskrivning (3.782)
-NUL_DAGE = 7
+NUL_DAGE = 7          # vinduet: højest så mange kørsler kigges der på
+MIN_KOERSLER = 5      # tilladelsen: færre kørsler end dette er for lidt til at dømme.
 
 
 def _vurder_plausibilitet(koersler: list[dict]) -> dict | None:
@@ -614,9 +615,9 @@ def _vurder_plausibilitet(koersler: list[dict]) -> dict | None:
                               f"Skrivehistorikken bliver sandsynligvis ikke læst."}
 
     seneste = [k["raekker"] for k in koersler[:NUL_DAGE]]
-    if len(seneste) == NUL_DAGE and all(r == 0 for r in seneste):
+    if len(seneste) >= MIN_KOERSLER and all(r == 0 for r in seneste):
         return {"status": "forsinket",
-                "forklaring": f"0 felter skrevet {NUL_DAGE} kørsler i træk."}
+                "forklaring": f"0 felter skrevet {len(seneste)} kørsler i træk."}
 
     return None
 
