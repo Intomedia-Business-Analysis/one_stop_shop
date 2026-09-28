@@ -173,6 +173,36 @@ KILDER = [
                           "Afdelingsleder Dashboard", "Rotation"],
     },
     {
+        "id":            "license_updater",
+        "titel":         "Licensfelter i Pipedrive (Monitor)",
+        "tabel":         "PipedriveOrgLicenseWritten",
+        "kilde":         "license_updater",   # = source i record_run() i main.py
+        "repo":          "license_updater_pipedrive_monitor",
+        "opgave":        "License updater monitor",
+        "plan_tekst":    "Dagligt kl. 16:40",
+        # 16:40, ikke 16:30: 16:30 falder i samme minut som en PipeDrive
+        # Frequent Sync, og jobbet henter data i flere separate forespørgsler.
+        "plan":          {"tider": ["16:40"]},
+        # En normal kørsel tager under et minut. En fuld genskrivning (go-live:
+        # ~3.000 API-kald under en rate-limit på ti i sekundet) tager få
+        # minutter. 60 minutter dækker begge med luft.
+        "forsinkelse_min": 60,
+        # Tilstedeværelse er ikke nok her: en kørsel, der skriver 0 felter en
+        # hel uge, eller tusindvis på én dag, ser sund ud under friskheden.
+        # Se _vurder_plausibilitet().
+        "plausibilitet": True,
+        # ADVARSEL, samme som ACV: skriveloggen får kun rækker, når der
+        # SKRIVES. En dag uden ændringer (fx en søndag) flytter ikke
+        # tidsstemplet, så fallbacken kan se forsinket ud, selv om alt er i
+        # orden. Kørselsloggen er det rigtige signal. written_at er UTC.
+        "fallback_sql":  "SELECT MAX(written_at) FROM dbo.PipedriveOrgLicenseWritten",
+        "fallback_tekst": "MAX(written_at) i skriveloggen (kun dage med skrivninger)",
+        "fallback_tz":   "utc",
+        "data_sql":      None,
+        "bruges_af":     ["Licensfelterne på organisationer i Pipedrive "
+                          "(sælgere, Sales Ops, Monitor-teamet)"],
+    },
+    {
         "id":            "zuora_retention",
         "titel":         "Retention-snapshot (Zuora)",
         "tabel":         "retention",
