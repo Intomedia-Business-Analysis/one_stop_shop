@@ -173,6 +173,36 @@ KILDER = [
                           "Afdelingsleder Dashboard", "Rotation"],
     },
     {
+        "id":            "license_updater",
+        "titel":         "Licensfelter i Pipedrive (Monitor)",
+        "tabel":         "PipedriveOrgLicenseWritten",
+        "kilde":         "license_updater",   # = source i record_run() i main.py
+        "repo":          "license_updater_pipedrive_monitor",
+        "opgave":        "License updater monitor",
+        "plan_tekst":    "Dagligt kl. 16:40",
+        # 16:40, ikke 16:30: 16:30 falder i samme minut som en PipeDrive
+        # Frequent Sync, og jobbet henter data i flere separate forespørgsler.
+        "plan":          {"tider": ["16:40"]},
+        # En normal kørsel tager under et minut. En fuld genskrivning (go-live:
+        # ~3.000 API-kald under en rate-limit på ti i sekundet) tager få
+        # minutter. 60 minutter dækker begge med luft.
+        "forsinkelse_min": 60,
+        # Tilstedeværelse er ikke nok her: en kørsel, der skriver 0 felter en
+        # hel uge, eller tusindvis på én dag, ser sund ud under friskheden.
+        # Se _vurder_plausibilitet().
+        "plausibilitet": True,
+        # ADVARSEL, samme som ACV: skriveloggen får kun rækker, når der
+        # SKRIVES. En dag uden ændringer (fx en søndag) flytter ikke
+        # tidsstemplet, så fallbacken kan se forsinket ud, selv om alt er i
+        # orden. Kørselsloggen er det rigtige signal. written_at er UTC.
+        "fallback_sql":  "SELECT MAX(written_at) FROM dbo.PipedriveOrgLicenseWritten",
+        "fallback_tekst": "MAX(written_at) i skriveloggen (kun dage med skrivninger)",
+        "fallback_tz":   "utc",
+        "data_sql":      None,
+        "bruges_af":     ["Licensfelterne på organisationer i Pipedrive "
+                          "(sælgere, Sales Ops, Monitor-teamet)"],
+    },
+    {
         "id":            "zuora_retention",
         "titel":         "Retention-snapshot (Zuora)",
         "tabel":         "retention",
@@ -597,10 +627,35 @@ def _fil_status(kilde_id: str) -> dict:
 
 STATUS_RANG = {"fejl": 0, "haenger": 1, "forsinket": 2, "ukendt": 3, "ok": 4, "info": 5}
 
+PLAUSIBEL_MAX = 500   # et loft mellem normalen (3) og en genskrivning (3.782)
+NUL_DAGE = 7          # vinduet: højest så mange kørsler kigges der på
+MIN_KOERSLER = 5      # tilladelsen: færre kørsler end dette er for lidt til at dømme.
+
+
+def _vurder_plausibilitet(koersler: list[dict]) -> dict | None:
+    """koersler: vellykkede kørsler, nyeste først.
+    Returnerer en status, hvis antallet er utroværdigt, ellers None."""
+    if not koersler:
+        return None
+
+    i_dag = koersler[0]["raekker"]
+    if i_dag is not None and i_dag > PLAUSIBEL_MAX:
+        return {"status": "fejl",
+                "forklaring": f"{i_dag} felter skrevet i én kørsel. "
+                              f"Skrivehistorikken bliver sandsynligvis ikke læst."}
+
+    seneste = [k["raekker"] for k in koersler[:NUL_DAGE]]
+    if len(seneste) >= MIN_KOERSLER and all(r == 0 for r in seneste):
+        return {"status": "forsinket",
+                "forklaring": f"0 felter skrevet {len(seneste)} kørsler i træk."}
+
+    return None
+
 
 def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
             fallback: datetime | None, nu: datetime,
-            nulkontrol: tuple | None = None) -> dict:
+            nulkontrol: tuple | None = None,
+            historik: list[dict] | None = None) -> dict:
     """Sammenhold det, der skete, med det der burde ske. Returnér status + forklaring.
 
     Rækkefølgen er bevidst: en kørsel, der HÆNGER eller FEJLEDE lige nu, vises
@@ -640,6 +695,15 @@ def _vurder(kilde: dict, seneste: dict | None, seneste_ok: dict | None,
                     "forklaring": (f"Nyeste dato {_dato(kontrol_dato)} står med "
                                    f"beløb 0. Kørslen nåede igennem, men hentede "
                                    f"ingen tal. {handling}").strip()}
+
+    # 3b. er antallet plausibelt? kun for kilder med "plausibilitet": True
+    # samme placering som nulkontrollen og samme grund: kørslen er frisk
+    # og 'ok', og friskheden ville ellers melde grønt oven på et utroværdigt tal.
+    if kilde.get("plausibilitet") and historik:
+        ok_koersler = [k for k in historik if k["status"] == "ok"]
+        plaus = _vurder_plausibilitet(ok_koersler)
+        if plaus:
+            return plaus
 
     # 4. Hvornår landede data sidst?
     if seneste_ok:
@@ -857,7 +921,7 @@ def db_maintenance_overblik() -> dict:
             vurdering = {"status": "ukendt", "forklaring": fil["fejl"]}
         else:
             vurdering = _vurder(kilde, seneste, seneste_ok, fallback, nu,
-                                nulkontroller.get(kilde["id"]))
+                                nulkontroller.get(kilde["id"]), historik.get(kilde["kilde"]))
 
         landet = None
         if seneste_ok:

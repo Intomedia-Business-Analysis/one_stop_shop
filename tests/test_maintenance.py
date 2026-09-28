@@ -14,6 +14,9 @@ Fredet adfærd:
   - programmatic-salg leverer altid dagen før og må derfor ikke melde forsinket,
     når nyeste dato er i går
   - nyeste programmatic-dato med beløb 0 er en FEJL, ikke en stille nul-dag
+  - licensjobbet vurderes på PLAUSIBILITET, ikke kun friskhed: over 500 felter
+    i én kørsel er 'fejl', mindst 5 kørsler i træk med 0 er 'forsinket', og en
+    tørkørsel (rows_written NULL) tæller ikke som et nul
   - adgangskravet i nav_utils skal matche routerens, ellers får brugeren et
     menupunkt der svarer 403
 """
@@ -269,6 +272,118 @@ def test_tom_tabel_giver_ikke_falsk_nul_alarm():
 
 
 # ---------------------------------------------------------------------------
+# Plausibilitet (licensjobbet)
+# ---------------------------------------------------------------------------
+# Friskhed spørger, om kørslen landede til tiden. Plausibilitet spørger, om
+# tallet er troværdigt. Uden den ville en uge med 0 skrevne felter — eller en
+# kørsel, der genskriver alle 3.800 felter — stå grøn. Samme blindhed lod
+# programmatisk salg falde 71 % bag et grønt felt den 21. sep. 2026.
+
+def _koersler(*raekker):
+    """Vellykkede kørsler, nyeste først, som _historik() leverer dem."""
+    return [{"status": "ok", "raekker": r} for r in raekker]
+
+
+def test_normal_uge_er_plausibel():
+    """Få felter om dagen, med et enkelt nul imellem, er normalen efter go-live."""
+    assert q._vurder_plausibilitet(_koersler(3, 2, 0, 5, 1, 3, 4)) is None
+
+
+def test_et_enkelt_nul_er_ikke_en_alarm():
+    """En søndag uden nye deals giver 0. Det må ikke lyse."""
+    assert q._vurder_plausibilitet(_koersler(0, 4, 2, 0, 3, 1, 2)) is None
+
+
+def test_over_loftet_er_en_fejl():
+    """Tusindvis af felter betyder, at skrivehistorikken ikke bliver læst."""
+    vurdering = q._vurder_plausibilitet(_koersler(3100, 3, 2, 4, 0, 1, 3))
+    assert vurdering["status"] == "fejl"
+    assert "3100" in vurdering["forklaring"]
+
+
+def test_loftet_er_eksklusivt():
+    """Præcis PLAUSIBEL_MAX er stadig plausibelt; én mere er ikke."""
+    assert q._vurder_plausibilitet(_koersler(q.PLAUSIBEL_MAX)) is None
+    assert q._vurder_plausibilitet(_koersler(q.PLAUSIBEL_MAX + 1))["status"] == "fejl"
+
+
+def test_en_uge_med_lutter_nuller_er_forsinket():
+    vurdering = q._vurder_plausibilitet(_koersler(0, 0, 0, 0, 0, 0, 0))
+    assert vurdering["status"] == "forsinket"
+    assert "7 kørsler" in vurdering["forklaring"]
+
+
+def test_gulvet_er_ikke_blindt_naar_en_koersel_er_sprunget_over():
+    """Seks kørsler i et syv-dages vindue skal stadig kunne dømmes.
+
+    Med det oprindelige krav, len == 7, var gulvet blindt præcis den uge, hvor
+    jobbet også havde sprunget en kørsel over.
+    """
+    vurdering = q._vurder_plausibilitet(_koersler(0, 0, 0, 0, 0, 0))
+    assert vurdering["status"] == "forsinket"
+    assert "6 kørsler" in vurdering["forklaring"]
+
+
+def test_for_faa_koersler_til_at_doemme():
+    """Lige efter at en kilde er kommet på dashboardet, er der for lidt data."""
+    assert q._vurder_plausibilitet(_koersler(*[0] * (q.MIN_KOERSLER - 1))) is None
+    assert q._vurder_plausibilitet(_koersler(*[0] * q.MIN_KOERSLER))["status"] \
+        == "forsinket"
+
+
+def test_toerkoersler_taeller_ikke_som_nuller():
+    """En tørkørsel kalder ikke run.rows(), så rows_written er NULL, ikke 0.
+
+    Talte NULL som 0, ville en uge med DRY_RUN=1 give falsk gult.
+    """
+    assert q._vurder_plausibilitet(_koersler(None, None, None, None, None, None, None)) \
+        is None
+
+
+def test_uden_koersler_ingen_vurdering():
+    assert q._vurder_plausibilitet([]) is None
+
+
+def test_plausibilitet_vinder_over_en_ellers_frisk_koersel():
+    """Trin 3b ligger FØR friskheden. Ellers ville friskheden svare 'ok' først."""
+    kilde = _kilde("license_updater")
+    nu = datetime(2026, 9, 28, 18, 0)
+    seneste_ok = {"status": "ok", "startet": datetime(2026, 9, 28, 16, 40),
+                  "afsluttet": datetime(2026, 9, 28, 16, 41)}
+    assert q._vurder(kilde, seneste_ok, seneste_ok, None, nu,
+                     historik=_koersler(3, 2, 1, 4, 0, 2, 3))["status"] == "ok"
+    assert q._vurder(kilde, seneste_ok, seneste_ok, None, nu,
+                     historik=_koersler(0, 0, 0, 0, 0, 0, 0))["status"] == "forsinket"
+
+
+def test_historik_filtreres_til_vellykkede_koersler():
+    """En fejlet kørsel har ingen troværdig rows_written og må ikke tælle med.
+
+    Her er nyeste kørsel en fejl med 5.000 felter; den må hverken udløse loftet
+    eller skjule, at de vellykkede er lutter nuller.
+    """
+    kilde = _kilde("license_updater")
+    nu = datetime(2026, 9, 28, 18, 0)
+    seneste_ok = {"status": "ok", "startet": datetime(2026, 9, 28, 16, 40),
+                  "afsluttet": datetime(2026, 9, 28, 16, 41)}
+    historik = [{"status": "error", "raekker": 5000}] + _koersler(0, 0, 0, 0, 0)
+    assert q._vurder(kilde, seneste_ok, seneste_ok, None, nu,
+                     historik=historik)["status"] == "forsinket"
+
+
+def test_kilder_uden_plausibilitet_ignorerer_historikken():
+    """Kontrollen er slået til pr. kilde. En sync, der normalt skriver 0 rækker
+    i de fleste kvarterer, må ikke blive gul af den."""
+    kilde = _kilde("pipedrive_sync")
+    assert not kilde.get("plausibilitet")
+    nu = datetime(2026, 9, 17, 12, 10)
+    seneste_ok = {"status": "ok", "startet": datetime(2026, 9, 17, 12, 0),
+                  "afsluttet": datetime(2026, 9, 17, 12, 1)}
+    assert q._vurder(kilde, seneste_ok, seneste_ok, None, nu,
+                     historik=_koersler(0, 0, 0, 0, 0, 0, 0))["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
 # Grupperne
 # ---------------------------------------------------------------------------
 
@@ -277,6 +392,7 @@ def test_gruppen_udledes_af_kilden():
     forventet = {
         "pipedrive_sync": "task", "acv_updater": "task",
         "currencycollector": "task", "programmatic": "task",
+        "license_updater": "task",
         "zuora_acv_fil": "fil", "usage_forbrug": "fil", "usage_kobling": "fil",
         "zuora_retention": "manuel", "budget": "manuel",
         "saelgerbudget": "manuel", "forecast": "manuel",
@@ -361,6 +477,9 @@ SPEJLKOPIER = [
     ("../ACV_updater_pipedrive/dataloads.py"),
     ("../currencycollector/dataloads.py"),
     ("../ProgrammaticFinansSales/dataloads.py"),
+    # Den første kopi, der faktisk findes (25. sep. 2026). Licensrepoets db.py
+    # har get_conn = get_db_conn, så kopien kan forblive identisk.
+    ("../license_updater_pipedrive_monitor/dataloads.py"),
 ]
 
 
