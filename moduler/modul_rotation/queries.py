@@ -1270,10 +1270,11 @@ def db_media_performance(selected_accounts: list | None = None,
 
     mode:
       "abonnement" — abonnementsomsætning (deal_type abonnement/subscription)
-                     INKL. Web Sale. Placeres på året via [service_activation_date]
-                     (tilvækst). Viser cancellations, net og 'heraf web salg'.
-                     Budget = BudgetsIntoMedia DealType=Subscription (alle salestypes,
-                     dvs. inkl. websale-budget) pr. Site.
+                     UDEN Web Sale. Placeres på året via [service_activation_date]
+                     (tilvækst). Viser cancellations og net, og web salg og web
+                     opsigelser for sig (web-opsigelser er negative Web Sale-deals).
+                     Budget = BudgetsIntoMedia DealType=Subscription uden
+                     Salestype 'Websale' pr. Site, så net og budget måler det samme.
       "banner"     — kun banner-omsætning (pipeline Banner/Bannerads), placeres
                      på [service_activation_date]. Inkl. programmatisk salg
                      (ProgrammaticSales). Budget = BudgetsIntoMedia DealType=Banner pr. Site.
@@ -1377,13 +1378,16 @@ def db_media_performance(selected_accounts: list | None = None,
 
         cancel_map: dict = {}
         ws_map: dict = {}
+        wc_map: dict = {}
 
         # Belob i lokal valuta for NO/SE/DE (EUR fordi Watch DE-budgettet er i EUR),
         # ellers DKK — samme konvention som afdelingsleder-dashboardet.
         _mp_val = f"CAST({deal_value_sql(eur_local=True)} AS DECIMAL(18,2))"
 
         if mode == "abonnement":
-            # Gross = abonnement/subscription INKL. Web Sale (uanset deal_type).
+            # Gross = abonnement/subscription UDEN Web Sale. Budgettet er mediernes
+            # tilvækstbudget og indeholder ikke web-salg for Watch, så web vises
+            # for sig i web_salg/web_opsigelser (Merete, watch_no, 29-09-2026).
             cur.execute(f"""
                 SELECT [sites],
                        ISNULL(SUM({_mp_val}),0) AS gross
@@ -1392,22 +1396,29 @@ def db_media_performance(selected_accounts: list | None = None,
                   AND [account] IN {acc_ph}
                   AND [pipeline_name] NOT IN {_CANCEL_PH}
                   AND [pipeline_name] NOT IN ('banner','job','Bannerads','Jobads','Jobmarked')
-                  AND (LOWER([deal_type]) IN ('abonnement','subscription') OR [pipeline_name]='Web Sale')
-                  {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
+                  AND LOWER([deal_type]) IN ('abonnement', 'subscription')
+                  AND [pipeline_name] <> 'Web Sale'
+                  {year_clause} {month_clause} {_ADM_EXCLUDE}
                 GROUP BY [sites]
             """, tuple(accounts) + tuple(CANCELLATION_PIPELINES) + year_params + month_params)
             gross_map = {_norm(r["sites"]): float(r["gross"] or 0) for r in cur.fetchall()}
 
-            # Heraf web salg (pipeline Web Sale).
+            # Web-salg splittes på fortegn. Web-opsigelser registreres som
+            # negative deals i Web Sale-pipelinen, ikke i Cancellation, så
+            # fortegnet er det eneste, der skiller et salg fra en opsigelse.
             cur.execute(f"""
                 SELECT [sites],
-                       ISNULL(SUM({_mp_val}),0) AS ws
+                       ISNULL(SUM(CASE WHEN {_mp_val} > 0 THEN {_mp_val} ELSE 0 END), 0) AS ws,
+                       ABS(ISNULL(SUM(CASE WHEN {_mp_val} < 0 THEN {_mp_val} ELSE 0 END), 0)) AS wc
                 FROM [dbo].[PipedriveDeals]
-                WHERE [status]='won' AND [pipeline_name]='Web Sale'
+                WHERE [status] = 'won'
+                  AND [pipeline_name] = 'Web Sale'
                   AND [account] IN {acc_ph} {year_clause} {month_clause} {_ADM_EXCLUDE_ALLOW_WEBSALE}
                 GROUP BY [sites]
             """, tuple(accounts) + year_params + month_params)
-            ws_map = {_norm(r["sites"]): float(r["ws"] or 0) for r in cur.fetchall()}
+            web_rows = cur.fetchall()
+            ws_map = {_norm(r["sites"]): float(r["ws"] or 0) for r in web_rows}
+            wc_map = {_norm(r["sites"]): float(r["wc"] or 0) for r in web_rows}
 
             # Cancellations — SAMME ADM/System-Admin-hygiene som gross (symmetrisk),
             # ellers overdrives churn og net bliver kunstigt lavt.
@@ -1421,10 +1432,13 @@ def db_media_performance(selected_accounts: list | None = None,
             """, tuple(CANCELLATION_PIPELINES) + tuple(accounts) + year_params + month_params)
             cancel_map = {_norm(r["sites"]): float(r["cancel"] or 0) for r in cur.fetchall()}
 
+            # Budget uden Salestype 'Websale': net er uden web, så budgettet skal
+            # også være det. Rammer i 2026 kun FINANS DK (1,5 mio.).
             cur.execute(f"""
                 SELECT [Site] AS site, ISNULL(SUM([BudgetAmount]),0) AS budget
                 FROM [dbo].[BudgetsIntoMedia]
                 WHERE LOWER([DealType])='subscription' AND [Site] IN {sites_ph} {year_budget_clause} {month_budget_clause}
+                  AND LOWER(COALESCE([Salestype],'')) <> 'websale'
                 GROUP BY [Site]
             """, tuple(sites) + year_budget_params + month_budget_params)
             budget_map = {_norm(r["site"]): float(r["budget"] or 0) for r in cur.fetchall()}
@@ -1499,26 +1513,33 @@ def db_media_performance(selected_accounts: list | None = None,
             gross  = round(gross_map.get(k, 0.0), 2)
             cancel = round(cancel_map.get(k, 0.0), 2)
             net    = round(gross - cancel, 2)
-            websale = round(ws_map.get(k, 0.0), 2) if is_sub else None
+            web_salg = round(ws_map.get(k, 0.0), 2) if is_sub else None
+            web_opsigelser = round(wc_map.get(k, 0.0), 2) if is_sub else None
             budget = round(budget_map.get(k, 0.0), 2)
             index  = round(net / budget * 100, 2) if budget > 0 else None
-            if gross == 0 and cancel == 0 and budget == 0:
+            # Web er ude af gross, så et site med KUN web-salg ville ellers falde
+            # ud af tabellen, og dets web-salg ud af totalen.
+            if (gross == 0 and cancel == 0 and budget == 0
+                    and not web_salg and not web_opsigelser):
                 continue
             rows.append({"site": site, "gross": gross, "cancel": cancel, "net": net,
-                         "websale": websale, "budget": budget, "index": index})
+                         "web_salg": web_salg, "web_opsigelser": web_opsigelser,
+                         "budget": budget, "index": index})
 
         rows.sort(key=lambda x: -(x["net"] or 0))
 
         tg = round(sum(r["gross"]  for r in rows), 2)
         tc = round(sum(r["cancel"] for r in rows), 2)
         tn = round(sum(r["net"]    for r in rows), 2)
-        tw = round(sum((r["websale"] or 0) for r in rows), 2) if is_sub else None
+        tws = round(sum((r["web_salg"] or 0) for r in rows), 2) if is_sub else None
+        twc = round(sum((r["web_opsigelser"] or 0) for r in rows), 2) if is_sub else None
         tb = round(sum(r["budget"] for r in rows), 2)
 
         return {
             "mode":             mode,
             "rows":             rows,
-            "total":            {"gross": tg, "cancel": tc, "net": tn, "websale": tw,
+            "total":            {"gross": tg, "cancel": tc, "net": tn,
+                                 "web_salg": tws, "web_opsigelser": twc,
                                  "budget": tb, "index": round(tn / tb * 100, 2) if tb > 0 else None},
             "available_years":   available_years,
             "available_accounts": list(mode_accounts),
