@@ -13,7 +13,7 @@ load_env()
 # Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
 from constants import (SUBSCRIPTION_BRANDS, BRAND_GROUPS, CANCELLATION_PIPELINES,  # noqa: E402,F401
                       MONTH_NAMES_DA, deal_value_sql, local_currency_sql,
-                      mirror_exclude_sql)
+                      mirror_exclude_sql, team_member_at_deal_date_sql)
 
 BRANDS_PLACEHOLDER = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
@@ -246,6 +246,30 @@ def db_get_filters():
         raise
     return results
 
+
+def _single_team_clause(team: str, is_finans_team: bool) -> tuple[str, tuple]:
+    """team_clause og dens params, når dashboardet står på ÉT hold.
+
+    Bruges af db_manager_data og db_yoy_data. De havde hver sin kopi af samme
+    underforespørgsel, og kopierne stavede "medlem i dag" på to forskellige
+    måder (GETDATE() med og uden TRY_CAST).
+
+    FINANS-holdene afgrænses på sitet og ikke på dealens team: Watch- og
+    FINANS-sælgerne er de samme personer, så det er sitet, der skiller dem.
+    Alle andre hold kræver desuden, at dealens team er holdet (eller tomt).
+
+    Medlemskabet vurderes på dealens afgørelsesdato, så en sælger, der skifter
+    hold, beholder sin historik på det gamle hold (se
+    constants.team_member_at_deal_date_sql). Prædikatet forudsætter, at
+    queryen læser deal-tabellen UDEN alias, og det gør alle kaldsteder i de
+    to funktioner (målt 01-10-2026).
+    """
+    medlem = team_member_at_deal_date_sql("(%s)")
+    if is_finans_team:
+        return f"AND {medlem} AND COALESCE([sites],'') = 'FINANS DK'", (team,)
+    return f"AND {medlem} AND ([team] = %s OR [team] IS NULL)", (team, team)
+
+
 def db_owner_in_teams(owner_name: str, team_names: list) -> bool:
     """Er sælgeren knyttet til ét af de angivne teams?
 
@@ -357,24 +381,7 @@ def db_manager_data(today: date, team: str | None = None,
         is_watch_dk_team  = "WATCH DK" in team.upper()
         is_watch_int_team = "WATCH INT" in team.upper()
 
-        if is_finans_team:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-            ) AND COALESCE([sites],'') = 'FINANS DK'"""
-            team_params = (team,)
-        else:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-            ) AND ([team] = %s OR [team] IS NULL)"""
-            team_params = (team, team)
+        team_clause, team_params = _single_team_clause(team, is_finans_team)
 
         if is_watch_int_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
@@ -1110,24 +1117,7 @@ def db_yoy_data(today: date, team: str | None = None,
         is_watch_dk_team  = "WATCH DK" in team.upper()
         is_watch_int_team = "WATCH INT" in team.upper()
 
-        if is_finans_team:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-            ) AND COALESCE([sites],'') = 'FINANS DK'"""
-            team_params = (team,)
-        else:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-            ) AND ([team] = %s OR [team] IS NULL)"""
-            team_params = (team, team)
+        team_clause, team_params = _single_team_clause(team, is_finans_team)
 
         if is_watch_int_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
