@@ -33,6 +33,7 @@ _BASE_WHERE = """
 
 
 # Fælles pooled DB-forbindelse — se db.py.
+from constants import team_member_at_deal_date_sql  # noqa: E402
 from db import get_conn  # noqa: E402,F401
 
 
@@ -256,15 +257,8 @@ def db_salesperson_performance(pipeline: str, year: int | None = None, month: st
         team_name = PIPELINE_TEAM.get(pipeline) if country == "dk" else None
         team_filter = ""
         if team_name:
-            team_filter = """
-              AND owner_name IN (
-                SELECT u.name
-                FROM HubUsers u
-                JOIN TeamMemberships tm ON tm.user_id = u.id
-                JOIN Teams t ON t.id = tm.team_id
-                WHERE t.name = %s
-                  AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-              )"""
+            # Medlemskab på dealens dato, så en stoppet sælgers historik bliver stående.
+            team_filter = f"AND {team_member_at_deal_date_sql('(%s)')}"
             params = params + (team_name,)
         cur.execute(f"""
             SELECT
