@@ -28,7 +28,11 @@ register_nav_globals(templates)
 router = APIRouter()
 
 
-MIN_ROLLE = "sales_operations"
+# Midlertidigt hævet fra sales_operations 2026-10-02: v1.0-dashboardene er
+# lukket, mens retention bygges om. Koden bevares til genbrug. Kenneth har
+# adgang via UserResourceAccess-undtagelser på de tre id'er nedenfor, ikke
+# via sin rolle. Fjernes de rækker, er han ude.
+MIN_ROLLE = "admin"
 
 # Marketing (rang 4) og management (rang 5) rangerer HØJERE end sales_operations
 # (rang 3) og ville ellers slippe ind gennem rangen alene. Besluttet 2026-08-10:
@@ -53,7 +57,7 @@ RES_RISIKO = "retention-risk"
 # måde som siderne, hvis nogen får brug for det.
 RES_KUNDE = "retention-kunde"
 
-_AFVIST = "Retention er forbeholdt Sales Operations"
+_AFVIST = "Retention-dashboardene er midlertidigt lukket, mens de bygges om"
 
 
 def _kraev_adgang(user: dict, resource_id: str) -> None:
