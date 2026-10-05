@@ -165,21 +165,6 @@ def db_all_team_names() -> list:
         return list(DEFAULT_SALES_PERF_TEAMS)
 
 
-def _owner_in_teams_sql(teams_ph: str) -> str:
-    """Subquery der begrænser owner_name til aktive medlemmer af teams.
-    Watch DK og FINANS DK deler samme sælgere — ligesom Watch Int og FINANS Int.
-    """
-    return f"""
-    AND [owner_name] IN (
-        SELECT u.name FROM [dbo].[HubUsers] u
-        JOIN [dbo].[TeamMemberships] tm ON tm.user_id = u.id
-        JOIN [dbo].[Teams] t ON t.id = tm.team_id
-        WHERE t.name IN {teams_ph}
-          AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-    )
-"""
-
-
 def _marketwire_budget(cur, date_from, date_to) -> float:
     """MarketWire-budgettet — ÉN kilde: BudgetsIntoMedia.
 
@@ -307,7 +292,14 @@ def db_sales_performance(today: date, date_col: str = "won_time",
         if not perf_teams:
             perf_teams = list(DEFAULT_SALES_PERF_TEAMS)
         teams_ph = "(" + ",".join(["%s"] * len(perf_teams)) + ")"
-        owner_in_teams = _owner_in_teams_sql(teams_ph)
+        # Dealens EGET team afgør, om den tæller, i alle skærmens paneler. Før
+        # krævede Deals oprettet, vundet og omsætning, at ejeren var medlem af
+        # holdet i hubben I DAG, mens tilvækst-panelet så på dealens team. Så
+        # stod en sælger med tilvækst men 0 i omsætning, hvis han ikke var
+        # oprettet i hubben (Johan Gade, 30-09-2026), og en stoppet sælgers
+        # historik forsvandt. Teamet er låst på dealen, så det er historiksikkert.
+        # Samme pladsholdere og params som før: holdnavnene står sidst.
+        deal_team_filter = f"AND [team] IN {teams_ph}"
 
         kpis = _revenue_kpis(cur, today, "subscription", date_col=date_col, teams=perf_teams)
         q_start, q_end = _quarter_range(today)
@@ -360,7 +352,7 @@ def db_sales_performance(today: date, date_col: str = "won_time",
         kvartal_chart = _team_netto_budget(q_start, q_end)
         maaned_chart  = _team_netto_budget(m_start, m_end)
 
-        # Deals oprettet — kun sælgere på de relevante teams (ekskl. Norge)
+        # Deals oprettet — kun deals mærket med skærmens teams (ekskl. Norge)
         try:
             cur.execute(f"""
                 SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
@@ -368,7 +360,7 @@ def db_sales_performance(today: date, date_col: str = "won_time",
                 WHERE [add_time] >= %s AND [add_time] < %s
                   AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
                   AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-                  {owner_in_teams}
+                  {deal_team_filter}
                   {_ADM_EXCLUDE}
                 GROUP BY [owner_name] ORDER BY deals DESC
             """, (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PIPELINES) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
@@ -376,7 +368,7 @@ def db_sales_performance(today: date, date_col: str = "won_time",
         except Exception:
             deals_oprettet = []
 
-        # Deals vundet — kun sælgere på de relevante teams (ekskl. Norge)
+        # Deals vundet — kun deals mærket med skærmens teams (ekskl. Norge)
         cur.execute(f"""
             SELECT COALESCE([owner_name],'Ukendt') AS owner_name, COUNT(*) AS deals
             FROM [dbo].[PipedriveDeals]
@@ -384,13 +376,13 @@ def db_sales_performance(today: date, date_col: str = "won_time",
               AND ([pipeline_name] IN {_SALES_PIPELINES_PH} OR [team] = 'Team Marketwire')
               AND [close_time] >= %s AND [close_time] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
-              {owner_in_teams}
+              {deal_team_filter}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY deals DESC
         """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))
         deals_vundet = [{"owner_name": r["owner_name"], "deals": int(r["deals"] or 0)} for r in cur.fetchall()]
 
-        # Deals omsætning — kun sælgere på de relevante teams (ekskl. Norge).
+        # Deals omsætning — kun deals mærket med skærmens teams (ekskl. Norge).
         # Widget'en viser GROSS revenue, dvs. kun solgt omsætning: negative deals
         # (opsigelser og nedgraderinger, fx MarketWires minus-fornyelser) hører i
         # cancellations-benet og trækkes ikke fra her. Uden filteret endte en
@@ -404,7 +396,7 @@ def db_sales_performance(today: date, date_col: str = "won_time",
               AND [won_time] >= %s AND [won_time] < %s
               AND ([sites] IN {_SALES_PERF_PH} OR [team] = 'Team Marketwire')
               AND CAST({_VAL} AS DECIMAL(18,2)) > 0
-              {owner_in_teams}
+              {deal_team_filter}
               {_ADM_EXCLUDE}
             GROUP BY [owner_name] ORDER BY revenue DESC
         """, tuple(SALES_PIPELINES) + (m_start.isoformat(), m_end.isoformat()) + tuple(SALES_PERF_BRANDS) + tuple(perf_teams))

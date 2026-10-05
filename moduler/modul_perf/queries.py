@@ -13,7 +13,7 @@ load_env()
 # Fælles brand-/pipeline-konstanter — én kilde til sandheden i constants.py.
 from constants import (SUBSCRIPTION_BRANDS, BRAND_GROUPS, CANCELLATION_PIPELINES,  # noqa: E402,F401
                       MONTH_NAMES_DA, deal_value_sql, local_currency_sql,
-                      mirror_exclude_sql)
+                      mirror_exclude_sql, team_member_at_deal_date_sql)
 
 BRANDS_PLACEHOLDER = "(" + ",".join(["%s"] * len(SUBSCRIPTION_BRANDS)) + ")"
 
@@ -246,6 +246,30 @@ def db_get_filters():
         raise
     return results
 
+
+def _single_team_clause(team: str, is_finans_team: bool) -> tuple[str, tuple]:
+    """team_clause og dens params, når dashboardet står på ÉT hold.
+
+    Bruges af db_manager_data og db_yoy_data. De havde hver sin kopi af samme
+    underforespørgsel, og kopierne stavede "medlem i dag" på to forskellige
+    måder (GETDATE() med og uden TRY_CAST).
+
+    FINANS-holdene afgrænses på sitet og ikke på dealens team: Watch- og
+    FINANS-sælgerne er de samme personer, så det er sitet, der skiller dem.
+    Alle andre hold kræver desuden, at dealens team er holdet (eller tomt).
+
+    Medlemskabet vurderes på dealens afgørelsesdato, så en sælger, der skifter
+    hold, beholder sin historik på det gamle hold (se
+    constants.team_member_at_deal_date_sql). Prædikatet forudsætter, at
+    queryen læser deal-tabellen UDEN alias, og det gør alle kaldsteder i de
+    to funktioner (målt 01-10-2026).
+    """
+    medlem = team_member_at_deal_date_sql("(%s)")
+    if is_finans_team:
+        return f"AND {medlem} AND COALESCE([sites],'') = 'FINANS DK'", (team,)
+    return f"AND {medlem} AND ([team] = %s OR [team] IS NULL)", (team, team)
+
+
 def db_owner_in_teams(owner_name: str, team_names: list) -> bool:
     """Er sælgeren knyttet til ét af de angivne teams?
 
@@ -357,24 +381,7 @@ def db_manager_data(today: date, team: str | None = None,
         is_watch_dk_team  = "WATCH DK" in team.upper()
         is_watch_int_team = "WATCH INT" in team.upper()
 
-        if is_finans_team:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-            ) AND COALESCE([sites],'') = 'FINANS DK'"""
-            team_params = (team,)
-        else:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-            ) AND ([team] = %s OR [team] IS NULL)"""
-            team_params = (team, team)
+        team_clause, team_params = _single_team_clause(team, is_finans_team)
 
         if is_watch_int_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"
@@ -711,8 +718,24 @@ def db_manager_data(today: date, team: str | None = None,
     conv_rate  = round((won_count / total_deals * 100), 1) if total_deals > 0 else 0.0
 
     if team:
-        # Enkelt team: vis ALLE teammedlemmer (også 0-salg) via HubUsers JOIN
+        # Enkelt team: vis ALLE teammedlemmer (også 0-salg) via HubUsers.
+        #
+        # Hvem står på listen: brugere med et medlemskab af holdet, der IKKE var
+        # slut, da perioden begyndte. En sælger, der skiftede hold 01-10, står
+        # derfor stadig på det gamle holds september, men ikke på oktober.
+        # Før spurgte listen "medlem i dag", så Michael Tofts 9 Watch DK-deals
+        # fra januar 2026 forsvandt, da hans medlemskab sluttede 31-01.
+        #
+        # Hvilke deals tæller: kun dem, sælgeren vandt, mens han var på holdet
+        # (medlemskab på dealens afgørelsesdato, se
+        # constants.team_member_at_deal_date_sql).
+        #
+        # Medlemskabet tjekkes med EXISTS og ikke med en JOIN: med en JOIN blev
+        # hver deal talt én gang PR. medlemskabsrække, så en dublet i
+        # TeamMemberships fordoblede sælgerens tal (Lasse Gjedsted på FINANS DK,
+        # fundet og ryddet op 01-10-2026).
         _lp_sql, _lp_params = _period(f"d.{d_col}")
+        _lb_medlem_d = team_member_at_deal_date_sql("(%s)", prefix="d.")
         cur.execute(f"""
             SELECT
                 u.name AS owner_name,
@@ -723,8 +746,6 @@ def db_manager_data(today: date, team: str | None = None,
                 ISNULL(SUM(CASE WHEN {cancel_case_d}
                     THEN CAST({_VAL_D} AS DECIMAL(18,2)) ELSE 0 END), 0) AS cancel_amount
             FROM HubUsers u
-            JOIN TeamMemberships tm ON tm.user_id = u.id
-            JOIN Teams t ON t.id = tm.team_id
             LEFT JOIN [dbo].[PipedriveDeals] d
                 ON d.[owner_name] = u.name
                 AND d.[status] = 'won'
@@ -737,11 +758,21 @@ def db_manager_data(today: date, team: str | None = None,
                 AND UPPER(LTRIM(d.[title])) NOT LIKE 'ADM %'
                 AND COALESCE(d.[deal_type],'') <> 'Rapport'
                 {"AND COALESCE(d.[sites],'') <> 'FINANS DK'" if (is_watch_int_team or is_watch_dk_team) else ""}
-            WHERE t.name = %s
-              AND (TRY_CAST(tm.end_date AS DATE) IS NULL OR TRY_CAST(tm.end_date AS DATE) >= CAST(GETDATE() AS DATE))
+                AND {_lb_medlem_d}
+            WHERE EXISTS (
+                SELECT 1
+                FROM TeamMemberships tm
+                JOIN Teams t ON t.id = tm.team_id
+                WHERE tm.user_id = u.id
+                  AND t.name = %s
+                  AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= %s)
+            )
             GROUP BY u.name
             ORDER BY won_amount DESC
-        """, won_cparams + won_cparams + cancel_cparams + tuple(_lp_params) + (() if is_finans_team else (team,)) + (team,))
+        """, won_cparams + won_cparams + cancel_cparams + tuple(_lp_params)
+            + (() if is_finans_team else (team,))
+            + (team,)                           # _lb_medlem_d: holdet i ON
+            + (team, month_from.isoformat()))   # WHERE: holdet og periodens start
     else:
         # Alle teams eller multi-team: GROUP BY owner
         cur.execute(f"""
@@ -1110,24 +1141,7 @@ def db_yoy_data(today: date, team: str | None = None,
         is_watch_dk_team  = "WATCH DK" in team.upper()
         is_watch_int_team = "WATCH INT" in team.upper()
 
-        if is_finans_team:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (tm2.end_date IS NULL OR tm2.end_date >= GETDATE())
-            ) AND COALESCE([sites],'') = 'FINANS DK'"""
-            team_params = (team,)
-        else:
-            team_clause = """AND [owner_name] IN (
-                SELECT u2.name FROM HubUsers u2
-                JOIN TeamMemberships tm2 ON tm2.user_id = u2.id
-                JOIN Teams t2 ON t2.id = tm2.team_id
-                WHERE t2.name = %s
-                AND (TRY_CAST(tm2.end_date AS DATE) IS NULL OR TRY_CAST(tm2.end_date AS DATE) >= CAST(GETDATE() AS DATE))
-            ) AND ([team] = %s OR [team] IS NULL)"""
-            team_params = (team, team)
+        team_clause, team_params = _single_team_clause(team, is_finans_team)
 
         if is_watch_int_team:
             non_finans_exclude = "AND COALESCE([sites],'') <> 'FINANS DK'"

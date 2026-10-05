@@ -220,3 +220,48 @@ def mirror_exclude_sql(prefix: str = "PipedriveDeals.") -> str:
         f" AND (ISNULL(_m.[value_dkk], 0) = ISNULL({p}[value_dkk], 0)"
         f" OR ISNULL(_m.[title], '') = ISNULL({p}[title], ''))))"
     )
+
+
+# ── Holdmedlemskab på dealens dato ───────────────────────────────────────────
+
+def team_member_at_deal_date_sql(teams_ph: str,
+                                 prefix: str = "PipedriveDeals.") -> str:
+    """SQL-prædikat: sandt når dealens ejer IKKE var stoppet på holdet, da
+    dealen blev afgjort.
+
+    teams_ph: pladsholderne inkl. parenteser, fx "(%s)" eller "(%s,%s)".
+              Kaldstedet lægger holdnavnene i sin params-tuple på den plads,
+              hvor prædikatet står i SQL'en.
+    prefix:   den YDRE tabels kvalifikator inkl. punktum. Samme regel og samme
+              grund som i mirror_exclude_sql.
+
+    Erstatter "medlem i dag" (end_date >= GETDATE()), som fjernede en sælgers
+    historik fra det gamle hold, så snart medlemskabet fik en slutdato. Målt
+    01-10-2026: Michael Toft havde 9 vundne Watch DK-deals i januar 2026, men
+    manglede på holdets leaderboard, fordi hans medlemskab sluttede 31-01.
+
+    DATOEN ER AFGØRELSEN, IKKE PERIODEFILTRET. Medlemskabet vurderes på
+    won_time (vundet), ellers close_time (tabt), ellers add_time (åben). Aldrig
+    på service_activation_date: den kan ligge efter, at sælgeren er stoppet,
+    og så ville samme deal tælle i Won-visningen og forsvinde i Tilvækst.
+
+    Startdatoen tjekkes BEVIDST ikke. Næsten alle medlemskaber starter
+    2024-01-01 som pladsholder, og målt 01-10-2026 ligger 15.098 vundne deals
+    før deres ejers medlemskabsstart, den ældste fra 2018-12-11. Et starttjek
+    ville slette dem. At nye deals ikke lander på det gamle hold, sikrer
+    dealens eget team-mærke.
+    """
+    if not prefix or not prefix.endswith("."):
+        raise ValueError(
+            "team_member_at_deal_date_sql kræver en tabel-kvalifikator der "
+            f"ender på '.', fik {prefix!r}.")
+    p = prefix
+    dato = f"CAST(COALESCE({p}[won_time], {p}[close_time], {p}[add_time]) AS DATE)"
+    return (
+        f"EXISTS (SELECT 1 FROM [dbo].[HubUsers] _u"
+        f" JOIN [dbo].[TeamMemberships] _tm ON _tm.user_id = _u.id"
+        f" JOIN [dbo].[Teams] _t ON _t.id = _tm.team_id"
+        f" WHERE _u.name = {p}[owner_name]"
+        f" AND _t.name IN {teams_ph}"
+        f" AND (_tm.end_date IS NULL OR TRY_CAST(_tm.end_date AS DATE) >= {dato}))"
+    )
