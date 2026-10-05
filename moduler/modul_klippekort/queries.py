@@ -198,6 +198,7 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 "periode_start":   r["periode_start"] or "—",
                 "periode_slut":    r["periode_slut"] or "—",
                 "dage_til_udloeb": int(r["dage_til_udloeb"] if r["dage_til_udloeb"] is not None else 0),
+                "dage_siden_klip": int(r["dage_siden_klip"]) if r["dage_siden_klip"] is not None else None,
             })
         conn.close()
         return rows
