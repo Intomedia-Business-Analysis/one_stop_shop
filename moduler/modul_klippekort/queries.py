@@ -160,7 +160,7 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt_tool,
                 DATEDIFF(day,
                          (SELECT MAX(f2.tidspunkt) FROM KlippekortForbrug f2
-                          WHERE f2.pd_deal_id = d.pd_deal_id
+                          WHERE f2.org_id = d.org_id
                             AND f2.tidspunkt <= CAST(GETDATE() AS date)),
                          CAST(GETDATE() AS date)) AS dage_siden_klip
             FROM [dbo].[PipedriveDeals] d
