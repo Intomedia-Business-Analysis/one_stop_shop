@@ -222,6 +222,48 @@ def test_screen_bruger_med_override_ser_rotationen(client, make_user, auth_overr
 
 
 # ---------------------------------------------------------------------------
+# Retention: v1.0-dashboardene er midlertidigt kun for admin og undtagelser
+# ---------------------------------------------------------------------------
+
+RETENTION_SIDER = [
+    "/retention/overview",
+    "/retention/risk_overview",
+    "/retention/kunde/watch_medier/6746",
+]
+
+RETENTION_UNDTAGELSER = {
+    "retention-overview": "write",
+    "retention-risk": "write",
+    "retention-kunde": "write",
+}
+
+
+@pytest.mark.parametrize("url", RETENTION_SIDER)
+def test_retention_lukket_for_sales_operations(client, make_user, auth_override, url):
+    auth_override(make_user(role="sales_operations"))
+    assert client.get(url).status_code == 403
+
+
+@pytest.mark.parametrize("url", RETENTION_SIDER)
+def test_retention_lukket_for_management_uden_undtagelser(client, make_user, auth_override, url):
+    # Samme rolle som Kenneth, men uden hans UserResourceAccess-rækker
+    auth_override(make_user(role="management"))
+    assert client.get(url).status_code == 403
+
+
+@pytest.mark.parametrize("url", RETENTION_SIDER)
+def test_retention_aaben_for_management_med_undtagelse(client, make_user, auth_override, url):
+    auth_override(make_user(role="management", resource_access=RETENTION_UNDTAGELSER))
+    assert client.get(url).status_code == 200
+
+
+@pytest.mark.parametrize("url", RETENTION_SIDER)
+def test_retention_aaben_for_admin(client, make_user, auth_override, url):
+    auth_override(make_user(role="admin"))
+    assert client.get(url).status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # Favoritter og senest besøgt
 # ---------------------------------------------------------------------------
 # Testene kører uden DB: favorit-/besøgsopslagene fejler stille og giver tomme

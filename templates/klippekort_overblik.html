@@ -174,9 +174,9 @@
           <div style="overflow-x:auto">
             <table class="v-table">
               <colgroup>
-                <col style="width:12%"><col style="width:11%"><col style="width:11%"><col style="width:10%">
-                <col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%">
-                <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:6%">
+                <col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:9%">
+                <col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%">
+                <col style="width:7%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:6%">
               </colgroup>
               <thead>
                 <tr>
@@ -190,12 +190,13 @@
                   <th class="num sortable" onclick="sortBy('rest')">Rest<i class="sort-arrow" id="arr-rest">↕</i></th>
                   <th class="num sortable" onclick="sortBy('value_dkk')">Værdi<i class="sort-arrow" id="arr-value_dkk">↕</i></th>
                   <th class="sortable" onclick="sortBy('periode_slut')">Udløber<i class="sort-arrow" id="arr-periode_slut">↕</i></th>
+                  <th class="num sortable" onclick="sortBy('dage_siden_klip')">Dage siden klip<i class="sort-arrow" id="arr-dage_siden_klip">↕</i></th>
                   <th class="num sortable sort-active" onclick="sortBy('dage_til_udloeb')">Dage til udløb<i class="sort-arrow" id="arr-dage_til_udloeb">↑</i></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody id="overblik-tbody">
-                <tr><td colspan="12" class="empty"><div class="spinner"></div></td></tr>
+                <tr><td colspan="13" class="empty"><div class="spinner"></div></td></tr>
               </tbody>
             </table>
           </div>
@@ -390,7 +391,7 @@ function setStatus(s){
 /* ---------- Sortering (overblik) ---------- */
 function setArrows(){
   document.querySelectorAll('#overblik-tbody').length; // no-op
-  ['org_name','owner_name','org_owner','sites','pd_deal_id','clip_card_size','brugt','rest','value_dkk','periode_slut','dage_til_udloeb'].forEach(c=>{
+  ['org_name','owner_name','org_owner','sites','pd_deal_id','clip_card_size','brugt','rest','value_dkk','periode_slut','dage_siden_klip','dage_til_udloeb'].forEach(c=>{
     const th = document.querySelector('[onclick="sortBy(\''+c+'\')"]');
     const arr = document.getElementById('arr-'+c);
     if(!th||!arr) return;
@@ -410,9 +411,14 @@ function cmp(a,b,col){
 }
 function drawOverblik(){
   const tb=document.getElementById('overblik-tbody');
-  const rows=[...overblikRows].sort((a,b)=>{const d=cmp(a,b,sortCol);return sortDir==='asc'?d:-d;});
+  const rows=[...overblikRows].sort((a,b)=>{
+    // null (fx "—" i Dage siden klip) ligger altid nederst, uanset retning
+    const na=a[sortCol]==null, nb=b[sortCol]==null;
+    if(na||nb) return na-nb;
+    const d=cmp(a,b,sortCol);return sortDir==='asc'?d:-d;
+  });
   document.getElementById('overblik-count').textContent = overblikRows.length + ' klippekort';
-  if(!rows.length){ const t = statusFilter==='udloebne' ? 'Ingen udløbne klippekort.' : 'Ingen aktive klippekort.'; tb.innerHTML='<tr><td colspan="12" class="empty">'+t+'</td></tr>'; setArrows(); return; }
+  if(!rows.length){ const t = statusFilter==='udloebne' ? 'Ingen udløbne klippekort.' : 'Ingen aktive klippekort.'; tb.innerHTML='<tr><td colspan="13" class="empty">'+t+'</td></tr>'; setArrows(); return; }
   tb.innerHTML = rows.map(r=>`
     <tr class="clickable" onclick='openModal(${r.pd_deal_id})'>
       <td title="${escHtml(r.org_name)}">${escHtml(r.org_name)}</td>
@@ -425,6 +431,7 @@ function drawOverblik(){
       <td class="num">${r.rest}</td>
       <td class="num">${fmtFull(r.value_dkk)}</td>
       <td>${escHtml(r.periode_slut)}</td>
+      <td class="num">${r.dage_siden_klip ?? '—'}</td>
       <td class="num">${udloebPill(r.dage_til_udloeb)}</td>
       <td style="text-align:right"><span style="font-size:11px;font-weight:700;color:var(--green)">+ Opret job</span></td>
     </tr>`).join('');
@@ -460,13 +467,13 @@ function drawOek(){
 /* ---------- Data ---------- */
 async function loadOverblik(){
   const tb=document.getElementById('overblik-tbody');
-  tb.innerHTML='<tr><td colspan="12" class="empty"><div class="spinner"></div></td></tr>';
+  tb.innerHTML='<tr><td colspan="13" class="empty"><div class="spinner"></div></td></tr>';
   try{
     const res=await fetch('/tools/klippekort/overblik?mine='+(mineOnly?1:0)+'&status='+statusFilter);
     if(!res.ok) throw new Error(await res.text());
     overblikRows=(await res.json()).rows||[];
     drawOverblik();
-  }catch(e){ tb.innerHTML='<tr><td colspan="12" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+  }catch(e){ tb.innerHTML='<tr><td colspan="13" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
 }
 async function loadOek(){
   const tb=document.getElementById('oekonomi-tbody');

@@ -157,7 +157,12 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 CONVERT(NVARCHAR(10), d.advertising_periode_start, 23) AS periode_start,
                 CONVERT(NVARCHAR(10), d.advertising_periode_end, 23)  AS periode_slut,
                 DATEDIFF(day, CAST(GETDATE() AS date), d.advertising_periode_end) AS dage_til_udloeb,
-                (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt_tool
+                (SELECT ISNULL(SUM(f.klip), 0) FROM KlippekortForbrug f WHERE f.pd_deal_id = d.pd_deal_id) AS brugt_tool,
+                DATEDIFF(day,
+                         (SELECT MAX(f2.tidspunkt) FROM KlippekortForbrug f2
+                          WHERE f2.org_id = d.org_id
+                            AND f2.tidspunkt <= CAST(GETDATE() AS date)),
+                         CAST(GETDATE() AS date)) AS dage_siden_klip
             FROM [dbo].[PipedriveDeals] d
             LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = d.org_id
             WHERE d.pipeline_name = 'job'
@@ -193,6 +198,7 @@ def db_overblik(only_owner_name: str | None = None, status: str = "aktive") -> l
                 "periode_start":   r["periode_start"] or "—",
                 "periode_slut":    r["periode_slut"] or "—",
                 "dage_til_udloeb": int(r["dage_til_udloeb"] if r["dage_til_udloeb"] is not None else 0),
+                "dage_siden_klip": int(r["dage_siden_klip"]) if r["dage_siden_klip"] is not None else None,
             })
         conn.close()
         return rows
