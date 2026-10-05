@@ -411,7 +411,12 @@ function cmp(a,b,col){
 }
 function drawOverblik(){
   const tb=document.getElementById('overblik-tbody');
-  const rows=[...overblikRows].sort((a,b)=>{const d=cmp(a,b,sortCol);return sortDir==='asc'?d:-d;});
+  const rows=[...overblikRows].sort((a,b)=>{
+    // null (fx "—" i Dage siden klip) ligger altid nederst, uanset retning
+    const na=a[sortCol]==null, nb=b[sortCol]==null;
+    if(na||nb) return na-nb;
+    const d=cmp(a,b,sortCol);return sortDir==='asc'?d:-d;
+  });
   document.getElementById('overblik-count').textContent = overblikRows.length + ' klippekort';
   if(!rows.length){ const t = statusFilter==='udloebne' ? 'Ingen udløbne klippekort.' : 'Ingen aktive klippekort.'; tb.innerHTML='<tr><td colspan="13" class="empty">'+t+'</td></tr>'; setArrows(); return; }
   tb.innerHTML = rows.map(r=>`
