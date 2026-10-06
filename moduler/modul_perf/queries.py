@@ -720,9 +720,11 @@ def db_manager_data(today: date, team: str | None = None,
     if team:
         # Enkelt team: vis ALLE teammedlemmer (også 0-salg) via HubUsers.
         #
-        # Hvem står på listen: brugere med et medlemskab af holdet, der IKKE var
-        # slut, da perioden begyndte. En sælger, der skiftede hold 01-10, står
-        # derfor stadig på det gamle holds september, men ikke på oktober.
+        # Hvem står på listen: brugere, der har deals, der tæller i perioden,
+        # ELLER et medlemskab af holdet, der ikke var slut, da perioden begyndte.
+        # Det første fanger deals vundet før slutdatoen, men aktiveret efter
+        # (Anders Jepsen på Banner: vundet maj og juli, aktiveret oktober 2026).
+        # Uden det summerede listen ikke til holdets total.
         # Før spurgte listen "medlem i dag", så Michael Tofts 9 Watch DK-deals
         # fra januar 2026 forsvandt, da hans medlemskab sluttede 31-01.
         #
@@ -765,14 +767,23 @@ def db_manager_data(today: date, team: str | None = None,
                 JOIN Teams t ON t.id = tm.team_id
                 WHERE tm.user_id = u.id
                   AND t.name = %s
-                  AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= %s)
             )
-            GROUP BY u.name
+            GROUP BY u.id, u.name
+            HAVING COUNT(d.[pd_deal_id]) > 0
+                OR EXISTS (
+                    SELECT 1
+                    FROM TeamMemberships tm
+                    JOIN Teams t ON t.id = tm.team_id
+                    WHERE tm.user_id = u.id
+                      AND t.name = %s
+                      AND (tm.end_date IS NULL OR TRY_CAST(tm.end_date AS DATE) >= %s)
+                )
             ORDER BY won_amount DESC
         """, won_cparams + won_cparams + cancel_cparams + tuple(_lp_params)
             + (() if is_finans_team else (team,))
             + (team,)                           # _lb_medlem_d: holdet i ON
-            + (team, month_from.isoformat()))   # WHERE: holdet og periodens start
+            + (team,)                           # WHERE: medlem af holdet nogensinde
+            + (team, month_from.isoformat()))   # HAVING: holdet og periodens start
     else:
         # Alle teams eller multi-team: GROUP BY owner
         cur.execute(f"""
