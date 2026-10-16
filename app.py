@@ -41,6 +41,7 @@ from moduler.modul_banner_job.router import router as banner_job_router
 from moduler.modul_portfolio_alignment.router import router as portfolio_alignment_router
 from moduler.modul_rotation.router import router as rotation_router
 from moduler.modul_retention.router import router as retention_router
+from moduler.modul_retention_v2.router import router as retention_v2_router
 from moduler.modul_marketing.router import router as marketing_router
 from moduler.modul_benchmark.router import router as benchmark_router
 from moduler.modul_saelger_portfolio.router import router as saelger_portfolio_router
@@ -197,6 +198,7 @@ app.include_router(banner_job_router)
 app.include_router(portfolio_alignment_router)
 app.include_router(rotation_router)
 app.include_router(retention_router)
+app.include_router(retention_v2_router)
 app.include_router(marketing_router)
 app.include_router(benchmark_router)
 app.include_router(saelger_portfolio_router)

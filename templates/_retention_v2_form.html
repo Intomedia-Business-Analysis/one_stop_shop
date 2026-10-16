@@ -1,0 +1,34 @@
+{# Fragmentet #form (skuffen): enten registreringsformularen eller en kvittering efter Gem. #}
+{% if kvittering %}
+  <h2>{{ 'Ikke gemt' if kvittering.fejl and not kvittering.pipedrive else 'Registreret' }}</h2>
+  <p class="rv-meta">{{ kvittering.navn }}</p>
+  {% if kvittering.fejl %}
+    <p class="rv-besked rv-fejl">{{ kvittering.fejl }}</p>
+  {% else %}
+    <p class="rv-besked">Farve: <span class="farve {{ kvittering.farve_klasse }}">{{ kvittering.farve }}</span></p>
+    {% if kvittering.opfoelgning %}<p class="rv-besked">Opfølgning: {{ kvittering.opfoelgning }}</p>{% endif %}
+    <p class="rv-besked">{{ kvittering.pipedrive }}</p>
+  {% endif %}
+  <div class="rv-knapper">
+    <button type="button" class="tb-btn primary" onclick="document.getElementById('form').innerHTML=''">Luk</button>
+  </div>
+{% else %}
+  <h2>Registrér samtale</h2>
+  <p class="rv-meta">{{ navn }} ({{ brand }})</p>
+  <form hx-post="/retention_v2/registrer" hx-target="#form" hx-disabled-elt="find button[type=submit]">
+    <input type="hidden" name="brand" value="{{ brand }}">
+    <input type="hidden" name="pipedrive_id" value="{{ pipedrive_id }}">
+    <div class="rv-valg">
+      {% for f in farver %}
+        <label><input type="radio" name="farve" value="{{ f }}" required>
+          <span class="farve {{ farve_klasse[f] }}">{{ f }}</span></label>
+      {% endfor %}
+    </div>
+    <label for="kommentar" style="font-size:12px;color:var(--ink-3)">Note (kommer også i Pipedrive)</label>
+    <textarea id="kommentar" name="kommentar" maxlength="2000"></textarea>
+    <div class="rv-knapper">
+      <button type="submit" class="tb-btn primary">Gem</button>
+      <button type="button" class="tb-btn" onclick="document.getElementById('form').innerHTML=''">Annullér</button>
+    </div>
+  </form>
+{% endif %}

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arbejdsliste – Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  {# HTMX bruges kun på denne side (testing ground, 2026-10-15). Resten af hubben er uændret. #}
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <style>
+    .rv-filter { display:flex; flex-wrap:wrap; gap:10px 28px; align-items:center; background:var(--surface);
+                 border:1px solid var(--border); border-radius:var(--r); padding:12px 18px; margin-bottom:24px;
+                 font-size:12px; color:var(--ink-2); }
+    .rv-filter input, .rv-filter select { font:inherit; padding:5px 8px; border:1px solid var(--border-strong);
+                 border-radius:var(--r-sm); background:var(--surface); color:var(--ink); }
+    .rv-filter input[type=number] { width:64px; }
+    #liste.htmx-request { opacity:.5; transition:opacity .2s; }
+    .rv-h { font-size:15px; font-weight:700; color:var(--ink); margin:28px 0 4px; }
+    .rv-h .rv-antal { font-size:12px; font-weight:600; color:var(--ink-3); margin-left:8px; }
+    .rv-sub { font-size:12px; color:var(--ink-3); margin:0 0 12px; }
+    .v-table td.navn { white-space:normal; }
+    .v-table tr.klaret td { opacity:.45; }
+    .farve { display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+    .farve::before { content:""; width:9px; height:9px; border-radius:50%; background:currentColor; }
+    .farve.rod  { color:var(--danger); }
+    .farve.gul  { color:var(--warn); }
+    .farve.gron { color:var(--win); }
+    .i-nul { font-weight:700; color:var(--danger); }
+    /* Formularen er en skuffe i højre side, så listen står stille (og beholder
+       sin rulleposition), mens Christine registrerer og går videre til næste række. */
+    #form:empty { display:none; }
+    #form { position:fixed; top:54px; right:0; bottom:0; width:380px; max-width:100%; background:var(--surface);
+            border-left:1px solid var(--border-strong); box-shadow:-6px 0 18px rgba(0,0,0,.08);
+            padding:22px; overflow-y:auto; z-index:30; }
+    #form h2 { font-size:15px; margin:0 0 4px; color:var(--ink); }
+    #form .rv-meta { font-size:12px; color:var(--ink-3); margin:0 0 18px; }
+    #form .rv-valg { display:flex; gap:18px; margin-bottom:16px; }
+    #form textarea { width:100%; box-sizing:border-box; min-height:110px; font:inherit; font-size:12px; padding:8px;
+                     border:1px solid var(--border-strong); border-radius:var(--r-sm); margin:6px 0 16px; }
+    #form .rv-knapper { display:flex; gap:8px; }
+    #form .rv-besked { font-size:12px; color:var(--ink-2); margin:10px 0; line-height:1.5; }
+    #form .rv-fejl { color:var(--danger); font-weight:600; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention_v2' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-right" style="margin-left:auto">
+        <a href="/" class="tb-btn">← Tilbage til hubben</a>
+      </div>
+    </header>
+
+    <div class="content-area">
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a>
+        <span class="bc-sep">/</span>
+        <a href="/category/retention" class="bc-link">Retention</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Arbejdsliste</span>
+      </div>
+
+      <h1 class="page-title">Arbejdsliste</h1>
+      <p class="page-sub">Kunder, der er på vej ned eller ikke er kommet i gang. Registrér samtalen, så kommer den også i Pipedrive.</p>
+
+      <form id="filter" class="rv-filter" hx-get="/retention_v2/liste" hx-trigger="change, submit"
+            hx-target="#liste" hx-indicator="#liste">
+        <label>Brand
+          <select name="brand">
+            <option value="">Begge</option>
+            <option value="Watch">Watch</option>
+            <option value="Finans">Finans</option>
+          </select>
+        </label>
+        <label>På vej ned: de <input type="number" name="x" value="{{ x_standard }}" min="1" max="100" step="1"> % mest faldende</label>
+        <label>Ikke kommet i gang: højst <input type="number" name="y" value="{{ y_standard }}" min="0" step="1"> visninger pr. md.</label>
+      </form>
+
+      <div id="liste" hx-get="/retention_v2/liste" hx-trigger="load, liste-opdater from:body" hx-include="#filter">
+        <p class="rv-sub">Indlæser (første gang kan tage et øjeblik)...</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="form"></div>
+</div>
+
+<script>
+  // HTMX bytter ikke en fejlsvar ind i siden. Uden dette ser en fejlet gem ud
+  // som om intet skete, og så tror Christine, at samtalen er registreret.
+  document.body.addEventListener('htmx:responseError', e =>
+    alert('Noget gik galt (' + e.detail.xhr.status + '). Registreringen er ikke bekræftet. Prøv igen.'));
+  document.body.addEventListener('htmx:sendError', () =>
+    alert('Kunne ikke nå serveren. Registreringen er ikke bekræftet. Prøv igen.'));
+</script>
+</body>
+</html>

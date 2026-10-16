@@ -1,0 +1,60 @@
+{# Fragmentet #liste på retention_v2.html: de to tabeller. Kun visning, alt er regnet i router/beregning. #}
+{% macro kunde_celler(r) %}
+  <td class="navn">{{ r.navn }}</td>
+  <td>{{ r.brand }}</td>
+{% endmacro %}
+{% macro status_celler(r) %}
+  <td>{% if r.farve %}<span class="farve {{ r.farve_klasse }}">{{ r.farve }}</span>{% else %}<span style="color:var(--ink-4)">Ikke ringet</span>{% endif %}</td>
+  <td>{{ r.opfoelgning }}</td>
+  <td><button type="button" class="tb-btn" hx-get="/retention_v2/form?brand={{ r.brand }}&pipedrive_id={{ r.pipedrive_id }}"
+              hx-target="#form">Registrér</button></td>
+{% endmacro %}
+
+<p class="rv-sub">Udtræk fra {{ udtraek }}. Grå rækker er klaret: grøn, eller opfølgningen er ikke nået endnu.</p>
+
+<h2 class="rv-h">På vej ned <span class="rv-antal">{{ x_raekker|length|dk }} kunder</span></h2>
+<p class="rv-sub">De {{ x_pct }} % mest faldende kunder i hvert brand, største fald øverst. Seneste 6 måneder mod de samme 6 måneder året før.</p>
+<div class="v-table-wrap">
+  <table class="v-table">
+    <thead><tr>
+      <th>Kunde</th><th>Brand</th><th class="num">Året før</th><th class="num">Seneste 6 md.</th><th class="num">Ændring</th>
+      <th>Seneste farve</th><th>Opfølgning</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in x_raekker %}
+      <tr class="{{ 'klaret' if r.klaret }}">
+        {{ kunde_celler(r) }}
+        <td class="num">{{ r.foer|dk }}</td>
+        <td class="num">{{ r.aaret|dk }}</td>
+        <td class="num">{% if r.aaret == 0 %}<span class="i-nul">Gået i nul</span>{% else %}{{ r.aendring }}{% endif %}</td>
+        {{ status_celler(r) }}
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty">Ingen kunder</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="rv-h">Ikke kommet i gang <span class="rv-antal">{{ y_raekker|length|dk }} kunder</span></h2>
+<p class="rv-sub">Nystartede kunder med højst {{ y_graense }} artikelvisninger pr. måned i gennemsnit de første 2 hele måneder efter start. Ældste start øverst.</p>
+<div class="v-table-wrap">
+  <table class="v-table">
+    <thead><tr>
+      <th>Kunde</th><th>Brand</th><th>Startdato</th><th class="num">Snit pr. md.</th>
+      <th>Seneste farve</th><th>Opfølgning</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in y_raekker %}
+      <tr class="{{ 'klaret' if r.klaret }}">
+        {{ kunde_celler(r) }}
+        <td>{{ r.start }}</td>
+        <td class="num">{{ r.snit }}</td>
+        {{ status_celler(r) }}
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">Ingen kunder</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
