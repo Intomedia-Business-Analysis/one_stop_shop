@@ -136,10 +136,12 @@ def _pipedrive_aktivitet(pipedrive_id: int, farve: str, kommentar: str):
     token = os.getenv(PIPEDRIVE_TOKEN)
     if not token:
         return None, f"{PIPEDRIVE_TOKEN} mangler i .env, så intet er sendt til Pipedrive."
-    note = f"Farve: {farve}"
+    # Ét afsnit pr. linje. Pipedrives tidslinje viser ikke <br> mellem linjerne
+    # (set i testen 16-10: "Farve: gulTEST..." løb sammen).
+    note = f"<p><b>Farve:</b> {farve}</p>"
     if kommentar:
-        note += "<br>" + html.escape(kommentar).replace("\n", "<br>")
-    note += "<br><br>Registreret i One Stop Shop (retention)."
+        note += "<p>" + html.escape(kommentar).replace("\n", "<br>") + "</p>"
+    note += "<p>Registreret i One Stop Shop (retention).</p>"
     payload = {"subject": f"Retention: {farve}", "type": "call", "done": True,
                "due_date": dt.date.today().isoformat(), "org_id": pipedrive_id, "note": note}
     try:
