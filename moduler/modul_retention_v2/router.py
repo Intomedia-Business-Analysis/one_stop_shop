@@ -167,8 +167,9 @@ def _kunde(r, farver: dict, navne: dict, idag: dt.date) -> dict:
             "opfoelgning": opfoelgning.strftime("%d-%m-%Y") if opfoelgning else "", "klaret": klaret}
 
 
-def _valgt_brand(brand: str) -> str:
-    if brand and brand not in BRANDS:
+def _valgt_brand(brand: str, tom_tilladt: bool = False) -> str:
+    # Tom betyder "Begge" i filteret. En registrering skal altid have et brand.
+    if not (brand in BRANDS or (tom_tilladt and brand == "")):
         raise HTTPException(400, "Ukendt brand")
     return brand
 
@@ -188,7 +189,7 @@ def arbejdsliste(request: Request, user=Depends(get_current_user)):
 def liste(request: Request, brand: str = "", x: float = Query(X_STANDARD, ge=0, le=100),
           y: float = Query(Y_STANDARD, ge=0), user=Depends(get_current_user)):
     _kraev_adgang(user)
-    brand = _valgt_brand(brand)
+    brand = _valgt_brand(brand, tom_tilladt=True)
     x_df, y_df, udtraek = beregning.data()
     # Percentilen regnes inden for brandet, så brandfilteret kommer bagefter.
     x_df, y_df = beregning.x_liste(x_df, x), beregning.y_liste(y_df, y)

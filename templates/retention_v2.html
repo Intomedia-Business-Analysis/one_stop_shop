@@ -81,7 +81,12 @@
         <label>Ikke kommet i gang: højst <input type="number" name="y" value="{{ y_standard }}" min="0" step="1"> visninger pr. md.</label>
       </form>
 
-      <div id="liste" hx-get="/retention_v2/liste" hx-trigger="load, liste-opdater from:body" hx-include="#filter">
+      {# Henter listen ved start og efter hver registrering. Står VED SIDEN AF #liste og
+         ikke på den: HTMX-attributter arves, og så ville hver Registrér-knap sende
+         filterets brand med og overskrive sit eget. #}
+      <div hx-get="/retention_v2/liste" hx-trigger="load, liste-opdater from:body" hx-include="#filter"
+           hx-target="#liste" hx-indicator="#liste"></div>
+      <div id="liste">
         <p class="rv-sub">Indlæser (første gang kan tage et øjeblik)...</p>
       </div>
     </div>
