@@ -3,10 +3,12 @@
   <div class="stat">
     <div class="stat-n">{{ antal|dk }} af {{ kapacitet|dk }}</div>
     <div class="stat-l">Registreret denne måned</div>
+    <div class="stat-note">Gemte registreringer i denne måned. Samme kunde to gange tæller to. Kapacitet: cirka {{ kapacitet|dk }}.</div>
   </div>
   <div class="stat">
     <div class="stat-n">{{ forfalden|dk }}</div>
     <div class="stat-l">Opfølgning forfalden</div>
+    <div class="stat-note">Kunder, hvor seneste farve er rød (30 dage) eller gul (60 dage), og datoen er nået.</div>
   </div>
   <div class="stat">
     <div class="stat-n rv-farver">
@@ -15,11 +17,7 @@
       <span class="farve gron">{{ gron|dk }}</span>
     </div>
     <div class="stat-l">Farver denne måned</div>
+    <div class="stat-note">Månedens registreringer fordelt på rød, gul og grøn.</div>
   </div>
 </div>
-<p class="rv-sub">
-  Registreret: gemte registreringer i denne måned (samme kunde to gange tæller to), mod en kapacitet på cirka {{ kapacitet|dk }}.
-  Opfølgning forfalden: kunder, hvor den seneste farve er rød (30 dage) eller gul (60 dage), og datoen er nået.
-  Farver: månedens registreringer fordelt på rød, gul og grøn.
-  Filteret påvirker ikke tallene.
-</p>
+<p class="rv-sub">Filteret påvirker ikke KPI'erne.</p>
