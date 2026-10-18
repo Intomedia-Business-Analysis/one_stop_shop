@@ -1,0 +1,19 @@
+{# Fragmentet #kpi på retention_v2.html. Hubbens egen .stat-bar fra hub.css. Kun visning. #}
+<div class="stat-bar">
+  <div class="stat">
+    <div class="stat-n">{{ antal|dk }} af {{ kapacitet|dk }}</div>
+    <div class="stat-l">Registreret denne måned</div>
+  </div>
+  <div class="stat">
+    <div class="stat-n">{{ forfalden|dk }}</div>
+    <div class="stat-l">Opfølgning forfalden</div>
+  </div>
+  <div class="stat">
+    <div class="stat-n rv-farver">
+      <span class="farve rod">{{ rod|dk }}</span>
+      <span class="farve gul">{{ gul|dk }}</span>
+      <span class="farve gron">{{ gron|dk }}</span>
+    </div>
+    <div class="stat-l">Farver denne måned</div>
+  </div>
+</div>

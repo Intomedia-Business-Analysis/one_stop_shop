@@ -1,0 +1,8 @@
+{# Forhåndsvisning af Pipedrive-aktiviteten. emne og note kommer fra router._indhold(), den samme
+   funktion som sender aktiviteten. note er escapet dér, derfor |safe. #}
+<div class="rv-pd-titel">Sådan kommer det til at se ud i Pipedrive</div>
+<div class="rv-pd">
+  <div class="rv-pd-emne">{{ emne }}</div>
+  <div class="rv-pd-meta">Opkald (afsluttet) · I dag · {{ navn }}</div>
+  <div class="rv-pd-note">{{ note|safe }}</div>
+</div>

@@ -31,6 +31,9 @@
     .farve.gul  { color:var(--warn); }
     .farve.gron { color:var(--win); }
     .i-nul { font-weight:700; color:var(--danger); }
+    #kpi { min-height:72px; } /* pladsen holdes, så siden ikke hopper, når tallene kommer */
+    .rv-farver { display:flex; gap:18px; justify-content:center; }
+    .rv-farver .farve { font-size:22px; letter-spacing:-.4px; }
     /* Formularen er en skuffe i højre side, så listen står stille (og beholder
        sin rulleposition), mens Christine registrerer og går videre til næste række. */
     #form:empty { display:none; }
@@ -43,6 +46,22 @@
     #form textarea { width:100%; box-sizing:border-box; min-height:110px; font:inherit; font-size:12px; padding:8px;
                      border:1px solid var(--border-strong); border-radius:var(--r-sm); margin:6px 0 16px; }
     #form .rv-knapper { display:flex; gap:8px; }
+    #form .rv-hist { background:var(--bg); border:1px solid var(--border); border-radius:var(--r-sm);
+                     padding:10px 12px; margin:0 0 18px; max-height:220px; overflow-y:auto; }
+    #form .rv-hist-titel, #form .rv-pd-titel { font-size:9px; font-weight:700; text-transform:uppercase;
+                     letter-spacing:1.5px; color:var(--ink-4); margin-bottom:8px; }
+    #form .rv-hist-raekke { font-size:12px; padding:6px 0; border-top:1px solid var(--border); }
+    #form .rv-hist-raekke:first-of-type { border-top:none; padding-top:0; }
+    #form .rv-hist-dato { color:var(--ink-3); margin-left:8px; }
+    #form .rv-hist-note { white-space:pre-line; color:var(--ink-2); margin-top:3px; }
+    #form .rv-hist-tom { font-size:12px; color:var(--ink-3); font-style:italic; }
+    /* Forhåndsvisningen ligner en aktivitet på Pipedrives tidslinje: gul notebund, som i Pipedrive. */
+    #form #preview { margin-top:22px; }
+    #form .rv-pd { border:1px solid var(--border); border-radius:var(--r-sm); overflow:hidden; font-size:12px; }
+    #form .rv-pd-emne { font-weight:700; color:var(--ink); padding:10px 12px 2px; }
+    #form .rv-pd-meta { color:var(--ink-3); padding:0 12px 8px; }
+    #form .rv-pd-note { background:#FFF6D6; color:var(--ink); padding:8px 12px; line-height:1.5; }
+    #form .rv-pd-note p { margin:0; }
     #form .rv-besked { font-size:12px; color:var(--ink-2); margin:10px 0; line-height:1.5; }
     #form .rv-fejl { color:var(--danger); font-weight:600; }
   </style>
@@ -70,6 +89,9 @@
 
       <h1 class="page-title">Arbejdsliste</h1>
       <p class="page-sub">Kunder, der er på vej ned eller ikke er kommet i gang. Registrér samtalen, så kommer den også i Pipedrive.</p>
+
+      {# KPI'erne hentes ved start og efter hver registrering. Ingen knapper inde i den. #}
+      <div id="kpi" hx-get="/retention_v2/kpi" hx-trigger="load, liste-opdater from:body"></div>
 
       <form id="filter" class="rv-filter" hx-get="/retention_v2/liste" hx-trigger="change, submit"
             hx-target="#liste" hx-indicator="#liste">

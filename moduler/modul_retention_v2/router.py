@@ -54,6 +54,9 @@ OPFOELGNING_DAGE = {"rød": 30, "gul": 60}
 X_STANDARD = 10
 Y_STANDARD = 0
 
+# Christines kapacitet pr. måned (Kenneth 15-10), vises i KPI'en "Registreret".
+KAPACITET = 200
+
 # Finans og Watch ligger i samme Pipedrive, så ét token dækker begge.
 PIPEDRIVE_TOKEN = "PD_TOKEN_WATCH_DK_FINANS"
 PIPEDRIVE_URL = "https://api.pipedrive.com/api/v2/activities"
@@ -112,6 +115,37 @@ def _org_navne() -> dict:
     return navne
 
 
+def _maaneds_farver() -> dict:
+    """{farve: antal} registreringer i indeværende måned (samtaler, ikke kunder)."""
+    if _dev():
+        return {}
+    conn = get_conn()
+    try:
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""SELECT farve, COUNT(*) AS antal FROM dbo.RetentionOutcomesV2
+                       WHERE oprettet >= DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)
+                       GROUP BY farve""")
+        return {r["farve"]: r["antal"] for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def _historik(brand: str, pipedrive_id: int) -> list:
+    """De 5 seneste registreringer på kunden, nyeste først."""
+    if _dev():
+        return []
+    conn = get_conn()
+    try:
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""SELECT TOP 5 farve, kommentar, oprettet FROM dbo.RetentionOutcomesV2
+                       WHERE brand = %s AND pipedrive_id = %s ORDER BY oprettet DESC, id DESC""",
+                    (brand, pipedrive_id))
+        return [{"farve": r["farve"], "farve_klasse": FARVE_KLASSE.get(r["farve"]), "kommentar": r["kommentar"],
+                 "dato": pd.Timestamp(r["oprettet"]).strftime("%d-%m-%Y")} for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def _gem(brand: str, pipedrive_id: int, farve: str, kommentar: str, aktivitet_id) -> None:
     conn = get_conn()
     try:
@@ -128,6 +162,21 @@ def _gem(brand: str, pipedrive_id: int, farve: str, kommentar: str, aktivitet_id
 # Pipedrive
 # ---------------------------------------------------------------------------
 
+def _indhold(farve: str, kommentar: str):
+    """(emne, note) på Pipedrive-aktiviteten. Bruges BÅDE til at sende og til
+    forhåndsvisningen, så det Christine ser er præcis det, der bliver sendt.
+
+    farve skal være en af FARVER (eller tekst fra forhåndsvisningen), aldrig
+    brugerinput: den står uescapet i HTML'en. Noten escapes.
+    """
+    # Ét afsnit pr. linje, også inde i noten. Pipedrives tidslinje viser slet
+    # ikke <br> (set i testen 16-10: linjerne løb sammen), kun afsnit.
+    note = f"<p><b>Farve:</b> {farve}</p>"
+    note += "".join(f"<p>{html.escape(linje)}</p>" for linje in kommentar.splitlines() if linje.strip())
+    note += "<p>Registreret i One Stop Shop (retention).</p>"
+    return f"Retention: {farve}", note
+
+
 def _pipedrive_aktivitet(pipedrive_id: int, farve: str, kommentar: str):
     """(aktivitets-id, None) ved succes, ellers (None, tekst der siger hvorfor).
 
@@ -136,12 +185,8 @@ def _pipedrive_aktivitet(pipedrive_id: int, farve: str, kommentar: str):
     token = os.getenv(PIPEDRIVE_TOKEN)
     if not token:
         return None, f"{PIPEDRIVE_TOKEN} mangler i .env, så intet er sendt til Pipedrive."
-    # Ét afsnit pr. linje, også inde i noten. Pipedrives tidslinje viser slet
-    # ikke <br> (set i testen 16-10: linjerne løb sammen), kun afsnit.
-    note = f"<p><b>Farve:</b> {farve}</p>"
-    note += "".join(f"<p>{html.escape(linje)}</p>" for linje in kommentar.splitlines() if linje.strip())
-    note += "<p>Registreret i One Stop Shop (retention).</p>"
-    payload = {"subject": f"Retention: {farve}", "type": "call", "done": True,
+    emne, note = _indhold(farve, kommentar)
+    payload = {"subject": emne, "type": "call", "done": True,
                "due_date": dt.date.today().isoformat(), "org_id": pipedrive_id, "note": note}
     try:
         r = session().post(PIPEDRIVE_URL, headers={"x-api-token": token}, json=payload, timeout=20)
@@ -158,9 +203,14 @@ def _pipedrive_aktivitet(pipedrive_id: int, farve: str, kommentar: str):
 # Visning
 # ---------------------------------------------------------------------------
 
+def _opfoelgning(farve, dato):
+    """Datoen, kunden skal følges op: registreringen + 30 (rød) eller 60 (gul) dage."""
+    return dato + dt.timedelta(days=OPFOELGNING_DAGE[farve]) if farve in OPFOELGNING_DAGE else None
+
+
 def _kunde(r, farver: dict, navne: dict, idag: dt.date) -> dict:
     farve, dato = farver.get((r.brand, r.pipedrive_id), (None, None))
-    opfoelgning = dato + dt.timedelta(days=OPFOELGNING_DAGE[farve]) if farve in OPFOELGNING_DAGE else None
+    opfoelgning = _opfoelgning(farve, dato)
     # Klaret: grøn, eller opfølgningen er ikke nået endnu. Grånes, men flyttes ikke.
     klaret = farve == "grøn" or (opfoelgning is not None and opfoelgning > idag)
     return {"navn": navne.get(r.pipedrive_id, r.pipedrive_id), "brand": r.brand, "pipedrive_id": r.pipedrive_id,
@@ -206,13 +256,42 @@ def liste(request: Request, brand: str = "", x: float = Query(X_STANDARD, ge=0, 
         "x_raekker": x_raekker, "y_raekker": y_raekker, "x_pct": f"{x:g}", "y_graense": f"{y:g}", "udtraek": udtraek})
 
 
+@router.get("/retention_v2/kpi", response_class=HTMLResponse)
+def kpi(request: Request, user=Depends(get_current_user)):
+    # Uafhængig af filteret: tallene handler om Christines arbejde, ikke om listens udsnit.
+    _kraev_adgang(user)
+    maaned, idag = _maaneds_farver(), dt.date.today()
+    # Forfalden = rød eller gul, og opfølgningsdatoen er nået (det modsatte af "klaret" på listen).
+    forfalden = sum(1 for farve, dato in _seneste_farver().values()
+                    if _opfoelgning(farve, dato) is not None and _opfoelgning(farve, dato) <= idag)
+    return templates.TemplateResponse(request, "_retention_v2_kpi.html", {
+        "antal": sum(maaned.values()), "kapacitet": KAPACITET, "forfalden": forfalden,
+        "rod": maaned.get("rød", 0), "gul": maaned.get("gul", 0), "gron": maaned.get("grøn", 0)})
+
+
+def _forhaandsvisning(navn: str, farve: str, kommentar: str) -> dict:
+    # Ukendt eller manglende farve vises som en opfordring, aldrig som brugerinput.
+    farve = farve if farve in FARVER else "vælg en farve"
+    emne, note = _indhold(farve, kommentar.strip()[:2000])
+    return {"emne": emne, "note": note, "navn": navn}
+
+
+@router.post("/retention_v2/preview", response_class=HTMLResponse)
+def preview(request: Request, farve: str = Form(""), kommentar: str = Form(""), navn: str = Form(""),
+            user=Depends(get_current_user)):
+    # POST og ikke GET, så hvert tastestop ikke tælles som sidevisning, og noten ikke havner i URL'er.
+    _kraev_adgang(user)
+    return templates.TemplateResponse(request, "_retention_v2_preview.html", _forhaandsvisning(navn, farve, kommentar))
+
+
 @router.get("/retention_v2/form", response_class=HTMLResponse)
 def form(request: Request, brand: str, pipedrive_id: int, user=Depends(get_current_user)):
     _kraev_adgang(user)
     brand = _valgt_brand(brand)
     navn = _org_navne().get(str(pipedrive_id), str(pipedrive_id))
     return templates.TemplateResponse(request, "_retention_v2_form.html", {
-        "brand": brand, "pipedrive_id": pipedrive_id, "navn": navn, "farver": FARVER, "farve_klasse": FARVE_KLASSE})
+        "brand": brand, "pipedrive_id": pipedrive_id, "navn": navn, "farver": FARVER, "farve_klasse": FARVE_KLASSE,
+        "historik": _historik(brand, pipedrive_id), **_forhaandsvisning(navn, "", "")})
 
 
 @router.post("/retention_v2/registrer", response_class=HTMLResponse)
