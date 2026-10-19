@@ -110,6 +110,10 @@ CATEGORIES = [
         "min_role": "sales_operations",
         "subcategories": [],
         "items": [
+            # Retention v2 (2026-10-16): Arbejdslisten. Egen side med HTMX, bygget
+            # ved siden af v1, som er urørt. min_role skal matche MIN_ROLLE i
+            # modul_retention_v2/router.py.
+            {"id": "retention-v2",       "title": "Arbejdsliste",               "type": "dashboard", "subcategory": None, "brand": None, "min_role": "sales_operations", "exclude_roles": ["marketing", "management"], "url": "/retention_v2"},
             # ØVERST med vilje: modulets INDGANG. "Opkald og risiko" er
             # sammenlægningen (2026-08-27) af Dagens opkald og Churn-risiko —
             # arbejdsgangen begynder her og går derfra til kunde-detaljen.
