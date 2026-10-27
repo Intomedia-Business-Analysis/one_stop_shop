@@ -104,7 +104,7 @@ def _org_navne() -> dict:
     conn = get_conn()
     try:
         cur = conn.cursor(as_dict=True)
-        cur.execute("SELECT DISTINCT org_id, org_name FROM dbo.PipedriveDeals WHERE org_id IS NOT NULL AND org_name IS NOT NULL")
+        cur.execute("SELECT DISTINCT org_id, org_name FROM dbo.PipedriveDeals WHERE account = 'watch_medier' AND org_id IS NOT NULL AND org_name IS NOT NULL")
         raekker = cur.fetchall()
     finally:
         conn.close()
