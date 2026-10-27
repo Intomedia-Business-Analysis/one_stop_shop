@@ -5,10 +5,11 @@ hvor reglerne er forklaret og afstemt. Tallene her skal give de samme som dér.
 
 X, "på vej ned": kundens artikelvisninger i de seneste 6 hele måneder mod de
 samme 6 måneder året før, for 1-bruger-kunder med mindst 30 visninger året før.
-Y, "ikke kommet i gang": nystartede kunder, målt på gennemsnitlige
-artikelvisninger pr. måned i de første 2 hele måneder efter startmåneden.
-Kunder, der har læst noget i den seneste hele måned, er kommet i gang og er
-ikke med.
+Y, "ikke kommet i gang": nystartede kunder (første betalte abonnement inden for
+12 måneder), målt på gennemsnitlige artikelvisninger pr. måned i de første 2
+hele måneder efter startmåneden. Har kunden haft en hel måned over grænsen
+efter de to målemåneder, er den kommet i gang og er ikke med (27-10-2026,
+erstatter "læst noget i seneste hele måned").
 En kunde er brand + Pipedrive-ID.
 
 1-bruger-kunde (aftalt med Kenneth 23-10-2026): brugerne fra alle kundens konti
@@ -117,9 +118,11 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
     x["aendring"] = x["aaret"] / x["aaret_foer"] - 1
 
     # --- Y: nystartede, startet de seneste 12 måneder ---
-    # Startdato = kundens tidligste aktive abonnement på tværs af konti.
+    # Startdato = kundens tidligste aktive, betalte abonnement på tværs af konti.
+    # En prøve tæller ikke: nystartet betyder, at kunden er begyndt at betale.
     aktive_konti = aktive_konti.assign(start=pd.to_datetime(aktive_konti["subscription_startdate"], errors="coerce"))
-    start = aktive_konti.groupby(["brand", "pipedrive_id"], as_index=False)["start"].min()
+    betalte_abb = aktive_konti[aktive_konti["dim_subscription_id"].isin(betalt_ids)]
+    start = betalte_abb.groupby(["brand", "pipedrive_id"], as_index=False)["start"].min()
     medie_start = medie.merge(start, on=["brand", "pipedrive_id"])
     i_vinduet = medie_start["start"].dt.to_period("M").between(m - 11, m)
     nye = medie_start[i_vinduet]
@@ -151,13 +154,19 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
         noegle = pd.MultiIndex.from_arrays([y["brand"], y["pipedrive_id"], (y["startmaaned"] + nr).astype(str)])
         summer = summer + pr_maaned.reindex(noegle).fillna(0).to_numpy()
     y["pr_maaned"] = summer / 2
-    # Har kunden læst noget i den seneste hele måned, er den kommet i gang og
-    # tages af listen (aftalt med Kenneth 23-10-2026).
-    seneste = pd.MultiIndex.from_arrays([y["brand"], y["pipedrive_id"], [str(m)] * len(y)])
-    y = y[pr_maaned.reindex(seneste).fillna(0).to_numpy() == 0]
+    # Kommet i gang = mindst én hel måned over grænsen efter de to målemåneder.
+    # Gemmes som kundens højeste måned, så y_liste bruger samme grænse til begge
+    # dele (27-10-2026). En kunde uden måneder efter målingen får 0.
+    efter = pr_maaned.reset_index()  # brand, pipedrive_id, maaned, artikelvisninger
+    efter["maaned"] = pd.PeriodIndex(efter["maaned"], freq="M")
+    efter = efter.merge(y[["brand", "pipedrive_id", "startmaaned"]], on=["brand", "pipedrive_id"])
+    efter = efter[(efter["maaned"] > efter["startmaaned"] + 2) & (efter["maaned"] <= m)]
+    hoejeste = efter.groupby(["brand", "pipedrive_id"], as_index=False)["artikelvisninger"].max()
+    y = y.merge(hoejeste.rename(columns={"artikelvisninger": "max_siden"}), on=["brand", "pipedrive_id"], how="left")
+    y["max_siden"] = y["max_siden"].fillna(0)
 
     return (x[["brand", "pipedrive_id", "aaret_foer", "aaret", "aendring"]],
-            y[["brand", "pipedrive_id", "start", "pr_maaned"]],
+            y[["brand", "pipedrive_id", "start", "pr_maaned", "max_siden"]],
             udtraek.strftime("%d-%m-%Y"))
 
 
@@ -172,5 +181,8 @@ def x_liste(x: pd.DataFrame, percentil: float) -> pd.DataFrame:
 
 
 def y_liste(y: pd.DataFrame, graense: float) -> pd.DataFrame:
-    """Nystartede med højst `graense` visninger pr. måned, ældste start først."""
-    return y[y["pr_maaned"] <= graense].sort_values("start")
+    """Nystartede, der aldrig har haft en hel måned over `graense` visninger, ældste start først.
+
+    De første 2 måneder måles som snit, månederne derefter hver for sig.
+    """
+    return y[(y["pr_maaned"] <= graense) & (y["max_siden"] <= graense)].sort_values("start")
