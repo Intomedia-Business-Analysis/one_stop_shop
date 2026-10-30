@@ -197,6 +197,7 @@ let selectedYears    = new Set();
 let selectedMonths   = new Set();
 let sortCol = 'net', sortDir = -1;
 let lastData = null;
+let autoPeriode = null;   // [aar, maaned] hvis siden selv valgte indevaerende maaned
 
 const MONTHS_DA = ['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
 
@@ -480,6 +481,7 @@ document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click'
     const nu = new Date();
     selectedYears.add(String(nu.getFullYear()));
     selectedMonths.add(String(nu.getMonth() + 1));
+    autoPeriode = [String(nu.getFullYear()), String(nu.getMonth() + 1)];
   }
 
   // embed=1 → ren signage-visning uden interaktiv filter-bar.
@@ -488,7 +490,23 @@ document.querySelector('#yearChips .chip[data-val=""]').addEventListener('click'
 
 buildMonthChips();
 loadData();
-setInterval(loadData, 5 * 60 * 1000);
+// Skaermene koerer i ugevis uden genindlaesning. Valgte siden selv indevaerende
+// maaned, flytter vi med over maanedsskiftet, men kun hvis ingen har klikket
+// en anden periode i mellemtiden.
+setInterval(() => {
+  const nu = new Date();
+  const aar = String(nu.getFullYear()), maaned = String(nu.getMonth() + 1);
+  if (autoPeriode && (autoPeriode[0] !== aar || autoPeriode[1] !== maaned)
+      && selectedYears.size === 1 && selectedYears.has(autoPeriode[0])
+      && selectedMonths.size === 1 && selectedMonths.has(autoPeriode[1])) {
+    selectedYears.clear();  selectedYears.add(aar);
+    selectedMonths.clear(); selectedMonths.add(maaned);
+    autoPeriode = [aar, maaned];
+    syncChipActive('yearChips', selectedYears);
+    syncChipActive('monthChips', selectedMonths);
+  }
+  loadData();
+}, 5 * 60 * 1000);
 </script>
 <script>initStageScale(); initClock();</script>
 </body>
