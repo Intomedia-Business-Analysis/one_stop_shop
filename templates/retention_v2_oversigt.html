@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oversigt – Intomedia Hub</title>
+  <link rel="stylesheet" href="/static/hub.css">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/pulse.svg">
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <style>
+    .rv-sub { font-size:12px; color:var(--ink-3); margin:0 0 12px; }
+    #kpi { min-height:118px; } /* pladsen holdes, så siden ikke hopper, når tallene kommer */
+    #kpi .rv-sub { margin-bottom:24px; }
+    .stat-note { font-size:11px; line-height:1.45; color:var(--ink-3); margin-top:8px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  {% with active_url='/retention_v2' %}{% include "_sidebar.html" %}{% endwith %}
+
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-right" style="margin-left:auto">
+        <a href="/" class="tb-btn">← Tilbage til hubben</a>
+      </div>
+    </header>
+
+    <div class="content-area">
+      <div class="breadcrumb">
+        <a href="/" class="bc-link">Hub</a>
+        <span class="bc-sep">/</span>
+        <a href="/category/retention" class="bc-link">Retention</a>
+        <span class="bc-sep">/</span>
+        <span class="bc-current">Oversigt</span>
+      </div>
+
+      <h1 class="page-title">Oversigt</h1>
+      <p class="page-sub">Her kan du se de seneste retention-tal for Watch og Finans.</p>
+
+      <div id="kpi" hx-get="/retention_v2/oversigt/kpi" hx-trigger="load">
+        <p class="rv-sub">Indlæser...</p>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
