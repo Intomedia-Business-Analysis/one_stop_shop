@@ -170,13 +170,34 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
             udtraek.strftime("%d-%m-%Y"))
 
 
+# -------------------------------------
+#   Værdi (arr), bruges af Oversigt
+# -------------------------------------
+def arr_pr_kunde() -> pd.DataFrame:
+    """Beregnner hver kundes arr, som bruges i Oversigt.
+    Arr = sum af alle kundens aktive, betalte abonnementer, hvor hver
+    abonnement har en fast pris.
+    """
+    konti = _laes(nyeste("20_konti"))
+    abonnementer = _laes(nyeste("21_abonnementer"))
+    # merge abonnemeter med konti [[...]] på account_number
+    konti_og_abonnementer = abonnementer.merge(konti[["account_number", "brand", "pipedrive_id"]], on="account_number")
+    # fjern rækker med pipedrive_id i MANGLER_PIPEDRIVE
+    abo_med_pipedrive_id = konti_og_abonnementer[~konti_og_abonnementer["pipedrive_id"].isin(MANGLER_PIPEDRIVE)].copy()
+    # gør arr_nu til tal (numeric)
+    abo_med_pipedrive_id["arr_nu"] = pd.to_numeric(abo_med_pipedrive_id["arr_nu"], errors="coerce")
+    # groupby brand og pipedrive_id, sum af arr_nu
+    pr_kunde = abo_med_pipedrive_id.groupby(["brand", "pipedrive_id"], as_index=False)["arr_nu"].sum()
+    return pr_kunde
+
+
 def x_liste(x: pd.DataFrame, percentil: float) -> pd.DataFrame:
     """De `percentil` % mest faldende kunder i hvert brand, største fald øverst.
 
     Percentilen rangerer inden for brandet. Kunder, der er gået i nul (-100 %),
     står øverst, og blandt dem kommer den, der mistede flest visninger, først.
     """
-    graense = x.groupby("brand")["aendring"].transform(lambda s: s.quantile(percentil / 100))
+    graense = x.groupby("brand")["aendring"].transform(lambda s: s.quarr_antile(percentil / 100))
     return x[x["aendring"] <= graense].sort_values(["aendring", "aaret_foer"], ascending=[True, False])
 
 

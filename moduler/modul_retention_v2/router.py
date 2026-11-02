@@ -269,6 +269,22 @@ def kpi(request: Request, user=Depends(get_current_user)):
         "rod": maaned.get("rød", 0), "gul": maaned.get("gul", 0), "gron": maaned.get("grøn", 0)})
 
 
+@router.get("/retention_v2/oversigt", response_class=HTMLResponse)
+def oversigt(request: Request, user=Depends(get_current_user)):
+    _kraev_adgang(user)
+    return templates.TemplateResponse(request, "retention_v2_oversigt.html", {
+        "user": user})
+
+
+@router.get("/retention_v2/oversigt/kpi", response_class=HTMLResponse)
+def oversigt_kpi(request: Request, user=Depends(get_current_user)):
+    _kraev_adgang(user)
+    kunder = beregning.arr_pr_kunde()
+    pr_brand = kunder.groupby("brand")["arr_nu"].sum()
+    return templates.TemplateResponse(request, "_retention_v2_oversigt_kpi.html", {
+        "user": user, "watch": pr_brand.get("Watch", 0), "finans": pr_brand.get("Finans", 0)})
+
+
 def _forhaandsvisning(navn: str, farve: str, kommentar: str) -> dict:
     # Ukendt eller manglende farve vises som en opfordring, aldrig som brugerinput.
     farve = farve if farve in FARVER else "vælg en farve"
