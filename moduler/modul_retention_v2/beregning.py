@@ -197,7 +197,7 @@ def x_liste(x: pd.DataFrame, percentil: float) -> pd.DataFrame:
     Percentilen rangerer inden for brandet. Kunder, der er gået i nul (-100 %),
     står øverst, og blandt dem kommer den, der mistede flest visninger, først.
     """
-    graense = x.groupby("brand")["aendring"].transform(lambda s: s.quarr_antile(percentil / 100))
+    graense = x.groupby("brand")["aendring"].transform(lambda s: s.quantile(percentil / 100))
     return x[x["aendring"] <= graense].sort_values(["aendring", "aaret_foer"], ascending=[True, False])
 
 
