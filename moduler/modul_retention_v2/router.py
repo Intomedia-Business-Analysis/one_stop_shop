@@ -285,6 +285,17 @@ def oversigt_kpi(request: Request, user=Depends(get_current_user)):
         "user": user, "watch": pr_brand.get("Watch", 0), "finans": pr_brand.get("Finans", 0)})
 
 
+@router.get("/retention_v2/oversigt/risiko", response_class=HTMLResponse)
+def oversigt_risiko(request: Request, brand: str = "", user=Depends(get_current_user)):
+    # Altid standardfilteret: de 10 % mest faldende, og nystartede uden visninger. Brandfilteret kan vælges.
+    _kraev_adgang(user)
+    brand = _valgt_brand(brand, tom_tilladt=True)
+    pr_farve = beregning.vaerdi_i_risiko(X_STANDARD, Y_STANDARD, _seneste_farver(), brand)
+    return templates.TemplateResponse(request, "_retention_v2_oversigt_risiko.html", {
+        "brand": brand, "x_pct": X_STANDARD, "y_graense": Y_STANDARD, "total": pr_farve.sum(),
+        "farver": [(f, pr_farve.get(f, 0)) for f in ["ikke ringet", *FARVER]]})
+
+
 def _forhaandsvisning(navn: str, farve: str, kommentar: str) -> dict:
     # Ukendt eller manglende farve vises som en opfordring, aldrig som brugerinput.
     farve = farve if farve in FARVER else "vælg en farve"
