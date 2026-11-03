@@ -13,6 +13,7 @@
     #kpi { min-height:118px; } /* pladsen holdes, så siden ikke hopper, når tallene kommer */
     #kpi .rv-sub { margin-bottom:24px; }
     .stat-note { font-size:11px; line-height:1.45; color:var(--ink-3); margin-top:8px; }
+    .tab-bar a.tab-btn { text-align: center; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -35,6 +36,11 @@
         <span class="bc-sep">/</span>
         <span class="bc-current">Oversigt</span>
       </div>
+
+      <nav class="tab-bar">
+        <a href="/retention_v2" class="tab-btn">Arbejdsliste</a>
+        <a href="/retention_v2/oversigt" class="tab-btn on">Oversigt</a>
+      </nav>
 
       <h1 class="page-title">Oversigt</h1>
       <p class="page-sub">Her kan du se de seneste retention-tal for Watch og Finans.</p>
