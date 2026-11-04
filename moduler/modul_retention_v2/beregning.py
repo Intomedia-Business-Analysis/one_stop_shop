@@ -174,12 +174,17 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
 #   Værdi (arr), bruges af Oversigt
 # -------------------------------------
 def arr_pr_kunde() -> pd.DataFrame:
-    """Beregnner hver kundes arr, som bruges i Oversigt.
+    """Beregner hver kundes arr, som bruges i Oversigt.
     Arr = sum af alle kundens aktive, betalte abonnementer, hvor hver
-    abonnement har en fast pris.
+    abonnement har en fast pris. Cachet på filnavnene ligesom data().
     """
-    konti = _laes(nyeste("20_konti"))
-    abonnementer = _laes(nyeste("21_abonnementer"))
+    return _arr_pr_kunde(nyeste("20_konti"), nyeste("21_abonnementer"))
+
+
+@lru_cache(maxsize=1)
+def _arr_pr_kunde(konti_fil, abonnementer_fil) -> pd.DataFrame:
+    konti = _laes(konti_fil)
+    abonnementer = _laes(abonnementer_fil)
     # merge abonnemeter med konti [[...]] på account_number
     konti_og_abonnementer = abonnementer.merge(konti[["account_number", "brand", "pipedrive_id"]], on="account_number")
     # fjern rækker med pipedrive_id i MANGLER_PIPEDRIVE
