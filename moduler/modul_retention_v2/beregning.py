@@ -170,6 +170,48 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
             udtraek.strftime("%d-%m-%Y"))
 
 
+# -------------------------------------
+#   Værdi (arr), bruges af Oversigt
+# -------------------------------------
+def arr_pr_kunde() -> pd.DataFrame:
+    """Beregner hver kundes arr, som bruges i Oversigt.
+    Arr = sum af alle kundens aktive, betalte abonnementer, hvor hver
+    abonnement har en fast pris. Cachet på filnavnene ligesom data().
+    """
+    return _arr_pr_kunde(nyeste("20_konti"), nyeste("21_abonnementer"))
+
+
+@lru_cache(maxsize=1)
+def _arr_pr_kunde(konti_fil, abonnementer_fil) -> pd.DataFrame:
+    konti = _laes(konti_fil)
+    abonnementer = _laes(abonnementer_fil)
+    # merge abonnemeter med konti [[...]] på account_number
+    konti_og_abonnementer = abonnementer.merge(konti[["account_number", "brand", "pipedrive_id"]], on="account_number")
+    # fjern rækker med pipedrive_id i MANGLER_PIPEDRIVE
+    abo_med_pipedrive_id = konti_og_abonnementer[~konti_og_abonnementer["pipedrive_id"].isin(MANGLER_PIPEDRIVE)].copy()
+    # gør arr_nu til tal (numeric)
+    abo_med_pipedrive_id["arr_nu"] = pd.to_numeric(abo_med_pipedrive_id["arr_nu"], errors="coerce")
+    # groupby brand og pipedrive_id, sum af arr_nu
+    pr_kunde = abo_med_pipedrive_id.groupby(["brand", "pipedrive_id"], as_index=False)["arr_nu"].sum()
+    return pr_kunde
+
+
+def vaerdi_i_risiko(x_pct: float, y_graense: float, farver: dict, brand: str = "") -> pd.Series:
+    """ARR på arbejdslistens kunder pr. farve. Kunder uden registrering er "ikke ringet".
+
+    farver er router._seneste_farver(): {(brand, pipedrive_id): (farve, dato)}.
+    """
+    x, y, _ = data()
+    kunder = pd.concat([x_liste(x, x_pct), y_liste(y, y_graense)])[["brand", "pipedrive_id"]].drop_duplicates()
+    # Percentilen regnes inden for brandet, så brandfilteret kommer bagefter.
+    if brand:
+        kunder = kunder[kunder["brand"] == brand]
+    med_arr = kunder.merge(arr_pr_kunde(), on=["brand", "pipedrive_id"], how="left")
+    assert len(med_arr) == len(kunder), "arr_pr_kunde har flere rækker pr. kunde"
+    med_arr["farve"] = [farver.get(k, ("ikke ringet", None))[0] for k in zip(med_arr["brand"], med_arr["pipedrive_id"])]
+    return med_arr.groupby("farve")["arr_nu"].sum()
+
+
 def x_liste(x: pd.DataFrame, percentil: float) -> pd.DataFrame:
     """De `percentil` % mest faldende kunder i hvert brand, største fald øverst.
 

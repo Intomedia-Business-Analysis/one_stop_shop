@@ -1,0 +1,21 @@
+<div id="risiko">
+    <div class="section-head">
+        <span class="section-label">Værdi i risiko</span>
+        <div class="pipeline-toggle">
+            {% for navn, vaerdi in [("Begge", ""), ("Watch", "Watch"), ("Finans", "Finans")] %}
+            <button class="pipeline-btn{% if brand == vaerdi %} active{% endif %}"
+                    hx-get="/retention_v2/oversigt/risiko?brand={{ vaerdi }}"
+                    hx-target="#risiko" hx-swap="outerHTML">{{ navn }}</button>
+            {% endfor %}
+        </div>
+    </div>
+    <p class="rv-sub">Arbejdslistens kunder med standardfilteret: de {{ x_pct }} % mest faldende og nystartede med højst {{ y_graense }} visninger om måneden. I alt {{ total|dk }} kr. Farven er kundens seneste registrering.</p>
+    <div class="stat-bar">
+        {% for farve, arr in farver %}
+        <div class="stat">
+            <div class="stat-n">{{ arr|dk }} kr.</div>
+            <div class="stat-l">{{ farve }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
