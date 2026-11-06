@@ -436,28 +436,37 @@ def db_rediger_job(job_id: str, slutdato: str, effektgaranti: bool) -> dict:
         raise
 
 
-def db_henvendelser_pr_kunde() -> list[dict]:
+def db_henvendelser_pr_kunde(only_owner_name: str | None = None) -> list[dict]:
     """Hvor mange jobs kunden selv bad om, og hvor mange vi opfordrede til.
+
+    only_owner_name filtrerer til "kun mine" på ORGANISATIONENS ejer, som i db_overblik.
 
     Der er én række pr. (job, site), så der tælles DISTINCT job_id. Rækker fra
     før feltet fandtes (henvendelse = NULL) tælles som 'ikke angivet'; de allerførste
     rækker uden job_id regnes som ét job hver.
     """
+    owner_clause = ""
+    params: list = []
+    if only_owner_name:
+        owner_clause = "WHERE oo.owner_name = %s"
+        params.append(only_owner_name)
     try:
         conn = get_conn()
         cur = conn.cursor(as_dict=True)
-        cur.execute("""
+        cur.execute(f"""
             SELECT
-                org_id,
-                MAX(org_name) AS org_name,
-                COUNT(DISTINCT CASE WHEN henvendelse = 'kunde' THEN job_id END) AS kunden_selv,
-                COUNT(DISTINCT CASE WHEN henvendelse = 'os'    THEN job_id END) AS vi,
-                COUNT(DISTINCT CASE WHEN henvendelse IS NULL
-                                    THEN ISNULL(job_id, CAST(id AS NVARCHAR(40))) END) AS ikke_angivet
-            FROM KlippekortForbrug
-            GROUP BY org_id
-            ORDER BY MAX(org_name)
-        """)
+                f.org_id,
+                MAX(f.org_name) AS org_name,
+                COUNT(DISTINCT CASE WHEN f.henvendelse = 'kunde' THEN f.job_id END) AS kunden_selv,
+                COUNT(DISTINCT CASE WHEN f.henvendelse = 'os'    THEN f.job_id END) AS vi,
+                COUNT(DISTINCT CASE WHEN f.henvendelse IS NULL
+                                    THEN ISNULL(f.job_id, CAST(f.id AS NVARCHAR(40))) END) AS ikke_angivet
+            FROM KlippekortForbrug f
+            LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = f.org_id
+            {owner_clause}
+            GROUP BY f.org_id
+            ORDER BY MAX(f.org_name)
+        """, tuple(params))
         rows = []
         for r in cur.fetchall():
             selv, vi, ukendt = int(r["kunden_selv"]), int(r["vi"]), int(r["ikke_angivet"])

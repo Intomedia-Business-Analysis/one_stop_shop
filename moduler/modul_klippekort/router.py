@@ -180,20 +180,21 @@ async def klippekort_oekonomi(user=Depends(get_current_user)):
 
 
 @router.get("/henvendelser")
-async def klippekort_henvendelser(user=Depends(get_current_user)):
+async def klippekort_henvendelser(mine: int = 0, user=Depends(get_current_user)):
     """Jobs pr. kunde: kunden selv henvendt sig / vi henvendte os / ikke angivet."""
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang")
     try:
-        return JSONResponse({"rows": db_henvendelser_pr_kunde()})
+        owner = user.get("name") if mine else None
+        return JSONResponse({"rows": db_henvendelser_pr_kunde(owner)})
     except Exception:
-        logger.exception("klippekort_henvendelser fejlede")
+        logger.exception("klippekort_henvendelser fejlede (mine=%s)", mine)
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
 @router.get("/henvendelser/export")
-async def klippekort_henvendelser_export(user=Depends(get_current_user)):
-    """Excel med samme tabel som kortet 'Henvendelser pr. kunde'."""
+async def klippekort_henvendelser_export(mine: int = 0, user=Depends(get_current_user)):
+    """Excel med samme tabel som kortet 'Henvendelser pr. kunde' (også med 'kun mine')."""
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang")
     try:
@@ -203,7 +204,8 @@ async def klippekort_henvendelser_export(user=Depends(get_current_user)):
         ws = wb.active
         ws.title = "Henvendelser pr. kunde"
         ws.append(["Kunde", "Kunden selv", "Vi henvendte os", "Ikke angivet", "Andel selv (%)"])
-        for r in db_henvendelser_pr_kunde():
+        owner = user.get("name") if mine else None
+        for r in db_henvendelser_pr_kunde(owner):
             ws.append([r["org_name"], r["kunden_selv"], r["vi"], r["ikke_angivet"], r["andel_selv"]])
         ws.column_dimensions["A"].width = 40
         buf = io.BytesIO()

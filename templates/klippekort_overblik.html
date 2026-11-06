@@ -247,7 +247,7 @@
         <div class="dash-card">
           <div class="dash-card-title">
             <span>Henvendelser pr. kunde — jobs oprettet</span>
-            <a class="refresh-btn" href="/tools/klippekort/henvendelser/export"
+            <a class="refresh-btn" id="henv-export" href="/tools/klippekort/henvendelser/export"
                style="margin-left:0;background:var(--bg);color:var(--green);border:1px solid var(--border);text-decoration:none;text-transform:none;letter-spacing:0">
               <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Eksportér til Excel
@@ -413,6 +413,7 @@ function setMine(v){
   document.getElementById('btn-mine').classList.toggle('active', v);
   loadOverblik();
   loadUdloeb();
+  loadHenv();
 }
 
 function setStatus(s){
@@ -641,7 +642,8 @@ async function saveEdit(){
 async function loadHenv(){
   const tb=document.getElementById('henv-tbody');
   try{
-    const res=await fetch('/tools/klippekort/henvendelser');
+    document.getElementById('henv-export').href='/tools/klippekort/henvendelser/export?mine='+(mineOnly?1:0);
+    const res=await fetch('/tools/klippekort/henvendelser?mine='+(mineOnly?1:0));
     if(!res.ok) throw new Error(await res.text());
     const rows=(await res.json()).rows||[];
     if(!rows.length){ tb.innerHTML='<tr><td colspan="5" class="empty">Ingen jobs oprettet endnu.</td></tr>'; return; }
