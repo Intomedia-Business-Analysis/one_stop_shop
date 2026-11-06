@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from auth import get_current_user, has_access
 from moduler.modul_klippekort.queries import (
     db_forbrug_for_deal,
+    db_henvendelser_pr_kunde,
     db_oekonomi,
     db_org_owner_meta,
     db_overblik,
@@ -178,6 +179,49 @@ async def klippekort_oekonomi(user=Depends(get_current_user)):
         raise HTTPException(500, "Data kunne ikke hentes")
 
 
+@router.get("/henvendelser")
+async def klippekort_henvendelser(mine: int = 0, user=Depends(get_current_user)):
+    """Jobs pr. kunde: kunden selv henvendt sig / vi henvendte os / ikke angivet."""
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        owner = user.get("name") if mine else None
+        return JSONResponse({"rows": db_henvendelser_pr_kunde(owner)})
+    except Exception:
+        logger.exception("klippekort_henvendelser fejlede (mine=%s)", mine)
+        raise HTTPException(500, "Data kunne ikke hentes")
+
+
+@router.get("/henvendelser/export")
+async def klippekort_henvendelser_export(mine: int = 0, user=Depends(get_current_user)):
+    """Excel med samme tabel som kortet 'Henvendelser pr. kunde' (også med 'kun mine')."""
+    if not has_access(user, "salesperson"):
+        raise HTTPException(403, "Ingen adgang")
+    try:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Henvendelser pr. kunde"
+        ws.append(["Kunde", "Kunden selv", "Vi henvendte os", "Ikke angivet", "Andel selv (%)"])
+        owner = user.get("name") if mine else None
+        for r in db_henvendelser_pr_kunde(owner):
+            ws.append([r["org_name"], r["kunden_selv"], r["vi"], r["ikke_angivet"], r["andel_selv"]])
+        ws.column_dimensions["A"].width = 40
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"klippekort-henvendelser-{datetime.now():%Y-%m-%d}.xlsx"
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    except Exception:
+        logger.exception("klippekort_henvendelser_export fejlede")
+        raise HTTPException(500, "Eksporten kunne ikke genereres")
+
+
 @router.get("/forbrug")
 async def klippekort_forbrug(pd_deal_id: int, user=Depends(get_current_user)):
     """Hent alle registrerede jobs/klip-forbrug for én deal."""
@@ -240,7 +284,8 @@ async def klippekort_rediger_job(payload: dict = Body(...), user=Depends(get_cur
 async def klippekort_opret_job(payload: dict = Body(...), user=Depends(get_current_user)):
     """Registrér ét job (kan dække flere sites og koste flere klip) + push til Pipedrive.
 
-    Body: {pd_deal_id, sites: [..], stilling, tidspunkt (YYYY-MM-DD), klip}
+    Body: {pd_deal_id, sites: [..], stilling, tidspunkt (YYYY-MM-DD), klip,
+           henvendelse ('kunde' | 'os', påkrævet)}
     """
     if not has_access(user, "salesperson"):
         raise HTTPException(403, "Ingen adgang")
@@ -257,19 +302,22 @@ async def klippekort_opret_job(payload: dict = Body(...), user=Depends(get_curre
     tidspunkt = (payload.get("tidspunkt") or "").strip()
     slutdato  = (payload.get("slutdato") or "").strip() or None
     effektgaranti = bool(payload.get("effektgaranti"))
+    henvendelse = (payload.get("henvendelse") or "").strip()
     try:
         klip = int(payload.get("klip", 1))
     except (TypeError, ValueError):
         klip = 1
     if not sites or not stilling or not tidspunkt:
         raise HTTPException(400, "mindst ét site, stilling og tidspunkt er påkrævet")
+    if henvendelse not in ("kunde", "os"):
+        raise HTTPException(400, "Angiv hvem der tog kontakt: kunden selv eller os")
     if klip < 1:
         raise HTTPException(400, "antal klip skal være mindst 1")
 
     try:
         res = db_registrer_forbrug(pd_deal_id, sites, stilling, tidspunkt, klip,
                                    user.get("name") or "system", slutdato=slutdato,
-                                   effektgaranti=effektgaranti)
+                                   effektgaranti=effektgaranti, henvendelse=henvendelse)
         if not res.get("ok"):
             raise HTTPException(400, res.get("error", "Kunne ikke registrere job"))
 

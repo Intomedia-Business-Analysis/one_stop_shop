@@ -233,8 +233,11 @@ def _brugt_for_deal(cur, pd_deal_id: int) -> int:
 def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
                          tidspunkt: str, klip: int, created_by: str,
                          slutdato: str | None = None,
-                         effektgaranti: bool = False) -> dict:
+                         effektgaranti: bool = False,
+                         henvendelse: str | None = None) -> dict:
     """Log ét job (kan dække flere sites og koste flere klip).
+
+    henvendelse: 'kunde' (kunden henvendte sig selv) eller 'os' (vi henvendte os).
 
     Jobbet koster `klip` klip i alt, fordelt ligeligt over `sites` (én DB-række
     pr. site med klip-andel = klip / antal_sites). Økonomi pr. site bliver dermed
@@ -274,11 +277,13 @@ def db_registrer_forbrug(pd_deal_id: int, sites: list[str], stilling: str,
             cur.execute("""
                 INSERT INTO KlippekortForbrug
                     (job_id, pd_deal_id, org_id, org_name, site, stilling, tidspunkt,
-                     slutdato, effektgaranti, klip, pris_pr_klip, clip_card_size, created_by)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     slutdato, effektgaranti, klip, pris_pr_klip, clip_card_size, created_by,
+                     henvendelse)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 job_id, pd_deal_id, deal["org_id"], deal["org_name"], site, stilling,
                 tidspunkt, slutdato, eff, klip_per_site, pris_pr_klip, size, created_by,
+                henvendelse,
             ))
 
         brugt = _brugt_for_deal(cur, pd_deal_id)
@@ -428,6 +433,55 @@ def db_rediger_job(job_id: str, slutdato: str, effektgaranti: bool) -> dict:
                 conn.close()
             except Exception:
                 pass
+        raise
+
+
+def db_henvendelser_pr_kunde(only_owner_name: str | None = None) -> list[dict]:
+    """Hvor mange jobs kunden selv bad om, og hvor mange vi opfordrede til.
+
+    only_owner_name filtrerer til "kun mine" på ORGANISATIONENS ejer, som i db_overblik.
+
+    Der er én række pr. (job, site), så der tælles DISTINCT job_id. Rækker fra
+    før feltet fandtes (henvendelse = NULL) tælles som 'ikke angivet'; de allerførste
+    rækker uden job_id regnes som ét job hver.
+    """
+    owner_clause = ""
+    params: list = []
+    if only_owner_name:
+        owner_clause = "WHERE oo.owner_name = %s"
+        params.append(only_owner_name)
+    try:
+        conn = get_conn()
+        cur = conn.cursor(as_dict=True)
+        cur.execute(f"""
+            SELECT
+                f.org_id,
+                MAX(f.org_name) AS org_name,
+                COUNT(DISTINCT CASE WHEN f.henvendelse = 'kunde' THEN f.job_id END) AS kunden_selv,
+                COUNT(DISTINCT CASE WHEN f.henvendelse = 'os'    THEN f.job_id END) AS vi,
+                COUNT(DISTINCT CASE WHEN f.henvendelse IS NULL
+                                    THEN ISNULL(f.job_id, CAST(f.id AS NVARCHAR(40))) END) AS ikke_angivet
+            FROM KlippekortForbrug f
+            LEFT JOIN KlippekortOrgOwner oo ON oo.org_id = f.org_id
+            {owner_clause}
+            GROUP BY f.org_id
+            ORDER BY MAX(f.org_name)
+        """, tuple(params))
+        rows = []
+        for r in cur.fetchall():
+            selv, vi, ukendt = int(r["kunden_selv"]), int(r["vi"]), int(r["ikke_angivet"])
+            angivet = selv + vi
+            rows.append({
+                "org_name":     r["org_name"] or "—",
+                "kunden_selv":  selv,
+                "vi":           vi,
+                "ikke_angivet": ukendt,
+                "andel_selv":   round(100 * selv / angivet) if angivet else None,
+            })
+        conn.close()
+        return rows
+    except Exception:
+        logger.exception("db_henvendelser_pr_kunde fejlede")
         raise
 
 

@@ -243,6 +243,34 @@
           </div>
         </div>
 
+        <!-- Henvendelser pr. kunde: selv henvendt sig / vi henvendte os -->
+        <div class="dash-card">
+          <div class="dash-card-title">
+            <span>Henvendelser pr. kunde — jobs oprettet</span>
+            <a class="refresh-btn" id="henv-export" href="/tools/klippekort/henvendelser/export"
+               style="margin-left:0;background:var(--bg);color:var(--green);border:1px solid var(--border);text-decoration:none;text-transform:none;letter-spacing:0">
+              <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Eksportér til Excel
+            </a>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="v-table">
+              <colgroup>
+                <col style="width:40%"><col style="width:15%"><col style="width:15%"><col style="width:15%"><col style="width:15%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Kunde</th><th class="num">Kunden selv</th><th class="num">Vi henvendte os</th>
+                  <th class="num">Ikke angivet</th><th class="num">Andel selv</th>
+                </tr>
+              </thead>
+              <tbody id="henv-tbody">
+                <tr><td colspan="5" class="empty">Indlæser…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- MIDLERTIDIGT SKJULT (klippekort økonomi) — fjern denne kommentar-blok for at vise igen
         <div class="dash-card">
           <div class="dash-card-title">
@@ -286,6 +314,14 @@
       <div class="form-row">
         <label class="form-label" for="f-stilling">Stilling</label>
         <input class="form-input" id="f-stilling" type="text" placeholder="fx Erhvervsjournalist">
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="f-henvendelse">Hvem tog kontakt? (påkrævet)</label>
+        <select class="form-select" id="f-henvendelse">
+          <option value="">Vælg…</option>
+          <option value="kunde">Kunden har selv henvendt sig</option>
+          <option value="os">Vi har henvendt os til kunden</option>
+        </select>
       </div>
       <div class="form-row">
         <label class="form-label">Sites (vælg ét eller flere)</label>
@@ -377,6 +413,7 @@ function setMine(v){
   document.getElementById('btn-mine').classList.toggle('active', v);
   loadOverblik();
   loadUdloeb();
+  loadHenv();
 }
 
 function setStatus(s){
@@ -602,7 +639,20 @@ async function saveEdit(){
     btn.disabled=false; btn.textContent='Gem ændringer';
   }
 }
-function loadAll(){ loadOverblik(); loadUdloeb(); loadOek(); }
+async function loadHenv(){
+  const tb=document.getElementById('henv-tbody');
+  try{
+    document.getElementById('henv-export').href='/tools/klippekort/henvendelser/export?mine='+(mineOnly?1:0);
+    const res=await fetch('/tools/klippekort/henvendelser?mine='+(mineOnly?1:0));
+    if(!res.ok) throw new Error(await res.text());
+    const rows=(await res.json()).rows||[];
+    if(!rows.length){ tb.innerHTML='<tr><td colspan="5" class="empty">Ingen jobs oprettet endnu.</td></tr>'; return; }
+    tb.innerHTML=rows.map(r=>`
+      <tr><td>${escHtml(r.org_name)}</td><td class="num">${r.kunden_selv}</td><td class="num">${r.vi}</td>
+      <td class="num">${r.ikke_angivet}</td><td class="num">${r.andel_selv===null?'—':r.andel_selv+' %'}</td></tr>`).join('');
+  }catch(e){ tb.innerHTML='<tr><td colspan="5" class="empty">Fejl: '+escHtml(e.message)+'</td></tr>'; }
+}
+function loadAll(){ loadOverblik(); loadUdloeb(); loadOek(); loadHenv(); }
 
 /* ---------- Modal ---------- */
 function openModal(dealId){
@@ -630,6 +680,7 @@ function openModal(dealId){
   if(monitor.length) html+='<div class="site-grouphdr">Monitor</div>'+monitor.map(opt).join('');
   box.innerHTML = html || '<div class="jobs-empty">Ingen sites tilgængelige</div>';
   document.getElementById('f-stilling').value='';
+  document.getElementById('f-henvendelse').value='';
   document.getElementById('f-klip').value=1;
   document.getElementById('f-tidspunkt').value=new Date().toISOString().slice(0,10);
   document.getElementById('f-slutdato').value='';
@@ -724,13 +775,15 @@ async function submitJob(){
   const tidspunkt=document.getElementById('f-tidspunkt').value;
   const slutdato=document.getElementById('f-slutdato').value;
   const effektgaranti=document.getElementById('f-effektgaranti').checked;
+  const henvendelse=document.getElementById('f-henvendelse').value;
   const msg=document.getElementById('f-msg');
   if(!stilling || !sites.length || !tidspunkt){ msg.className='form-msg err'; msg.textContent='Udfyld stilling, vælg mindst ét site, og angiv tidspunkt.'; return; }
+  if(!henvendelse){ msg.className='form-msg err'; msg.textContent='Vælg, om kunden selv henvendte sig, eller om vi henvendte os til kunden.'; return; }
   const btn=document.getElementById('f-submit'); btn.disabled=true; btn.textContent='Opretter…';
   try{
     const res=await fetch('/tools/klippekort/opret-job',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({pd_deal_id:activeDeal.pd_deal_id, sites, stilling, tidspunkt, slutdato, klip, effektgaranti}),
+      body:JSON.stringify({pd_deal_id:activeDeal.pd_deal_id, sites, stilling, tidspunkt, slutdato, klip, effektgaranti, henvendelse}),
     });
     const data=await res.json();
     if(!res.ok){ throw new Error(data.detail || 'Fejl ved oprettelse'); }
@@ -740,6 +793,7 @@ async function submitJob(){
     const refreshed=overblikRows.find(x=>x.pd_deal_id===dealId);
     if(refreshed){ activeDeal=refreshed; openModal(dealId); }
     loadOek();
+    loadHenv();
     if(data.pipedrive && data.pipedrive.ok){
       msg.className='form-msg ok';
       msg.textContent=`Klip trukket. Brugt: ${data.brugt}, rest: ${data.rest}. Pipedrive opdateret.`;
