@@ -64,11 +64,17 @@ def tjek_miljoe() -> None:
         advar(".env blev ikke fundet — værdierne skal så komme fra rigtige "
               "miljøvariabler. Sæt HUB_ENV hvis filen ligger et andet sted.")
 
-    for navn in ("DB_SERVER", "DB_USER", "DB_PASSWORD"):
-        if os.getenv(navn):
-            ok(f"{navn} er sat")
-        else:
-            fejl(f"{navn} mangler")
+    if os.getenv("DB_SERVER"):
+        ok("DB_SERVER er sat")
+    else:
+        fejl("DB_SERVER mangler")
+    if not (os.getenv("DB_USER") or "").strip():
+        ok("DB_USER er tom → Windows-login som den konto processen kører som "
+           "(Kerberos/NTLM — se Database-afsnittet)")
+    elif os.getenv("DB_PASSWORD"):
+        ok("DB_USER/DB_PASSWORD er sat")
+    else:
+        fejl("DB_PASSWORD mangler (eller lad DB_USER være tom for Windows-login)")
 
     if os.getenv("SECRET_KEY"):
         nøgle = os.getenv("SECRET_KEY", "")
@@ -121,6 +127,27 @@ def tjek_database() -> None:
     ok(f"Forbundet til {info['servername']} / {info['database']} som {info['login']}")
     print(f"      TDS {info['tds_version']}, pool {info['pool_size']}, "
           f"DATE som streng: {'ja' if info['date_as_string'] else 'nej'}")
+
+    auth = (info.get("auth_scheme") or "").upper()
+    if auth == "KERBEROS":
+        ok("Godkendelse: KERBEROS")
+    elif info.get("integrated") and auth == "NTLM":
+        advar("Godkendelse: NTLM, selvom der bruges Windows-login. Kerberos "
+              "mislykkedes — typisk manglende SPN (MSSQLSvc/<fqdn>:1433) på "
+              "SQL-tjenestekontoen, eller DB_SERVER er en IP/kort navn i stedet "
+              "for FQDN.")
+    else:
+        advar(f"Godkendelse: {auth or 'ukendt'}. Lad DB_USER være tom og kør "
+              f"appen som tjenestekontoen for at få Kerberos.")
+
+    enc = info.get("encrypted")
+    if enc == "TRUE":
+        ok(f"Forbindelsen er krypteret (DB_ENCRYPTION={info['encryption']})")
+    elif enc == "FALSE":
+        fejl("Forbindelsen er IKKE krypteret — sæt DB_ENCRYPTION=require.")
+    else:
+        print(f"      Kryptering: DB_ENCRYPTION={info['encryption']} "
+              f"(kan ikke aflæses uden VIEW SERVER STATE)")
 
     try:
         from db import new_connection

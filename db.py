@@ -65,6 +65,11 @@ _QUERY_TIMEOUT = int(os.getenv("DB_QUERY_TIMEOUT", "15"))
 # 7.4 er påkrævet mod servere der kræver kryptering; 7.0 kan ikke TLS.
 _TDS_VERSION = os.getenv("DB_TDS_VERSION", "7.4")
 
+# TLS på selve dataforbindelsen (FreeTDS' "encryption"): off/request/require.
+# require = forbindelsen afbrydes hvis serveren ikke vil kryptere.
+_ENCRYPTION = (os.getenv("DB_ENCRYPTION") or "require").strip().lower()
+if _ENCRYPTION not in ("off", "request", "require", "default"):
+    raise RuntimeError(f"DB_ENCRYPTION={_ENCRYPTION!r} — brug off, request eller require.")
 _pool: "queue.LifoQueue[pymssql.Connection]" = queue.LifoQueue(maxsize=_POOL_SIZE)
 
 
@@ -179,14 +184,38 @@ class _ConnectionProxy:
 
 # ── Forbindelser ────────────────────────────────────────────────────────────
 
+def integrated_auth() -> bool:
+    """
+    True = Windows-login med den konto processen KØRER som (SSPI/Negotiate,
+    dvs. Kerberos når SPN'en er på plads, ellers falder Windows selv tilbage
+    til NTLM). Slås til ved at lade DB_USER være tom.
+
+    Med DB_USER=DOMÆNE\\bruger + DB_PASSWORD laver FreeTDS selv NTLM — den
+    kan ikke lave Kerberos med et eksplicit kodeord. Vil man have Kerberos,
+    skal identiteten derfor komme fra tjenestekontoen, ikke fra .env.
+    """
+    return not (os.getenv("DB_USER") or "").strip()
+
+
+def _login_kwargs() -> dict:
+    """
+    Login-argumenterne til pymssql.connect(). Windows-login: tomt brugernavn
+    og kodeord → FreeTDS bruger Windows SSPI med procesidentiteten. Ellers
+    SQL-login eller DOMÆNE\\bruger over NTLM, fra miljøet.
+    """
+    if integrated_auth():
+        return dict.fromkeys(("user", "password"), "")
+    return {"user": _required("DB_USER"), "password": _required("DB_PASSWORD")}
+
+
 def _new_raw_conn(login_timeout: int = 5, timeout: int | None = None):
     """Rå pymssql-forbindelse. Eneste sted forbindelsen defineres."""
     return pymssql.connect(
-        server=_required("DB_SERVER"),
-        user=_required("DB_USER"),          # SQL-login, eller DOMÆNE\\bruger til NTLM
-        password=_required("DB_PASSWORD"),
+        server=_required("DB_SERVER"),      # brug FQDN — Kerberos slår SPN op på navnet
+        **_login_kwargs(),
         database=os.getenv("DB_NAME", "INTOMEDIA"),
         tds_version=_TDS_VERSION,
+        encryption=_ENCRYPTION,
         login_timeout=login_timeout,
         timeout=_QUERY_TIMEOUT if timeout is None else timeout,
     )
@@ -274,9 +303,22 @@ def check_connection() -> dict:
     conn = new_connection(login_timeout=5, timeout=10)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT SUSER_NAME(), DB_NAME(), @@SERVERNAME")
-        login, database, servername = cur.fetchone()
+        cur.execute("SELECT SUSER_NAME(), DB_NAME(), @@SERVERNAME, "
+                    "CONVERT(NVARCHAR(40), CONNECTIONPROPERTY('auth_scheme'))")
+        login, database, servername, auth_scheme = cur.fetchone()
+        # encrypt_option kræver VIEW SERVER STATE; mangler den, vises "ukendt".
+        try:
+            cur.execute("SELECT encrypt_option FROM sys.dm_exec_connections "
+                        "WHERE session_id = @@SPID")
+            row = cur.fetchone()
+            encrypted = row[0] if row else None
+        except Exception:
+            encrypted = None
         return {
+            "auth_scheme":    auth_scheme,      # KERBEROS / NTLM / SQL
+            "encrypted":      encrypted,        # 'TRUE' / 'FALSE' / None
+            "encryption":     _ENCRYPTION,
+            "integrated":     integrated_auth(),
             "server":         os.getenv("DB_SERVER"),
             "servername":     servername,
             "login":          login,
