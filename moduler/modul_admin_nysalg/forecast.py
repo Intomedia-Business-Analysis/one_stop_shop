@@ -7,7 +7,7 @@ jul–dec, så en ÅTD-periode der starter i januar ville sammenligne et helt å
 realiserede tal med et halvt års forecast og give et misvisende billede.
 
 Beløbene står i brandets egen valuta (jf. brands.BRAND_CURRENCY) — Watch NO er
-altså NOK, resten DKK.
+altså NOK, Watch SE SEK, resten DKK.
 
 Skal forecastet opdateres (nyt år, ny reforecast): tilføj et nyt år-dict til
 FORECAST og lad det gamle stå. Nøglerne SKAL være brand-labels fra
@@ -25,7 +25,7 @@ FORECAST: dict[str, dict[str, float]] = {
     # Abonnement Watch DK (DKK)
     "Watch DK": {
         "2026-07":  40_000, "2026-08": 480_000, "2026-09": 610_000,
-        "2026-10": 490_000, "2026-11": 520_000, "2026-12": 360_000,
+        "2026-10": 300_000, "2026-11": 350_000, "2026-12": 150_000,
     },
     # Annonce Watch DK — job (DKK)
     "Job": {
@@ -39,13 +39,17 @@ FORECAST: dict[str, dict[str, float]] = {
     },
     # Abonnement Finans (DKK) — forecastet starter først i september
     "Finans": {
-        "2026-09": 152_000, "2026-10": 43_000,
-        "2026-11": 136_000, "2026-12": 66_000,
+        "2026-09": 152_000, "2026-10": 90_000,
+        "2026-11": 166_000, "2026-12": 96_000,
     },
     # Abonnement Watch NO (NOK)
     "Watch NO": {
         "2026-07": 244_000, "2026-08": 543_000, "2026-09": 600_000,
-        "2026-10": 550_000, "2026-11": 600_000, "2026-12": 400_000,
+        "2026-10": 500_000, "2026-11": 550_000, "2026-12": 200_000,
+    },
+    # Abonnement Watch SE (SEK) — forecastet starter først i oktober
+    "Watch SE": {
+        "2026-10": 482_535, "2026-11": 502_535, "2026-12": 276_268,
     },
 }
 
