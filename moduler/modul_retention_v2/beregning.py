@@ -96,7 +96,7 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
     pr_kunde = brugere.groupby(["brand", "pipedrive_id"], as_index=False).agg(
         antal=("brugere_i_alt", "sum"), domaene=("har_domaene", "max"))
     faa_brugere = pr_kunde[(pr_kunde["antal"].between(1, MAKS_BRUGERE)) & (pr_kunde["domaene"] == 0)]
-    medie = betalte.merge(faa_brugere[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"])
+    medie = betalte.merge(faa_brugere[["brand", "pipedrive_id", "antal"]], on=["brand", "pipedrive_id"])
     assert not medie.duplicated(["brand", "pipedrive_id"]).any(), "en kunde står to gange blandt kunder med 1-5 brugere"
     # Kunder uden brugertal er ikke med. Tallet vises, så en gammel 20-fil ses med det samme.
     uden_tal = len(betalte) - len(betalte.merge(pr_kunde[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"]))
@@ -115,7 +115,7 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
         return forbrug[forbrug["maaned"].isin(maaneder)].groupby(["brand", "pipedrive_id"])["artikelvisninger"].sum()
 
     x = pd.DataFrame({"aaret_foer": sum_for(aaret_foer), "aaret": sum_for(nu)}).fillna(0).astype(int).reset_index()
-    x = x.merge(medie[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"])
+    x = x.merge(medie[["brand", "pipedrive_id", "antal"]], on=["brand", "pipedrive_id"])
     x = x[x["aaret_foer"] >= MINIMUM].copy()
     x["aendring"] = x["aaret"] / x["aaret_foer"] - 1
 
@@ -167,8 +167,8 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
     y = y.merge(hoejeste.rename(columns={"artikelvisninger": "max_siden"}), on=["brand", "pipedrive_id"], how="left")
     y["max_siden"] = y["max_siden"].fillna(0)
 
-    return (x[["brand", "pipedrive_id", "aaret_foer", "aaret", "aendring"]],
-            y[["brand", "pipedrive_id", "start", "pr_maaned", "max_siden"]],
+    return (x[["brand", "pipedrive_id", "antal", "aaret_foer", "aaret", "aendring"]],
+            y[["brand", "pipedrive_id", "antal", "start", "pr_maaned", "max_siden"]],
             udtraek.strftime("%d-%m-%Y"))
 
 
