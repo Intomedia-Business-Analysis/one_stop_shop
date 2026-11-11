@@ -2,6 +2,7 @@
 {% macro kunde_celler(r) %}
   <td class="navn">{{ r.navn }}</td>
   <td>{{ r.brand }}</td>
+  <td class="num">{{ r.brugere }}</td>
 {% endmacro %}
 {% macro status_celler(r) %}
   <td>{% if r.farve %}<span class="farve {{ r.farve_klasse }}">{{ r.farve }}</span>{% else %}<span style="color:var(--ink-4)">Ikke ringet</span>{% endif %}</td>
@@ -17,7 +18,7 @@
 <div class="v-table-wrap">
   <table class="v-table">
     <thead><tr>
-      <th>Kunde</th><th>Brand</th><th class="num">Året før</th><th class="num">Seneste 6 md.</th><th class="num">Ændring</th>
+      <th>Kunde</th><th>Brand</th><th class="num">Brugere</th><th class="num">Året før</th><th class="num">Seneste 6 md.</th><th class="num">Ændring</th>
       <th>Seneste farve</th><th>Opfølgning</th><th></th>
     </tr></thead>
     <tbody>
@@ -30,7 +31,7 @@
         {{ status_celler(r) }}
       </tr>
     {% else %}
-      <tr><td colspan="8" class="empty">Ingen kunder</td></tr>
+      <tr><td colspan="9" class="empty">Ingen kunder</td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -41,7 +42,7 @@
 <div class="v-table-wrap">
   <table class="v-table">
     <thead><tr>
-      <th>Kunde</th><th>Brand</th><th>Startdato</th><th class="num">Snit pr. md.</th>
+      <th>Kunde</th><th>Brand</th><th class="num">Brugere</th><th>Startdato</th><th class="num">Snit pr. md.</th>
       <th>Seneste farve</th><th>Opfølgning</th><th></th>
     </tr></thead>
     <tbody>
@@ -53,7 +54,7 @@
         {{ status_celler(r) }}
       </tr>
     {% else %}
-      <tr><td colspan="7" class="empty">Ingen kunder</td></tr>
+      <tr><td colspan="8" class="empty">Ingen kunder</td></tr>
     {% endfor %}
     </tbody>
   </table>

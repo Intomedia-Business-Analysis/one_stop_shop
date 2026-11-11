@@ -213,7 +213,7 @@ def _kunde(r, farver: dict, navne: dict, idag: dt.date) -> dict:
     opfoelgning = _opfoelgning(farve, dato)
     # Klaret: grøn, eller opfølgningen er ikke nået endnu. Grånes, men flyttes ikke.
     klaret = farve == "grøn" or (opfoelgning is not None and opfoelgning > idag)
-    return {"navn": navne.get(r.pipedrive_id, r.pipedrive_id), "brand": r.brand, "pipedrive_id": r.pipedrive_id,
+    return {"navn": navne.get(r.pipedrive_id, r.pipedrive_id), "brand": r.brand, "pipedrive_id": r.pipedrive_id, "brugere": r.antal,
             "farve": farve, "farve_klasse": FARVE_KLASSE.get(farve),
             "opfoelgning": opfoelgning.strftime("%d-%m-%Y") if opfoelgning else "", "klaret": klaret}
 
