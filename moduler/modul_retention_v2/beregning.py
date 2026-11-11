@@ -4,7 +4,7 @@ Porteret fra BA_scripts/retention_fase1 (kobling.py, forbrug.py, percentil.py),
 hvor reglerne er forklaret og afstemt. Tallene her skal give de samme som dér.
 
 X, "på vej ned": kundens artikelvisninger i de seneste 6 hele måneder mod de
-samme 6 måneder året før, for 1-bruger-kunder med mindst 30 visninger året før.
+samme 6 måneder året før, for kunder med 1-5 brugere og mindst 30 visninger året før.
 Y, "ikke kommet i gang": nystartede kunder (første betalte abonnement inden for
 12 måneder), målt på gennemsnitlige artikelvisninger pr. måned i de første 2
 hele måneder efter startmåneden. Har kunden haft en hel måned over grænsen
@@ -12,8 +12,8 @@ efter de to målemåneder, er den kommet i gang og er ikke med (27-10-2026,
 erstatter "læst noget i seneste hele måned").
 En kunde er brand + Pipedrive-ID.
 
-1-bruger-kunde (aftalt med Kenneth 23-10-2026): brugerne fra alle kundens konti
-lægges sammen og er præcis 1, ingen konto har domæneadgang, og kunden har mindst
+Kunder med 1-5 brugere (udvidet fra 1 bruger 05-11-2026): brugerne fra alle kundens konti
+lægges sammen og er 1-5, ingen konto har domæneadgang, og kunden har mindst
 ét aktivt, betalt abonnement. Kunder uden brugertal i 20_konti er ikke med.
 
 Filerne (20_konti, 21_abonnementer, 22_forbrug) ligger i en mappe
@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 BRANDS = ["Watch", "Finans"]
 # Under 30 visninger året før fylder små tal (4 til 0 = -100 %) listen.
 MINIMUM = 30
+# Kunder med 1 til MAKS_BRUGERE brugere (samlet over konti) kommer med på listen.
+MAKS_BRUGERE = 5
 # Zuora skriver teksten "none" og ikke NULL.
 MANGLER_PIPEDRIVE = {"none", ""}
 
@@ -77,7 +79,7 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
     # Seneste hele måned. Udtrækkets egen måned er ikke slut og bruges aldrig.
     m = udtraek.to_period("M") - 1
 
-    # --- 1-bruger-kunder: én bruger, ingen domæneadgang, mindst ét aktivt, betalt abonnement ---
+    # --- Kunder med 1-5 brugere: ingen domæneadgang, mindst ét aktivt, betalt abonnement ---
     aktive_abb = abonnementer[abonnementer["subscription_status"] == "Active"]
     aktive_konti = aktive_abb.merge(konti[["account_number", "brand", "pipedrive_id"]], on="account_number")
     aktive_konti = aktive_konti[~aktive_konti["pipedrive_id"].isin(MANGLER_PIPEDRIVE)]
@@ -93,9 +95,9 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
     brugere["har_domaene"] = pd.to_numeric(brugere["har_domaene"])
     pr_kunde = brugere.groupby(["brand", "pipedrive_id"], as_index=False).agg(
         antal=("brugere_i_alt", "sum"), domaene=("har_domaene", "max"))
-    en_bruger = pr_kunde[(pr_kunde["antal"] == 1) & (pr_kunde["domaene"] == 0)]
-    medie = betalte.merge(en_bruger[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"])
-    assert not medie.duplicated(["brand", "pipedrive_id"]).any(), "en kunde står to gange i 1-bruger-kunderne"
+    faa_brugere = pr_kunde[(pr_kunde["antal"].between(1, MAKS_BRUGERE)) & (pr_kunde["domaene"] == 0)]
+    medie = betalte.merge(faa_brugere[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"])
+    assert not medie.duplicated(["brand", "pipedrive_id"]).any(), "en kunde står to gange blandt kunder med 1-5 brugere"
     # Kunder uden brugertal er ikke med. Tallet vises, så en gammel 20-fil ses med det samme.
     uden_tal = len(betalte) - len(betalte.merge(pr_kunde[["brand", "pipedrive_id"]], on=["brand", "pipedrive_id"]))
     logger.warning("Retention v2: %d aktive, betalte kunder har intet brugertal i %s og er ikke med", uden_tal, konti_fil.name)
