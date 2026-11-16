@@ -12,9 +12,11 @@ efter de to målemåneder, er den kommet i gang og er ikke med (27-10-2026,
 erstatter "læst noget i seneste hele måned").
 En kunde er brand + Pipedrive-ID.
 
-Kunder med 1-5 brugere (udvidet fra 1 bruger 05-11-2026): brugerne fra alle kundens konti
-lægges sammen og er 1-5, ingen konto har domæneadgang, og kunden har mindst
-ét aktivt, betalt abonnement. Kunder uden brugertal i 20_konti er ikke med.
+Kunder med 1-5 brugere (udvidet fra 1 bruger 05-11-2026): brugertallet er summen af
+aftalebrugerne på kundens konti (adgangsaftalerne i B2B admin), og har kunden ingen
+aftalebrugere, summen af abonnenterne (16-11-2026). Tallet er 1-5, ingen konto har
+domæneadgang, og kunden har mindst ét aktivt, betalt abonnement. Kunder uden
+brugertal i 20_konti er ikke med.
 
 Filerne (20_konti, 21_abonnementer, 22_forbrug) ligger i en mappe
 på appserveren. Hvert udtræk er en ny fil med datostempel (22_forbrug_13102026.csv),
@@ -91,10 +93,13 @@ def _beregn(konti_fil, abonnementer_fil, forbrug_fil):
 
     # Brugerne lægges sammen over kundens konti. Domæneadgang på én konto tæller for kunden.
     brugere = konti[(konti["brugere_i_alt"] != "") & ~konti["pipedrive_id"].isin(MANGLER_PIPEDRIVE)].copy()
-    brugere["brugere_i_alt"] = pd.to_numeric(brugere["brugere_i_alt"])
-    brugere["har_domaene"] = pd.to_numeric(brugere["har_domaene"])
+    for kolonne in ("brugere_aftale", "brugere_abonnement", "har_domaene"):
+        brugere[kolonne] = pd.to_numeric(brugere[kolonne])
     pr_kunde = brugere.groupby(["brand", "pipedrive_id"], as_index=False).agg(
-        antal=("brugere_i_alt", "sum"), domaene=("har_domaene", "max"))
+        aftale=("brugere_aftale", "sum"), abonnement=("brugere_abonnement", "sum"),
+        domaene=("har_domaene", "max"))
+    # Har kunden aftalebrugere, tælles de (adgangsaftalen i B2B admin). Ellers abonnenterne.
+    pr_kunde["antal"] = pr_kunde["aftale"].where(pr_kunde["aftale"] > 0, pr_kunde["abonnement"])
     faa_brugere = pr_kunde[(pr_kunde["antal"].between(1, MAKS_BRUGERE)) & (pr_kunde["domaene"] == 0)]
     medie = betalte.merge(faa_brugere[["brand", "pipedrive_id", "antal"]], on=["brand", "pipedrive_id"])
     assert not medie.duplicated(["brand", "pipedrive_id"]).any(), "en kunde står to gange blandt kunder med 1-5 brugere"
