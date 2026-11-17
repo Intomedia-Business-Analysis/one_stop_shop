@@ -130,6 +130,25 @@ def _maaneds_farver() -> dict:
         conn.close()
 
 
+def _foerste_opkald() -> pd.DataFrame:
+    """Kundens første registrering: kolonnerne brand, pipedrive_id og foerste."""
+    if _dev():
+        return pd.DataFrame(columns=["brand", "pipedrive_id", "foerste"])
+    conn = get_conn()
+    try:
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+                    SELECT brand, pipedrive_id, MIN(oprettet) AS foerste
+                    FROM dbo.RetentionOutcomesV2
+                    GROUP BY brand, pipedrive_id
+                    """)
+        foerste = pd.DataFrame(cur.fetchall(), columns=["brand", "pipedrive_id", "foerste"])
+        foerste["pipedrive_id"] = foerste["pipedrive_id"].astype(str)
+        return foerste
+    finally:
+        conn.close()
+
+
 def _historik(brand: str, pipedrive_id: int) -> list:
     """De 5 seneste registreringer på kunden, nyeste først."""
     if _dev():
