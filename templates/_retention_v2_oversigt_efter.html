@@ -1,0 +1,28 @@
+{# Fragmentet #efter på retention_v2_oversigt.html. Kun visning, alt er regnet i router/beregning. #}
+<div class="section-head">
+  <span class="section-label">Forbrug efter første opkald</span>
+</div>
+<p class="rv-sub">Snit pr. dag i artikelvisninger. Før er de 6 hele måneder før måneden for kundens første registrering, derefter én kolonne pr. måned. Rødt tal: seneste måned er 0 eller lavere end før. Kunder, der er registreret i denne måned, har endnu ingen måned efter.</p>
+<div class="v-table-wrap">
+  <table class="v-table">
+    <thead><tr>
+      <th>Kunde</th><th>Brand</th><th>Seneste farve</th><th>Første opkald</th><th class="num">Før</th>
+      {% for m in maaneder %}<th class="num">{{ m }}{% if loop.last %}*{% endif %}</th>{% endfor %}
+    </tr></thead>
+    <tbody>
+    {% for r in raekker %}
+      <tr>
+        <td class="navn">{{ r.navn }}</td>
+        <td>{{ r.brand }}</td>
+        <td>{% if r.farve %}<span class="farve {{ r.farve_klasse }}">{{ r.farve }}</span>{% endif %}</td>
+        <td>{{ r.foerste }}</td>
+        <td class="num">{{ r.foer }}</td>
+        {% for tal in r.maanedstal %}<td class="num{% if loop.last and r.red_flag %} flag{% endif %}">{{ tal }}</td>{% endfor %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ 5 + maaneder|length }}" class="empty">Ingen registrerede kunder endnu</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="stat-note">* Seneste måned er kun målt delvist ({{ delvis }}).</p>
