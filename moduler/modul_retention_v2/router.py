@@ -316,10 +316,15 @@ def oversigt_risiko(request: Request, brand: str = "", user=Depends(get_current_
 
 
 @router.get("/retention_v2/oversigt/efter_opkald", response_class=HTMLResponse)
-def oversigt_efter_opkald(request: Request, user=Depends(get_current_user)):
+def oversigt_efter_opkald(request: Request, brand: str = "", user=Depends(get_current_user)):
     _kraev_adgang(user)
-    tabel, data_til = beregning.efter_opkald(_foerste_opkald())
+    brand = _valgt_brand(brand, tom_tilladt=True)
+    foerste = _foerste_opkald()
+    if brand:
+        foerste = foerste[foerste["brand"] == brand]
+    tabel, data_til = beregning.efter_opkald(foerste)
     maaneder = [k for k in tabel.columns if k not in ("brand", "pipedrive_id", "foerste", "foer", "red_flag")]
+    maaneder = maaneder[-6:]
     farver, navne = _seneste_farver(), _org_navne()
     raekker = []
     for r in tabel.to_dict("records"):
