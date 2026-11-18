@@ -315,6 +315,28 @@ def oversigt_risiko(request: Request, brand: str = "", user=Depends(get_current_
         "farver": [(f, pr_farve.get(f, 0)) for f in ["ikke ringet", *FARVER]]})
 
 
+@router.get("/retention_v2/oversigt/efter_opkald", response_class=HTMLResponse)
+def oversigt_efter_opkald(request: Request, user=Depends(get_current_user)):
+    _kraev_adgang(user)
+    tabel, data_til = beregning.efter_opkald(_foerste_opkald())
+    maaneder = [k for k in tabel.columns if k not in ("brand", "pipedrive_id", "foerste", "foer", "red_flag")]
+    farver, navne = _seneste_farver(), _org_navne()
+    raekker = []
+    for r in tabel.to_dict("records"):
+        farve, _ = farver.get((r["brand"], r["pipedrive_id"]), (None, None))
+        raekker.append({
+            "navn": navne.get(r["pipedrive_id"], r["pipedrive_id"]), "brand": r["brand"],
+            "farve": farve, "farve_klasse": FARVE_KLASSE.get(farve),
+            "foerste": pd.Timestamp(r["foerste"]).strftime("%d-%m-%Y"),
+            "foer": f"{r['foer']:.2f}".replace(".", ","),
+            "maanedstal": ["" if pd.isna(r[m]) else f"{r[m]:.2f}".replace(".", ",") for m in maaneder],
+            "red_flag": r["red_flag"]
+        })
+    return templates.TemplateResponse(request, "_retention_v2_oversigt_efter.html", {
+        "raekker": raekker, "maaneder": maaneder,
+        "delvis": f"{data_til.day} af {data_til.days_in_month} dage"})
+
+
 def _forhaandsvisning(navn: str, farve: str, kommentar: str) -> dict:
     # Ukendt eller manglende farve vises som en opfordring, aldrig som brugerinput.
     farve = farve if farve in FARVER else "vælg en farve"
