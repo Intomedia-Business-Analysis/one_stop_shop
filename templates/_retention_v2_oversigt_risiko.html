@@ -19,3 +19,7 @@
         {% endfor %}
     </div>
 </div>
+<div id="efter" hx-swap-oob="true"
+    hx-get="/retention_v2/oversigt/efter_opkald?brand={{ brand }}" hx-trigger="load">
+    <p class="rv-sub">Indlæser...</p>
+</div>

@@ -203,6 +203,73 @@ def _arr_pr_kunde(konti_fil, abonnementer_fil) -> pd.DataFrame:
     return pr_kunde
 
 
+@lru_cache(maxsize=1)
+def _forbrug_pr_maaned(forbrug_fil):
+    """Artikelvisninger pr. kunde og måned (summeret over sites) og datoen, data går til.
+
+    data_til er seneste sidste_dato i filen, men aldrig senere end dagen før udtrækket,
+    fordi udtræksdagen kun er delvist med. Er data ældre, bliver den sidste måned delvist målt.
+    """
+    # regel: læs filen med _laes
+    forbrug = _laes(forbrug_fil)
+    # regel: data_til = største sidste_dato, men højst dagen før udtrækket
+    udtraek = pd.to_datetime(forbrug_fil.stem[-8:], format="%d%m%Y")
+    data_til = min(pd.to_datetime(forbrug["sidste_dato"].max()), udtraek - pd.Timedelta(days=1))
+    # regel: kun BRANDS og rækker med pipedrive_id (samme filter som forbrug i _beregn)
+    forbrug = forbrug[forbrug["brand"].isin(BRANDS) & (forbrug["pipedrive_id"] != "")].copy()
+    # regel: artikelvisninger til tal
+    forbrug["artikelvisninger"] = pd.to_numeric(forbrug["artikelvisninger"])
+    # regel: summér artikelvisninger pr. brand, pipedrive_id og maaned (as_index=False)
+    pr_maaned = forbrug.groupby(["brand", "pipedrive_id", "maaned"], as_index=False)["artikelvisninger"].sum()
+    return pr_maaned, data_til
+
+
+def efter_opkald(registreringer: pd.DataFrame) -> tuple:
+    """Forbrug efter Christines første opkald: snit pr. dag før og pr. måned efter.
+
+    registreringer har kolonnerne brand, pipedrive_id og foerste (datoen for kundens
+    første registrering). Giver (tabel, data_til): én række pr. kunde, sorteret efter
+    foerste, og datoen data går til.
+    Før = de 6 hele måneder før registreringsmåneden. Efter = hver måned fra måneden
+    efter registreringen til og med data_til's måned, og den sidste kan være delvist målt.
+    En måned uden række i 22_forbrug er 0 visninger. Red flag: seneste måned efter er 0
+    eller lavere end før.
+    """
+    pr_maaned, data_til = _forbrug_pr_maaned(nyeste("22_forbrug"))
+    sidste = data_til.to_period("M")
+    raekker = []
+    for r in registreringer.sort_values("foerste").itertuples():
+        # regel: start = registreringsmåneden (r.foerste som dato, og så som måned)
+        start = pd.to_datetime(r.foerste).to_period("M")
+        # regel: kunde = kundens rækker i pr_maaned (samme brand og pipedrive_id som r)
+        kunde = pr_maaned[(pr_maaned["brand"] == r.brand) & (pr_maaned["pipedrive_id"] == r.pipedrive_id)]
+        # regel: visninger = opslag fra maaned til artikelvisninger for kunden
+        visninger = dict(zip(kunde["maaned"], kunde["artikelvisninger"]))
+        # regel: foer_maaneder = de 6 måneder før start, ældste først
+        foer_maaneder = [start - i for i in range(6, 0, -1)]
+        # regel: visninger_foer = summen af visninger i de måneder, 0 hvis måneden mangler
+        visninger_foer = sum(visninger.get(str(m), 0) for m in foer_maaneder)
+        # regel: dage_foer = summen af dage i de måneder
+        dage_foer = sum(m.days_in_month for m in foer_maaneder)
+        # regel: foer = visninger_foer delt med dage_foer
+        foer = visninger_foer / dage_foer
+        # regel: efter = snit pr. dag for hver måned fra måneden efter start til og med sidste
+        efter = {}
+        for m in pd.period_range(start + 1, sidste, freq="M"):
+            # regel: dage = data_til.day i den sidste måned, ellers hele måneden
+            dage = data_til.day if m == sidste else m.days_in_month
+            # regel: efter[måned] = visninger i måneden (0 hvis den mangler) delt med dage
+            efter[str(m)] = visninger.get(str(m), 0) / dage
+        # regel: seneste = snittet i den sidste måned, None hvis kunden venter
+        seneste = efter.get(str(sidste))
+        # regel: red_flag = None hvis kunden venter, ellers True hvis seneste er 0 eller lavere end foer
+        red_flag = None if seneste is None else (seneste == 0 or seneste < foer)
+        # regel: læg én række for kunden i raekker
+        raekker.append({"brand": r.brand, "pipedrive_id": r.pipedrive_id, "foerste": r.foerste,
+                        "foer": foer, **efter, "red_flag": red_flag})
+    return pd.DataFrame(raekker), data_til
+
+
 def vaerdi_i_risiko(x_pct: float, y_graense: float, farver: dict, brand: str = "") -> pd.Series:
     """ARR på arbejdslistens kunder pr. farve. Kunder uden registrering er "ikke ringet".
 

@@ -130,6 +130,25 @@ def _maaneds_farver() -> dict:
         conn.close()
 
 
+def _foerste_opkald() -> pd.DataFrame:
+    """Kundens første registrering: kolonnerne brand, pipedrive_id og foerste."""
+    if _dev():
+        return pd.DataFrame(columns=["brand", "pipedrive_id", "foerste"])
+    conn = get_conn()
+    try:
+        cur = conn.cursor(as_dict=True)
+        cur.execute("""
+                    SELECT brand, pipedrive_id, MIN(oprettet) AS foerste
+                    FROM dbo.RetentionOutcomesV2
+                    GROUP BY brand, pipedrive_id
+                    """)
+        foerste = pd.DataFrame(cur.fetchall(), columns=["brand", "pipedrive_id", "foerste"])
+        foerste["pipedrive_id"] = foerste["pipedrive_id"].astype(str)
+        return foerste
+    finally:
+        conn.close()
+
+
 def _historik(brand: str, pipedrive_id: int) -> list:
     """De 5 seneste registreringer på kunden, nyeste først."""
     if _dev():
@@ -294,6 +313,33 @@ def oversigt_risiko(request: Request, brand: str = "", user=Depends(get_current_
     return templates.TemplateResponse(request, "_retention_v2_oversigt_risiko.html", {
         "brand": brand, "x_pct": X_STANDARD, "y_graense": Y_STANDARD, "total": pr_farve.sum(),
         "farver": [(f, pr_farve.get(f, 0)) for f in ["ikke ringet", *FARVER]]})
+
+
+@router.get("/retention_v2/oversigt/efter_opkald", response_class=HTMLResponse)
+def oversigt_efter_opkald(request: Request, brand: str = "", user=Depends(get_current_user)):
+    _kraev_adgang(user)
+    brand = _valgt_brand(brand, tom_tilladt=True)
+    foerste = _foerste_opkald()
+    if brand:
+        foerste = foerste[foerste["brand"] == brand]
+    tabel, data_til = beregning.efter_opkald(foerste)
+    maaneder = [k for k in tabel.columns if k not in ("brand", "pipedrive_id", "foerste", "foer", "red_flag")]
+    maaneder = maaneder[-6:]
+    farver, navne = _seneste_farver(), _org_navne()
+    raekker = []
+    for r in tabel.to_dict("records"):
+        farve, _ = farver.get((r["brand"], r["pipedrive_id"]), (None, None))
+        raekker.append({
+            "navn": navne.get(r["pipedrive_id"], r["pipedrive_id"]), "brand": r["brand"],
+            "farve": farve, "farve_klasse": FARVE_KLASSE.get(farve),
+            "foerste": pd.Timestamp(r["foerste"]).strftime("%d-%m-%Y"),
+            "foer": f"{r['foer']:.2f}".replace(".", ","),
+            "maanedstal": ["" if pd.isna(r[m]) else f"{r[m]:.2f}".replace(".", ",") for m in maaneder],
+            "red_flag": r["red_flag"]
+        })
+    return templates.TemplateResponse(request, "_retention_v2_oversigt_efter.html", {
+        "raekker": raekker, "maaneder": maaneder,
+        "delvis": f"{data_til.day} af {data_til.days_in_month} dage"})
 
 
 def _forhaandsvisning(navn: str, farve: str, kommentar: str) -> dict:
